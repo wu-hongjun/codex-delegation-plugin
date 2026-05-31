@@ -182,6 +182,7 @@ async function cmdDelegate(flags, positional, json) {
       shortId: handle.shortId,
       sessionName: handle.sessionName,
       cwd: handle.cwd,
+      startedAt: handle.startedAt,
       logsCommand: `claude logs ${handle.shortId}`,
     },
     prompt: { summary, sha256, bytesLen },
@@ -248,15 +249,18 @@ async function cmdResult(flags, positional, json) {
   }
 
   const workspace = process.cwd();
-  const result = await listJobs();
-  const allIds = result.jobs.map((j) => j.jobId);
+  const showAll = Boolean(flags['all']);
+  const listed = showAll ? await listJobs() : await listJobsForWorkspace(workspace);
+  const allIds = listed.jobs.map((j) => j.jobId);
   const resolved = resolveJobIdPrefix(allIds, prefix);
 
   if ('error' in resolved) {
     const msg =
       resolved.error === 'ambiguous'
         ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
-        : `No job found matching "${prefix}"`;
+        : showAll
+          ? `No job found matching "${prefix}"`
+          : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
     process.stderr.write(formatError(new Error(msg), 'result', json) + '\n');
     process.exit(1);
   }
@@ -311,7 +315,8 @@ async function cmdStop(flags, positional, json) {
   }
 
   const workspace = process.cwd();
-  const listResult = await listJobs();
+  const showAll = Boolean(flags['all']);
+  const listResult = showAll ? await listJobs() : await listJobsForWorkspace(workspace);
   const allIds = listResult.jobs.map((j) => j.jobId);
   const resolved = resolveJobIdPrefix(allIds, prefix);
 
@@ -319,7 +324,9 @@ async function cmdStop(flags, positional, json) {
     const msg =
       resolved.error === 'ambiguous'
         ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
-        : `No job found matching "${prefix}"`;
+        : showAll
+          ? `No job found matching "${prefix}"`
+          : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
     process.stderr.write(formatError(new Error(msg), 'stop', json) + '\n');
     process.exit(1);
   }
@@ -327,14 +334,15 @@ async function cmdStop(flags, positional, json) {
   const jobId = resolved.match;
   const job = await readJob(jobId);
 
-  // Reconstitute session handle from job record.
+  // claude.startedAt was added later; fall back to job.createdAt for records
+  // written before then so old jobs can still be stopped.
   const sessionHandle = {
     driverName: job.driver.name,
     shortId: job.claude.shortId,
     sessionId: job.claude.sessionId,
     sessionName: job.claude.sessionName,
     cwd: job.claude.cwd,
-    startedAt: job.createdAt,
+    startedAt: job.claude.startedAt ?? job.createdAt,
   };
 
   const driver = new ClaudeBackgroundDriver({ cwd: workspace });
@@ -345,7 +353,7 @@ async function cmdStop(flags, positional, json) {
     ...current,
     status: 'stopped',
   }));
-  await appendEvent(jobId, { type: 'stop.requested', at: now });
+  await appendEvent(jobId, { type: 'stop.completed', at: now });
 
   process.stdout.write(formatStop(stoppedJob, json) + '\n');
 }
@@ -361,8 +369,8 @@ function printUsage() {
       '  setup                        Run doctor probes and report status',
       '  delegate [flags] -- <prompt> Start a Claude background session',
       '  status [--all]               List jobs for current workspace',
-      '  result <jobId>               Show final result of a completed job',
-      '  stop <jobId>                 Stop a running job',
+      '  result <jobId> [--all]       Show final result of a completed job',
+      '  stop <jobId> [--all]         Stop a running job',
       '',
       'Flags:',
       '  --json                       Machine-readable JSON output',
@@ -374,7 +382,7 @@ function printUsage() {
       '  --add-dir <dir>              Additional directory for delegate (repeatable)',
       '  --mcp-config <path>          MCP config file for delegate',
       '  --allow-edit                 Allow edit mode for delegate',
-      '  --all                        Show all jobs (status command)',
+      '  --all                        Search all workspaces (status/result/stop)',
       '  --help                       Show this help',
       '',
     ].join('\n'),

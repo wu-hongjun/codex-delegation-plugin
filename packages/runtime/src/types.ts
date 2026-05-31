@@ -38,6 +38,7 @@ export interface ClaudeSessionContext {
   sessionName: string;
   pid?: number;
   cwd: string;
+  startedAt?: string;
   transcriptPath?: string;
   logsCommand: string;
 }

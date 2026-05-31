@@ -1,5 +1,6 @@
-// ClaudeBackgroundDriver — v1 implements probe() only. Lifecycle methods land in later
-// T-tasks per plan 0001 and throw `DriverNotImplementedError` until then.
+// ClaudeBackgroundDriver — v1 implements probe(), startSession(), status(), and stop().
+// watch() streaming is deliberately deferred to a later plan (PTY attach / streaming)
+// and throws `DriverNotImplementedError` until then.
 
 import type {
   DoctorOptions,
@@ -49,7 +50,7 @@ export class ClaudeBackgroundDriver implements Driver {
   }
 
   watch(_target: SessionHandle | TurnHandle, _opts?: WatchOpts): AsyncIterable<DriverEvent> {
-    throw new DriverNotImplementedError('watch', 'plan 0001 T8/T9');
+    throw new DriverNotImplementedError('watch', 'plan 0002+ (PTY attach / streaming)');
   }
 
   status(session: SessionHandle): Promise<SessionStatus> {

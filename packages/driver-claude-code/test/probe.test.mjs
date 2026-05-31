@@ -243,7 +243,7 @@ describe('ClaudeBackgroundDriver lifecycle stubs (deferred)', () => {
     } catch (err) {
       assert.ok(err instanceof DriverNotImplementedError);
       assert.equal(err.methodName, 'watch');
-      assert.match(err.planReference, /plan 0001 T8\/T9/);
+      assert.match(err.planReference, /plan 0002\+ \(PTY attach \/ streaming\)/);
     }
   });
 });

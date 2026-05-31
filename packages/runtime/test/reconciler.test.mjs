@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -557,12 +557,31 @@ describe('reconcileJobsForWorkspace', () => {
 // ---------------------------------------------------------------------------
 
 describe('architectural invariant', () => {
-  it('reconciler.ts does not import driver-claude-code or invoke claude directly', () => {
+  it('no runtime/src/**/*.ts file imports driver-claude-code or invokes claude directly', () => {
     const here = fileURLToPath(import.meta.url);
-    const RECONCILER_SRC = resolve(here, '..', '..', 'src', 'reconciler.ts');
-    const src = readFileSync(RECONCILER_SRC, 'utf8');
-    for (const banned of ['driver-claude-code', 'claude --bg', 'claude -p', 'node-pty']) {
-      assert.equal(src.includes(banned), false, `reconciler.ts must not contain "${banned}"`);
+    const SRC_ROOT = resolve(here, '..', '..', 'src');
+    const banned = ['driver-claude-code', 'claude --bg', 'claude -p', 'node-pty'];
+
+    const tsFiles = [];
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name);
+        if (entry.isDirectory()) walk(full);
+        else if (entry.isFile() && entry.name.endsWith('.ts')) tsFiles.push(full);
+      }
+    };
+    walk(SRC_ROOT);
+    assert.ok(tsFiles.length > 0, 'expected at least one .ts file under runtime/src');
+
+    for (const file of tsFiles) {
+      const src = readFileSync(file, 'utf8');
+      for (const token of banned) {
+        assert.equal(
+          src.includes(token),
+          false,
+          `${file.slice(SRC_ROOT.length + 1)} must not contain "${token}"`,
+        );
+      }
     }
   });
 });

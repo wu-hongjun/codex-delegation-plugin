@@ -706,6 +706,74 @@ describe('delegate --json --yes --allow-edit', () => {
   });
 });
 
+// ---------- Test 20: result without --all does not resolve cross-workspace jobs ----------
+
+describe('result workspace-scoped prefix resolution (A3)', () => {
+  it('does NOT resolve a job from a different workspace by default', () => {
+    const otherWorkspace = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-other-ws-')));
+    try {
+      const jobId = `job_other_${createHash('sha256').update('a3-default').digest('hex').slice(0, 8)}`;
+      writeSyntheticCompletedJob({ jobId, workspaceRoot: otherWorkspace });
+
+      const result = runDispatcher(['result', jobId]);
+      assert.equal(result.status, 1, 'cross-workspace job must not resolve without --all');
+      const combined = result.stdout + result.stderr;
+      assert.ok(
+        combined.toLowerCase().includes('no job') || combined.toLowerCase().includes('--all'),
+        `expected "no job" or "--all" hint; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
+    } finally {
+      rmSync(otherWorkspace, { recursive: true, force: true });
+    }
+  });
+
+  it('DOES resolve a job from a different workspace when --all is passed', () => {
+    const otherWorkspace = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-other-ws-')));
+    try {
+      const jobId = `job_other_${createHash('sha256').update('a3-all').digest('hex').slice(0, 8)}`;
+      const { resultContent } = writeSyntheticCompletedJob({
+        jobId,
+        workspaceRoot: otherWorkspace,
+      });
+
+      const result = runDispatcher(['result', jobId, '--all']);
+      assert.equal(
+        result.status,
+        0,
+        `expected exit 0 with --all; got ${result.status}; stderr: ${result.stderr}`,
+      );
+      assert.ok(
+        result.stdout.includes(resultContent),
+        `expected result content in output; got:\n${result.stdout}`,
+      );
+    } finally {
+      rmSync(otherWorkspace, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------- Test 21: stop without --all does not resolve cross-workspace jobs ----------
+
+describe('stop workspace-scoped prefix resolution (A3)', () => {
+  it('does NOT resolve a stop target from a different workspace by default', () => {
+    const otherWorkspace = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-other-ws-')));
+    try {
+      const jobId = `job_stop_${createHash('sha256').update('a3-stop-default').digest('hex').slice(0, 8)}`;
+      writeSyntheticCompletedJob({ jobId, workspaceRoot: otherWorkspace });
+
+      const result = runDispatcher(['stop', jobId]);
+      assert.equal(result.status, 1, 'cross-workspace job must not resolve without --all');
+      const combined = result.stdout + result.stderr;
+      assert.ok(
+        combined.toLowerCase().includes('no job') || combined.toLowerCase().includes('--all'),
+        `expected "no job" or "--all" hint; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
+    } finally {
+      rmSync(otherWorkspace, { recursive: true, force: true });
+    }
+  });
+});
+
 // ---------- Test 19: real ~/.claude and ~/.codex are NOT touched ----------
 
 describe('isolation: real ~/.claude and ~/.codex are not touched', () => {

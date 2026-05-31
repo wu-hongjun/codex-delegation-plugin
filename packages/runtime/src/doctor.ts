@@ -5,9 +5,9 @@
 // snapshots the JSON report to `getDoctorPath()` so `$claude-setup` and future skills can
 // surface the latest state without re-running probes.
 //
-// Probes never start a real Claude background session, never fall back to `claude -p`, and
-// never use a shell. Spawned commands run via `node:child_process.spawn` with
-// `shell: false` and an explicit timeout (default 5s).
+// Probes never start a real Claude background session, never invoke the synchronous
+// print-mode transport, and never use a shell. Spawned commands run via
+// `node:child_process.spawn` with `shell: false` and an explicit timeout (default 5s).
 
 import { spawn } from 'node:child_process';
 import { existsSync, rmSync, statSync, writeFileSync } from 'node:fs';

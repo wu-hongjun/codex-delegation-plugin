@@ -29,6 +29,7 @@ export * from './transcript.js';
 export * from './logs.js';
 export * from './stop.js';
 export * from './pty-probe.js';
+export * from './sidecar.js';
 
 export class ClaudeBackgroundDriver implements Driver {
   private readonly defaults: ClaudeBackgroundDriverOptions;

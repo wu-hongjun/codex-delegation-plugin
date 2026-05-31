@@ -5,3 +5,8 @@ references
 *.md
 documentation
 package-lock.json
+
+# Plan 0002 T4: intentionally-malformed JSON fixture for the sidecar reader's
+# "returns null on bad JSON" test. Don't ask prettier to parse it.
+packages/driver-claude-code/test/fixtures/sidecar/malformed.json
+

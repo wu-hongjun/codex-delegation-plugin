@@ -1,0 +1,210 @@
+// sidecar.ts — best-effort reader for the per-job sidecar at
+// <jobsDir>/<shortId>/state.json written by Claude Code 2.1.149+.
+//
+// Schema is undocumented and treated as defensively-parsed unknown JSON.
+// Every declared field is optional; the only required field on the return
+// type is `raw` (the verbatim parsed input).
+//
+// Throws only on an invalid `shortId`. Returns null for any fs/parse failure.
+
+import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
+import { DriverError } from '@cc-plugin-codex/runtime';
+
+import { DRIVER_NAME } from './types.js';
+
+// ---------- public types ----------
+
+export interface SidecarSnapshot {
+  state?: string;
+  tempo?: string;
+  inFlight?: {
+    tasks?: number;
+    queued?: number;
+    kinds?: string[];
+  };
+  output?: {
+    result?: string;
+  };
+  linkScanPath?: string;
+  resumeSessionId?: string;
+  intent?: string;
+  cliVersion?: string;
+  cwd?: string;
+  raw: unknown;
+}
+
+export interface ReadSidecarOptions {
+  env?: NodeJS.ProcessEnv;
+  jobsDir?: string;
+}
+
+// ---------- validation ----------
+
+const SHORT_ID_RE = /^[a-zA-Z0-9_-]{4,64}$/;
+
+function validateShortId(shortId: unknown): asserts shortId is string {
+  if (typeof shortId !== 'string') {
+    throw new DriverError(`invalid shortId: ${typeof shortId}`, {
+      driverName: DRIVER_NAME,
+      operation: 'sidecar',
+    });
+  }
+  if (!SHORT_ID_RE.test(shortId)) {
+    throw new DriverError(`invalid shortId: ${JSON.stringify(shortId)}`, {
+      driverName: DRIVER_NAME,
+      operation: 'sidecar',
+    });
+  }
+}
+
+// ---------- path resolution ----------
+
+/**
+ * Returns the absolute path to `<jobsDir>/<shortId>/state.json`.
+ *
+ * Resolution order:
+ *   1. opts.jobsDir (truthy string)
+ *   2. <opts.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME>/jobs (if env var is set)
+ *   3. <process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME>/jobs (when opts.env omitted)
+ *   4. <os.homedir()>/.claude/jobs
+ *
+ * Pure computation — does NOT touch the filesystem.
+ */
+export function resolveSidecarPath(shortId: string, opts?: ReadSidecarOptions): string {
+  validateShortId(shortId);
+
+  let jobsDir: string;
+
+  if (opts?.jobsDir) {
+    jobsDir = opts.jobsDir;
+  } else {
+    const envSource = opts?.env ?? process.env;
+    const mockHome = envSource['CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME'];
+    if (mockHome) {
+      jobsDir = join(mockHome, 'jobs');
+    } else {
+      jobsDir = join(homedir(), '.claude', 'jobs');
+    }
+  }
+
+  return join(jobsDir, shortId, 'state.json');
+}
+
+// ---------- snapshot parser ----------
+
+/**
+ * Maps a parsed-but-unknown JSON value to a `SidecarSnapshot`.
+ *
+ * Defensive: copies only the fields we understand; ignores extras silently.
+ * Omits a field entirely when its value has the wrong primitive type.
+ *
+ * For `inFlight.kinds`: if present and an array, non-string elements are
+ * filtered out. If the filtered array is empty, `kinds` is omitted entirely
+ * (an empty array of the wrong type is indistinguishable from "no kinds").
+ */
+export function parseSidecarSnapshot(raw: unknown): SidecarSnapshot {
+  const snapshot: SidecarSnapshot = { raw };
+
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) {
+    return snapshot;
+  }
+
+  const obj = raw as Record<string, unknown>;
+
+  if (typeof obj['state'] === 'string') {
+    snapshot.state = obj['state'];
+  }
+  if (typeof obj['tempo'] === 'string') {
+    snapshot.tempo = obj['tempo'];
+  }
+  if (typeof obj['linkScanPath'] === 'string') {
+    snapshot.linkScanPath = obj['linkScanPath'];
+  }
+  if (typeof obj['resumeSessionId'] === 'string') {
+    snapshot.resumeSessionId = obj['resumeSessionId'];
+  }
+  if (typeof obj['intent'] === 'string') {
+    snapshot.intent = obj['intent'];
+  }
+  if (typeof obj['cliVersion'] === 'string') {
+    snapshot.cliVersion = obj['cliVersion'];
+  }
+  if (typeof obj['cwd'] === 'string') {
+    snapshot.cwd = obj['cwd'];
+  }
+
+  // inFlight: present and plain object only
+  const inFlight = obj['inFlight'];
+  if (inFlight !== null && typeof inFlight === 'object' && !Array.isArray(inFlight)) {
+    const ifo = inFlight as Record<string, unknown>;
+    const partial: SidecarSnapshot['inFlight'] = {};
+    if (typeof ifo['tasks'] === 'number') {
+      partial.tasks = ifo['tasks'];
+    }
+    if (typeof ifo['queued'] === 'number') {
+      partial.queued = ifo['queued'];
+    }
+    if (Array.isArray(ifo['kinds'])) {
+      const stringKinds = (ifo['kinds'] as unknown[]).filter(
+        (k): k is string => typeof k === 'string',
+      );
+      if (stringKinds.length > 0) {
+        partial.kinds = stringKinds;
+      }
+    }
+    snapshot.inFlight = partial;
+  }
+
+  // output: present and plain object only
+  const output = obj['output'];
+  if (output !== null && typeof output === 'object' && !Array.isArray(output)) {
+    const out = output as Record<string, unknown>;
+    const partial: SidecarSnapshot['output'] = {};
+    if (typeof out['result'] === 'string') {
+      partial.result = out['result'];
+    }
+    snapshot.output = partial;
+  }
+
+  return snapshot;
+}
+
+// ---------- main reader ----------
+
+/**
+ * Reads `<jobsDir>/<shortId>/state.json` and returns a `SidecarSnapshot`,
+ * or `null` on any fs/parse/schema failure.
+ *
+ * Throws only if `shortId` is invalid (propagated from `resolveSidecarPath`).
+ */
+export async function readSidecar(
+  shortId: string,
+  opts?: ReadSidecarOptions,
+): Promise<SidecarSnapshot | null> {
+  const filePath = resolveSidecarPath(shortId, opts);
+
+  let raw: string;
+  try {
+    raw = await readFile(filePath, 'utf8');
+  } catch {
+    // ENOENT: file missing; ENOTDIR: parent component is not a directory.
+    // All other fs errors (EACCES, EIO, …) also return null — sidecar is best-effort.
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return null;
+  }
+
+  return parseSidecarSnapshot(parsed);
+}

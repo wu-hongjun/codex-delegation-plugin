@@ -1,0 +1,17 @@
+{
+  "state": "done",
+  "tempo": "idle",
+  "inFlight": { "tasks": 0, "queued": 0, "kinds": [] },
+  "output": { "result": "completed answer here" },
+  "linkScanPath": "/tmp/projects/-private-tmp-x/9d1558d0-abcd-4abc-8def-000000000001.jsonl",
+  "resumeSessionId": "9d1558d0-abcd-4abc-8def-000000000001",
+  "intent": "original prompt text",
+  "cliVersion": "2.1.149",
+  "cwd": "/private/tmp/x",
+  "template": "bg",
+  "name": "codex-test",
+  "nameSource": "user",
+  "sessionId": "9d1558d0-abcd-4abc-8def-000000000001",
+  "daemonShort": "9d1558d0",
+  "backend": "daemon"
+}

@@ -162,14 +162,75 @@ First T-task run under the subagent pattern (A executor + B test-engineer + C co
 - All four lanes green: mock 58 + runtime 94 + driver 121 + plugin 217 = 490 pass / 0 fail.
 - Sidecar smoke (manual): `CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME=<tmp> claude --bg "hello"` produces `<tmp>/jobs/<shortId>/state.json` with `state: "done"` and `<tmp>/jobs/<shortId>/timeline.jsonl` with two lines (`working`, then `done`). Verified by Subagent A as part of its acceptance check.
 - PTY attach smoke (under `node-pty`): exercised by `attach.test.mjs §5–§8` against the new `cmdAttach` — turn injection, multi-turn, permission stall, custom `attachResponse` all green.
-- Remote CI confirmation will be appended once T3 commit lands on `main`.
+- Remote CI on `7e64269` (run `26719107412`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). PTY-driven tests pass on Linux + macOS for both supported Node majors.
+
+## T4 — Driver sidecar reader
+
+**Started**: 2026-05-31. **Status**: complete (pending CI confirmation).
+
+Second T-task run under the A/B/C subagent pattern. The maintainer pinned T4 narrow: read-only `readSidecar` + `resolveSidecarPath`, no `tailSidecar`, no streaming. The deferred `watch()` surface remains untouched.
+
+- **Subagent A (executor, sonnet)** — implemented `packages/driver-claude-code/src/sidecar.ts` and added `export * from './sidecar.js'` to `packages/driver-claude-code/src/index.ts`.
+- **Subagent B (test-engineer, sonnet)** — wrote `packages/driver-claude-code/test/sidecar.test.mjs` (29 tests across 15 describe blocks) plus three fixtures under `test/fixtures/sidecar/`.
+- **Subagent C (code-reviewer, opus)** — independent scope/contract/security review. Verdict: **`ready-for-T5`**. 0 blocker/high/medium findings; 1 low (cosmetic comment polish, deferred) + 1 nit (no action).
+
+### Files changed
+
+- `packages/driver-claude-code/src/sidecar.ts` (new, 211 lines):
+  - `SidecarSnapshot` / `ReadSidecarOptions` interfaces.
+  - `resolveSidecarPath(shortId, opts?)` — pure path computation. Resolution order: `opts.jobsDir` → `(opts.env ?? process.env).CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME/jobs` → `<os.homedir()>/.claude/jobs`.
+  - `readSidecar(shortId, opts?)` — async. Returns `null` on any unavailability (ENOENT / ENOTDIR / EACCES / EIO / malformed JSON / non-object JSON). Throws `DriverError` (operation `'sidecar'`, driver name `claude-background`) only on invalid `shortId`.
+  - `parseSidecarSnapshot(raw)` — exported defensive parser. Copies each documented field only when the type matches; ignores extras; always sets `raw`.
+  - `shortId` validation regex: `/^[a-zA-Z0-9_-]{4,64}$/`. Rejects path traversal, separators, dots, whitespace.
+  - No directory creation. No file writes. No `fs.watch`. No `AsyncIterable`. No node-pty. No `claude -p`.
+- `packages/driver-claude-code/src/index.ts` — added `export * from './sidecar.js'` after the existing `pty-probe` line.
+- `packages/driver-claude-code/test/sidecar.test.mjs` (new) — 29 tests covering: complete-fixture read, missing-fields tolerance, `raw` preservation, extras ignored, missing-file `null`, missing-dir `null`, malformed-JSON `null`, non-object JSON `null` (array/number/string/null), path-traversal rejection (8 sub-cases including `../secrets`, `a/b`, `a\b`, `.`, `..`, empty, whitespace, too-short), `resolveSidecarPath` with `opts.jobsDir`, with `opts.env`-supplied mock home, no directory creation, wrong-type field omission, `inFlight.kinds` mixed-type filtering, `inFlight` non-object omission.
+- `packages/driver-claude-code/test/fixtures/sidecar/complete.json` (new) — full real-2.1.149 schema with extras.
+- `packages/driver-claude-code/test/fixtures/sidecar/minimal.json` (new) — `{ "state": "idle", "tempo": "idle" }`.
+- `packages/driver-claude-code/test/fixtures/sidecar/malformed.json` (new) — truncated, intentionally invalid JSON.
+- `.prettierignore` — added the malformed fixture so `npm run format` doesn't try to parse it.
+
+### Decisions taken (not in the plan but consistent with it)
+
+- **`inFlight.kinds` with all-non-string entries** → omit `kinds` entirely (rather than emit `kinds: []`). Reason: an empty kinds array is indistinguishable from "no kinds present", and consistent with the rest of the "omit on wrong type" policy. Covered by `sidecar.test.mjs` test 14 (both mixed-type and all-non-string sub-cases).
+- **`parseSidecarSnapshot` early-exit guard** for non-object input returns `{ raw }`. Defensive-only; `readSidecar` already gates on non-object before calling the parser, so this is unreachable from the public path but available to direct callers (and exercised by B's tests).
+- **`.prettierignore` for `malformed.json`** — the fixture is intentionally invalid JSON and exists specifically so the test can assert "reader returns null on malformed JSON without throwing". Adding it to the ignore list keeps `npm run format` green without compromising the test's purpose.
+
+### Subagent C findings
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| L1 | low | The block comment for `resolveSidecarPath` describes env precedence as two separate steps, while the implementation collapses them into `opts?.env ?? process.env`. Functionally identical. | Deferred (cosmetic). |
+| N1 | nit | `snapshot.raw` assigned at literal-construction time vs. top-down build. | No action (style only). |
+
+### Test impact
+
+| Lane | Before T4 | After T4 | Δ |
+|---|---|---|---|
+| test:mock | 58 | 58 | — |
+| test:runtime | 94 | 94 | — |
+| test:driver | 121 | 150 | +29 |
+| test:plugin | 217 | 217 | — |
+| **Total** | **490** | **519** | **+29** |
+
+### Acceptance evidence (2026-05-31)
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean (after adding `malformed.json` to `.prettierignore`).
+- All four lanes green: mock 58 + runtime 94 + driver 150 + plugin 217 = **519 pass / 0 fail**.
+- Plan 0001 architectural invariant (runtime/src bans `driver-claude-code` / `claude -p` / `node-pty`) still passes.
+- Driver smoke (manual): `node -e "import('@cc-plugin-codex/driver-claude-code').then((m) => console.log(typeof m.readSidecar, typeof m.resolveSidecarPath, typeof m.parseSidecarSnapshot))"` prints `function function function`.
+- Remote CI confirmation will be appended once T4 commit lands on `main`.
 
 ## Deviations from the plan
 
 - **node-pty version pin** (T1) — `^1.1.0` → `1.2.0-beta.13`. Reason: Node 25 ABI incompatibility with `1.1.0`. Maintainer approved.
-- **T2 absorbed minimal mock additions** that the plan listed under T3 (attach --help, --bg --help interception, jobs/ dir creation) — see T2 deviation above. The bigger T3 work (full PTY emulation under `attach <id>`, sidecar state.json/timeline.jsonl emulation, permission-prompt simulation) was completed in T3.
+- **T2 absorbed minimal mock additions** that the plan listed under T3 (attach --help, --bg --help interception, jobs/ dir creation) — see T2 deviation above. The bigger T3 work was completed in T3.
 - **Architectural-invariant ban list relaxed** (T2) to drop `claude --bg` — see T2 deviation above. The load-bearing bans (`driver-claude-code`, `claude -p`, `node-pty`) remain.
 - **`withIsolatedHome` async-aware refactor** (T3) — not pre-specified but necessary for PTY tests to clean up correctly after `await`-based callbacks. Sync callers are unchanged.
+- **T4 narrower than 1-plan.md § 3.3** — the original plan text mentioned an optional `tailSidecar(shortId, opts): AsyncIterable<SidecarSnapshot>` "for poll-based updates". The maintainer's T4 brief explicitly excluded it ("a tailing/streaming API risks creeping toward the deferred watch() / daemon-like surface; T5 can poll readSidecar() directly during attachAndSend()"). T4 ships read-only `readSidecar` + `resolveSidecarPath` only. Scope discipline; no behavior loss for T5.
+- **`.prettierignore` added the malformed sidecar fixture** so `npm run format` doesn't try to parse it (fixture is intentionally invalid JSON).
 
 ## Surprises
 

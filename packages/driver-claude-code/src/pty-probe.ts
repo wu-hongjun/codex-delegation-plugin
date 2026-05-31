@@ -1,0 +1,106 @@
+// PTY-build probe for the Claude background driver.
+//
+// Implements the `pty-build` doctor probe required by Plan 0002. Exposed as a
+// `DoctorExtraProbe` so the dispatcher can inject it into the runtime's `runDoctor`.
+// Keeps the `node-pty` dependency inside the driver package — the runtime invariant
+// (no node-pty in packages/runtime/src) remains intact.
+//
+// The probe spawns `/bin/sh -c 'echo ok'` under `pty.spawn` with full options and
+// waits up to 5 seconds for the spawned process to exit. Success = stdout contains
+// "ok"; everything else is fail.
+
+import type { DoctorExtraProbe, DoctorProbeResult } from '@cc-plugin-codex/runtime';
+
+const PTY_SMOKE_TIMEOUT_MS = 5_000;
+const PTY_SMOKE_ARGS = ['-c', 'echo ok'] as const;
+const PTY_SMOKE_BIN = '/bin/sh';
+const PTY_SMOKE_OPTS = {
+  name: 'xterm-color',
+  cols: 80,
+  rows: 24,
+} as const;
+
+async function runPtyBuildProbe(): Promise<DoctorProbeResult> {
+  let pty: typeof import('node-pty');
+  try {
+    pty = await import('node-pty');
+  } catch (err) {
+    return {
+      name: 'pty-build',
+      status: 'fail',
+      detail: `node-pty module load failed: ${
+        err instanceof Error ? err.message : String(err)
+      }. Try \`npm rebuild node-pty\` or switch to @homebridge/node-pty-prebuilt-multiarch.`,
+    };
+  }
+
+  return await new Promise<DoctorProbeResult>((resolve) => {
+    let out = '';
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      const term = pty.spawn(PTY_SMOKE_BIN, [...PTY_SMOKE_ARGS], {
+        ...PTY_SMOKE_OPTS,
+        cwd: process.cwd(),
+        env: process.env as Record<string, string>,
+      });
+      timer = setTimeout(() => {
+        try {
+          term.kill();
+        } catch {
+          // ignore; we're about to resolve anyway.
+        }
+        resolve({
+          name: 'pty-build',
+          status: 'fail',
+          detail: `PTY smoke timed out after ${PTY_SMOKE_TIMEOUT_MS}ms (node-pty native build may be incompatible with this Node version).`,
+          evidence: { stdoutPreview: out.slice(0, 240) },
+        });
+      }, PTY_SMOKE_TIMEOUT_MS);
+
+      term.onData((d) => {
+        out += d;
+      });
+      term.onExit(() => {
+        if (timer) clearTimeout(timer);
+        if (!out.includes('ok')) {
+          resolve({
+            name: 'pty-build',
+            status: 'fail',
+            detail: 'PTY smoke completed but stdout did not contain "ok".',
+            evidence: { stdoutPreview: out.slice(0, 240) },
+          });
+          return;
+        }
+        resolve({
+          name: 'pty-build',
+          status: 'ok',
+          detail: 'node-pty PTY smoke passed (/bin/sh -c "echo ok").',
+        });
+      });
+    } catch (err) {
+      if (timer) clearTimeout(timer);
+      resolve({
+        name: 'pty-build',
+        status: 'fail',
+        detail: `node-pty spawn threw: ${
+          err instanceof Error ? err.message : String(err)
+        }. Try \`npm rebuild node-pty\` or switch to @homebridge/node-pty-prebuilt-multiarch.`,
+      });
+    }
+  });
+}
+
+/**
+ * The PTY-build doctor probe. Inject into the runtime's `runDoctor` via the
+ * `extraProbes` option so the unified setup report includes it.
+ *
+ * @example
+ *   import { runDoctor } from '@cc-plugin-codex/runtime';
+ *   import { ptyBuildExtraProbe } from '@cc-plugin-codex/driver-claude-code';
+ *   const report = await runDoctor({ extraProbes: [ptyBuildExtraProbe] });
+ */
+export const ptyBuildExtraProbe: DoctorExtraProbe = {
+  name: 'pty-build',
+  capabilities: ['followup'],
+  run: runPtyBuildProbe,
+};

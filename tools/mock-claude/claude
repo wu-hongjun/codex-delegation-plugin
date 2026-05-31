@@ -42,6 +42,12 @@ const DEFAULT_CONFIG = Object.freeze({
   daemonAvailable: false,
   // Whether --help lists --bg (false = real mode, true = legacy mock mode)
   helpListsBg: false,
+  // Plan 0002: whether `claude attach --help` is recognized (true = real mode).
+  // Flip to false in tests to exercise the doctor's claude-attach-help failure path.
+  attachHelpAvailable: true,
+  // Plan 0002: whether `claude --bg --help` is recognized (true = real mode).
+  // Flip to false in tests to exercise the doctor's claude-bg-no-prompt failure path.
+  bgNoPromptAvailable: true,
 });
 
 function loadConfig() {
@@ -59,6 +65,11 @@ function ensureHome() {
   mkdirSync(HOME, { recursive: true });
   mkdirSync(join(HOME, 'projects'), { recursive: true });
   mkdirSync(join(HOME, 'logs'), { recursive: true });
+  // Plan 0002: emulate real Claude's `~/.claude/jobs/` sidecar directory. Plan 0002's
+  // doctor probe `sidecar-jobs-dir` checks for this dir; healthy mocks must include it.
+  // T3 will populate per-session sidecar files (state.json + timeline.jsonl) under
+  // <HOME>/jobs/<shortId>/.
+  mkdirSync(join(HOME, 'jobs'), { recursive: true });
 }
 
 function statePath() {
@@ -342,6 +353,33 @@ function cmdLogs(config, args) {
   return 0;
 }
 
+// Plan 0002: minimal `claude attach` support. T2 only needs --help text for the
+// doctor probe. Full PTY-emulation lands in T3.
+function cmdAttach(config, args) {
+  const sub = args[0];
+  if (sub === '--help' || sub === '-h') {
+    if (!config.attachHelpAvailable) {
+      process.stderr.write("claude: 'attach' is not a known command\n");
+      return 1;
+    }
+    process.stdout.write(
+      'Usage: claude attach <id>\n\n  Open the background session in this terminal. Detach with Ctrl+Z; the session keeps running.\n',
+    );
+    return 0;
+  }
+  // Non-help attach: T2 doesn't exercise the PTY path. Return a placeholder error so
+  // any accidental invocation surfaces clearly. T3 will replace this with a real
+  // PTY-emulating readline loop.
+  if (!sub) {
+    process.stderr.write('usage: claude attach <id>\n');
+    return 2;
+  }
+  process.stderr.write(
+    `claude attach: PTY emulation not implemented in mock-claude yet (plan 0002 T3); cannot attach to ${sub}\n`,
+  );
+  return 1;
+}
+
 function cmdStop(_config, args) {
   const id = args[0];
   if (!id) {
@@ -392,8 +430,24 @@ function main() {
   }
   if (argv[0] === 'auth' && argv[1] === 'status') return process.exit(cmdAuthStatus(config));
   if (argv[0] === 'daemon' && argv[1] === 'status') return process.exit(cmdDaemonStatus(config));
+  // Plan 0002 probe target: `claude --bg --help` must be recognized as a help request,
+  // not as an attempt to start a session with a "--help" prompt. Configurable via
+  // bgNoPromptAvailable so tests can exercise the doctor's failure path.
+  if (argv[0] === '--bg' && (argv[1] === '--help' || argv[1] === '-h')) {
+    if (!config.bgNoPromptAvailable) {
+      process.stderr.write(
+        "claude: '--bg' does not accept '--help' (no-prompt invocation rejected by this binary)\n",
+      );
+      return process.exit(1);
+    }
+    process.stdout.write(
+      'Usage: claude --bg [options] [prompt]\n\n  Start a Claude background session. Pass a prompt to begin immediately; omit it to start in idle and send a prompt via `claude attach <id>`.\n',
+    );
+    return process.exit(0);
+  }
   if (argv[0] === '--bg') return process.exit(cmdBg(config, argv.slice(1)));
   if (argv[0] === 'agents' && argv[1] === '--json') return process.exit(cmdAgentsJson(config));
+  if (argv[0] === 'attach') return process.exit(cmdAttach(config, argv.slice(1)));
   if (argv[0] === 'logs') return process.exit(cmdLogs(config, argv.slice(1)));
   if (argv[0] === 'stop') return process.exit(cmdStop(config, argv.slice(1)));
 

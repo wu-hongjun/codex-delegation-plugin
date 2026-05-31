@@ -444,4 +444,78 @@ describe('mock-claude', () => {
       });
     });
   });
+
+  // Plan 0002 T2 — new mock subcommands and config flags.
+
+  describe('claude attach --help (plan 0002)', () => {
+    it('prints usage with the documented Ctrl+Z detach text and exits 0', () => {
+      withIsolatedHome(({ env }) => {
+        const r = runClaude(['attach', '--help'], { env });
+        assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
+        assert.match(r.stdout, /Usage:\s+claude attach/);
+        assert.match(r.stdout, /Detach with Ctrl\+Z/);
+      });
+    });
+
+    it('rejects with exit 1 when attachHelpAvailable=false', () => {
+      withIsolatedHome(({ home, env }) => {
+        const cfg = writeConfig(home, { attachHelpAvailable: false });
+        const r = runClaude(['attach', '--help'], {
+          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+        });
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /not a known command/);
+      });
+    });
+
+    it('rejects bare `attach` (no PTY emulation in T2; lands in T3)', () => {
+      withIsolatedHome(({ env }) => {
+        const r = runClaude(['attach', 'abc123'], { env });
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /not implemented|cannot attach/);
+      });
+    });
+  });
+
+  describe('claude --bg --help (plan 0002)', () => {
+    it('prints --bg usage and exits 0 without starting a session', () => {
+      withIsolatedHome(({ home, env }) => {
+        const r = runClaude(['--bg', '--help'], { env });
+        assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
+        assert.match(r.stdout, /Usage:\s+claude --bg/);
+        // Ensure no session was actually created.
+        const statePath = `${home}/state.json`;
+        if (existsSync(statePath)) {
+          const state = JSON.parse(readFileSync(statePath, 'utf8'));
+          assert.equal(state.sessions.length, 0, 'claude --bg --help must not create a session');
+        }
+      });
+    });
+
+    it('rejects with exit 1 when bgNoPromptAvailable=false', () => {
+      withIsolatedHome(({ home, env }) => {
+        const cfg = writeConfig(home, { bgNoPromptAvailable: false });
+        const r = runClaude(['--bg', '--help'], {
+          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+        });
+        assert.equal(r.status, 1);
+        assert.match(r.stderr, /no-prompt invocation rejected/);
+      });
+    });
+  });
+
+  describe('ensureHome creates the sidecar jobs directory (plan 0002)', () => {
+    it('claude --bg creates <HOME>/jobs/ alongside projects/ and logs/', () => {
+      withIsolatedHome(({ home, env }) => {
+        const cfg = legacyConfig(home);
+        const r = runClaude(['--bg', 'hi'], {
+          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+        });
+        assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
+        assert.ok(existsSync(`${home}/jobs`), '<HOME>/jobs must exist after --bg');
+        assert.ok(existsSync(`${home}/projects`), '<HOME>/projects must exist after --bg');
+        assert.ok(existsSync(`${home}/logs`), '<HOME>/logs must exist after --bg');
+      });
+    });
+  });
 });

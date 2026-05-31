@@ -560,7 +560,12 @@ describe('architectural invariant', () => {
   it('no runtime/src/**/*.ts file imports driver-claude-code or invokes claude directly', () => {
     const here = fileURLToPath(import.meta.url);
     const SRC_ROOT = resolve(here, '..', '..', 'src');
-    const banned = ['driver-claude-code', 'claude --bg', 'claude -p', 'node-pty'];
+    // Plan 0002 T2: relaxed the literal `claude --bg` ban — runtime's doctor now
+    // invokes `claude --bg --help` as a read-only feature probe (not a session start).
+    // The remaining bans are the load-bearing ones: runtime must not import the driver
+    // package, must not invoke the synchronous print-mode transport, and must not
+    // import node-pty (driver-only dependency).
+    const banned = ['driver-claude-code', 'claude -p', 'node-pty'];
 
     const tsFiles = [];
     const walk = (dir) => {

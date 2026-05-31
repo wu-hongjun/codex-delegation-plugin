@@ -13,8 +13,10 @@ import { fileURLToPath } from 'node:url';
 import {
   getDoctorPath,
   probeClaudeAgentsJson,
+  probeClaudeAttachHelp,
   probeClaudeAuth,
   probeClaudeBgFlag,
+  probeClaudeBgNoPrompt,
   probeClaudeBinary,
   probeClaudeDaemon,
   probeClaudeLogs,
@@ -23,6 +25,7 @@ import {
   probeCodexVersion,
   probeCompanionDirWritable,
   probeNodeVersion,
+  probeSidecarJobsDir,
   probeTranscriptPath,
   runDoctor,
 } from '../dist/index.js';
@@ -264,9 +267,71 @@ describe('probeCompanionDirWritable', () => {
   });
 });
 
+// Plan 0002 T2 — follow-up-capability probes
+
+describe('probeClaudeAttachHelp (plan 0002)', () => {
+  it('ok when `claude attach --help` prints usage', async () => {
+    const r = await probeClaudeAttachHelp({ env: withMocksOnPath() });
+    assert.equal(r.status, 'ok');
+    assert.match(r.detail, /attach|Detach with Ctrl\+Z/i);
+  });
+
+  it('fail when the mock rejects `attach --help` (attachHelpAvailable=false)', async () => {
+    const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', { attachHelpAvailable: false });
+    const r = await probeClaudeAttachHelp({
+      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+    });
+    assert.equal(r.status, 'fail');
+  });
+
+  it('fail when claude binary is missing', async () => {
+    const r = await probeClaudeAttachHelp({ env: { ...process.env, PATH: '/no/such/dir' } });
+    assert.equal(r.status, 'fail');
+  });
+});
+
+describe('probeClaudeBgNoPrompt (plan 0002)', () => {
+  it('ok when `claude --bg --help` is recognized', async () => {
+    const r = await probeClaudeBgNoPrompt({ env: withMocksOnPath() });
+    assert.equal(r.status, 'ok');
+  });
+
+  it('still ok (best-effort) when mock flips bgNoPromptAvailable to non-zero exit', async () => {
+    // The probe's load-bearing signal is "the command shape was recognized" (no spawn / timeout
+    // failure). Non-zero exit with a usage-like stderr is still acceptable, by design.
+    const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', { bgNoPromptAvailable: false });
+    const r = await probeClaudeBgNoPrompt({
+      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+    });
+    assert.equal(r.status, 'ok');
+  });
+
+  it('fail when claude binary is missing entirely', async () => {
+    const r = await probeClaudeBgNoPrompt({ env: { ...process.env, PATH: '/no/such/dir' } });
+    assert.equal(r.status, 'fail');
+  });
+});
+
+describe('probeSidecarJobsDir (plan 0002)', () => {
+  it('ok when the sidecar jobs dir exists under the mock home', async () => {
+    mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
+    const r = await probeSidecarJobsDir({ env: withMocksOnPath() });
+    assert.equal(r.status, 'ok');
+    assert.equal(r.detail, join(MOCK_HOME, 'jobs'));
+  });
+
+  it('warn (not fail) when the sidecar jobs dir is missing', async () => {
+    // No mkdir of <MOCK_HOME>/jobs here. Probe must warn, never fail (per OQ-B best-effort).
+    const r = await probeSidecarJobsDir({ env: withMocksOnPath() });
+    assert.equal(r.status, 'warn');
+    assert.match(r.detail, /Sidecar jobs directory not found/i);
+  });
+});
+
 describe('runDoctor', () => {
   it('returns ok against fully healthy mocks (legacy mode with all features enabled)', async () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
+    mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
     writeFileSync(
       tomlPath,
@@ -286,12 +351,15 @@ describe('runDoctor', () => {
       }),
     });
     assert.equal(report.status, 'ok', JSON.stringify(report, null, 2));
-    assert.equal(report.probes.length, 12);
+    // Plan 0002 T2 added three runtime-level probes:
+    // claude-attach-help, claude-bg-no-prompt, sidecar-jobs-dir.
+    assert.equal(report.probes.length, 15);
     assert.ok(report.probes.every((p) => p.status !== 'fail'));
   });
 
   it('returns warn (not fail) against real-2.1.149 defaults (bg-flag warn, daemon warn)', async () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
+    mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
     writeFileSync(
       tomlPath,
@@ -393,5 +461,134 @@ describe('runDoctor', () => {
     assert.equal(report.status, 'fail');
     const codex = report.probes.find((p) => p.name === 'codex-version');
     assert.equal(codex.status, 'fail');
+  });
+
+  // Plan 0002 T2 — capability aggregates + extraProbes injection
+
+  it('exposes delegateCapability and followupCapability aggregates (plan 0002)', async () => {
+    mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
+    mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
+    const tomlPath = join(TMP_HOME, 'config.toml');
+    writeFileSync(
+      tomlPath,
+      '[plugins."claude-companion"]\nenabled = true\ntrusted = true\n',
+      'utf8',
+    );
+    const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
+      helpListsBg: true,
+      daemonAvailable: true,
+      daemonStatus: 'running',
+    });
+    const report = await runDoctor({
+      env: withMocksOnPath({
+        CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath,
+        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+      }),
+    });
+    assert.equal(report.delegateCapability, 'ok');
+    assert.equal(report.followupCapability, 'ok');
+
+    const attachHelp = report.probes.find((p) => p.name === 'claude-attach-help');
+    assert.deepEqual(attachHelp.capabilities, ['followup']);
+    const nodeVer = report.probes.find((p) => p.name === 'node-version');
+    assert.deepEqual(nodeVer.capabilities, ['delegate', 'followup']);
+    const bgFlag = report.probes.find((p) => p.name === 'claude-bg-flag');
+    assert.deepEqual(bgFlag.capabilities, []);
+  });
+
+  it('delegate stays ok when only a followup-only probe fails (plan 0002 capability split)', async () => {
+    mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
+    mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
+    const tomlPath = join(TMP_HOME, 'config.toml');
+    writeFileSync(
+      tomlPath,
+      '[plugins."claude-companion"]\nenabled = true\ntrusted = true\n',
+      'utf8',
+    );
+    // Flip claude-attach-help to fail; leave everything else healthy.
+    const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
+      helpListsBg: true,
+      daemonAvailable: true,
+      daemonStatus: 'running',
+      attachHelpAvailable: false,
+    });
+    const report = await runDoctor({
+      env: withMocksOnPath({
+        CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath,
+        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+      }),
+    });
+    assert.equal(report.delegateCapability, 'ok');
+    assert.equal(report.followupCapability, 'fail');
+    assert.equal(report.status, 'fail');
+    const attachHelp = report.probes.find((p) => p.name === 'claude-attach-help');
+    assert.equal(attachHelp.status, 'fail');
+  });
+
+  it('extraProbes are appended and contribute their capability aggregates (plan 0002)', async () => {
+    mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
+    mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
+    const tomlPath = join(TMP_HOME, 'config.toml');
+    writeFileSync(
+      tomlPath,
+      '[plugins."claude-companion"]\nenabled = true\ntrusted = true\n',
+      'utf8',
+    );
+    const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
+      helpListsBg: true,
+      daemonAvailable: true,
+      daemonStatus: 'running',
+    });
+    const fakePtyProbe = {
+      name: 'fake-pty-build',
+      capabilities: ['followup'],
+      run: async () => ({ name: 'fake-pty-build', status: 'ok', detail: 'fake pty smoke ok' }),
+    };
+    const report = await runDoctor({
+      env: withMocksOnPath({
+        CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath,
+        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+      }),
+      extraProbes: [fakePtyProbe],
+    });
+    assert.equal(report.probes.length, 16); // 15 built-ins + 1 extra
+    const extra = report.probes.find((p) => p.name === 'fake-pty-build');
+    assert.equal(extra.status, 'ok');
+    assert.deepEqual(extra.capabilities, ['followup']);
+    assert.equal(report.followupCapability, 'ok');
+  });
+
+  it('extraProbes can fail followup capability independently of delegate (plan 0002)', async () => {
+    mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
+    mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
+    const tomlPath = join(TMP_HOME, 'config.toml');
+    writeFileSync(
+      tomlPath,
+      '[plugins."claude-companion"]\nenabled = true\ntrusted = true\n',
+      'utf8',
+    );
+    const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
+      helpListsBg: true,
+      daemonAvailable: true,
+      daemonStatus: 'running',
+    });
+    const failingPty = {
+      name: 'fake-pty-build',
+      capabilities: ['followup'],
+      run: async () => ({
+        name: 'fake-pty-build',
+        status: 'fail',
+        detail: 'fake pty build broken',
+      }),
+    };
+    const report = await runDoctor({
+      env: withMocksOnPath({
+        CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath,
+        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+      }),
+      extraProbes: [failingPty],
+    });
+    assert.equal(report.delegateCapability, 'ok');
+    assert.equal(report.followupCapability, 'fail');
   });
 });

@@ -11,6 +11,8 @@ export function formatSetup(report, json) {
       {
         ok: report.status !== 'fail',
         status: report.status,
+        delegateCapability: report.delegateCapability,
+        followupCapability: report.followupCapability,
         generatedAt: report.generatedAt,
         probes: report.probes,
       },
@@ -19,19 +21,46 @@ export function formatSetup(report, json) {
     );
   }
 
-  const rows = report.probes.map((p) => {
-    const icon = p.status === 'ok' ? 'ok  ' : p.status === 'warn' ? 'warn' : 'FAIL';
-    return `  ${icon}  ${p.name.padEnd(30)} ${p.detail}`;
-  });
+  const fmtIcon = (s) => (s === 'ok' ? 'ok  ' : s === 'warn' ? 'warn' : 'FAIL');
+  const fmtRow = (p) => `  ${fmtIcon(p.status)}  ${p.name.padEnd(30)} ${p.detail}`;
 
   const overall = report.status === 'fail' ? 'FAIL' : report.status === 'warn' ? 'warn' : 'ok';
-  return [
+
+  // Group probes for human-readable output. A probe may belong to both capability groups,
+  // be follow-up-specific, or be informational. We render three buckets:
+  //   1) Shared / Plan 0001 delegate-and-followup probes (the bulk of the setup output)
+  //   2) Plan 0002 follow-up-only probes
+  //   3) Informational probes (gate neither capability)
+  const includes = (p, cap) => Array.isArray(p.capabilities) && p.capabilities.includes(cap);
+  const shared = report.probes.filter((p) => includes(p, 'delegate') && includes(p, 'followup'));
+  const followupOnly = report.probes.filter(
+    (p) => includes(p, 'followup') && !includes(p, 'delegate'),
+  );
+  const informational = report.probes.filter(
+    (p) => !includes(p, 'delegate') && !includes(p, 'followup'),
+  );
+
+  const sections = [];
+  sections.push(
     `Claude companion setup — ${overall}`,
-    '',
-    ...rows,
-    '',
-    `Generated: ${report.generatedAt}`,
-  ].join('\n');
+    `  delegate capability: ${report.delegateCapability}`,
+    `  follow-up capability: ${report.followupCapability}`,
+  );
+  if (shared.length > 0) {
+    sections.push('', 'Shared (delegate + follow-up):', ...shared.map(fmtRow));
+  }
+  if (followupOnly.length > 0) {
+    sections.push('', 'Follow-up only (plan 0002):', ...followupOnly.map(fmtRow));
+  }
+  if (informational.length > 0) {
+    sections.push(
+      '',
+      'Informational (does not gate either capability):',
+      ...informational.map(fmtRow),
+    );
+  }
+  sections.push('', `Generated: ${report.generatedAt}`);
+  return sections.join('\n');
 }
 
 /**

@@ -12,7 +12,10 @@ The executable lives at `tools/mock-claude/claude` and supports exactly the surf
 | `claude auth status` | Prints `Logged in` (exit 0) when `authStatus = "authenticated"`; otherwise prints `Not logged in.` and exits 1. |
 | `claude daemon status` | When `daemonAvailable = true`: prints `Claude daemon: running` (exit 0) / `Claude daemon: stopped` (exit 1) per `daemonStatus`. When `daemonAvailable = false` (default): writes `claude: 'daemon' is not a known command` to stderr and exits 1. |
 | `claude --bg [--name NAME] [other flags] "<prompt>"` | Creates a mock background session, writes a starter transcript + log, persists state. Output format depends on `bgStdoutStyle`. Fails with exit 1 when `bgFails = true`. |
+| `claude --bg --help` (plan 0002) | Prints `--bg` usage and exits 0 without starting a session, when `bgNoPromptAvailable = true` (default). Writes `claude: '--bg' does not accept '--help'` to stderr and exits 1 when `bgNoPromptAvailable = false`. |
 | `claude agents --json` | Prints a JSON array of live sessions to stdout. Schema depends on `agentsJsonSchema`. Returns malformed JSON (exit 0) when `agentsJsonMalformed = true`. Writes `"agents error\n"` to stderr and exits 1 when `agentsJsonFails = true`. |
+| `claude attach --help` (plan 0002) | Prints `Usage: claude attach <id>\n  Open the background session in this terminal. Detach with Ctrl+Z; the session keeps running.` and exits 0, when `attachHelpAvailable = true` (default). Writes `claude: 'attach' is not a known command` to stderr and exits 1 when `attachHelpAvailable = false`. |
+| `claude attach <id>` (plan 0002) | T2 stub: exits 1 with a "PTY emulation not implemented in mock-claude yet (plan 0002 T3)" message on stderr. Full PTY emulation lands in T3. |
 | `claude logs <id>` | Streams the log file for the matching `shortId` or `sessionId`. Exits 1 on unknown id or when `logsFail = true`. |
 | `claude stop <id>` | Marks the session `stopped`, appends a log line, exits 0. Exits 1 on unknown id. |
 
@@ -43,7 +46,11 @@ Configured via two env vars:
   "agentsJsonSchema": "real-2.1.149",  // default: real Claude 2.1.149 shape
   "bgStdoutStyle": "backgrounded",     // default: "backgrounded · <shortId>" format
   "daemonAvailable": false,            // default: daemon subcommand absent (real mode)
-  "helpListsBg": false                 // default: --help does not mention --bg (real mode)
+  "helpListsBg": false,                // default: --help does not mention --bg (real mode)
+
+  // Plan 0002 T2: doctor-probe targets for follow-up capability.
+  "attachHelpAvailable": true,         // default: `claude attach --help` prints usage, exits 0
+  "bgNoPromptAvailable": true          // default: `claude --bg --help` prints usage, exits 0
 }
 ```
 

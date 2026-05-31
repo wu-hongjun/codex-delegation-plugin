@@ -16,7 +16,11 @@ import {
   appendEvent,
   reconcileJob,
 } from '@cc-plugin-codex/runtime';
-import { ClaudeBackgroundDriver, DRIVER_VERSION } from '@cc-plugin-codex/driver-claude-code';
+import {
+  ClaudeBackgroundDriver,
+  DRIVER_VERSION,
+  ptyBuildExtraProbe,
+} from '@cc-plugin-codex/driver-claude-code';
 
 import { parseArgs, resolveJobIdPrefix } from './lib/args.mjs';
 import {
@@ -77,7 +81,10 @@ try {
 // ---------- setup ----------
 
 async function cmdSetup(_flags, json) {
-  const report = await runDoctor();
+  // Inject the driver-owned pty-build probe so the unified setup report covers both
+  // Plan 0001 (delegate) and Plan 0002 (follow-up) capability groups. The runtime
+  // never imports node-pty directly — the driver supplies the probe via DI.
+  const report = await runDoctor({ extraProbes: [ptyBuildExtraProbe] });
   process.stdout.write(formatSetup(report, json) + '\n');
   if (report.status === 'fail') {
     process.exit(1);

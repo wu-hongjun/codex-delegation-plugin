@@ -28,6 +28,7 @@ export { DRIVER_NAME, DRIVER_VERSION } from './types.js';
 export * from './transcript.js';
 export * from './logs.js';
 export * from './stop.js';
+export * from './pty-probe.js';
 
 export class ClaudeBackgroundDriver implements Driver {
   private readonly defaults: ClaudeBackgroundDriverOptions;

@@ -212,6 +212,32 @@ describe('setup --json', () => {
     const doctorPath = join(TMP_HOME, 'doctor.json');
     assert.ok(existsSync(doctorPath), `expected doctor.json at ${doctorPath}`);
   });
+
+  it('exposes delegateCapability and followupCapability aggregates (plan 0002)', () => {
+    const result = runDispatcher(['setup', '--json']);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.ok(
+      ['ok', 'warn', 'fail'].includes(parsed.delegateCapability),
+      `delegateCapability must be ok|warn|fail; got ${parsed.delegateCapability}`,
+    );
+    assert.ok(
+      ['ok', 'warn', 'fail'].includes(parsed.followupCapability),
+      `followupCapability must be ok|warn|fail; got ${parsed.followupCapability}`,
+    );
+  });
+
+  it('includes the injected pty-build probe with capability ["followup"] (plan 0002)', () => {
+    const result = runDispatcher(['setup', '--json']);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    const ptyBuild = parsed.probes.find((p) => p.name === 'pty-build');
+    assert.ok(
+      ptyBuild,
+      `expected pty-build probe in setup output; got names: ${parsed.probes.map((p) => p.name).join(', ')}`,
+    );
+    assert.deepEqual(ptyBuild.capabilities, ['followup']);
+  });
 });
 
 // ---------- Test 2: setup (human output) ----------
@@ -238,6 +264,11 @@ describe('setup (human output)', () => {
       'claude-daemon',
       'transcript-path',
       'companion-dir-writable',
+      // Plan 0002 T2 additions:
+      'claude-attach-help',
+      'claude-bg-no-prompt',
+      'sidecar-jobs-dir',
+      'pty-build',
     ];
 
     for (const probe of expectedProbes) {
@@ -246,6 +277,21 @@ describe('setup (human output)', () => {
         `expected probe "${probe}" in human output; got:\n${result.stdout}`,
       );
     }
+  });
+
+  it('groups probes by capability and shows per-capability aggregates (plan 0002)', () => {
+    const result = runDispatcher(['setup']);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    assert.match(result.stdout, /delegate capability:\s+(ok|warn|fail)/);
+    assert.match(result.stdout, /follow-up capability:\s+(ok|warn|fail)/);
+    assert.ok(
+      result.stdout.includes('Shared (delegate + follow-up):'),
+      'expected the "Shared" group header in human output',
+    );
+    assert.ok(
+      result.stdout.includes('Follow-up only (plan 0002):'),
+      'expected the "Follow-up only" group header in human output',
+    );
   });
 });
 

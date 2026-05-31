@@ -14,6 +14,7 @@ import {
   readEvents,
   reconcileJob,
   reconcileJobsForWorkspace,
+  tryReadJob,
 } from '../dist/index.js';
 
 // ---------------------------------------------------------------------------
@@ -144,6 +145,60 @@ describe('status mapping', () => {
     const adapter = fakeAdapter({ status: { value: 'unknown' } });
     const result = await reconcileJob(job.jobId, adapter, { now });
     assert.equal(result.job.status, 'running');
+  });
+
+  // Plan 0002 T6 — Subagent C finding F2 (medium) regression guard.
+  // When the reconciler transitions a job to a terminal status WITHOUT a new
+  // result landing, the turn-level status mirror must still be persisted to
+  // disk. Previously, `updateJob`'s merged-turns selector only adopted
+  // `patched.turns` when `resultChanged` was true, so a status-only
+  // `running → failed` transition silently lost the `turns[last].status =
+  // 'failed'` update set in memory. T7's `awaiting_followup` semantics
+  // depend on `turns[last].status` reflecting the job's terminal turn state.
+  it('terminal status (failed) with no new result still persists turns[last].status = failed', async () => {
+    // First bring the job to "running" so the transition is status-only.
+    const job = await createJob(makeJobInput());
+    const adapterRun = fakeAdapter({ status: { value: 'working' } });
+    await reconcileJob(job.jobId, adapterRun, { now });
+
+    // Now transition to failed without providing any transcript/result
+    // artifacts. resultChanged should be false; statusChanged true.
+    const adapterFail = fakeAdapter({ status: { value: 'failed' } });
+    const result = await reconcileJob(job.jobId, adapterFail, { now });
+
+    assert.equal(result.job.status, 'failed');
+    assert.equal(result.statusChanged, true);
+
+    // Re-read from disk to verify the turn-level status mirror was persisted,
+    // not just set on the in-memory patched record.
+    const reread = await tryReadJob(job.jobId);
+    assert.ok(reread, 'job record should still be readable');
+    assert.equal(
+      reread.turns[reread.turns.length - 1].status,
+      'failed',
+      'turns[last].status must mirror the terminal job status when persisted to disk',
+    );
+  });
+
+  it('terminal status (completed) with no new result still persists turns[last].status = completed', async () => {
+    // Symmetric guard for the completed branch of the same fix.
+    const job = await createJob(makeJobInput());
+    const adapterRun = fakeAdapter({ status: { value: 'working' } });
+    await reconcileJob(job.jobId, adapterRun, { now });
+
+    const adapterIdle = fakeAdapter({ status: { value: 'idle' } });
+    // idle maps to job-`completed` (plan 0001 start-only model).
+    const result = await reconcileJob(job.jobId, adapterIdle, { now });
+    assert.equal(result.job.status, 'completed');
+    assert.equal(result.statusChanged, true);
+
+    const reread = await tryReadJob(job.jobId);
+    assert.ok(reread, 'job record should still be readable');
+    assert.equal(
+      reread.turns[reread.turns.length - 1].status,
+      'completed',
+      'turns[last].status must mirror the terminal job status when persisted to disk',
+    );
   });
 });
 

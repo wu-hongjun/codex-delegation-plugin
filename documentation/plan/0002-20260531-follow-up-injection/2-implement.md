@@ -302,7 +302,83 @@ Subagent C reviewed all three fixes and rated each `ok`. Specifically:
 - No node-pty import outside `packages/driver-claude-code/src/{attach,pty-probe}.ts`.
 - Driver smoke: `node -e "import('@cc-plugin-codex/driver-claude-code').then((m) => { const d = new m.ClaudeBackgroundDriver(); console.log(typeof d.send, typeof m.attachAndSend); })"` prints `function function`.
 - send.test.mjs runs in ~3 seconds end-to-end (PTY cleanup confirmed; no event-loop leak).
-- Remote CI confirmation will be appended once T5 commit lands on `main`.
+- Remote CI on `d46bbe8` (run `26724805104`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). PTY-driven `send()` lifecycle exercises cleanly on Linux + macOS for both supported Node majors; the orchestrator-applied PTY-cleanup fix prevents the suite-level hang seen pre-fix.
+
+## T6 — Job schema v2 + lazy migration
+
+**Started**: 2026-05-31. **Status**: complete (pending CI confirmation).
+
+Fourth T-task under the A/B/C subagent pattern. Runtime schema evolution: `JobRecord` goes from v1 to v2 with a required `turns: TurnRecord[]` array, plus a lazy v1→v2 migration on every read path. No reconciler-`awaiting_followup` semantics, no dispatcher follow-up command — those are T7+/T8 scope.
+
+- **Subagent A (executor, sonnet)** — schema types in `packages/runtime/src/types.ts`; lazy-migration logic + `syncCompatAliases` + `tryWriteBackMigrated` in `packages/runtime/src/job-store.ts`; `createJob` produces v2 from scratch; reconciler now mirrors `job.result` onto `turns[last]` (with `endedAt` + terminal-status mirror) and calls `syncCompatAliases`.
+- **Subagent B (test-engineer, sonnet)** — new `packages/runtime/test/migration.test.mjs` (32 tests across 13 describe blocks covering all 16 cases from the brief) + one assertion update in the existing `job-store.test.mjs` (`schemaVersion === 1 → === 2` for `createJob` — direct contract-change consequence).
+- **Subagent C (code-reviewer, opus)** — migration-correctness deep-dive across 8 axes (idempotency, data loss, atomic write-back safety, v2-record validity guard, reconciler mirroring, Plan 0001 caller compatibility, architectural invariant preserved, corrupt-record handling). Verdict: **`ready-for-T7`**. 0 blocker/high; **1 medium (F2)**; 3 low; 2 nit. F2 fixed in this commit per C's "address F2 as the first change in T7" recommendation; T7 will rely on `turns[last].status` for `awaiting_followup`.
+
+### Files changed
+
+- `packages/runtime/src/types.ts` — added `JobSchemaVersion = 1 | 2`; added `'awaiting_followup'` to `JobStatus` (type-only — reconciler doesn't emit it yet, that's T7); re-exported `TurnStatus` from `./driver.js`; new `TurnRecord` interface; `JobRecord.schemaVersion` locked to `2` (public surface always v2 after lazy migration); new required `turns: TurnRecord[]` field; `prompt`/`result` annotated as deprecated compat aliases with the corrected semantics (`result` mirrors the latest turn THAT HAS A RESULT, skipping in-flight follow-up turns).
+- `packages/runtime/src/job-store.ts` — internal `LegacyJobRecordV1` interface, `TERMINAL_JOB_STATUSES` set, `deriveTurnStatusFromJobStatus()` helper covering all 9 `JobStatus` values, exported `syncCompatAliases()` (in-place mutator), `migrateJobRecord()` (validates + handles v1→v2 + v2 alias-drift repair + throws `CorruptJobRecordError` on unrecognized shapes), `tryWriteBackMigrated()` (acquires lock, re-reads, migrates again, atomically writes; swallows `JobLockError` so reads never fail). `createJob` emits v2 with `turns[0]`; `tryReadJob`/`readJob` migrate then attempt write-back; `updateJob` reads-then-migrates under lock and calls `syncCompatAliases` on the updater result; `listJobs` migrates each record with best-effort write-back.
+- `packages/runtime/src/reconciler.ts` — imports `syncCompatAliases`. After setting `patched.result`, mirrors `newResult.{result,usageSnapshot,endedAt,status}` onto `turns[last]` and calls `syncCompatAliases`. Crucially: the `mergedTurns` selector now adopts `patched.turns` when **either** `resultChanged` OR `(statusChanged && terminal)` — see § F2 fix below.
+- `packages/runtime/test/migration.test.mjs` (new) — 32 tests.
+- `packages/runtime/test/job-store.test.mjs` — one assertion update (`createJob` schemaVersion 1 → 2).
+- `packages/runtime/test/reconciler.test.mjs` — added `tryReadJob` to the imports + two new regression tests for F2 (status-only terminal transitions persisting `turns[last].status`).
+
+### Orchestrator-applied follow-up: Subagent C finding F2 (medium)
+
+Subagent C identified F2 as the only non-cosmetic finding and explicitly recommended fixing it before T7 because T7's `awaiting_followup` semantics will read `turns[last].status`. The issue:
+
+When the reconciler transitions a job to a terminal status (`completed`/`failed`) **without** a new result landing (e.g., adapter reports `failed` but no transcript artifacts), the reconciler correctly sets `patched.turns[last].status = 'failed'` in memory at lines 337–338. But the `updateJob` merged-turns selector at line 363 was:
+
+```ts
+const mergedTurns = resultChanged ? patched.turns : current.turns;
+```
+
+So with `resultChanged === false`, the locked on-disk turns were written back unchanged. The terminal-status mirror set in memory was silently discarded. Fix:
+
+```ts
+const turnsChanged =
+  resultChanged ||
+  (statusChanged && (nextStatus === 'completed' || nextStatus === 'failed'));
+const mergedTurns = turnsChanged ? patched.turns : current.turns;
+```
+
+Plus two regression tests in `reconciler.test.mjs` (one each for `failed` and `completed` via the `idle → completed` mapping) that verify the persisted-to-disk `turns[last].status` matches the terminal job status.
+
+### Orchestrator follow-ups for the other C findings
+
+- **F1 (low)** — test-count drift between B's report (35) and the actual count (32). Cosmetic; no fix.
+- **F3 (low)** — type-level doc comment for `result` said "compat alias of latest turn's result", but the actual `syncCompatAliases` skips turns without a result. Updated the doc comment to match observed semantics. No behavior change.
+- **F4 (low)** — `dispatcher.test.mjs` synthetic-job fixture's JSDoc cast `@type JobRecord` is now a lie (writes v1 shape, but the public `JobRecord` is locked to v2). C explicitly marked this **out of T6 scope**; deferred to Stage 4 polish or a later cleanup pass.
+- **F5 / F6 (nits)** — code-clarity refactor in `migrateJobRecord` and a JSDoc note on `tryWriteBackMigrated`'s silent-swallow. Both deferred (no behavior impact).
+
+### Subagent A's documented decisions (all validated by C as `ok`)
+
+1. **`syncCompatAliases` mutates in-place** — avoids spreading large records; all call sites either ignore the return reference or pass a freshly-spread object.
+2. **`tryWriteBackMigrated` re-reads under the lock and ignores the `_record` parameter** — safer than trusting the in-memory record passed in; defends against TOCTOU between the initial parse and the lock acquisition. The unused `_record` parameter is named with leading underscore to signal intent.
+3. **`listJobs` surfaces a `corrupt-record` warning for write-back failures** rather than silently swallowing. The warning shape matches the existing `JobStoreWarning` union.
+
+### Test impact
+
+| Lane | Before T6 | After T6 | Δ |
+|---|---|---|---|
+| test:mock | 58 | 58 | — |
+| test:runtime | 94 | 128 | +34 (32 new in migration.test.mjs + 2 new F2-regression tests in reconciler.test.mjs) |
+| test:driver | 175 | 175 | — |
+| test:plugin | 217 | 217 | — (Plan 0001 dispatcher tests pass unmodified) |
+| **Total** | **544** | **578** | **+34** |
+
+### Acceptance evidence (2026-05-31)
+
+- `npm run lint` clean (3 unused-import errors in B's migration.test.mjs were fixed at integration time; A's source files were lint-clean throughout).
+- `npm run typecheck` clean.
+- `npm run format` clean (reconciler.ts auto-formatted after the F2 patch).
+- All four lanes green: mock 58 + runtime 128 + driver 175 + plugin 217 = **578 pass / 0 fail**.
+- Plan 0001 architectural invariant (runtime/src bans `driver-claude-code` / `claude -p` / `node-pty`) still passes.
+- Plan 0001 dispatcher tests pass **unmodified** (217 tests) — confirming the compat-aliases path holds end-to-end through `cmdDelegate` / `cmdStatus` / `cmdResult` / `cmdStop`.
+- v1 → v2 migration is idempotent; reading twice produces no `updatedAt` churn (verified by migration.test.mjs's idempotency assertion).
+- Lock-busy migration write-back returns the migrated in-memory record without throwing; on-disk record remains v1 until a subsequent lock-available read (verified by migration.test.mjs).
+- Reconciler turn-status mirror persists to disk for both `failed`- and `completed`-only-transition paths (verified by new F2 regression tests).
+- Remote CI confirmation will be appended once T6 commit lands on `main`.
 
 ## Deviations from the plan
 
@@ -310,9 +386,10 @@ Subagent C reviewed all three fixes and rated each `ok`. Specifically:
 - **T2 absorbed minimal mock additions** that the plan listed under T3 (attach --help, --bg --help interception, jobs/ dir creation) — see T2 deviation above. The bigger T3 work was completed in T3.
 - **Architectural-invariant ban list relaxed** (T2) to drop `claude --bg` — see T2 deviation above. The load-bearing bans (`driver-claude-code`, `claude -p`, `node-pty`) remain.
 - **`withIsolatedHome` async-aware refactor** (T3) — not pre-specified but necessary for PTY tests to clean up correctly after `await`-based callbacks. Sync callers are unchanged.
-- **T4 narrower than 1-plan.md § 3.3** — the original plan text mentioned an optional `tailSidecar(shortId, opts): AsyncIterable<SidecarSnapshot>` "for poll-based updates". The maintainer's T4 brief explicitly excluded it ("a tailing/streaming API risks creeping toward the deferred watch() / daemon-like surface; T5 can poll readSidecar() directly during attachAndSend()"). T4 ships read-only `readSidecar` + `resolveSidecarPath` only.
-- **`.prettierignore` added the malformed sidecar fixture** so `npm run format` doesn't try to parse it (fixture is intentionally invalid JSON).
-- **T5 timeout-ordering + PTY-cleanup follow-up fixes** (T5) — the executor's initial polling-loop timeout placement and `finally` block needed orchestrator-side fixes to make tight-deadline tests fire and to prevent the PTY child from leaking past the function return. All three fixes are validated by Subagent C and documented above.
+- **T4 narrower than 1-plan.md § 3.3** — the original plan text mentioned an optional `tailSidecar(shortId, opts): AsyncIterable<SidecarSnapshot>` "for poll-based updates". The maintainer's T4 brief explicitly excluded it. T4 ships read-only `readSidecar` + `resolveSidecarPath` only.
+- **`.prettierignore` added the malformed sidecar fixture** so `npm run format` doesn't try to parse it.
+- **T5 timeout-ordering + PTY-cleanup follow-up fixes** — orchestrator-side fixes after subagent integration.
+- **T6 reconciler turn-merge fix (F2)** — orchestrator-applied after Subagent C's review. The minimal merge-selector predicate `resultChanged ? patched.turns : current.turns` lost the turn-status mirror on status-only terminal transitions. Extended to `resultChanged || (statusChanged && terminal)`. Plus two regression tests. T7's `awaiting_followup` semantics depend on `turns[last].status` reflecting the job's terminal turn state, so the fix lands here rather than in T7.
 
 ## Surprises
 

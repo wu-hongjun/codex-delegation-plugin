@@ -5,7 +5,14 @@
 
 import { writeFile } from 'node:fs/promises';
 
-import { appendEvent, listJobsForWorkspace, readEvents, readJob, updateJob } from './job-store.js';
+import {
+  appendEvent,
+  listJobsForWorkspace,
+  readEvents,
+  readJob,
+  syncCompatAliases,
+  updateJob,
+} from './job-store.js';
 import { ensureCompanionDirs, getJobResultPath } from './paths.js';
 import type { SessionStatus, SessionStatusValue } from './driver.js';
 import type { DriverEvent } from './events.js';
@@ -318,6 +325,20 @@ export async function reconcileJob(
 
   patched.result = newResult;
 
+  // Mirror result to the last turn so turns[] stays in sync with compat aliases.
+  // Also set turn endedAt and status when the job has reached a terminal state.
+  if (patched.turns.length > 0) {
+    const last = patched.turns[patched.turns.length - 1]!;
+    if (newResult !== undefined) {
+      last.result = newResult;
+      last.usageSnapshot = newResult.usageSnapshot;
+      last.endedAt = last.endedAt ?? new Date().toISOString();
+    }
+    if (nextStatus === 'completed') last.status = 'completed';
+    if (nextStatus === 'failed') last.status = 'failed';
+    syncCompatAliases(patched);
+  }
+
   // Step 5: idempotency check — skip updateJob if nothing changed
   const statusChanged = nextStatus !== previousStatus;
   const resultChanged = !resultContextEqual(previousResult, newResult);
@@ -335,12 +356,28 @@ export async function reconcileJob(
     // concurrent reconciler's writes are preserved. Only fields the reconciler owns
     // (`status`, `claude`, `result`) are overwritten; everything else is taken from
     // the locked read.
-    finalJob = await updateJob(jobId, (current) => ({
-      ...current,
-      status: patched.status,
-      claude: patched.claude,
-      result: patched.result,
-    }));
+    finalJob = await updateJob(jobId, (current) => {
+      // Build the merged record. current.turns is the locked on-disk version;
+      // patched.turns carries the turn-level result/status/endedAt updates.
+      // Use patched.turns whenever the reconciler mutated them — either because a
+      // new result landed OR because the job transitioned to a terminal status
+      // (completed/failed), which also stamps `turns[last].status` and `endedAt`.
+      // Without the terminal-status branch, a status-only `running → failed`
+      // transition would silently lose the last-turn status update (the in-memory
+      // `patched.turns[last].status` would be set but never persisted).
+      const turnsChanged =
+        resultChanged || (statusChanged && (nextStatus === 'completed' || nextStatus === 'failed'));
+      const mergedTurns = turnsChanged ? patched.turns : current.turns;
+      const merged = {
+        ...current,
+        status: patched.status,
+        claude: patched.claude,
+        result: patched.result,
+        turns: mergedTurns,
+      };
+      // updateJob will call syncCompatAliases itself, but be explicit for clarity
+      return merged;
+    });
   }
 
   // Step 6: append events

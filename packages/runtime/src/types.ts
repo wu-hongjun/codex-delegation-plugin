@@ -2,6 +2,8 @@
 // Driver capability and event types live in the driver package(s); the runtime treats them
 // as `unknown` in v1 to avoid circular design pressure.
 
+export type JobSchemaVersion = 1 | 2;
+
 export type JobStatus =
   | 'queued'
   | 'starting'
@@ -10,7 +12,12 @@ export type JobStatus =
   | 'completed'
   | 'failed'
   | 'stopped'
-  | 'orphaned';
+  | 'orphaned'
+  | 'awaiting_followup'; // NEW in T6 (type only; reconciler doesn't emit it yet)
+
+// TurnStatus is defined in driver.ts (T5). Re-export it here so types.ts consumers
+// can reach all runtime-public types from one place.
+export type { TurnStatus } from './driver.js';
 
 export interface CodexContext {
   pluginVersion: string;
@@ -62,9 +69,20 @@ export interface JobError {
   cause?: string;
 }
 
+export interface TurnRecord {
+  prompt: PromptContext;
+  startedAt: string; // ISO
+  endedAt?: string;
+  result?: ResultContext;
+  usageSnapshot?: unknown;
+  status: import('./driver.js').TurnStatus;
+}
+
+// Public JobRecord — schemaVersion is locked to 2 for the in-memory shape returned by
+// readJob/listJobs/updateJob. v1 records exist only on disk before lazy migration.
 export interface JobRecord {
   jobId: string;
-  schemaVersion: 1;
+  schemaVersion: 2;
   createdAt: string;
   updatedAt: string;
   status: JobStatus;
@@ -72,9 +90,15 @@ export interface JobRecord {
   workspace: WorkspaceContext;
   driver: DriverContext;
   claude: ClaudeSessionContext;
-  prompt: PromptContext;
+  /** @deprecated use turns[0].prompt */
+  prompt: PromptContext; // compat alias of turns[0].prompt
+  /** @deprecated use the explicit `turns[i].result` you care about */
+  // Compat alias of the latest turn THAT HAS A RESULT (skipping in-flight follow-up
+  // turns whose `result` is still undefined). This prevents a known prior-turn result
+  // from disappearing the moment a new follow-up turn starts.
   result?: ResultContext;
   errors?: JobError[];
+  turns: TurnRecord[]; // NEW; required, len >= 1
 }
 
 export interface CreateJobInput {

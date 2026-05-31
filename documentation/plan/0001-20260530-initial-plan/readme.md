@@ -2,11 +2,12 @@
 
 **One-line summary**: Establish the v1 project foundation — repo scaffolding, `doctor` compatibility probe, `ClaudeBackgroundDriver` start-only vertical slice, and the `$claude-delegate` / `$claude-status` / `$claude-result` skill triad — so a Codex user can delegate a single task to a real Claude Code background session and read the result back.
 
-**Status**: `implementing`
+**Status**: `auditing` (Stage 2 complete; awaiting independent Stage 3 audit)
 
 **Started**: 2026-05-30
 **Approved**: 2026-05-30 (all six open questions resolved by maintainer)
-**Last updated**: 2026-05-30
+**Stage 2 complete**: 2026-05-31
+**Last updated**: 2026-05-31
 **Completed**: —
 
 **Owner**: maintainer (`wu-hongjun`)
@@ -16,8 +17,8 @@
 | Stage | File | Status |
 |---|---|---|
 | 1 — Plan | [`1-plan.md`](1-plan.md) | **approved 2026-05-30** |
-| 2 — Implement | [`2-implement.md`](2-implement.md) | in progress (T1 starting) |
-| 3 — Audit | [`3-audit.md`](3-audit.md) | not started |
+| 2 — Implement | [`2-implement.md`](2-implement.md) | **complete 2026-05-31** (T1–T14 + T11/T12a/T12b remediations; 439 tests pass; CI green on `ubuntu+macos × Node 20+22`; live E2E confirmed against real Claude 2.1.149 + Codex 0.135.0) |
+| 3 — Audit | [`3-audit.md`](3-audit.md) | **not started — requires independent context per [`../README.md`](../README.md) rule #2** |
 | 4 — Polish | [`4-polish.md`](4-polish.md) | not started |
 | 5 — Report | [`5-report.md`](5-report.md) | not started |
 

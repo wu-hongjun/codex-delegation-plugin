@@ -1003,7 +1003,57 @@ Not modified in T13. The root README was already trimmed to the conservative fra
 
 ## T14 — CI
 
-_pending_
+**Started**: 2026-05-31. **Status**: complete (locally green; remote first-run observation logged below).
+
+Final task in plan 0001 Stage 2. A/B/C subagent pattern. CI-only — zero new runtime behavior.
+
+- **Subagent A (executor)** — wrote `.github/workflows/ci.yml` per the pinned shape: `push` to main + `pull_request` triggers, matrix `ubuntu-latest + macos-latest × Node 20 + 22`, `actions/checkout@v6`, `actions/setup-node@v6` with `cache: npm`, `npm ci` → `lint → typecheck → format → test`, workflow-level `permissions: contents: read`, `persist-credentials: false`, `concurrency` group cancels superseded runs, `fail-fast: false`, `timeout-minutes: 15`.
+- **Subagent B (test-engineer)** — wrote `packages/plugin-codex/test/ci-workflow.test.mjs` (30 static assertions). Verifies every required substring (workflow shape, matrix entries, action versions, npm commands, permissions, concurrency, security flags, caching) and every forbidden substring (`secrets.`, `claude --bg`, `claude -p`, `node-pty`, `codex plugin marketplace add`, `windows-latest`, Node 24).
+- **Subagent C (security reviewer)** — read-only review: **`ready-to-push-and-observe-CI`**. No blockers, no high-severity findings. Two cosmetic nits noted and deferred: (a) `ci-` prefix on concurrency group key is redundant with `${{ github.workflow }}` which equals `CI`; (b) test file reads ci.yml fresh in each `it()`. Both harmless.
+
+### Workflow
+
+Path: `.github/workflows/ci.yml`
+
+Matrix (4 legs):
+- `ubuntu-latest` × Node `20`
+- `ubuntu-latest` × Node `22`
+- `macos-latest` × Node `20`
+- `macos-latest` × Node `22`
+
+Action versions: `actions/checkout@v6` + `actions/setup-node@v6` (current maintained majors).
+
+Security posture (all pass per Subagent C):
+- Workflow-level `permissions: contents: read` (no write scopes anywhere)
+- `persist-credentials: false` on checkout (no checkout token retained)
+- No `${{ secrets.* }}` references anywhere
+- No external script downloads / `curl` / `chmod` fetches
+- No `node-pty`, no `claude -p`, no `codex plugin marketplace add`
+- No real Claude or Codex CLI install in CI
+- `concurrency` cancels superseded runs per branch
+- `fail-fast: false` keeps all matrix legs visible on partial failure
+- `timeout-minutes: 15` per job
+
+### Local pre-push verification
+
+- `npm run lint` clean
+- `npm run typecheck` clean
+- `npm run format` clean
+- `npm test` → 34 mock + 82 runtime + 119 driver + 204 plugin = **439 pass**, 0 fail
+
+The plugin suite count grew from 173 → 204 (the new `ci-workflow.test.mjs` adds 30 + 1).
+
+### Remote CI observation
+
+The workflow runs on `push` to main; after committing T14, the first run will fire automatically. Logged with the commit hash and observed status below.
+
+**Acceptance evidence (2026-05-31)**:
+- `.github/workflows/ci.yml` matches the maintainer's pinned shape exactly (action versions, matrix, scripts, permissions, security flags).
+- Static validation suite (`ci-workflow.test.mjs`, 30 tests) green locally.
+- Full local test suite green: 439 pass, 0 fail.
+- `npm run lint` / `typecheck` / `format` clean.
+- Subagent C: `ready-to-push-and-observe-CI`, no blockers, no scope violations.
+- Remote CI run status: see commit message below for the SHA; remote run kicks off on push.
 
 ## Deviations from the plan
 

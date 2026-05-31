@@ -906,6 +906,56 @@ The maintainer's T12 spec also called for a "Subagent B — Codex skill E2E" pat
 - Subagent C T12a review: `ready-to-resume-T12-live-E2E`, no blockers, no scope violations.
 - Codex skill invocation path is confirmed plumbed (T11 install) but the interactive-TUI verification is maintainer-driven.
 
+### T12b — idle semantics remediation (2026-05-31)
+
+The first live T12 run surfaced an `idle ≠ completed` gap that required `stop` before `result` could fire. T12b closed that gap for plan 0001:
+
+**Change**: in `packages/runtime/src/reconciler.ts` `STATUS_MAP`, `idle` now maps to `completed` (was `running`). One source line + comment explaining the rationale + one reconciler test updated (`value: idle maps to completed (plan 0001 start-only model)`).
+
+**Rationale**: plan 0001 is start-only — every `$claude-delegate` creates one fresh background session for one task. When the driver reports `idle` after that turn, the agent has finished the delegated work and is awaiting further input. With no companion-session reuse and no prompt injection in v1, that state is effectively `completed` for the job. Mapping it to `needs_input` would still cause `result` to reject as "not complete yet" under the current dispatcher contract, defeating the UX goal.
+
+Other mappings unchanged: `busy → working`, `waiting → needs_input`, `working → running`, `completed/failed/stopped/orphaned/queued/starting/unknown` all unchanged.
+
+**Plan 0002 caveat**: when session reuse lands, an `idle` session may sit between turns and would not be "completed". The mapping will need to become context-aware then. Documented in the inline comment near `STATUS_MAP`.
+
+**Live retry**: same throwaway repo, fresh delegate invocation:
+
+```
+$ claude-companion delegate --yes --name codex-e2e-plan-0001-idle-complete -- "Inspect this tiny throwaway repo and report what TODOs exist. Do not edit files."
+Claude job started
+Job ID:         job_mpt98g9g_b61e09f1
+Status:         completed        ← post-startSession reconcile already saw idle
+Claude session: c9de1fba
+
+$ claude-companion status
+  job_mpt98g9g_b61e09f1   completed   c9de1fba   codex-e2e-plan-0001-idle-complete
+
+$ claude-companion result job_mpt98g9g_b61e09f1   ← no stop needed
+Job:        job_mpt98g9g_b61e09f1
+Status:     completed
+Logs:       claude logs c9de1fba
+
+Found 3 TODOs in this throwaway repo:
+
+- `README.md:3` — `TODO: replace this placeholder`
+- `README.md:4` — `TODO: another todo here`
+- `app.js:2` — `// TODO: implement`
+
+No files were modified.
+
+EXIT: 0
+```
+
+User flow is now `delegate → status → result` (with optional `stop` for cleanup). The agent's correct answer is retrieved without an intermediate stop.
+
+**Acceptance evidence (2026-05-31)**:
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean.
+- `npm test` → 34 mock + 82 runtime + 119 driver + 129 plugin = **364 pass**, 0 fail (architectural-invariant test still green — comment in reconciler.ts deliberately avoids banned substring).
+- Live E2E retry succeeded: `delegate → status → result` produces the correct agent answer with no intervening `stop`.
+- Artifact `artifacts/e2e-live-20260530.txt` updated with the retry; original `idle ≠ completed` finding preserved as the reason T12b exists.
+
 ## T13 — README of the plugin package
 
 _pending_

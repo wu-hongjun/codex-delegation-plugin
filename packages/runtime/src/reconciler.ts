@@ -86,12 +86,18 @@ function refFromJob(job: JobRecord): ReconcilerSessionRef {
   };
 }
 
+// Plan 0001 is start-only: each delegate call creates one fresh background session
+// for one task. When the driver reports `idle` after that turn, the agent has
+// finished the delegated work and is awaiting further input. With no companion-
+// session reuse and no prompt injection in v1, that state is effectively `completed`
+// for this job — so `result` works without requiring an explicit stop first.
+// Plan 0002 may need a richer state model once session reuse exists.
 const STATUS_MAP: Record<SessionStatusValue, JobStatus | 'keep' | 'queued-or-starting-to-running'> =
   {
     queued: 'queued',
     starting: 'starting',
     working: 'running',
-    idle: 'running',
+    idle: 'completed',
     needs_input: 'needs_input',
     completed: 'completed',
     failed: 'failed',

@@ -103,11 +103,14 @@ describe('status mapping', () => {
     assert.equal(result.job.status, 'running');
   });
 
-  it('value: idle maps to running', async () => {
+  it('value: idle maps to completed (plan 0001 start-only model)', async () => {
     const job = await createJob(makeJobInput());
     const adapter = fakeAdapter({ status: { value: 'idle' } });
     const result = await reconcileJob(job.jobId, adapter, { now });
-    assert.equal(result.job.status, 'running');
+    // In plan 0001, every delegate is a fresh session for one task; driver-`idle`
+    // means the agent has finished its turn and is awaiting input we won't send.
+    // That state is effectively completed for the job.
+    assert.equal(result.job.status, 'completed');
   });
 
   it('value: needs_input maps to needs_input', async () => {

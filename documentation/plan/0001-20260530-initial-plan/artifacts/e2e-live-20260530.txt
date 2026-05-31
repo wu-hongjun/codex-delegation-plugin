@@ -356,3 +356,72 @@ All five dispatcher subcommands worked against real Claude Code 2.1.149 + real C
 - E2E_ROOT temp dir left in place for inspection: /tmp/cc-plugin-codex-e2e-T1UTOe
 - Local marketplace temp dir left in place: (none recorded)
 - Real `~/.claude` and `~/.codex` were used (by the actual claude/codex binaries), but our companion home was isolated to $CC_PLUGIN_CODEX_HOME under the E2E temp root.
+
+---
+
+## T12b — idle → completed live retry (2026-05-31)
+
+Plan 0001 reconciler now maps driver-`idle` → job-`completed` (was `running`).
+Live retry to confirm `delegate → status → result` works without an explicit `stop`.
+
+## $ claude-companion delegate --yes --name codex-e2e-plan-0001-idle-complete -- "…"
+```
+Claude job started
+Job ID:         job_mpt98g9g_b61e09f1
+Status:         completed
+Claude session: c9de1fba
+Name:           codex-e2e-plan-0001-idle-complete
+Logs:           claude logs c9de1fba
+Run:
+  $claude-status
+  $claude-result job_mpt98g9g_b61e09f1
+```
+
+## $ claude-companion status
+```
+Claude jobs for /private/tmp/cc-plugin-codex-e2e-T1UTOe
+
+  job_mpt98g9g_b61e09f1             completed       c9de1fba          codex-e2e-plan-0001-idle-complete
+```
+
+## $ claude-companion result job_mpt98g9g_b61e09f1  (NO prior stop)
+```
+Job:        job_mpt98g9g_b61e09f1
+Status:     completed
+Transcript: (none)
+Logs:       claude logs c9de1fba
+
+Found 3 TODOs in this throwaway repo:
+
+- `README.md:3` — `TODO: replace this placeholder`
+- `README.md:4` — `TODO: another todo here`
+- `app.js:2` — `// TODO: implement`
+
+No files were modified.
+EXIT: 0
+```
+
+
+## $ claude-companion stop job_mpt98g9g_b61e09f1  (cleanup; not required for result)
+```
+Claude job stopped
+Job ID:         job_mpt98g9g_b61e09f1
+Status:         stopped
+Claude session: c9de1fba
+```
+
+## T12b SUCCESS
+
+Flow: `delegate --yes` → `status` → `result` → `stop` (optional cleanup) ✓
+
+The agent's correct answer ('Found 3 TODOs ... README.md:3, README.md:4, app.js:2 ... No files were modified.') was retrieved by `result` immediately after delegate, without any intermediate `stop`.
+
+### T12b summary
+
+- Driver reports `idle` after agent finishes a turn (correct real Claude semantic).
+- T9 reconciler now maps driver-`idle` → job-`completed` (was `running`).
+- Rationale: plan 0001 is start-only — each delegate is one fresh session for one task. With no companion-session reuse and no prompt injection, `idle` after the turn IS the terminal state for the job.
+- `busy` → `working` and `waiting` → `needs_input` mappings unchanged.
+- Plan 0002 may revisit this when session reuse is on the table — an idle reused session would not be 'completed', it would be 'awaiting next turn'.
+
+Test impact: 1 reconciler test updated (idle now expects `completed`); architectural-invariant test still passes.

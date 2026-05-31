@@ -257,15 +257,6 @@ describe('ci.yml does not contain forbidden substrings', () => {
     );
   });
 
-  it('does not contain "node-pty"', () => {
-    const body = readCi();
-    assert.equal(
-      body.includes('node-pty'),
-      false,
-      'ci.yml contains forbidden substring "node-pty"',
-    );
-  });
-
   it('does not contain "codex plugin marketplace add"', () => {
     const body = readCi();
     assert.equal(
@@ -292,6 +283,36 @@ describe('ci.yml does not contain forbidden substrings', () => {
       /^\s*-\s+24\s*$/m.test(nodeBlock[1]),
       false,
       'Node 24 must not be in the matrix — not in plan 0001',
+    );
+  });
+});
+
+describe('ci.yml PTY smoke step (plan 0002)', () => {
+  it('contains a "PTY smoke (node-pty)" step name', () => {
+    const body = readCi();
+    assert.ok(
+      body.includes('PTY smoke (node-pty)'),
+      'ci.yml must declare a "PTY smoke (node-pty)" step (plan 0002 T1)',
+    );
+  });
+
+  it('references "node-pty" (required dependency for plan 0002)', () => {
+    const body = readCi();
+    assert.ok(
+      body.includes('node-pty'),
+      'ci.yml must reference node-pty in the PTY smoke step (plan 0002 T1)',
+    );
+  });
+
+  it('runs the PTY smoke step before the test step', () => {
+    const body = readCi();
+    const ptyIdx = body.indexOf('PTY smoke (node-pty)');
+    const testIdx = body.indexOf('- name: Test');
+    assert.ok(ptyIdx > 0, 'PTY smoke step not found');
+    assert.ok(testIdx > 0, 'Test step not found');
+    assert.ok(
+      ptyIdx < testIdx,
+      'PTY smoke step must appear before the Test step so native-build failures fail CI before the full suite runs',
     );
   });
 });

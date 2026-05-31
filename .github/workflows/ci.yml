@@ -51,5 +51,33 @@ jobs:
       - name: Check formatting
         run: npm run format
 
+      - name: PTY smoke (node-pty)
+        run: |
+          node -e "
+            const pty = require('node-pty');
+            const p = pty.spawn('/bin/sh', ['-c', 'echo ok'], {
+              name: 'xterm-color',
+              cols: 80,
+              rows: 24,
+              cwd: process.cwd(),
+              env: process.env,
+            });
+            let out = '';
+            const timer = setTimeout(() => {
+              console.error('PTY smoke timed out after 5s; stdout was', JSON.stringify(out));
+              process.exit(1);
+            }, 5000);
+            p.onData((d) => { out += d; });
+            p.onExit(() => {
+              clearTimeout(timer);
+              if (!out.includes('ok')) {
+                console.error('PTY smoke failed: stdout was', JSON.stringify(out));
+                process.exit(1);
+              }
+              console.log('PTY smoke ok');
+              process.exit(0);
+            });
+          "
+
       - name: Test
         run: npm test

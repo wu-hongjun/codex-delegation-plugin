@@ -284,7 +284,13 @@ async function cmdResult(flags, positional, json) {
     job = await readJob(jobId);
   }
 
-  const terminalStatuses = new Set(['completed', 'failed', 'stopped', 'orphaned']);
+  const terminalStatuses = new Set([
+    'completed',
+    'failed',
+    'stopped',
+    'orphaned',
+    'awaiting_followup',
+  ]);
   if (!terminalStatuses.has(job.status)) {
     process.stderr.write(
       formatError(

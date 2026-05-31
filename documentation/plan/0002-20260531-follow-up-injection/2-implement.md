@@ -378,7 +378,88 @@ Plus two regression tests in `reconciler.test.mjs` (one each for `failed` and `c
 - v1 → v2 migration is idempotent; reading twice produces no `updatedAt` churn (verified by migration.test.mjs's idempotency assertion).
 - Lock-busy migration write-back returns the migrated in-memory record without throwing; on-disk record remains v1 until a subsequent lock-available read (verified by migration.test.mjs).
 - Reconciler turn-status mirror persists to disk for both `failed`- and `completed`-only-transition paths (verified by new F2 regression tests).
-- Remote CI confirmation will be appended once T6 commit lands on `main`.
+- Remote CI on `d738a7e` (run `26725398319`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). Schema migration + F2 turn-merge fix exercise cleanly on both Linux and macOS for both supported Node majors.
+
+## T7 — Reconciler context-aware status mapping
+
+**Started**: 2026-05-31. **Status**: complete (pending CI confirmation).
+
+Fifth T-task under the A/B/C subagent pattern. Reconciler-only schema-evolution: replaces Plan 0001's static `STATUS_MAP` with a context-aware `mapStatus(input)` function that emits `awaiting_followup`, implements the 30-min TTL, and accepts best-effort sidecar influence.
+
+- **Subagent A (executor, sonnet)** — context-aware `mapStatus`, runtime-local `SidecarSnapshot` interface, `ReconcilerAdapter.readSidecar?` extension, `followupTtlMs` option, sidecar result source between transcript and logs, turn-status sync extension to cover `needs_input`/`awaiting_followup`, and the single-line dispatcher whitelist change for `cmdResult`.
+- **Subagent B (test-engineer, sonnet)** — new `context-aware status mapping (plan 0002 T7)` describe block in `reconciler.test.mjs` covering all 20 cases from the maintainer's brief (+2 turn-sync sub-tests = 22 new tests total); two pre-existing T6 tests updated for the new T7 mapping semantics; new `result for an awaiting_followup job` describe block in `dispatcher.test.mjs` with 2 tests.
+- **Subagent C (code-reviewer, opus)** — mapping-correctness deep-dive across Q1–Q10. Verdict: **`ready-for-T8`**. 0 blocker/high; **2 medium (M1, M2)**; 2 nit. Both medium findings fixed in this commit with regression tests.
+
+### Files changed
+
+- `packages/runtime/src/reconciler.ts`:
+  - New runtime-local `SidecarSnapshot` interface (does NOT import the driver-side type; runtime defines its own duck-typed shape to preserve the architectural invariant).
+  - `ReconcilerAdapter` gains optional `readSidecar?(session): Promise<SidecarSnapshot | null>`.
+  - `ReconcileOptions` gains `followupTtlMs?: number` (default `30 * 60 * 1000`).
+  - New exported `StatusMappingInput` interface and `mapStatus(input)` function with 5-level precedence: orphan → sidecar waiting hint → sidecar inFlight override → driver-value switch (with `idle` split by `latestTurnStatus` + TTL) → previous-status fallback.
+  - New `computeTtlElapsed(job, nowMs, ttlMs)` helper with activity-timestamp lookup order (`latestTurn.endedAt → latestTurn.startedAt → job.updatedAt → job.createdAt`), NaN → elapsed, **future timestamps → elapsed** (M2 fix).
+  - Sidecar reading in `reconcileJob`: silent on `null`, warns + continues on throw.
+  - Sidecar result source between transcript and logs fallback; writes `<jobId>.result.md` for consistency. **Empty-string sidecar result no longer gates the logs fallback** (M1 fix — write-gate and skip-gate now both use truthy `.trim().length > 0`).
+  - Turn-status sync extended: `needs_input` and `failed`/`completed` propagate to `turns[last].status`; `awaiting_followup` leaves the turn `completed`; `stopped`/`orphaned`/`running` do not force the turn status.
+  - `mergedTurns` predicate extended to adopt `patched.turns` when `nextStatus ∈ {needs_input, awaiting_followup}` so the turn-status sync persists.
+- `packages/plugin-codex/scripts/claude-companion.mjs`:
+  - `cmdResult` `terminalStatuses` set extended with `'awaiting_followup'`. Still rejects `queued`/`starting`/`running`/`needs_input`. **Only T7 plugin change.**
+- `packages/runtime/test/reconciler.test.mjs`:
+  - 22 new tests in `context-aware status mapping (plan 0002 T7)` describe block.
+  - Two pre-existing T6 tests updated for the new T7 mapping semantics:
+    - `value: idle on a freshly-queued job → running` (was `idle → completed`; the original blanket Plan 0001 mapping no longer holds).
+    - `terminal status (completed) ... persists turns[last].status = completed` (switched from `idle`-driver basis to `completed`-driver basis to remain behaviorally correct).
+  - **2 new M1/M2 regression guards appended** to the T7 block.
+- `packages/plugin-codex/test/dispatcher.test.mjs`: new `result for an awaiting_followup job (plan 0002 T7)` describe block with 2 tests (human + JSON output).
+
+### Orchestrator-applied follow-up: Subagent C findings M1 + M2
+
+C identified two medium-severity issues during the audit. Both fixed in this commit per Plan 0001's "bundle small reviewer follow-up fixes" pattern.
+
+**M1 — empty-string sidecar result suppressed logs fallback.** The sidecar-result write-gate at the result-extraction branch used a truthy check (`sidecar?.output?.result`) — empty string is falsy → no file written. But the logs-fallback skip-gate used `!= null` — empty string passes → logs fallback skipped. Net effect: `output: { result: "" }` silently dropped the result entirely. Fix: aligned the skip-gate to use the same truthy semantics (`typeof result === 'string' && result.trim().length > 0`). Regression test asserts that with an empty sidecar result and non-empty logs, the result file is populated from logs.
+
+**M2 — future timestamps stayed stuck in `awaiting_followup`.** `computeTtlElapsed` used `nowMs - parsed >= ttlMs`. When `parsed > nowMs` (clock skew, manual record edit), the delta is negative and the check returns `false` → not elapsed → `awaiting_followup` indefinitely. The brief's "defensive against bad data" intent should also cover the future-timestamp case (mirroring the NaN-as-elapsed treatment). Fix: added `if (parsed > nowMs) return true;` before the elapsed check. Regression test injects a `now` well before the job's real-system-clock `updatedAt`, asserts the job lands in `completed` instead of `awaiting_followup`.
+
+C's nits N1 (`awaiting_followup` in the `mergedTurns` change set even though T7 doesn't mutate turns for it) and N2 (`idle + queued turn → running` could mask a stuck-queued bug) are flagged but not actioned — both are harmless and N2 is out of T7 scope.
+
+### Subagent A's documented decisions (all validated by C as `ok`)
+
+1. **`SidecarSnapshot` lives in `reconciler.ts`** rather than `types.ts` — co-located with the only consumer (`mapStatus`); consistent with `ReconcilerAdapter` already living in `reconciler.ts`; preserves the architectural invariant.
+2. **TTL math via `Date.parse(options.now())`** — the injected `now()` returns an ISO string; parsed once per reconcile for the numeric epoch arithmetic. Avoids a parallel `nowMs` hook; works correctly with B's clock-injection tests.
+3. **Sidecar result writes `<jobId>.result.md`** — same path as transcript-derived result so `cmdResult` reads it identically. The `!transcriptProducedResult` guard prevents double-writes when transcript and sidecar both have results (transcript wins).
+
+### Subagent C findings (full list)
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| M1 | medium | Empty-string `sidecar.output.result` suppressed logs fallback. | **Fixed in this commit** + regression test. |
+| M2 | medium | Future timestamps stayed stuck in `awaiting_followup`. | **Fixed in this commit** + regression test. |
+| N1 | nit | `awaiting_followup` in `mergedTurns` change set is over-broad (T7 doesn't mutate turns for it). | No action; harmless. |
+| N2 | nit | `idle + queued turn → running` could mask a stuck-queued bug. | No action; out of T7 scope. |
+
+### Test impact
+
+| Lane | Before T7 | After T7 | Δ |
+|---|---|---|---|
+| test:mock | 58 | 58 | — |
+| test:runtime | 128 | 150 | +22 (20 new T7 cases + 2 M1/M2 regression guards) |
+| test:driver | 175 | 175 | — |
+| test:plugin | 217 | 219 | +2 (dispatcher `result` for `awaiting_followup`, human + JSON) |
+| **Total** | **578** | **602** | **+24** |
+
+### Acceptance evidence (2026-05-31)
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean.
+- All four lanes green: mock 58 + runtime 150 + driver 175 + plugin 219 = **602 pass / 0 fail**.
+- Plan 0001 architectural invariant (runtime/src bans `driver-claude-code` / `claude -p` / `node-pty`) still passes.
+- v1-migrated records compose correctly with the new mapping (verified by B's test 17).
+- TTL idempotency: reconciling twice with the same injected `now` produces zero duplicate events (verified by B's tests 15–16).
+- Reconciler emits `awaiting_followup` only when `driver-idle + latestTurn-completed + !ttlElapsed`; otherwise the state machine drops through to the appropriate Plan 0001 mapping.
+- Dispatcher `cmdResult` accepts `awaiting_followup` as result-printable (verified by B's new dispatcher tests).
+- M1/M2 regression guards both pass.
+- Remote CI confirmation will be appended once T7 commit lands on `main`.
 
 ## Deviations from the plan
 

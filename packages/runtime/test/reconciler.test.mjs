@@ -104,14 +104,16 @@ describe('status mapping', () => {
     assert.equal(result.job.status, 'running');
   });
 
-  it('value: idle maps to completed (plan 0001 start-only model)', async () => {
+  it('value: idle on a freshly-queued job maps to running (plan 0002 T7: queued turn + idle driver → running)', async () => {
     const job = await createJob(makeJobInput());
     const adapter = fakeAdapter({ status: { value: 'idle' } });
     const result = await reconcileJob(job.jobId, adapter, { now });
-    // In plan 0001, every delegate is a fresh session for one task; driver-`idle`
-    // means the agent has finished its turn and is awaiting input we won't send.
-    // That state is effectively completed for the job.
-    assert.equal(result.job.status, 'completed');
+    // T7 changed the idle mapping to be turn-status-aware. A brand-new job has
+    // turns[0].status = 'queued'. idle + queued → running (defensive: treat as
+    // mid-work, not completed). The Plan 0001 "idle = completed" assumption no
+    // longer holds; jobs now need turns[last].status = 'completed' for idle to
+    // produce awaiting_followup or completed.
+    assert.equal(result.job.status, 'running');
   });
 
   it('value: needs_input maps to needs_input', async () => {
@@ -181,14 +183,16 @@ describe('status mapping', () => {
   });
 
   it('terminal status (completed) with no new result still persists turns[last].status = completed', async () => {
-    // Symmetric guard for the completed branch of the same fix.
+    // Symmetric guard for the completed branch of the same fix (T6 F2 regression guard).
+    // T7 note: we use driver value 'completed' directly (not 'idle') because
+    // idle + working-turn → running under T7's turn-aware mapping. The 'completed'
+    // driver value always maps to job-completed regardless of turn status.
     const job = await createJob(makeJobInput());
     const adapterRun = fakeAdapter({ status: { value: 'working' } });
     await reconcileJob(job.jobId, adapterRun, { now });
 
-    const adapterIdle = fakeAdapter({ status: { value: 'idle' } });
-    // idle maps to job-`completed` (plan 0001 start-only model).
-    const result = await reconcileJob(job.jobId, adapterIdle, { now });
+    const adapterCompleted = fakeAdapter({ status: { value: 'completed' } });
+    const result = await reconcileJob(job.jobId, adapterCompleted, { now });
     assert.equal(result.job.status, 'completed');
     assert.equal(result.statusChanged, true);
 
@@ -603,6 +607,584 @@ describe('reconcileJobsForWorkspace', () => {
     assert.ok(
       wsResult.warnings.length >= 1,
       'corrupt record warning should appear in workspace results',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Context-aware status mapping (Plan 0002 T7)
+// ---------------------------------------------------------------------------
+
+describe('context-aware status mapping (plan 0002 T7)', () => {
+  // Helper: fakeAdapter with optional readSidecar support
+  function fakeAdapterWithSidecar({ status, transcript, logs, sidecar, sidecarThrows } = {}) {
+    return {
+      async status(ref) {
+        return status ?? { value: 'idle', shortId: ref.shortId, sessionId: ref.sessionId };
+      },
+      async readTranscriptEvents(_ref) {
+        return transcript ?? { transcriptPath: null, events: [], warnings: [] };
+      },
+      async readLogs(_ref) {
+        return logs ?? { text: '' };
+      },
+      async readSidecar(_ref) {
+        if (sidecarThrows) throw sidecarThrows;
+        return sidecar !== undefined ? sidecar : null;
+      },
+    };
+  }
+
+  /**
+   * Directly stamp turns[last].status = 'completed' and endedAt = activityTs on the
+   * job record via updateJob. This is the reliable way to set up the pre-condition
+   * for awaiting_followup tests without relying on multi-step reconcile chains
+   * (idle + working-turn → running, not completed, which is correct reconciler
+   * behaviour but not the pre-condition we need for TTL tests).
+   */
+  async function setupCompletedTurn(jobId, activityTs) {
+    const { updateJob: updateJobFn } = await import('../dist/index.js');
+    await updateJobFn(jobId, (rec) => {
+      const turns = rec.turns.map((t, i) =>
+        i === rec.turns.length - 1 ? { ...t, status: 'completed', endedAt: activityTs } : t,
+      );
+      return { ...rec, status: 'completed', turns };
+    });
+  }
+
+  // T7 test 1: idle + latestTurn completed + TTL not elapsed → awaiting_followup
+  it('idle driver + latestTurn completed + TTL not elapsed → awaiting_followup', async () => {
+    const activityTs = '2026-05-31T12:00:00.000Z';
+    // now is 1ms after activity → TTL not elapsed (well within 30 min)
+    const nowFn = () => '2026-05-31T12:00:00.001Z';
+
+    const job = await createJob(makeJobInput());
+    await setupCompletedTurn(job.jobId, activityTs);
+
+    const adapter = fakeAdapter({ status: { value: 'idle' } });
+    const result = await reconcileJob(job.jobId, adapter, {
+      now: nowFn,
+      followupTtlMs: 30 * 60 * 1000,
+    });
+
+    assert.equal(
+      result.job.status,
+      'awaiting_followup',
+      'idle driver + completed turn + TTL not elapsed should yield awaiting_followup',
+    );
+  });
+
+  // T7 test 2: idle + latestTurn completed + TTL elapsed → completed
+  it('idle driver + latestTurn completed + TTL elapsed → completed', async () => {
+    const activityTs = '2026-05-31T12:00:00.000Z';
+    // now is 31 minutes after activity → TTL elapsed
+    const nowFn = () => '2026-05-31T12:31:00.000Z';
+
+    const job = await createJob(makeJobInput());
+    await setupCompletedTurn(job.jobId, activityTs);
+
+    const adapter = fakeAdapter({ status: { value: 'idle' } });
+    const result = await reconcileJob(job.jobId, adapter, {
+      now: nowFn,
+      followupTtlMs: 30 * 60 * 1000,
+    });
+
+    assert.equal(
+      result.job.status,
+      'completed',
+      'idle driver + completed turn + TTL elapsed (31min) should yield completed',
+    );
+  });
+
+  // T7 test 3: idle + latestTurn injecting → running
+  it('idle driver + latestTurn injecting → running', async () => {
+    const job = await createJob(makeJobInput());
+    // Use updateJob to set turns[0].status = 'injecting' directly
+    const { updateJob: updateJobFn } = await import('../dist/index.js');
+    await updateJobFn(job.jobId, (rec) => {
+      const turns = rec.turns.map((t, i) =>
+        i === rec.turns.length - 1 ? { ...t, status: 'injecting' } : t,
+      );
+      return { ...rec, turns };
+    });
+
+    const adapter = fakeAdapter({ status: { value: 'idle' } });
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(result.job.status, 'running', 'idle driver + injecting turn should yield running');
+  });
+
+  // T7 test 4: idle + latestTurn working → running
+  it('idle driver + latestTurn working → running', async () => {
+    const job = await createJob(makeJobInput());
+    const { updateJob: updateJobFn } = await import('../dist/index.js');
+    await updateJobFn(job.jobId, (rec) => {
+      const turns = rec.turns.map((t, i) =>
+        i === rec.turns.length - 1 ? { ...t, status: 'working' } : t,
+      );
+      return { ...rec, turns };
+    });
+
+    const adapter = fakeAdapter({ status: { value: 'idle' } });
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(result.job.status, 'running', 'idle driver + working turn should yield running');
+  });
+
+  // T7 test 5: idle + latestTurn failed → failed
+  it('idle driver + latestTurn failed → failed', async () => {
+    const job = await createJob(makeJobInput());
+    const { updateJob: updateJobFn } = await import('../dist/index.js');
+    await updateJobFn(job.jobId, (rec) => {
+      const turns = rec.turns.map((t, i) =>
+        i === rec.turns.length - 1 ? { ...t, status: 'failed' } : t,
+      );
+      return { ...rec, turns };
+    });
+
+    const adapter = fakeAdapter({ status: { value: 'idle' } });
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(result.job.status, 'failed', 'idle driver + failed turn should yield failed');
+  });
+
+  // T7 test 6: busy/working driver → running
+  it('working driver → running (regardless of turn status)', async () => {
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapter({ status: { value: 'working' } });
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(result.job.status, 'running', 'working driver value should always yield running');
+  });
+
+  // T7 test 7: needs_input driver → needs_input
+  it('needs_input driver → needs_input', async () => {
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapter({ status: { value: 'needs_input' } });
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(
+      result.job.status,
+      'needs_input',
+      'needs_input driver value should yield needs_input',
+    );
+  });
+
+  // T7 test 8: sidecar inFlight.tasks > 0 overrides idle + completed → running
+  it('sidecar inFlight.tasks > 0 overrides idle + completed turn → running', async () => {
+    const activityTs = '2026-05-31T12:00:00.000Z';
+    const nowFn = () => '2026-05-31T12:00:00.001Z'; // TTL not elapsed
+
+    const job = await createJob(makeJobInput());
+    await setupCompletedTurn(job.jobId, activityTs);
+
+    // Reconcile with sidecar reporting inFlight.tasks: 1
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'idle' },
+      sidecar: { inFlight: { tasks: 1, queued: 0, kinds: [] } },
+    });
+    const result = await reconcileJob(job.jobId, adapter, {
+      now: nowFn,
+      followupTtlMs: 30 * 60 * 1000,
+    });
+
+    assert.equal(
+      result.job.status,
+      'running',
+      'sidecar inFlight.tasks > 0 should override idle+completed → running',
+    );
+  });
+
+  // T7 test 9: sidecar waiting hint overrides idle → needs_input
+  it('sidecar state: waiting overrides idle driver → needs_input', async () => {
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'idle' },
+      sidecar: { state: 'waiting' },
+    });
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(
+      result.job.status,
+      'needs_input',
+      'sidecar state:waiting should override idle driver → needs_input',
+    );
+  });
+
+  it('sidecar inFlight.kinds includes permission overrides idle driver → needs_input', async () => {
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'idle' },
+      sidecar: { inFlight: { tasks: 0, queued: 0, kinds: ['permission'] } },
+    });
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(
+      result.job.status,
+      'needs_input',
+      'sidecar inFlight.kinds=[permission] should override idle driver → needs_input',
+    );
+  });
+
+  // T7 test 10: sidecar output.result populates result when transcript has no assistant message
+  it('sidecar output.result populates job result when transcript yields no assistant message', async () => {
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'completed' },
+      transcript: { transcriptPath: null, events: [], warnings: [] },
+      logs: { text: '' },
+      sidecar: { output: { result: 'sidecar-derived answer' } },
+    });
+    const result = await reconcileJob(job.jobId, adapter, { readArtifacts: true, now });
+
+    assert.ok(result.job.result != null, 'result should be set from sidecar output');
+    assert.ok(
+      result.job.result.finalMessagePreview.includes('sidecar-derived'),
+      `expected sidecar-derived in preview; got: ${result.job.result.finalMessagePreview}`,
+    );
+    assert.ok(
+      result.job.result.finalMessagePath != null,
+      'finalMessagePath should be set when sidecar provides result',
+    );
+
+    // Verify the result file was written
+    const { readFileSync: rfs, existsSync: efs } = await import('node:fs');
+    assert.ok(
+      efs(result.job.result.finalMessagePath),
+      'result.md file should exist on disk when sidecar provides result',
+    );
+    const contents = rfs(result.job.result.finalMessagePath, 'utf8');
+    assert.ok(
+      contents.includes('sidecar-derived answer'),
+      'result file should contain sidecar output text',
+    );
+  });
+
+  // T7 test 11: sidecar failure produces warning, not throw
+  it('sidecar readSidecar rejection produces a warning but reconcile does not throw', async () => {
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'working' },
+      sidecarThrows: new Error('sidecar read exploded'),
+    });
+
+    let result;
+    await assert.doesNotReject(async () => {
+      result = await reconcileJob(job.jobId, adapter, { now });
+    }, 'reconcileJob should not throw when readSidecar rejects');
+
+    assert.ok(
+      result.warnings.some((w) => /sidecar/i.test(w.message)),
+      `expected a sidecar-related warning; got: ${JSON.stringify(result.warnings)}`,
+    );
+  });
+
+  // T7 test 12: sidecar null produces no noisy warning
+  it('sidecar returning null produces no sidecar warning', async () => {
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'working' },
+      sidecar: null,
+    });
+
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    const sidecarWarnings = result.warnings.filter((w) => /sidecar/i.test(w.message));
+    assert.equal(
+      sidecarWarnings.length,
+      0,
+      `sidecar null should produce no sidecar warning; got: ${JSON.stringify(sidecarWarnings)}`,
+    );
+  });
+
+  // T7 test 13: TTL uses injected now clock deterministically
+  it('two reconciles with different injected now clocks produce awaiting_followup then completed', async () => {
+    const activityTs = '2026-05-31T12:00:00.000Z';
+
+    const job = await createJob(makeJobInput());
+    await setupCompletedTurn(job.jobId, activityTs);
+
+    // First reconcile: now = 1ms after activity → awaiting_followup
+    const adapterIdle1 = fakeAdapter({ status: { value: 'idle' } });
+    const r1 = await reconcileJob(job.jobId, adapterIdle1, {
+      now: () => '2026-05-31T12:00:00.001Z',
+      followupTtlMs: 30 * 60 * 1000,
+    });
+    assert.equal(r1.job.status, 'awaiting_followup', 'first reconcile should be awaiting_followup');
+
+    // Second reconcile: now = 31 minutes later → completed
+    const adapterIdle2 = fakeAdapter({ status: { value: 'idle' } });
+    const r2 = await reconcileJob(job.jobId, adapterIdle2, {
+      now: () => '2026-05-31T12:31:00.000Z',
+      followupTtlMs: 30 * 60 * 1000,
+    });
+    assert.equal(
+      r2.job.status,
+      'completed',
+      'second reconcile with later clock should be completed',
+    );
+  });
+
+  // T7 test 14: invalid timestamps treat TTL as elapsed
+  it('invalid timestamps in turns/job cause TTL to be treated as elapsed → completed', async () => {
+    const job = await createJob(makeJobInput());
+    // Use updateJob to set bad timestamps and turns[last].status = 'completed'
+    const { updateJob: updateJobFn } = await import('../dist/index.js');
+    await updateJobFn(job.jobId, (rec) => {
+      const turns = rec.turns.map((t, i) =>
+        i === rec.turns.length - 1
+          ? { ...t, status: 'completed', endedAt: 'not-a-date', startedAt: 'also-bad' }
+          : t,
+      );
+      return {
+        ...rec,
+        status: 'awaiting_followup',
+        turns,
+        updatedAt: 'also-bad',
+        createdAt: 'also-bad',
+      };
+    });
+
+    const adapter = fakeAdapter({ status: { value: 'idle' } });
+    const result = await reconcileJob(job.jobId, adapter, {
+      now: () => '2026-05-31T13:00:00.000Z',
+      followupTtlMs: 30 * 60 * 1000,
+    });
+
+    assert.equal(
+      result.job.status,
+      'completed',
+      'invalid timestamps should treat TTL as elapsed → completed',
+    );
+  });
+
+  // T7 test 15: repeated awaiting_followup reconcile is idempotent
+  it('repeated reconcile in awaiting_followup state is idempotent (statusChanged false, no duplicate events)', async () => {
+    const activityTs = '2026-05-31T12:00:00.000Z';
+    const nowFn = () => '2026-05-31T12:00:00.001Z';
+
+    const job = await createJob(makeJobInput());
+    await setupCompletedTurn(job.jobId, activityTs);
+
+    // First reconcile → awaiting_followup
+    const adapterIdle1 = fakeAdapter({ status: { value: 'idle' } });
+    const r1 = await reconcileJob(job.jobId, adapterIdle1, {
+      now: nowFn,
+      followupTtlMs: 30 * 60 * 1000,
+      appendEvents: true,
+    });
+    assert.equal(r1.job.status, 'awaiting_followup', 'first reconcile should be awaiting_followup');
+
+    // Second reconcile with same clock → no change
+    const adapterIdle2 = fakeAdapter({ status: { value: 'idle' } });
+    const r2 = await reconcileJob(job.jobId, adapterIdle2, {
+      now: nowFn,
+      followupTtlMs: 30 * 60 * 1000,
+      appendEvents: true,
+    });
+    assert.equal(r2.statusChanged, false, 'second reconcile should report statusChanged: false');
+    assert.equal(r2.appendedEvents, 0, 'second reconcile should append 0 events');
+  });
+
+  // T7 test 16: TTL expiry awaiting_followup → completed appends one status event, no duplicates
+  it('awaiting_followup → completed on TTL expiry appends exactly one event; third reconcile appends 0', async () => {
+    const activityTs = '2026-05-31T12:00:00.000Z';
+    const beforeTtl = () => '2026-05-31T12:00:00.001Z';
+    const afterTtl = () => '2026-05-31T12:31:00.000Z';
+
+    const job = await createJob(makeJobInput());
+    await setupCompletedTurn(job.jobId, activityTs);
+
+    // First reconcile: before TTL → awaiting_followup
+    const adapterIdle1 = fakeAdapter({ status: { value: 'idle' } });
+    await reconcileJob(job.jobId, adapterIdle1, {
+      now: beforeTtl,
+      followupTtlMs: 30 * 60 * 1000,
+      appendEvents: true,
+    });
+
+    // Second reconcile: after TTL → completed; should append exactly 1 event
+    const adapterIdle2 = fakeAdapter({ status: { value: 'idle' } });
+    const r2 = await reconcileJob(job.jobId, adapterIdle2, {
+      now: afterTtl,
+      followupTtlMs: 30 * 60 * 1000,
+      appendEvents: true,
+    });
+    assert.equal(r2.job.status, 'completed', 'second reconcile should yield completed');
+    assert.equal(
+      r2.appendedEvents,
+      1,
+      `second reconcile should append exactly 1 status event; got ${r2.appendedEvents}`,
+    );
+
+    // Third reconcile: same clock → no change
+    const adapterIdle3 = fakeAdapter({ status: { value: 'idle' } });
+    const r3 = await reconcileJob(job.jobId, adapterIdle3, {
+      now: afterTtl,
+      followupTtlMs: 30 * 60 * 1000,
+      appendEvents: true,
+    });
+    assert.equal(r3.appendedEvents, 0, 'third reconcile with same clock should append 0 events');
+  });
+
+  // T7 test 17: v1 migrated records reconcile correctly
+  it('v1 migrated record reconciles to awaiting_followup correctly', async () => {
+    // Import helpers we need
+    const { generateJobId, getJobsDir } = await import('../dist/index.js');
+    const { mkdirSync, writeFileSync } = await import('node:fs');
+    const { join: pathJoin } = await import('node:path');
+
+    // Write a hand-crafted v1 job record to disk (mirrors migration.test.mjs pattern)
+    const jobId = generateJobId();
+    const activityTs = '2026-05-31T12:00:00.000Z';
+    const v1Record = {
+      jobId,
+      schemaVersion: 1,
+      createdAt: activityTs,
+      updatedAt: activityTs,
+      status: 'completed',
+      codex: { pluginVersion: '0.0.0', cwd: '/repo' },
+      workspace: { root: '/repo' },
+      driver: { name: 'claude-background', version: '0.0.0', capabilitiesSnapshot: {} },
+      claude: {
+        version: '2.1.149',
+        shortId: 'abcd1234',
+        sessionName: 'bg-abcd1234',
+        cwd: '/repo',
+        logsCommand: 'claude logs abcd1234',
+      },
+      prompt: { summary: 'v1 migration test', sha256: 'aabbccdd', bytesLen: 17 },
+      result: {
+        finalMessagePath: '/tmp/result.md',
+        finalMessagePreview: 'v1 completed result',
+      },
+    };
+
+    const jobsDir = getJobsDir();
+    mkdirSync(jobsDir, { recursive: true });
+    writeFileSync(pathJoin(jobsDir, `${jobId}.json`), JSON.stringify(v1Record));
+
+    // Reconcile: adapter reports idle, now is 1ms after activity → should be awaiting_followup
+    const nowFn = () => '2026-05-31T12:00:00.001Z';
+    const adapter = fakeAdapter({ status: { value: 'idle' } });
+    const result = await reconcileJob(jobId, adapter, {
+      now: nowFn,
+      followupTtlMs: 30 * 60 * 1000,
+    });
+
+    assert.equal(
+      result.job.status,
+      'awaiting_followup',
+      'v1 migrated record with idle driver + completed turn + TTL not elapsed should yield awaiting_followup',
+    );
+    assert.equal(result.job.schemaVersion, 2, 'migrated record should be schemaVersion 2');
+  });
+
+  // T7 test: awaiting_followup does NOT force turns[last].status
+  // (the latest turn IS completed; job is reusable — turn status should remain completed)
+  it('awaiting_followup job leaves turns[last].status as completed (not overwritten)', async () => {
+    const activityTs = '2026-05-31T12:00:00.000Z';
+    const nowFn = () => '2026-05-31T12:00:00.001Z';
+
+    const job = await createJob(makeJobInput());
+    await setupCompletedTurn(job.jobId, activityTs);
+
+    const adapter = fakeAdapter({ status: { value: 'idle' } });
+    const result = await reconcileJob(job.jobId, adapter, {
+      now: nowFn,
+      followupTtlMs: 30 * 60 * 1000,
+    });
+
+    assert.equal(result.job.status, 'awaiting_followup');
+    const lastTurn = result.job.turns[result.job.turns.length - 1];
+    assert.equal(
+      lastTurn.status,
+      'completed',
+      'awaiting_followup should leave turns[last].status = completed (not overwritten)',
+    );
+  });
+
+  // T7 test: needs_input syncs to turns[last].status
+  it('needs_input status propagates to turns[last].status', async () => {
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapter({ status: { value: 'needs_input' } });
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(result.job.status, 'needs_input');
+    const lastTurn = result.job.turns[result.job.turns.length - 1];
+    assert.equal(
+      lastTurn.status,
+      'needs_input',
+      'needs_input should propagate to turns[last].status',
+    );
+  });
+
+  // Plan 0002 T7 — Subagent C finding M1 regression guard.
+  // Empty-string `sidecar.output.result` must NOT suppress the logs fallback.
+  // The write-gate at the sidecar-result branch uses a truthy check (`""` is
+  // falsy → no result file written), so the logs-fallback skip-gate must use
+  // the same truthy semantics. If both gates disagree (one `!= null`, the
+  // other truthy), an empty-string sidecar result silently drops the result
+  // entirely — no result file from sidecar AND no logs fallback.
+  it('empty-string sidecar.output.result does not suppress logs fallback', async () => {
+    const job = await createJob(makeJobInput());
+    // Bring job to running first
+    const adapterRun = fakeAdapterWithSidecar({ status: { value: 'working' } });
+    await reconcileJob(job.jobId, adapterRun, { now });
+
+    // Now reconcile with completed driver + empty sidecar result + non-empty logs
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'completed' },
+      sidecar: { output: { result: '' } },
+      logs: { text: 'fallback message text from logs' },
+    });
+    const result = await reconcileJob(job.jobId, adapter, { now, readArtifacts: true });
+
+    assert.equal(result.job.status, 'completed');
+    // The result must be populated from the logs fallback (since the empty
+    // sidecar result didn't write a file).
+    assert.ok(result.job.result, 'result must be populated when logs fallback fires');
+    assert.ok(
+      result.job.result.finalMessagePreview.includes('fallback message text from logs'),
+      `expected logs text in result preview, got: ${result.job.result.finalMessagePreview}`,
+    );
+    // And no result-related warnings should be emitted for the absence of a
+    // sidecar result (sidecar returned a value, just empty — not null).
+    const sidecarWarnings = result.warnings.filter((w) => /sidecar/i.test(w.message));
+    assert.equal(
+      sidecarWarnings.length,
+      0,
+      `no sidecar warnings expected for empty result, got: ${JSON.stringify(sidecarWarnings)}`,
+    );
+  });
+
+  // Plan 0002 T7 — Subagent C finding M2 regression guard.
+  // Future timestamps (e.g. clock skew between writers and readers) must be
+  // treated as TTL-elapsed. Without this guard, a record whose `latestTurn.
+  // endedAt` is in the future (relative to the injected `now`) would yield
+  // `nowMs - parsed < 0 < ttlMs` and stay stuck in awaiting_followup until
+  // the system clock caught up.
+  it('future timestamps treat TTL as elapsed (defensive against clock skew)', async () => {
+    const job = await createJob(makeJobInput());
+    // Bring job to completed-turn so we can test the idle + completed + TTL branch.
+    const adapterCompleted = fakeAdapter({ status: { value: 'completed' } });
+    await reconcileJob(job.jobId, adapterCompleted, { now });
+
+    // Now reconcile with idle adapter and an injected `now` BEFORE the job's
+    // updatedAt (i.e., timestamps look "in the future" from the reconciler's
+    // perspective). Pick a `now` well before the system clock so any
+    // automatically-stamped real timestamps (createdAt, updatedAt) are in
+    // the future too.
+    const pastNow = () => '2000-01-01T00:00:00.000Z';
+    const adapterIdle = fakeAdapter({ status: { value: 'idle' } });
+    const result = await reconcileJob(job.jobId, adapterIdle, { now: pastNow });
+
+    // Without the M2 fix this would land in `awaiting_followup`. With the
+    // fix, future timestamps are treated as elapsed → `completed`.
+    assert.equal(
+      result.job.status,
+      'completed',
+      'future timestamps must be treated as TTL-elapsed (M2 defensive guard)',
     );
   });
 });

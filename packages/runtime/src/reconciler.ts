@@ -14,11 +14,35 @@ import {
   updateJob,
 } from './job-store.js';
 import { ensureCompanionDirs, getJobResultPath } from './paths.js';
-import type { SessionStatus, SessionStatusValue } from './driver.js';
+import type { SessionStatus, SessionStatusValue, TurnStatus } from './driver.js';
 import type { DriverEvent } from './events.js';
 import type { JobRecord, JobStatus, ResultContext } from './types.js';
 
 // ---------- public interface types ----------
+
+/**
+ * Runtime-local SidecarSnapshot. Intentionally NOT imported from the driver package
+ * (architectural invariant: packages/runtime must not import driver packages).
+ * This is a duck-typed subset of the driver-side SidecarSnapshot.
+ */
+export interface SidecarSnapshot {
+  state?: string;
+  tempo?: string;
+  inFlight?: {
+    tasks?: number;
+    queued?: number;
+    kinds?: string[];
+  };
+  output?: {
+    result?: string;
+  };
+  linkScanPath?: string;
+  resumeSessionId?: string;
+  intent?: string;
+  cliVersion?: string;
+  cwd?: string;
+  raw?: unknown;
+}
 
 export interface ReconcilerSessionRef {
   driverName: string;
@@ -45,6 +69,7 @@ export interface ReconcilerAdapter {
   status(session: ReconcilerSessionRef): Promise<SessionStatus>;
   readTranscriptEvents?(session: ReconcilerSessionRef): Promise<ReconcilerTranscriptResult>;
   readLogs?(session: ReconcilerSessionRef): Promise<ReconcilerLogsResult>;
+  readSidecar?(session: ReconcilerSessionRef): Promise<SidecarSnapshot | null>;
 }
 
 export interface ReconcileOptions {
@@ -54,6 +79,20 @@ export interface ReconcileOptions {
   appendEvents?: boolean;
   /** test hook; defaults to () => new Date().toISOString() */
   now?: () => string;
+  /**
+   * TTL after which an idle-with-completed-turn job leaves awaiting_followup → completed.
+   * Default 30 * 60 * 1000 (30 minutes).
+   */
+  followupTtlMs?: number;
+}
+
+export interface StatusMappingInput {
+  driverValue: SessionStatusValue;
+  latestTurnStatus: TurnStatus;
+  previousJobStatus: JobStatus;
+  ttlElapsed: boolean;
+  isOrphan: boolean;
+  sidecar?: SidecarSnapshot | null;
 }
 
 export interface ReconcileWarning {
@@ -93,39 +132,127 @@ function refFromJob(job: JobRecord): ReconcilerSessionRef {
   };
 }
 
-// Plan 0001 is start-only: each delegate call creates one fresh background session
-// for one task. When the driver reports `idle` after that turn, the agent has
-// finished the delegated work and is awaiting further input. With no companion-
-// session reuse and no prompt injection in v1, that state is effectively `completed`
-// for this job — so `result` works without requiring an explicit stop first.
-// Plan 0002 may need a richer state model once session reuse exists.
-const STATUS_MAP: Record<SessionStatusValue, JobStatus | 'keep' | 'queued-or-starting-to-running'> =
-  {
-    queued: 'queued',
-    starting: 'starting',
-    working: 'running',
-    idle: 'completed',
-    needs_input: 'needs_input',
-    completed: 'completed',
-    failed: 'failed',
-    stopped: 'stopped',
-    orphaned: 'orphaned',
-    unknown: 'queued-or-starting-to-running',
-  };
+const DEFAULT_FOLLOWUP_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
-function mapSessionStatus(value: SessionStatusValue, previousStatus: JobStatus): JobStatus {
-  const mapped = STATUS_MAP[value];
-  if (mapped === 'keep') {
-    return previousStatus;
+/**
+ * Determines whether the followup TTL has elapsed for a given job.
+ *
+ * Activity timestamp lookup order:
+ *   1. latestTurn.endedAt
+ *   2. latestTurn.startedAt
+ *   3. job.updatedAt
+ *   4. job.createdAt
+ *
+ * If the parsed timestamp is NaN → treat TTL as elapsed (defensive against bad data;
+ * prevents stuck awaiting_followup).
+ */
+function computeTtlElapsed(job: JobRecord, nowMs: number, ttlMs: number): boolean {
+  const latestTurn = job.turns.length > 0 ? job.turns[job.turns.length - 1] : undefined;
+
+  const candidates = [latestTurn?.endedAt, latestTurn?.startedAt, job.updatedAt, job.createdAt];
+
+  for (const ts of candidates) {
+    if (ts == null) continue;
+    const parsed = Date.parse(ts);
+    if (Number.isNaN(parsed)) {
+      // Bad data — treat TTL as elapsed to prevent stuck awaiting_followup
+      return true;
+    }
+    // Future timestamps (clock skew or manual record edit) are also treated as
+    // elapsed — defensive against a one-sided check that would leave such jobs
+    // stuck in awaiting_followup until the system clock caught up.
+    if (parsed > nowMs) return true;
+    return nowMs - parsed >= ttlMs;
   }
-  if (mapped === 'queued-or-starting-to-running') {
-    // unknown: keep previous unless it's queued/starting → then move to running
-    if (previousStatus === 'queued' || previousStatus === 'starting') {
+
+  // No timestamps at all — treat TTL as elapsed
+  return true;
+}
+
+/**
+ * Context-aware status mapping (Plan 0002 T7).
+ *
+ * Replaces the Plan 0001 static STATUS_MAP with a function that considers:
+ *   - The driver's reported session status value
+ *   - The most recent turn's status
+ *   - Whether the 30-minute TTL has elapsed
+ *   - Whether the session is orphaned
+ *   - Optional sidecar hints (best-effort; null/undefined → skip)
+ *
+ * Precedence order (top wins):
+ *   1. isOrphan → orphaned
+ *   2. Sidecar waiting hint → needs_input
+ *   3. Sidecar inFlight tasks/queued > 0 (overrides driver-idle) → running
+ *   4. Driver value mapping (see switch below)
+ *   5. Default fallback: previousJobStatus
+ */
+export function mapStatus(input: StatusMappingInput): JobStatus {
+  const { driverValue, latestTurnStatus, previousJobStatus, ttlElapsed, isOrphan, sidecar } = input;
+
+  // 1. Orphan check
+  if (isOrphan) return 'orphaned';
+
+  // 2. Sidecar waiting hint
+  if (sidecar != null) {
+    if (sidecar.state === 'waiting' || sidecar.inFlight?.kinds?.includes('permission')) {
+      return 'needs_input';
+    }
+
+    // 3. Sidecar inFlight tasks active — override driver-idle
+    const tasks = sidecar.inFlight?.tasks ?? 0;
+    const queued = sidecar.inFlight?.queued ?? 0;
+    if ((tasks > 0 || queued > 0) && driverValue === 'idle') {
       return 'running';
     }
-    return previousStatus;
   }
-  return mapped;
+
+  // 4. Driver value mapping
+  switch (driverValue) {
+    case 'working':
+      return 'running';
+    case 'needs_input':
+      return 'needs_input';
+    case 'idle': {
+      switch (latestTurnStatus) {
+        case 'injecting':
+        case 'working':
+        case 'starting':
+          return 'running';
+        case 'needs_input':
+          return 'needs_input';
+        case 'failed':
+          return 'failed';
+        case 'completed':
+          return ttlElapsed ? 'completed' : 'awaiting_followup';
+        case 'queued':
+          // Defensive: a "queued" turn shouldn't pair with idle driver, treat as mid-work
+          return 'running';
+        default:
+          return previousJobStatus;
+      }
+    }
+    case 'completed':
+      return 'completed';
+    case 'failed':
+      return 'failed';
+    case 'stopped':
+      return 'stopped';
+    case 'orphaned':
+      return 'orphaned';
+    case 'queued':
+      return 'queued';
+    case 'starting':
+      return 'starting';
+    case 'unknown':
+      // Preserve previous unless it's queued/starting → then move to running
+      if (previousJobStatus === 'queued' || previousJobStatus === 'starting') {
+        return 'running';
+      }
+      return previousJobStatus;
+    default:
+      // Exhaustive fallback
+      return previousJobStatus;
+  }
 }
 
 const PREVIEW_MAX = 160;
@@ -168,6 +295,7 @@ export async function reconcileJob(
   options?: ReconcileOptions,
 ): Promise<ReconcileResult> {
   const now = options?.now ?? (() => new Date().toISOString());
+  const followupTtlMs = options?.followupTtlMs ?? DEFAULT_FOLLOWUP_TTL_MS;
   const readArtifacts = options?.readArtifacts !== false;
   const doAppendEvents = options?.appendEvents !== false;
 
@@ -193,10 +321,37 @@ export async function reconcileJob(
     warnings.push({ message: `adapter.status failed: ${msg}`, cause: err });
   }
 
+  // Step 2b: read sidecar (best-effort)
+  let sidecar: SidecarSnapshot | null = null;
+  if (adapter.readSidecar) {
+    try {
+      sidecar = await adapter.readSidecar(refFromJob(job));
+      // null return means sidecar absent — no warning, just continue
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      warnings.push({ message: `sidecar read failed: ${msg}`, cause: err });
+      // sidecar stays null — continue without it
+    }
+  }
+
   // Step 3: compute next status
   let nextStatus: JobStatus = previousStatus;
   if (!statusCallFailed && sessionStatus !== null) {
-    nextStatus = mapSessionStatus(sessionStatus.value, previousStatus);
+    const latestTurn = job.turns.length > 0 ? job.turns[job.turns.length - 1] : undefined;
+    const latestTurnStatus: TurnStatus = latestTurn?.status ?? 'queued';
+    const nowMs = Date.parse(now());
+    const ttlElapsed = computeTtlElapsed(job, nowMs, followupTtlMs);
+    // isOrphan: driver reports orphaned value
+    const isOrphan = sessionStatus.value === 'orphaned';
+
+    nextStatus = mapStatus({
+      driverValue: sessionStatus.value,
+      latestTurnStatus,
+      previousJobStatus: previousStatus,
+      ttlElapsed,
+      isOrphan,
+      sidecar,
+    });
 
     // Non-destructively update claude fields
     if (sessionStatus.sessionId != null) {
@@ -284,7 +439,29 @@ export async function reconcileJob(
       }
     }
 
-    // Logs fallback: when no transcript OR transcript had no final assistant message
+    // Sidecar result source: if transcript produced no result, try sidecar.output.result
+    const transcriptProducedResult =
+      transcriptSucceeded &&
+      transcriptEventsForResult !== null &&
+      transcriptEventsForResult.some(
+        (ev) => ev.type === 'message.completed' && ev.role === 'assistant',
+      );
+
+    if (!transcriptProducedResult && sidecar?.output?.result) {
+      const sidecarResultText = sidecar.output.result;
+      if (sidecarResultText.trim().length > 0) {
+        const resultPath = getJobResultPath(jobId);
+        await ensureCompanionDirs();
+        await writeFile(resultPath, sidecarResultText, 'utf8');
+        const preview = makePreview(sidecarResultText);
+        newResult = {
+          finalMessagePath: resultPath,
+          finalMessagePreview: preview,
+        };
+      }
+    }
+
+    // Logs fallback: when no transcript AND no sidecar result
     const needsLogsFallback =
       !transcriptAttempted ||
       !transcriptSucceeded ||
@@ -293,7 +470,16 @@ export async function reconcileJob(
           (ev) => ev.type === 'message.completed' && ev.role === 'assistant',
         ));
 
-    if (needsLogsFallback && adapter.readLogs) {
+    // Skip logs fallback if sidecar already provided a non-empty result.
+    // Use a `.trim()`-truthy check to mirror the write-gate at the sidecar-result
+    // branch above: an empty-string `sidecar.output.result` was NOT written to
+    // disk, so the logs fallback must still fire in that case.
+    const sidecarProducedResult =
+      !transcriptProducedResult &&
+      typeof sidecar?.output?.result === 'string' &&
+      sidecar.output.result.trim().length > 0;
+
+    if (needsLogsFallback && !sidecarProducedResult && adapter.readLogs) {
       try {
         const logsResult = await adapter.readLogs(refFromJob(job));
         // Write logs result only when next status === 'completed' and text non-empty
@@ -326,7 +512,7 @@ export async function reconcileJob(
   patched.result = newResult;
 
   // Mirror result to the last turn so turns[] stays in sync with compat aliases.
-  // Also set turn endedAt and status when the job has reached a terminal state.
+  // Also sync turn status with the computed job status (T7 turn-status synchronization).
   if (patched.turns.length > 0) {
     const last = patched.turns[patched.turns.length - 1]!;
     if (newResult !== undefined) {
@@ -334,8 +520,23 @@ export async function reconcileJob(
       last.usageSnapshot = newResult.usageSnapshot;
       last.endedAt = last.endedAt ?? new Date().toISOString();
     }
-    if (nextStatus === 'completed') last.status = 'completed';
-    if (nextStatus === 'failed') last.status = 'failed';
+
+    // Turn status sync rules (T7):
+    // - running: leave turn status alone (don't churn working/injecting/starting/queued)
+    // - needs_input: propagate to turn
+    // - failed: propagate to turn (T6 already did this)
+    // - completed: propagate to turn (T6 already did this)
+    // - awaiting_followup: the latest turn IS completed; the job is reusable → leave turn as-is
+    // - stopped / orphaned: preserve whatever status the turn has
+    if (nextStatus === 'needs_input') {
+      last.status = 'needs_input';
+    } else if (nextStatus === 'completed') {
+      last.status = 'completed';
+    } else if (nextStatus === 'failed') {
+      last.status = 'failed';
+    }
+    // awaiting_followup, running, stopped, orphaned: do not force turn status
+
     syncCompatAliases(patched);
   }
 
@@ -361,12 +562,17 @@ export async function reconcileJob(
       // patched.turns carries the turn-level result/status/endedAt updates.
       // Use patched.turns whenever the reconciler mutated them — either because a
       // new result landed OR because the job transitioned to a terminal status
-      // (completed/failed), which also stamps `turns[last].status` and `endedAt`.
-      // Without the terminal-status branch, a status-only `running → failed`
-      // transition would silently lose the last-turn status update (the in-memory
-      // `patched.turns[last].status` would be set but never persisted).
+      // (completed/failed/needs_input/awaiting_followup), which also stamps turn state.
+      // Without these branches, a status-only transition would silently lose the
+      // last-turn status update (the in-memory patched.turns[last].status would be
+      // set but never persisted).
       const turnsChanged =
-        resultChanged || (statusChanged && (nextStatus === 'completed' || nextStatus === 'failed'));
+        resultChanged ||
+        (statusChanged &&
+          (nextStatus === 'completed' ||
+            nextStatus === 'failed' ||
+            nextStatus === 'needs_input' ||
+            nextStatus === 'awaiting_followup'));
       const mergedTurns = turnsChanged ? patched.turns : current.turns;
       const merged = {
         ...current,

@@ -820,7 +820,75 @@ describe('stop workspace-scoped prefix resolution (A3)', () => {
   });
 });
 
-// ---------- Test 19: real ~/.claude and ~/.codex are NOT touched ----------
+// ---------- Test 19 (T7): cmdResult prints results for awaiting_followup jobs ----------
+
+describe('result for an awaiting_followup job (plan 0002 T7)', () => {
+  it('exits 0 and prints result content for a job with status awaiting_followup', () => {
+    const jobId = `job_afup_${createHash('sha256').update('t7-awaiting-followup').digest('hex').slice(0, 8)}`;
+    const resultContent = 'Awaiting follow-up result content.';
+
+    // Write a synthetic job with status: 'awaiting_followup' by using
+    // writeSyntheticCompletedJob and then overriding the status field on disk.
+    const { jobId: writtenJobId } = writeSyntheticCompletedJob({
+      jobId,
+      resultContent,
+      prompt: 'plan 0002 T7 awaiting followup test',
+    });
+
+    // Override status to 'awaiting_followup' on disk
+    const recordPath = join(TMP_HOME, 'jobs', `${writtenJobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    record.status = 'awaiting_followup';
+    writeFileSync(recordPath, JSON.stringify(record, null, 2));
+
+    const result = runDispatcher(['result', jobId]);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 for awaiting_followup job, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    assert.ok(
+      result.stdout.includes(resultContent),
+      `expected result content "${resultContent}" in stdout; got:\n${result.stdout}`,
+    );
+  });
+
+  it('exits 0 with JSON output for an awaiting_followup job', () => {
+    const jobId = `job_afup_${createHash('sha256').update('t7-awaiting-followup-json').digest('hex').slice(0, 8)}`;
+    const resultContent = 'JSON awaiting_followup result.';
+
+    const { jobId: writtenJobId } = writeSyntheticCompletedJob({
+      jobId,
+      resultContent,
+      prompt: 'plan 0002 T7 awaiting followup json test',
+    });
+
+    const recordPath = join(TMP_HOME, 'jobs', `${writtenJobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    record.status = 'awaiting_followup';
+    writeFileSync(recordPath, JSON.stringify(record, null, 2));
+
+    const result = runDispatcher(['result', jobId, '--json']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 for awaiting_followup job --json, got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout is not valid JSON: ${result.stdout}`);
+
+    assert.equal(parsed.ok, true, `expected ok:true; got: ${JSON.stringify(parsed)}`);
+    const body = JSON.stringify(parsed);
+    assert.ok(body.includes(resultContent), `expected resultContent in JSON output; got:\n${body}`);
+  });
+});
+
+// ---------- Test 19 (original): real ~/.claude and ~/.codex are NOT touched ----------
 
 describe('isolation: real ~/.claude and ~/.codex are not touched', () => {
   it('test job IDs do not appear under the real ~/.codex/cc-plugin-codex/jobs/', () => {

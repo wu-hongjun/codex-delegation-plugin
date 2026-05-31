@@ -15,9 +15,9 @@ The executable lives at `tools/mock-claude/claude` and supports exactly the surf
 | `claude --bg --help` (plan 0002) | Prints `--bg` usage and exits 0 without starting a session, when `bgNoPromptAvailable = true` (default). Writes `claude: '--bg' does not accept '--help'` to stderr and exits 1 when `bgNoPromptAvailable = false`. |
 | `claude agents --json` | Prints a JSON array of live sessions to stdout. Schema depends on `agentsJsonSchema`. Returns malformed JSON (exit 0) when `agentsJsonMalformed = true`. Writes `"agents error\n"` to stderr and exits 1 when `agentsJsonFails = true`. |
 | `claude attach --help` (plan 0002) | Prints `Usage: claude attach <id>\n  Open the background session in this terminal. Detach with Ctrl+Z; the session keeps running.` and exits 0, when `attachHelpAvailable = true` (default). Writes `claude: 'attach' is not a known command` to stderr and exits 1 when `attachHelpAvailable = false`. |
-| `claude attach <id>` (plan 0002) | T2 stub: exits 1 with a "PTY emulation not implemented in mock-claude yet (plan 0002 T3)" message on stderr. Full PTY emulation lands in T3. |
+| `claude attach <id>` (plan 0002) | Full PTY-attach emulation. Exits 1 with `unknown session: <id>; cannot attach` if the session is not found. Otherwise enters an interactive byte-reading loop: `Ctrl+Z` (`0x1a`) detaches immediately; `\r`/`\n` submits the accumulated buffer as a prompt; each other byte is appended to the buffer. Writes the scripted response (`attachResponse` with `${prompt}` substituted) to stdout and updates the sidecar. When `permissionStall = true`, the first submit transitions the sidecar to `waiting`, writes a permission prompt to stdout, then resumes on the next submit. See **Lifecycle transitions** below. |
 | `claude logs <id>` | Streams the log file for the matching `shortId` or `sessionId`. Exits 1 on unknown id or when `logsFail = true`. |
-| `claude stop <id>` | Marks the session `stopped`, appends a log line, exits 0. Exits 1 on unknown id. |
+| `claude stop <id>` | Marks the session `stopped`, appends a log line, writes the sidecar to `state: "stopped"`, exits 0. Exits 1 on unknown id. |
 
 `claude --help` lists `--bg` only when `helpListsBg = true`.
 
@@ -50,7 +50,11 @@ Configured via two env vars:
 
   // Plan 0002 T2: doctor-probe targets for follow-up capability.
   "attachHelpAvailable": true,         // default: `claude attach --help` prints usage, exits 0
-  "bgNoPromptAvailable": true          // default: `claude --bg --help` prints usage, exits 0
+  "bgNoPromptAvailable": true,         // default: `claude --bg --help` prints usage, exits 0
+
+  // Plan 0002 T3: PTY-attach emulation.
+  "attachResponse": "[mock] Got: ${prompt}",  // response template; ${prompt} is substituted
+  "permissionStall": false             // when true, first attach submit triggers waiting state
 }
 ```
 
@@ -128,11 +132,102 @@ Inside `CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME`:
 ├── projects/
 │   └── <sanitized-cwd>/
 │       └── <sessionId>.jsonl    starter transcript
-└── logs/
-    └── <shortId>.log
+├── logs/
+│   └── <shortId>.log
+└── jobs/
+    └── <shortId>/
+        ├── state.json       sidecar: latest state (overwritten on each transition)
+        └── timeline.jsonl   sidecar: append-only per-transition log
 ```
 
 The internal `state.json` always stores all fields (`shortId`, `sessionId`, `name`, `cwd`, `pid`, `status`, `startedAt`, `updatedAt`, `transcriptPath`, `logPath`, `prompt`) regardless of schema mode. The schema mode only affects what `claude agents --json` outputs.
+
+## Sidecar schema (Plan 0002 T3)
+
+`<HOME>/jobs/<shortId>/state.json` shape (mirrors real Claude Code 2.1.149):
+
+```jsonc
+{
+  "state": "idle" | "working" | "waiting" | "done" | "stopped",
+  "tempo": "idle" | "active",
+  "inFlight": { "tasks": 0|1, "queued": 0, "kinds": [] | ["permission"] },
+  "output": { "result": "<latest assistant message>" },  // present after first turn
+  "linkScanPath": "<absolute path to <HOME>/projects/<sanitized-cwd>/<sessionId>.jsonl>",
+  "template": "bg",
+  "intent": "<original prompt or empty string>",
+  "name": "<sessionName>",
+  "nameSource": "user",
+  "sessionId": "<UUID>",
+  "resumeSessionId": "<UUID>",
+  "daemonShort": "<shortId>",
+  "cliVersion": "<config.version>",
+  "cwd": "<absolute path>",
+  "backend": "daemon"
+}
+```
+
+`<HOME>/jobs/<shortId>/timeline.jsonl` per-line shape:
+
+```jsonc
+{ "at": "<ISO timestamp>", "state": "<state value>", "detail": "<prose>", "text": "<only on done>" }
+```
+
+## Lifecycle transitions (Plan 0002 T3)
+
+### Transition 1 — `cmdBg` with a prompt
+
+The sidecar transitions `working → done` synchronously before the process exits. In-memory `state.sessions[].status` remains `"working"` (legacy compat).
+
+1. `state.json`: `state: "working"`, `tempo: "active"`, `inFlight.tasks: 1`, `intent: <prompt>`.
+   `timeline.jsonl` appends: `{ at, state: "working", detail: "starting turn" }`.
+2. `state.json`: `state: "done"`, `tempo: "idle"`, `inFlight.tasks: 0`, `output.result: <response>`.
+   `timeline.jsonl` appends: `{ at, state: "done", detail: "turn complete", text: <response> }`.
+
+`<response>` is `config.attachResponse` with literal `${prompt}` substituted. Default: `"[mock] Got: ${prompt}"`.
+
+### Transition 2 — `cmdBg` without a prompt (no-prompt invocation)
+
+- `state.json`: `state: "idle"`, `tempo: "idle"`, `inFlight.tasks: 0`, `intent: ""`.
+- `timeline.jsonl` appends: `{ at, state: "idle", detail: "session created (idle, awaiting prompt)" }`.
+
+### Transition 3 — `cmdAttach <shortId>` (interactive, under node-pty)
+
+1. Resolve session by `shortId`. If not found → exit 1 with stderr `unknown session: <id>; cannot attach`.
+2. If `process.stdin.isTTY` → calls `process.stdin.setRawMode(true)`. Resumes stdin. Listens for `data`.
+3. Maintains per-attach `buf` (string), `awaitingPermissionAnswer` (boolean, initially false), `firstTurn` (boolean, initially true).
+4. On each byte:
+   - `0x1a` (Ctrl+Z) → `process.exit(0)`. Session stays alive; no sidecar mutation.
+   - `0x0d` or `0x0a` → submit: treat accumulated `buf` as prompt; clear `buf`; run submit flow.
+   - Any other byte → append to `buf`.
+5. Submit flow:
+   - If `config.permissionStall === true` AND `firstTurn === true` AND `awaitingPermissionAnswer === false`:
+     - `state.json` → `state: "waiting"`, `tempo: "idle"`, `inFlight.kinds: ["permission"]`.
+     - `timeline.jsonl` appends: `{ state: "waiting", detail: "agent requested permission" }`.
+     - Writes `"Permission required. Type your answer and press Enter:\r\n"` to stdout.
+     - Sets `awaitingPermissionAnswer = true`. Returns; waits for next submit.
+   - If `awaitingPermissionAnswer === true`:
+     - Clears `awaitingPermissionAnswer = false`. Uses the remembered prompt. Falls through.
+   - Process the turn:
+     - `state.json` → `state: "working"`, `tempo: "active"`, `inFlight.tasks: 1`, `intent: <prompt>`.
+     - `timeline.jsonl` appends: `{ state: "working", detail: "starting turn" }`.
+     - Writes `<response> + "\r\n"` to stdout.
+     - `state.json` → `state: "done"`, `tempo: "idle"`, `inFlight.tasks: 0`, `output.result: <response>`.
+     - `timeline.jsonl` appends: `{ state: "done", detail: "turn complete", text: <response> }`.
+     - Sets `firstTurn = false`.
+
+### Transition 4 — `cmdStop <shortId>`
+
+In addition to the existing legacy behavior (state.sessions update + log line + stdout):
+
+- `state.json` → `state: "stopped"`, `tempo: "idle"`, `inFlight.tasks: 0`.
+- `timeline.jsonl` appends: `{ at, state: "stopped", detail: "session stopped" }`.
+
+## New config flags (Plan 0002 T3)
+
+| Flag | Type | Default | Description |
+|---|---|---|---|
+| `attachResponse` | `string` | `"[mock] Got: ${prompt}"` | Response template for each turn. The literal substring `${prompt}` is replaced with the submitted prompt. Used by both `cmdAttach` and `cmdBg`. |
+| `permissionStall` | `boolean` | `false` | When `true`, the FIRST submit under each attach transitions the sidecar to `waiting` with `inFlight.kinds: ["permission"]`, writes a permission prompt to stdout, then continues after the next one-line input. Subsequent turns under the same attach do NOT re-trigger the stall. |
 
 ## Running tests
 

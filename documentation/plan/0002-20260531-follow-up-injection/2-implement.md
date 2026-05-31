@@ -107,13 +107,69 @@ The remaining bans (`driver-claude-code`, `claude -p`, `node-pty`) are the load-
 - `npm test` → 472 pass / 0 fail.
 - Doctor smoke test (against the real `node-pty` install on the maintainer's machine, Node 25.1.0 arm64): `ptyBuildExtraProbe.run({})` returns `{ status: 'ok', detail: 'node-pty PTY smoke passed (/bin/sh -c "echo ok").' }`.
 - Plan 0001 invariant `runtime/src` never imports `driver-claude-code` / `claude -p` / `node-pty` — still passing with the relaxed ban list.
-- Remote CI confirmation will be appended once T2 commit lands on `main`.
+- Remote CI on `8ad13ff` (run `26718681911`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+
+## T3 — Mock-claude attach PTY + sidecar emulation
+
+**Started**: 2026-05-31. **Status**: complete (pending CI confirmation).
+
+First T-task run under the subagent pattern (A executor + B test-engineer + C code-reviewer). Three subagents:
+
+- **Subagent A (executor, sonnet)** — owned the mock implementation in `tools/mock-claude/`. Replaced the T2 stub `cmdAttach` with full PTY-attach emulation, layered sidecar emulation onto `cmdBg`/`cmdStop`, and added two new config flags (`attachResponse`, `permissionStall`). Also made `tools/mock-claude/test/helpers.mjs#withIsolatedHome` async-aware so Subagent B's PTY tests could run cleanly.
+- **Subagent B (test-engineer, sonnet)** — owned `tools/mock-claude/test/attach.test.mjs` (new). Wrote 20 PTY-driven tests against the same contract spec A worked from, covering sidecar shape, lifecycle transitions, multi-turn attach, permission stall, `attachResponse` substitution, and stop-time sidecar writes.
+- **Subagent C (code-reviewer, opus)** — independent scope/contract/security review. Verdict: **`ready-for-T4`**. 0 critical/high/medium findings, 4 low + 2 nit (none blocking).
+
+### Files changed
+
+- `tools/mock-claude/claude` — sidecar helpers (`sidecarDir`, `writeSidecar`, `appendTimeline`, `buildSidecarBase`, `formatResponse`); `cmdBg` writes sidecar on every invocation (no-prompt: `state: "idle"` one timeline line; with-prompt: `working → done` two timeline lines); `cmdStop` adds a `stopped` sidecar transition; `cmdAttach` is now a real PTY-attached byte-reading loop (`\r`/`\n` submit, `0x1a` detach, others accumulate); `permissionStall: true` intercepts the first submit per attach. `cmdAttach` returns sentinel `-1` to keep the event loop alive; the main dispatch special-cases this so `process.exit` isn't called.
+- `tools/mock-claude/test/helpers.mjs` — `withIsolatedHome` now detects whether the callback returns a Promise and defers cleanup until the promise settles. Synchronous behavior unchanged.
+- `tools/mock-claude/test/attach.test.mjs` — new, 20 tests across 9 groups (sidecar-on-bg-with-prompt, sidecar-on-bg-no-prompt, attach-unknown-session, attach-help regression, PTY single-turn lifecycle, multi-turn, permission stall, attachResponse template, cmdStop sidecar).
+- `tools/mock-claude/README.md` — documented sidecar schema, four lifecycle transitions, two new config flags.
+
+### Decisions taken (not in the plan but consistent with it)
+
+- **Unknown-session error wording**: `"unknown session: <id>; cannot attach"` instead of plain `"unknown session: <id>"`. Reason: the pre-existing T2 stub test in `mock-claude.test.mjs` asserts on `/not implemented|cannot attach/`; the new wording matches that regex on the `cannot attach` arm while also matching the new `attach.test.mjs §3` regex `/unknown session/`. Both pass.
+- **`withIsolatedHome` async-aware**: needed for B's PTY tests, which use `await` inside the callback. The original helper deleted the temp dir before the promise settled, which broke the tests. The async path uses duck-typed `typeof result.then === 'function'` detection; sync callers are unchanged.
+- **`cmdAttach` sentinel `-1`** instead of `process.exit` — lets the event loop stay alive while the stdin reader processes bytes. Dispatcher main loop special-cases `-1` to mean "don't call process.exit; the command will exit itself on detach".
+- **No-prompt `--bg` banner** in legacy mode (`bgStdoutStyle: 'started-session'`) now includes `(idle)`. The contract didn't dictate the legacy no-prompt banner format; A picked a defensible wording. Existing tests pass.
+
+### Subagent C findings (severity + disposition)
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| L1 | low | B's report said 18 tests; the actual count is 20. Doc-only discrepancy. | Corrected here. |
+| L2 | low | `tools/mock-claude/test/mock-claude.test.mjs:471` ("rejects bare `attach` ... lands in T3") is now stale — bare `attach` is no longer a stub. Test still passes via the `\|cannot attach` regex arm but is redundant with the new `attach.test.mjs §3`. | Deferred to Stage 4 polish. |
+| L3 | low | `attach.test.mjs:330` had a dead OR arm — `r.stdout.includes('Usage:\s+claude attach')` is a literal-string includes, not a regex; `\s+` is the literal four characters. | **Fixed in this commit** — replaced the OR-with-dead-arm with `assert.match(r.stdout, /Usage:\s+claude attach/, ...)`. |
+| L4 | low | `attach.test.mjs:411` derives `derivedShort` but the OR-branch matching it is unreachable in real-2.1.149 mode (no `shortId` field). | Reviewer-blessed; left as-is. |
+| N1 | nit | `cmdAttach` accepts `\n` as well as `\r` for submit. Matches the contract. | OK, no change. |
+| N2 | nit | `setRawMode(true)` + `resume()` pattern at `cmdAttach`. Standard PTY raw-mode. | OK, no change. |
+
+### Test impact
+
+| Lane | Before T3 | After T3 | Δ |
+|---|---|---|---|
+| test:mock | 40 | 58 | +18 (20 new in `attach.test.mjs`; one T2 test stayed; mock-codex unchanged at 4) |
+| test:runtime | 94 | 94 | — |
+| test:driver | 121 | 121 | — |
+| test:plugin | 217 | 217 | — |
+| **Total** | **472** | **490** | **+18** |
+
+### Acceptance evidence (2026-05-31)
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean.
+- All four lanes green: mock 58 + runtime 94 + driver 121 + plugin 217 = 490 pass / 0 fail.
+- Sidecar smoke (manual): `CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME=<tmp> claude --bg "hello"` produces `<tmp>/jobs/<shortId>/state.json` with `state: "done"` and `<tmp>/jobs/<shortId>/timeline.jsonl` with two lines (`working`, then `done`). Verified by Subagent A as part of its acceptance check.
+- PTY attach smoke (under `node-pty`): exercised by `attach.test.mjs §5–§8` against the new `cmdAttach` — turn injection, multi-turn, permission stall, custom `attachResponse` all green.
+- Remote CI confirmation will be appended once T3 commit lands on `main`.
 
 ## Deviations from the plan
 
 - **node-pty version pin** (T1) — `^1.1.0` → `1.2.0-beta.13`. Reason: Node 25 ABI incompatibility with `1.1.0`. Maintainer approved.
-- **T2 absorbed minimal mock additions** that the plan listed under T3 (attach --help, --bg --help interception, jobs/ dir creation) — see T2 deviation above. The bigger T3 work (full PTY emulation under `attach <id>`, sidecar state.json/timeline.jsonl emulation, permission-prompt simulation) is still T3 scope.
-- **Architectural-invariant ban list relaxed** to drop `claude --bg` — see T2 deviation above. The load-bearing bans (`driver-claude-code`, `claude -p`, `node-pty`) remain.
+- **T2 absorbed minimal mock additions** that the plan listed under T3 (attach --help, --bg --help interception, jobs/ dir creation) — see T2 deviation above. The bigger T3 work (full PTY emulation under `attach <id>`, sidecar state.json/timeline.jsonl emulation, permission-prompt simulation) was completed in T3.
+- **Architectural-invariant ban list relaxed** (T2) to drop `claude --bg` — see T2 deviation above. The load-bearing bans (`driver-claude-code`, `claude -p`, `node-pty`) remain.
+- **`withIsolatedHome` async-aware refactor** (T3) — not pre-specified but necessary for PTY tests to clean up correctly after `await`-based callbacks. Sync callers are unchanged.
 
 ## Surprises
 

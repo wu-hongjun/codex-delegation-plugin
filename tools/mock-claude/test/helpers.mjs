@@ -39,12 +39,30 @@ export function cleanup(home) {
 
 export function withIsolatedHome(fn) {
   const home = makeTempHome();
+  let result;
   try {
-    return fn({
+    result = fn({
       home,
       env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: home },
     });
-  } finally {
+  } catch (err) {
     cleanup(home);
+    throw err;
   }
+  // If fn returned a Promise (async callback), defer cleanup until it settles.
+  if (result != null && typeof result.then === 'function') {
+    return result.then(
+      (v) => {
+        cleanup(home);
+        return v;
+      },
+      (err) => {
+        cleanup(home);
+        throw err;
+      },
+    );
+  }
+  // Synchronous path: cleanup immediately.
+  cleanup(home);
+  return result;
 }

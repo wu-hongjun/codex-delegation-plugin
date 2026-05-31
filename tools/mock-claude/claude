@@ -48,6 +48,12 @@ const DEFAULT_CONFIG = Object.freeze({
   // Plan 0002: whether `claude --bg --help` is recognized (true = real mode).
   // Flip to false in tests to exercise the doctor's claude-bg-no-prompt failure path.
   bgNoPromptAvailable: true,
+  // Plan 0002 T3: response template for attach and bg turns.
+  // The literal substring "${prompt}" is replaced with the submitted prompt.
+  attachResponse: '[mock] Got: ${prompt}',
+  // Plan 0002 T3: when true the FIRST submit under each attach transitions through
+  // a "waiting" (permission) state before processing the turn.
+  permissionStall: false,
 });
 
 function loadConfig() {
@@ -128,6 +134,45 @@ function nowISO() {
 
 function sanitizeCwd(cwd) {
   return cwd.replace(/[/\\:]/g, '-').replace(/^-+/, '') || 'root';
+}
+
+// ---------- sidecar helpers (Plan 0002 T3) ----------
+
+function sidecarDir(shortId) {
+  return join(HOME, 'jobs', shortId);
+}
+
+function writeSidecar(shortId, data) {
+  const dir = sidecarDir(shortId);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'state.json'), JSON.stringify(data, null, 2));
+}
+
+function appendTimeline(shortId, entry) {
+  const dir = sidecarDir(shortId);
+  mkdirSync(dir, { recursive: true });
+  appendFileSync(join(dir, 'timeline.jsonl'), JSON.stringify(entry) + '\n');
+}
+
+function buildSidecarBase(config, shortId, sessionId, sessionName, cwd, prompt) {
+  const sanitized = sanitizeCwd(cwd);
+  return {
+    template: 'bg',
+    intent: prompt,
+    name: sessionName,
+    nameSource: 'user',
+    sessionId,
+    resumeSessionId: sessionId,
+    daemonShort: shortId,
+    cliVersion: config.version,
+    cwd,
+    backend: 'daemon',
+    linkScanPath: join(HOME, 'projects', sanitized, `${sessionId}.jsonl`),
+  };
+}
+
+function formatResponse(config, prompt) {
+  return config.attachResponse.replace('${prompt}', prompt);
 }
 
 function findSession(state, id) {
@@ -272,14 +317,65 @@ function cmdBg(config, args) {
   });
   saveState(state);
 
+  // Plan 0002 T3: write sidecar files under <HOME>/jobs/<shortId>/
+  const base = buildSidecarBase(config, shortId, sessionId, sessionName, cwd, prompt);
+  if (!prompt) {
+    // No-prompt invocation: idle session
+    writeSidecar(shortId, {
+      ...base,
+      state: 'idle',
+      tempo: 'idle',
+      inFlight: { tasks: 0, queued: 0, kinds: [] },
+    });
+    appendTimeline(shortId, {
+      at: startedAt,
+      state: 'idle',
+      detail: 'session created (idle, awaiting prompt)',
+    });
+  } else {
+    // Prompt provided: working → done
+    writeSidecar(shortId, {
+      ...base,
+      state: 'working',
+      tempo: 'active',
+      inFlight: { tasks: 1, queued: 0, kinds: [] },
+    });
+    appendTimeline(shortId, { at: startedAt, state: 'working', detail: 'starting turn' });
+
+    const response = formatResponse(config, prompt);
+    writeSidecar(shortId, {
+      ...base,
+      state: 'done',
+      tempo: 'idle',
+      inFlight: { tasks: 0, queued: 0, kinds: [] },
+      output: { result: response },
+    });
+    appendTimeline(shortId, {
+      at: startedAt,
+      state: 'done',
+      detail: 'turn complete',
+      text: response,
+    });
+  }
+
   if (config.bgStdoutStyle === 'started-session') {
     // Legacy format
-    process.stdout.write(`Started background session ${shortId}\n`);
+    if (!prompt) {
+      process.stdout.write(`Started background session ${shortId} (idle)\n`);
+    } else {
+      process.stdout.write(`Started background session ${shortId}\n`);
+    }
   } else {
     // Real 2.1.149 format
-    process.stdout.write(
-      `Starting background service…\nbackgrounded · ${shortId}\n  claude agents             list sessions\n  claude attach ${shortId}   open in this terminal\n  claude logs ${shortId}     show recent output\n`,
-    );
+    if (!prompt) {
+      process.stdout.write(
+        `Starting background service…\nbackgrounded · ${shortId} (idle — send a prompt to start)\n  claude agents             list sessions\n  claude attach ${shortId}   open in this terminal\n  claude logs ${shortId}     show recent output\n`,
+      );
+    } else {
+      process.stdout.write(
+        `Starting background service…\nbackgrounded · ${shortId}\n  claude agents             list sessions\n  claude attach ${shortId}   open in this terminal\n  claude logs ${shortId}     show recent output\n`,
+      );
+    }
   }
   return 0;
 }
@@ -353,8 +449,7 @@ function cmdLogs(config, args) {
   return 0;
 }
 
-// Plan 0002: minimal `claude attach` support. T2 only needs --help text for the
-// doctor probe. Full PTY-emulation lands in T3.
+// Plan 0002 T3: full PTY-attach emulation for `claude attach <id>`.
 function cmdAttach(config, args) {
   const sub = args[0];
   if (sub === '--help' || sub === '-h') {
@@ -367,20 +462,137 @@ function cmdAttach(config, args) {
     );
     return 0;
   }
-  // Non-help attach: T2 doesn't exercise the PTY path. Return a placeholder error so
-  // any accidental invocation surfaces clearly. T3 will replace this with a real
-  // PTY-emulating readline loop.
   if (!sub) {
     process.stderr.write('usage: claude attach <id>\n');
     return 2;
   }
-  process.stderr.write(
-    `claude attach: PTY emulation not implemented in mock-claude yet (plan 0002 T3); cannot attach to ${sub}\n`,
-  );
-  return 1;
+
+  const state = loadState();
+  const session = findSession(state, sub);
+  if (!session) {
+    process.stderr.write(`unknown session: ${sub}; cannot attach\n`);
+    return 1;
+  }
+
+  // Set raw mode on stdin if it is a TTY (i.e. under node-pty).
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(true);
+  }
+  process.stdin.resume();
+
+  let buf = '';
+  let awaitingPermissionAnswer = false;
+  let firstTurn = true;
+  let pendingPrompt = '';
+
+  function processSubmit(rawBuf) {
+    const prompt = rawBuf;
+
+    // Permission stall path: first turn, not yet waiting for answer
+    if (config.permissionStall && firstTurn && !awaitingPermissionAnswer) {
+      pendingPrompt = prompt;
+
+      const now = nowISO();
+      const base = buildSidecarBase(
+        config,
+        session.shortId,
+        session.sessionId,
+        session.name,
+        session.cwd,
+        pendingPrompt,
+      );
+      writeSidecar(session.shortId, {
+        ...base,
+        state: 'waiting',
+        tempo: 'idle',
+        inFlight: { tasks: 0, queued: 0, kinds: ['permission'] },
+      });
+      appendTimeline(session.shortId, {
+        at: now,
+        state: 'waiting',
+        detail: 'agent requested permission',
+      });
+
+      process.stdout.write('Permission required. Type your answer and press Enter:\r\n');
+      awaitingPermissionAnswer = true;
+      return;
+    }
+
+    // Permission answer path: this submit IS the answer
+    if (awaitingPermissionAnswer) {
+      awaitingPermissionAnswer = false;
+      // Fall through with the original prompt, not the permission answer
+    } else {
+      pendingPrompt = prompt;
+    }
+
+    // Process the turn
+    const now = nowISO();
+    const base = buildSidecarBase(
+      config,
+      session.shortId,
+      session.sessionId,
+      session.name,
+      session.cwd,
+      pendingPrompt,
+    );
+
+    writeSidecar(session.shortId, {
+      ...base,
+      state: 'working',
+      tempo: 'active',
+      inFlight: { tasks: 1, queued: 0, kinds: [] },
+    });
+    appendTimeline(session.shortId, { at: now, state: 'working', detail: 'starting turn' });
+
+    const response = formatResponse(config, pendingPrompt);
+    process.stdout.write(response + '\r\n');
+
+    writeSidecar(session.shortId, {
+      ...base,
+      state: 'done',
+      tempo: 'idle',
+      inFlight: { tasks: 0, queued: 0, kinds: [] },
+      output: { result: response },
+    });
+    appendTimeline(session.shortId, {
+      at: now,
+      state: 'done',
+      detail: 'turn complete',
+      text: response,
+    });
+
+    firstTurn = false;
+  }
+
+  process.stdin.on('data', (chunk) => {
+    for (let i = 0; i < chunk.length; i++) {
+      const byte = typeof chunk[i] === 'number' ? chunk[i] : chunk.charCodeAt(i);
+      if (byte === 0x1a) {
+        // Ctrl+Z: detach immediately, no sidecar mutation
+        process.exit(0);
+      } else if (byte === 0x0d || byte === 0x0a) {
+        // Enter (\r or \n): submit
+        const submitted = buf;
+        buf = '';
+        processSubmit(submitted);
+      } else {
+        buf += String.fromCharCode(byte);
+      }
+    }
+  });
+
+  // Keep process alive while reading stdin; stdin 'end' means EOF → exit cleanly
+  process.stdin.on('end', () => {
+    process.exit(0);
+  });
+
+  // Return -1 to signal the caller that the process should NOT call process.exit()
+  // immediately; the event loop handles exit.
+  return -1;
 }
 
-function cmdStop(_config, args) {
+function cmdStop(config, args) {
   const id = args[0];
   if (!id) {
     process.stderr.write('usage: claude stop <id>\n');
@@ -398,6 +610,24 @@ function cmdStop(_config, args) {
   saveState(state);
   appendFileSync(session.logPath, `[${now}] Session ${session.shortId} stopped\n`);
   process.stdout.write(`Stopped session ${session.shortId}\n`);
+
+  // Plan 0002 T3: update sidecar to reflect stopped state
+  const base = buildSidecarBase(
+    config,
+    session.shortId,
+    session.sessionId,
+    session.name,
+    session.cwd,
+    session.prompt || '',
+  );
+  writeSidecar(session.shortId, {
+    ...base,
+    state: 'stopped',
+    tempo: 'idle',
+    inFlight: { tasks: 0, queued: 0, kinds: [] },
+  });
+  appendTimeline(session.shortId, { at: now, state: 'stopped', detail: 'session stopped' });
+
   return 0;
 }
 
@@ -447,7 +677,12 @@ function main() {
   }
   if (argv[0] === '--bg') return process.exit(cmdBg(config, argv.slice(1)));
   if (argv[0] === 'agents' && argv[1] === '--json') return process.exit(cmdAgentsJson(config));
-  if (argv[0] === 'attach') return process.exit(cmdAttach(config, argv.slice(1)));
+  if (argv[0] === 'attach') {
+    const rc = cmdAttach(config, argv.slice(1));
+    // rc === -1 means cmdAttach set up an event-loop listener; do not call exit() now.
+    if (rc !== -1) return process.exit(rc);
+    return;
+  }
   if (argv[0] === 'logs') return process.exit(cmdLogs(config, argv.slice(1)));
   if (argv[0] === 'stop') return process.exit(cmdStop(config, argv.slice(1)));
 

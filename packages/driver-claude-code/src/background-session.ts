@@ -1,0 +1,211 @@
+// claude --bg lifecycle for ClaudeBackgroundDriver.
+//
+// Owns: startSession() spawn + parse. Does NOT implement agents --json status,
+// transcript reading, log reading, reconciler, or any other lifecycle method.
+// Those land in later T-tasks per plan 0001.
+
+import { basename } from 'node:path';
+
+import { DriverError } from '@cc-plugin-codex/runtime';
+import type { SessionHandle, StartSessionOpts } from '@cc-plugin-codex/runtime';
+
+import { runCommand } from './process.js';
+import { DRIVER_NAME } from './types.js';
+import type { ClaudeBackgroundDriverOptions } from './types.js';
+
+// ---------- short ID parser (exported for unit tests) ----------
+//
+// Tolerant multi-format parser. Accepts at least:
+//   "backgrounded · 8f7f2405"          (real Claude 2.1.149)
+//   "Started background session abc123"
+//   "abc123"
+//   "Session abc123 started"
+//
+// Algorithm:
+//   1. Combine stdout + stderr, split on whitespace.
+//   2. PRIMARY: scan for the keyword "backgrounded" or "session" (case-insensitive).
+//      For each occurrence, scan forward for the next ID-shaped token, skipping
+//      symbolic separator tokens (e.g. the middle-dot "·"). This naturally handles
+//      "backgrounded · 8f7f2405" as well as "session abc123".
+//   3. Fallback A: if stdout has exactly one non-empty line that is itself an ID shape,
+//      use it (bare-ID output).
+//   4. Fallback B: last token matching ID_FALLBACK_PATTERN (digit-required). This avoids
+//      treating common English words as IDs.
+//   5. If all fail, return undefined.
+//
+// Does NOT throw — caller decides whether to surface DriverError.
+
+const ID_CONTEXTUAL_PATTERN = /^[a-zA-Z0-9_-]{4,}$/;
+const ID_FALLBACK_PATTERN = /^(?=[a-zA-Z0-9_-]*\d)[a-zA-Z0-9_-]{4,}$/;
+
+// Keywords whose next ID-shaped token is a session ID.
+const KEYWORDS_PRIMARY = ['backgrounded', 'session'];
+
+function nextIdToken(tokens: string[], from: number): string | undefined {
+  for (let j = from; j < tokens.length; j++) {
+    const t = tokens[j]!;
+    if (ID_CONTEXTUAL_PATTERN.test(t)) return t;
+  }
+  return undefined;
+}
+
+export function parseShortId(stdout: string, stderr: string): string | undefined {
+  const combined = `${stdout}\n${stderr}`;
+  const tokens = combined.split(/\s+/).filter((t) => t.length > 0);
+
+  // Strategy 1: token after a primary keyword ("backgrounded" or "session").
+  // Scanning forward from index i+1 skips symbolic separators like "·".
+  for (let i = 0; i < tokens.length - 1; i++) {
+    if (KEYWORDS_PRIMARY.includes(tokens[i]!.toLowerCase())) {
+      const candidate = nextIdToken(tokens, i + 1);
+      if (candidate) return candidate;
+    }
+  }
+
+  // Strategy 2 (fallback A): stdout is a single non-empty line that is itself ID-shaped.
+  const stdoutLines = stdout
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  if (stdoutLines.length === 1 && ID_CONTEXTUAL_PATTERN.test(stdoutLines[0]!)) {
+    return stdoutLines[0]!;
+  }
+
+  // Strategy 3 (fallback B): last token matching the digit-requiring fallback pattern.
+  for (let i = tokens.length - 1; i >= 0; i--) {
+    const t = tokens[i]!;
+    if (ID_FALLBACK_PATTERN.test(t)) {
+      return t;
+    }
+  }
+
+  return undefined;
+}
+
+// ---------- arg builder ----------
+//
+// Builds the argv array for `claude --bg`. Uses an array, never a shell string.
+// OQ1: --permission-mode is only appended when opts.permissionMode is supplied.
+//      No bypass flags are ever added.
+// OQ2: opts.allowEdit is kept on StartSessionOpts but NOT translated into a CLI flag here.
+//      // future: v1 policy/UX flag — when OFF the caller should frame the prompt as
+//      // read-only/review-oriented; this is NOT a sandbox, enforcement is Claude Code's
+//      // own permission system. See plan 0001 § 3.8 OQ2.
+
+function buildArgv(sessionName: string, opts: StartSessionOpts): string[] {
+  const argv: string[] = ['--bg', '--name', sessionName];
+
+  if (opts.model) {
+    argv.push('--model', opts.model);
+  }
+  if (opts.effort) {
+    argv.push('--effort', opts.effort);
+  }
+  if (opts.permissionMode) {
+    // OQ1: only pass --permission-mode when the caller explicitly set it.
+    argv.push('--permission-mode', opts.permissionMode);
+  }
+  for (const dir of opts.addDirs ?? []) {
+    argv.push('--add-dir', dir);
+  }
+  if (opts.mcpConfig) {
+    argv.push('--mcp-config', opts.mcpConfig);
+  }
+
+  // Prompt is the final positional argument.
+  argv.push(opts.prompt);
+
+  return argv;
+}
+
+// ---------- common DriverError context ----------
+
+function errCtx(extra: { exitCode?: number; stdout?: string; stderr?: string; cause?: unknown }) {
+  return {
+    driverName: DRIVER_NAME,
+    operation: 'startSession' as const,
+    ...extra,
+  };
+}
+
+// ---------- startSession ----------
+
+export async function startSession(
+  opts: StartSessionOpts,
+  defaults: ClaudeBackgroundDriverOptions,
+): Promise<SessionHandle> {
+  // 1. Validate cwd.
+  if (!opts.cwd || opts.cwd.trim().length === 0) {
+    throw new DriverError('cwd is required', errCtx({}));
+  }
+
+  // 2. Validate prompt.
+  if (!opts.prompt || opts.prompt.trim().length === 0) {
+    throw new DriverError('prompt is required', errCtx({}));
+  }
+
+  // 3. Derive sessionName.
+  const sessionName =
+    opts.name && opts.name.trim().length > 0
+      ? opts.name.trim()
+      : `codex:${basename(opts.cwd)}:${Date.now().toString(36)}`;
+
+  // 4 & 5. Build argv (array, no shell string).
+  const argv = buildArgv(sessionName, opts);
+
+  // 6–9. Spawn, capture stdout/stderr, enforce timeout.
+  const timeoutMs = defaults.timeoutMs ?? 10000;
+  const env = defaults.env ? { ...process.env, ...defaults.env } : process.env;
+
+  const result = await runCommand('claude', argv, {
+    cwd: opts.cwd,
+    env,
+    timeoutMs,
+  });
+
+  // Map spawn error (ENOENT, EACCES, etc.) to DriverError.
+  if (result.spawnError) {
+    throw new DriverError(
+      `cannot run claude: ${result.spawnError.code ?? result.spawnError.message}`,
+      errCtx({ cause: result.spawnError }),
+    );
+  }
+
+  // Map timeout to DriverError.
+  if (result.timedOut) {
+    throw new DriverError(
+      `claude --bg timed out after ${timeoutMs}ms`,
+      errCtx({ stdout: result.stdout, stderr: result.stderr }),
+    );
+  }
+
+  // Map non-zero exit to DriverError.
+  if (result.exitCode !== 0) {
+    throw new DriverError(
+      `claude --bg exited ${result.exitCode}`,
+      errCtx({
+        exitCode: result.exitCode ?? undefined,
+        stdout: result.stdout,
+        stderr: result.stderr,
+      }),
+    );
+  }
+
+  // 10. Parse shortId from stdout (tolerant).
+  const shortId = parseShortId(result.stdout, result.stderr);
+  if (!shortId) {
+    throw new DriverError(
+      'could not parse short ID from claude --bg output',
+      errCtx({ stdout: result.stdout, stderr: result.stderr }),
+    );
+  }
+
+  // 11. Return SessionHandle. sessionId (long form) comes from agents --json in T7.
+  return {
+    driverName: DRIVER_NAME,
+    shortId,
+    sessionName,
+    cwd: opts.cwd,
+    startedAt: new Date().toISOString(),
+  };
+}

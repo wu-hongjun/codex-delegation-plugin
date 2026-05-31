@@ -1,0 +1,49 @@
+#!/usr/bin/env node
+// Mock `codex` binary used by cc-plugin-codex tests. Only implements `codex --version`
+// today — enough to satisfy the `codex-version` doctor probe without depending on a
+// real Codex install. Extend the surface only as future probes/skills need it.
+
+import { existsSync, readFileSync } from 'node:fs';
+
+const CONFIG_PATH = process.env.CC_PLUGIN_CODEX_MOCK_CODEX_CONFIG;
+
+const DEFAULT_CONFIG = Object.freeze({
+  version: 'codex-cli 0.0.0-mock',
+  versionFails: false,
+  sleepMs: 0,
+});
+
+function loadConfig() {
+  if (!CONFIG_PATH || !existsSync(CONFIG_PATH)) return { ...DEFAULT_CONFIG };
+  try {
+    return { ...DEFAULT_CONFIG, ...JSON.parse(readFileSync(CONFIG_PATH, 'utf8')) };
+  } catch {
+    return { ...DEFAULT_CONFIG };
+  }
+}
+
+function maybeSleep(config) {
+  if (typeof config.sleepMs === 'number' && config.sleepMs > 0) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, config.sleepMs);
+  }
+}
+
+function main() {
+  const argv = process.argv.slice(2);
+  const config = loadConfig();
+  maybeSleep(config);
+
+  if (argv[0] === '--version') {
+    if (config.versionFails) {
+      process.stderr.write('codex error\n');
+      process.exit(1);
+    }
+    process.stdout.write(`${config.version}\n`);
+    process.exit(0);
+  }
+
+  process.stderr.write(`mock-codex: unsupported command: ${argv.join(' ') || '(none)'}\n`);
+  process.exit(2);
+}
+
+main();

@@ -1,0 +1,7 @@
+node_modules
+dist
+references
+.omc
+*.md
+documentation
+package-lock.json

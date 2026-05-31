@@ -1,0 +1,12 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.tsbuildinfo
+.DS_Store
+*.log
+.env
+.env.local
+.npm/
+.eslintcache
+coverage/
+.omc/

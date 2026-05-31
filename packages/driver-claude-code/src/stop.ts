@@ -1,0 +1,63 @@
+// stop.ts — `claude stop <shortId>` for ClaudeBackgroundDriver.
+
+import { DriverError } from '@cc-plugin-codex/runtime';
+import type { SessionHandle } from '@cc-plugin-codex/runtime';
+
+import { DEFAULT_TIMEOUT_MS, runCommand } from './process.js';
+import { DRIVER_NAME } from './types.js';
+
+// ---------- public types ----------
+
+export interface StopOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  timeoutMs?: number;
+}
+
+// ---------- stopSession ----------
+
+export async function stopSession(session: SessionHandle, options?: StopOptions): Promise<void> {
+  if (!session.shortId || session.shortId.trim().length === 0) {
+    throw new DriverError('stop requires a non-empty shortId on the session', {
+      driverName: DRIVER_NAME,
+      operation: 'stop',
+    });
+  }
+
+  const timeoutMs = options?.timeoutMs;
+  const result = await runCommand('claude', ['stop', session.shortId], {
+    cwd: options?.cwd,
+    env: options?.env,
+    timeoutMs,
+  });
+
+  const effective = timeoutMs ?? DEFAULT_TIMEOUT_MS;
+
+  if (result.spawnError) {
+    throw new DriverError(
+      `cannot run claude: ${result.spawnError.code ?? result.spawnError.message}`,
+      {
+        driverName: DRIVER_NAME,
+        operation: 'stop',
+        cause: result.spawnError,
+      },
+    );
+  }
+  if (result.timedOut) {
+    throw new DriverError(`claude stop timed out after ${effective}ms`, {
+      driverName: DRIVER_NAME,
+      operation: 'stop',
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+  if (result.exitCode !== 0) {
+    throw new DriverError(`claude stop ${session.shortId} exited ${result.exitCode}`, {
+      driverName: DRIVER_NAME,
+      operation: 'stop',
+      exitCode: result.exitCode ?? undefined,
+      stdout: result.stdout,
+      stderr: result.stderr,
+    });
+  }
+}

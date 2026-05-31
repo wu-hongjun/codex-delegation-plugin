@@ -1,0 +1,9 @@
+{"type":"meta","sessionId":"session-tools","startedAt":"2026-05-30T11:00:00.000Z"}
+{"type":"message","role":"user","content":"Edit README.","timestamp":"2026-05-30T11:00:01.000Z"}
+{"type":"tool_use","name":"Read","input":{"path":"README.md"},"timestamp":"2026-05-30T11:00:02.000Z"}
+{"type":"tool_result","name":"Read","content":"# Hello\n","timestamp":"2026-05-30T11:00:03.000Z"}
+{"type":"tool_use","name":"Edit","input":{"path":"README.md","new":"# Hi"},"timestamp":"2026-05-30T11:00:04.000Z"}
+{"type":"tool_result","name":"Edit","is_error":true,"content":"permission denied","timestamp":"2026-05-30T11:00:05.000Z"}
+{"type":"file_change","path":"README.md","op":"modify","timestamp":"2026-05-30T11:00:06.000Z"}
+{"usage":{"input_tokens":120,"output_tokens":40,"cache_read_input_tokens":5000,"cache_creation_input_tokens":800},"timestamp":"2026-05-30T11:00:07.000Z"}
+{"type":"message","role":"assistant","content":"Done.","timestamp":"2026-05-30T11:00:08.000Z"}

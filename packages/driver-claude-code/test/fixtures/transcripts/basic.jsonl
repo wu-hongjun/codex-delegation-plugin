@@ -1,0 +1,4 @@
+{"type":"meta","sessionId":"session-abc123","startedAt":"2026-05-30T10:00:00.000Z","cwd":"/home/user/repo","sessionName":"codex:repo:abc123"}
+{"type":"message","role":"user","content":"List the TODOs in this repo.","timestamp":"2026-05-30T10:00:01.000Z"}
+{"type":"message","role":"assistant","content":"I'll grep for TODO markers.","timestamp":"2026-05-30T10:00:02.000Z"}
+{"type":"message","role":"assistant","content":[{"type":"text","text":"Found 3 TODOs."},{"type":"text","text":"They are in src/a.ts, src/b.ts, src/c.ts."}],"timestamp":"2026-05-30T10:00:03.000Z"}

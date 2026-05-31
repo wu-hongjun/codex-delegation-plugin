@@ -1,0 +1,407 @@
+#!/usr/bin/env node
+// Mock `claude` binary for testing cc-plugin-codex without touching real Claude Code.
+//
+// This script intentionally implements only enough of the real `claude` command surface
+// to support the runtime, driver, and dispatcher tests in plan 0001. It is NOT a faithful
+// reimplementation. See tools/mock-claude/README.md for the contract.
+//
+// Environment:
+//   CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME   — state directory. Defaults to a safe temp path.
+//                                         Tests MUST set this to an isolated directory.
+//   CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG — path to a JSON config file controlling fixture
+//                                         behavior (version, authStatus, daemonStatus,
+//                                         bgFails, agentsJsonMalformed, logsFail,
+//                                         agentsJsonSchema, bgStdoutStyle,
+//                                         daemonAvailable, helpListsBg).
+//
+// The mock never writes to ~/.claude and never makes network calls.
+
+import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { randomBytes } from 'node:crypto';
+
+const DEFAULT_HOME = join(tmpdir(), 'cc-plugin-codex-mock-claude');
+const HOME = process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME || DEFAULT_HOME;
+const CONFIG_PATH = process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG;
+
+const DEFAULT_CONFIG = Object.freeze({
+  version: '2.1.999-mock',
+  authStatus: 'authenticated',
+  daemonStatus: 'running',
+  bgFails: false,
+  agentsJsonMalformed: false,
+  agentsJsonFails: false,
+  logsFail: false,
+  sleepMs: 0,
+  // Schema mode: "real-2.1.149" (default) | "mock" (legacy)
+  agentsJsonSchema: 'real-2.1.149',
+  // Stdout style for --bg: "backgrounded" (default) | "started-session" (legacy)
+  bgStdoutStyle: 'backgrounded',
+  // Whether "daemon status" subcommand is available (false = real mode, true = legacy mock mode)
+  daemonAvailable: false,
+  // Whether --help lists --bg (false = real mode, true = legacy mock mode)
+  helpListsBg: false,
+});
+
+function loadConfig() {
+  if (!CONFIG_PATH) return { ...DEFAULT_CONFIG };
+  if (!existsSync(CONFIG_PATH)) return { ...DEFAULT_CONFIG };
+  try {
+    const raw = readFileSync(CONFIG_PATH, 'utf8');
+    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+  } catch {
+    return { ...DEFAULT_CONFIG };
+  }
+}
+
+function ensureHome() {
+  mkdirSync(HOME, { recursive: true });
+  mkdirSync(join(HOME, 'projects'), { recursive: true });
+  mkdirSync(join(HOME, 'logs'), { recursive: true });
+}
+
+function statePath() {
+  return join(HOME, 'state.json');
+}
+
+function loadState() {
+  // Intentionally does NOT call ensureHome(). Read-only probes (`agents --json`,
+  // `logs`, `stop` on a missing id) must not create directories as a side effect —
+  // otherwise the runtime doctor's transcript-path probe sees a freshly-created
+  // `<HOME>/projects/` and thinks the transcript dir exists.
+  const p = statePath();
+  if (!existsSync(p)) return { sessions: [] };
+  try {
+    return JSON.parse(readFileSync(p, 'utf8'));
+  } catch {
+    return { sessions: [] };
+  }
+}
+
+function saveState(state) {
+  mkdirSync(HOME, { recursive: true });
+  writeFileSync(statePath(), JSON.stringify(state, null, 2));
+}
+
+// Generate a UUID-like string formatted as XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX
+function newUUID() {
+  const b = randomBytes(16);
+  // Set version 4 bits
+  b[6] = (b[6] & 0x0f) | 0x40;
+  // Set variant bits
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const hex = b.toString('hex');
+  return [
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32),
+  ].join('-');
+}
+
+// Derive 8-char hex shortId from UUID by stripping hyphens and taking first 8 chars
+function deriveShortIdFromUUID(uuid) {
+  return uuid.replace(/-/g, '').slice(0, 8);
+}
+
+// Legacy 6-char hex shortId
+function newLegacyId() {
+  return randomBytes(3).toString('hex'); // 6 hex chars
+}
+
+function nowISO() {
+  return new Date().toISOString();
+}
+
+function sanitizeCwd(cwd) {
+  return cwd.replace(/[/\\:]/g, '-').replace(/^-+/, '') || 'root';
+}
+
+function findSession(state, id) {
+  return state.sessions.find((s) => s.shortId === id || s.sessionId === id);
+}
+
+// ---------- argument parsing ----------
+
+// Flags on `claude --bg` that consume a value. Unknown flags are ignored (best effort).
+const BG_VALUE_FLAGS = new Set([
+  '--name',
+  '--model',
+  '--effort',
+  '--permission-mode',
+  '--add-dir',
+  '--mcp-config',
+  '--settings',
+  '--fallback-model',
+  '--agent',
+]);
+
+function parseBgArgs(args) {
+  let name;
+  const positional = [];
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (BG_VALUE_FLAGS.has(a)) {
+      const val = args[++i];
+      if (a === '--name') name = val;
+      // Other recognized value-flags are accepted and ignored by the mock.
+    } else if (a.startsWith('--')) {
+      // Unknown flag. If the next token doesn't start with `--`, consume it as a value.
+      if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
+        i++;
+      }
+    } else {
+      positional.push(a);
+    }
+  }
+  return { name, prompt: positional.join(' ') };
+}
+
+// ---------- commands ----------
+
+function cmdVersion(config) {
+  process.stdout.write(`Claude Code ${config.version}\n`);
+  return 0;
+}
+
+function cmdAuthStatus(config) {
+  if (config.authStatus === 'authenticated') {
+    process.stdout.write('Logged in\n');
+    return 0;
+  }
+  process.stdout.write('Not logged in. Run `claude login`.\n');
+  return 1;
+}
+
+function cmdDaemonStatus(config) {
+  // In real mode (daemonAvailable: false), daemon subcommand does not exist
+  if (!config.daemonAvailable) {
+    process.stderr.write("claude: 'daemon' is not a known command\n");
+    return 1;
+  }
+  if (config.daemonStatus === 'running') {
+    process.stdout.write('Claude daemon: running\n');
+    return 0;
+  }
+  process.stdout.write('Claude daemon: stopped\n');
+  return 1;
+}
+
+function cmdBg(config, args) {
+  if (config.bgFails) {
+    process.stderr.write('Failed to start background session\n');
+    return 1;
+  }
+  ensureHome();
+  const { name, prompt } = parseBgArgs(args);
+  const cwd = process.cwd();
+  const startedAt = nowISO();
+
+  let shortId, sessionId, sessionName;
+
+  if (config.agentsJsonSchema === 'mock') {
+    // Legacy mock mode: 6-hex shortId, session-<shortId> sessionId
+    shortId = newLegacyId();
+    sessionId = `session-${shortId}`;
+    sessionName = name || `bg-${shortId}`;
+  } else {
+    // Real mode: UUID sessionId, 8-hex shortId derived from UUID
+    sessionId = newUUID();
+    shortId = deriveShortIdFromUUID(sessionId);
+    sessionName = name || `bg-${shortId}`;
+  }
+
+  const projectDir = join(HOME, 'projects', sanitizeCwd(cwd));
+  mkdirSync(projectDir, { recursive: true });
+  const transcriptPath = join(projectDir, `${sessionId}.jsonl`);
+  const logPath = join(HOME, 'logs', `${shortId}.log`);
+
+  const transcriptLines = [
+    JSON.stringify({
+      type: 'meta',
+      sessionId,
+      startedAt,
+      cwd,
+      sessionName,
+    }),
+    JSON.stringify({
+      type: 'message',
+      role: 'user',
+      content: prompt,
+      at: startedAt,
+    }),
+    JSON.stringify({
+      type: 'message',
+      role: 'assistant',
+      content: `[mock] Starting work on: ${prompt}`,
+      at: startedAt,
+    }),
+  ];
+  writeFileSync(transcriptPath, transcriptLines.join('\n') + '\n');
+  appendFileSync(
+    logPath,
+    `[${startedAt}] Session ${shortId} started\n[${startedAt}] Prompt: ${prompt}\n`,
+  );
+
+  const state = loadState();
+  state.sessions.push({
+    shortId,
+    sessionId,
+    name: sessionName,
+    cwd,
+    pid: process.pid,
+    status: 'working',
+    startedAt,
+    updatedAt: startedAt,
+    transcriptPath,
+    logPath,
+    prompt,
+  });
+  saveState(state);
+
+  if (config.bgStdoutStyle === 'started-session') {
+    // Legacy format
+    process.stdout.write(`Started background session ${shortId}\n`);
+  } else {
+    // Real 2.1.149 format
+    process.stdout.write(
+      `Starting background service…\nbackgrounded · ${shortId}\n  claude agents             list sessions\n  claude attach ${shortId}   open in this terminal\n  claude logs ${shortId}     show recent output\n`,
+    );
+  }
+  return 0;
+}
+
+function cmdAgentsJson(config) {
+  if (config.agentsJsonFails) {
+    process.stderr.write('agents error\n');
+    return 1;
+  }
+  if (config.agentsJsonMalformed) {
+    process.stdout.write('{not-json\n');
+    return 0;
+  }
+  const state = loadState();
+
+  let out;
+  if (config.agentsJsonSchema === 'mock') {
+    // Legacy mock schema: full fields including id, shortId, name, updatedAt, transcriptPath
+    out = state.sessions.map((s) => ({
+      id: s.shortId,
+      shortId: s.shortId,
+      sessionId: s.sessionId,
+      name: s.name,
+      cwd: s.cwd,
+      pid: s.pid,
+      status: s.status,
+      startedAt: s.startedAt,
+      updatedAt: s.updatedAt,
+      transcriptPath: s.transcriptPath,
+    }));
+  } else {
+    // Real 2.1.149 schema: pid, cwd, kind, startedAt (unix ms int), sessionId, status
+    // No id, shortId, name, updatedAt, transcriptPath
+    out = state.sessions.map((s) => ({
+      pid: s.pid,
+      cwd: s.cwd,
+      kind: 'interactive',
+      startedAt: new Date(s.startedAt).getTime(),
+      sessionId: s.sessionId,
+      status: s.status,
+    }));
+  }
+
+  process.stdout.write(JSON.stringify(out, null, 2) + '\n');
+  return 0;
+}
+
+function cmdLogs(config, args) {
+  const id = args[0];
+  if (id === '--help' || id === '-h') {
+    process.stdout.write('usage: claude logs <id>\n');
+    return 0;
+  }
+  if (!id) {
+    process.stderr.write('usage: claude logs <id>\n');
+    return 2;
+  }
+  if (config.logsFail) {
+    process.stderr.write('logs unavailable\n');
+    return 1;
+  }
+  const state = loadState();
+  const session = findSession(state, id);
+  if (!session) {
+    process.stderr.write(`unknown session: ${id}\n`);
+    return 1;
+  }
+  if (existsSync(session.logPath)) {
+    process.stdout.write(readFileSync(session.logPath, 'utf8'));
+  }
+  return 0;
+}
+
+function cmdStop(_config, args) {
+  const id = args[0];
+  if (!id) {
+    process.stderr.write('usage: claude stop <id>\n');
+    return 2;
+  }
+  const state = loadState();
+  const session = findSession(state, id);
+  if (!session) {
+    process.stderr.write(`unknown session: ${id}\n`);
+    return 1;
+  }
+  const now = nowISO();
+  session.status = 'stopped';
+  session.updatedAt = now;
+  saveState(state);
+  appendFileSync(session.logPath, `[${now}] Session ${session.shortId} stopped\n`);
+  process.stdout.write(`Stopped session ${session.shortId}\n`);
+  return 0;
+}
+
+// ---------- dispatch ----------
+
+function maybeSleep(config) {
+  // Test hook: simulate a slow command to exercise the doctor's timeout path.
+  if (typeof config.sleepMs === 'number' && config.sleepMs > 0) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, config.sleepMs);
+  }
+}
+
+function main() {
+  const argv = process.argv.slice(2);
+  const config = loadConfig();
+  maybeSleep(config);
+
+  if (argv[0] === '--version') return process.exit(cmdVersion(config));
+  if (argv[0] === '--help' || argv[0] === '-h') {
+    if (config.helpListsBg) {
+      process.stdout.write(
+        'mock-claude: --version | auth status | daemon status | --bg <prompt> | agents --json | logs <id> | stop <id>\n',
+      );
+    } else {
+      process.stdout.write(
+        'mock-claude: --version | auth status | agents --json | logs <id> | stop <id>\n',
+      );
+    }
+    return process.exit(0);
+  }
+  if (argv[0] === 'auth' && argv[1] === 'status') return process.exit(cmdAuthStatus(config));
+  if (argv[0] === 'daemon' && argv[1] === 'status') return process.exit(cmdDaemonStatus(config));
+  if (argv[0] === '--bg') return process.exit(cmdBg(config, argv.slice(1)));
+  if (argv[0] === 'agents' && argv[1] === '--json') return process.exit(cmdAgentsJson(config));
+  if (argv[0] === 'logs') return process.exit(cmdLogs(config, argv.slice(1)));
+  if (argv[0] === 'stop') return process.exit(cmdStop(config, argv.slice(1)));
+
+  process.stderr.write(`mock-claude: unknown command: ${argv.join(' ') || '(none)'}\n`);
+  process.stderr.write(
+    'Supported: --version, auth status, daemon status, --bg <prompt>, agents --json, logs <id>, stop <id>\n',
+  );
+  process.exit(2);
+}
+
+main();

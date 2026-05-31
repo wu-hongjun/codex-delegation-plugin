@@ -1,0 +1,37 @@
+{
+  "name": "cc-plugin-codex",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Codex-native Claude Code background-session driver. See README.md.",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --check .",
+    "format:write": "prettier --write .",
+    "typecheck": "tsc --build",
+    "build": "tsc --build",
+    "clean": "tsc --build --clean && rimraf packages/*/dist",
+    "test": "npm run test:mock && npm run test:runtime && npm run test:driver && npm run test:plugin",
+    "test:mock": "node --test tools/mock-claude/test/*.test.mjs tools/mock-codex/test/*.test.mjs",
+    "test:runtime": "npm run build && node --test packages/runtime/test/*.test.mjs",
+    "test:doctor": "npm run build && node --test packages/runtime/test/doctor.test.mjs",
+    "test:driver": "npm run build && node --test packages/driver-claude-code/test/*.test.mjs",
+    "test:plugin": "npm run build && node --test packages/plugin-codex/test/*.test.mjs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.10.0",
+    "@types/node": "^20.16.0",
+    "eslint": "^9.10.0",
+    "globals": "^17.6.0",
+    "prettier": "^3.3.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.5.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

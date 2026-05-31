@@ -1,0 +1,8 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/runtime" },
+    { "path": "./packages/driver-claude-code" },
+    { "path": "./packages/plugin-codex" }
+  ]
+}

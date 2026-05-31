@@ -1,0 +1,12 @@
+[submodule "references/codex-plugin-cc"]
+	path = references/codex-plugin-cc
+	url = https://github.com/openai/codex-plugin-cc.git
+[submodule "references/cc-plugin-codex"]
+	path = references/cc-plugin-codex
+	url = https://github.com/pejmanjohn/cc-plugin-codex.git
+[submodule "references/codex-plugins-examples"]
+	path = references/codex-plugins-examples
+	url = https://github.com/openai/plugins.git
+[submodule "references/codex-skills-examples"]
+	path = references/codex-skills-examples
+	url = https://github.com/openai/skills.git

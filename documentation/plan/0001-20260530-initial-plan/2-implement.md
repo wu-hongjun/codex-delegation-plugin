@@ -1045,7 +1045,17 @@ The plugin suite count grew from 173 → 204 (the new `ci-workflow.test.mjs` add
 
 ### Remote CI observation
 
-The workflow runs on `push` to main; after committing T14, the first run will fire automatically. Logged with the commit hash and observed status below.
+**Commit**: `56ab7231999b3912ee861cadc3fe4b3598bfec0a`
+**Run ID**: `26703417200`
+**Conclusion**: `success`
+
+All four matrix legs passed:
+- `ubuntu-latest / Node 20` → success
+- `ubuntu-latest / Node 22` → success
+- `macos-latest / Node 20` → success
+- `macos-latest / Node 22` → success
+
+First remote CI run after T14 landed is green.
 
 **Acceptance evidence (2026-05-31)**:
 - `.github/workflows/ci.yml` matches the maintainer's pinned shape exactly (action versions, matrix, scripts, permissions, security flags).

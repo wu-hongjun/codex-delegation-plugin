@@ -958,7 +958,48 @@ User flow is now `delegate → status → result` (with optional `stop` for clea
 
 ## T13 — README of the plugin package
 
-_pending_
+**Started**: 2026-05-31. **Status**: complete.
+
+Documentation-only task. A/B/C subagent pattern.
+
+- **Subagent A (writer)** — authored `packages/plugin-codex/README.md` (~285 lines, all 13 required sections in order). Cost paragraph uses the approved framing verbatim. Install snippet uses the working `.agents/plugins/marketplace.json` layout. Skill examples don't auto-inject `--yes`; direct dispatcher examples do (consistent with privacy-ack flow).
+- **Subagent B (test-engineer)** — authored `packages/plugin-codex/test/readme.test.mjs` (28 tests across 24 logical groups). Pinned to all required sections + skill names + dispatcher path + `claude --bg` + marketplace install commands + dev scripts + forbidden cost-claim tokens/patterns + T12b idle→completed proximity check + ≥ 5 limitations + future plan numbers 0002–0006.
+- **Subagent C (doc reviewer)** — read-only review: **`needs-fix`** initially. Two test blockers found, both in the test file (README itself was correct):
+  1. Test 16 used raw `body.includes('$claude-review')`. README correctly mentions `$claude-review` in the Known limitations and What comes next sections with proper "not yet"/"Plan 0003" qualifiers. Fixed by mirroring the hook qualifier-pattern (test 17): a line containing `$claude-review` must also contain `not`/`future`/`later`/`Plan 0`/`yet`.
+  2. Test 22 (idle/completed proximity) used `indexOf` which returns the FIRST occurrence. First `completed` was at char ~948 (in "for a completed job" in the skills list); first `idle` was at char 1272 — distance 324, exceeding the 200-char threshold even though the actual T12b sentence has them only ~28 chars apart. Fixed by computing the closest-pair distance across all occurrences.
+
+Both test fixes applied by orchestrator. No README changes needed.
+
+### Files
+
+- `packages/plugin-codex/README.md` — created.
+- `packages/plugin-codex/test/readme.test.mjs` — created with two orchestrator-applied corrections to make the assertions work against the correct README content.
+
+### Cost paragraph (verbatim)
+
+> This v1 uses Claude Code background sessions and does not use `claude -p`. It is designed to preserve the architecture needed for future session/cache reuse experiments. Cost savings have not been benchmarked yet. Plan 0004 is reserved for measurement.
+
+No `saves money`, `cheaper than`, `reduces cost`, `preserves prompt-cache savings`, `avoids the`, `more efficient than`, or quantitative-savings patterns anywhere in the README.
+
+### Root README
+
+Not modified in T13. The root README was already trimmed to the conservative framing during T7/T8 work and contains no forbidden cost-claim language.
+
+**Acceptance evidence (2026-05-31)**:
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean.
+- `npm test` → 34 mock + 82 runtime + 119 driver + 173 plugin = **408 pass**, 0 fail.
+- Subagent C: review went from `needs-fix` → resolved. README accuracy + scope discipline + cost-claim copy: all pass. No scope violations; two test-side bugs caught + fixed.
+- Plugin README documents:
+  - All 5 skills with examples (no `--yes` in default skill invocations)
+  - Direct dispatcher commands (all 5) with `--yes` shown for scripted use
+  - Local marketplace install matching the T11 working flow
+  - T12b idle→completed mapping with Plan 0002 caveat
+  - Privacy disclosure + `~/.codex/cc-plugin-codex/acks/` path
+  - Known limitations (≥ 5 items)
+  - Troubleshooting that doesn't tell users they must stop before result
+  - Plan 0002–0006 roadmap (without promising any v1 feature beyond the implemented ones)
 
 ## T14 — CI
 

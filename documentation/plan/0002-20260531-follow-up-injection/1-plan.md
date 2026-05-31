@@ -1,9 +1,9 @@
 # Stage 1 — Plan: Follow-up injection for Claude background jobs
 
-> **Status**: drafting 2026-05-31. All eight research open questions resolved by maintainer (§ 6). Ready for Stage 1 review.
+> **Status**: approved 2026-05-31 by maintainer; transitioning to `implementing`. All eight research open questions resolved (§ 6).
 > **Author**: Claude (assistant)
 > **Date drafted**: 2026-05-31
-> **Date approved**: —
+> **Date approved**: 2026-05-31
 
 ---
 

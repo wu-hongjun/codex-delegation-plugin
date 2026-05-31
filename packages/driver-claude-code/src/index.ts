@@ -7,6 +7,8 @@ import type {
   Driver,
   DriverCapabilities,
   DriverEvent,
+  SendInput,
+  SendOpts,
   SessionHandle,
   SessionStatus,
   StartSessionOpts,
@@ -21,6 +23,7 @@ import { probeClaudeBackgroundDriver } from './probe.js';
 import { stopSession } from './stop.js';
 import { DRIVER_NAME } from './types.js';
 import type { ClaudeBackgroundDriverOptions } from './types.js';
+import { attachAndSend } from './attach.js';
 
 export { probeClaudeBackgroundDriver } from './probe.js';
 export type { ClaudeBackgroundDriverOptions } from './types.js';
@@ -30,6 +33,7 @@ export * from './logs.js';
 export * from './stop.js';
 export * from './pty-probe.js';
 export * from './sidecar.js';
+export * from './attach.js';
 
 export class ClaudeBackgroundDriver implements Driver {
   private readonly defaults: ClaudeBackgroundDriverOptions;
@@ -76,6 +80,15 @@ export class ClaudeBackgroundDriver implements Driver {
       cwd: this.defaults.cwd,
       env: this.defaults.env,
       timeoutMs: this.defaults.timeoutMs,
+    });
+  }
+
+  send(session: SessionHandle, input: SendInput, opts?: SendOpts): Promise<TurnHandle> {
+    return attachAndSend(session, input, {
+      cwd: this.defaults.cwd,
+      env: this.defaults.env,
+      timeoutMs: this.defaults.timeoutMs,
+      ...opts,
     });
   }
 

@@ -53,11 +53,53 @@ export interface SessionHandle {
   startedAt: string;
 }
 
+export interface SendInput {
+  type: 'text';
+  text: string;
+}
+
+export type TurnStatus =
+  | 'queued'
+  | 'starting'
+  | 'injecting'
+  | 'working'
+  | 'needs_input'
+  | 'completed'
+  | 'failed';
+
+export interface SendOpts {
+  /** Soft timeout for turn completion. Default 600_000 (10 min). */
+  timeoutMs?: number;
+  /** Abort the in-flight send. Best-effort detach + lock release on abort. */
+  signal?: AbortSignal;
+  /** Transport selection. 'auto' picks the best available; 'pty' forces PTY-attach. */
+  mode?: 'auto' | 'pty';
+  /**
+   * Called when Claude enters a waiting / permission-required state while
+   * the driver still owns the attached PTY. Return a single-line string to
+   * write back into the PTY (no trailing newline; the driver adds \r), or
+   * null to leave the session waiting (driver throws DriverError).
+   */
+  onPermissionRequest?: (request: { shortId: string; message?: string }) => Promise<string | null>;
+}
+
 export interface TurnHandle {
+  /** Driver name (mirrors SessionHandle.driverName). */
   driverName: string;
+  /** The session this turn was sent into. */
   session: SessionHandle;
-  turnId?: string;
+  /** ISO timestamp when the send began (just before the PTY write). */
   startedAt: string;
+  /** ISO timestamp when the turn was observed complete. Optional. */
+  endedAt?: string;
+  /** Final status from the driver's POV. */
+  status: TurnStatus;
+  /** Latest assistant message from sidecar.output.result, if available. */
+  finalMessage?: string;
+  /** Best-effort list of files the agent touched, if discoverable. */
+  touchedFiles?: string[];
+  /** Verbatim sidecar usage snapshot if present (driver does not normalize). */
+  usageSnapshot?: unknown;
 }
 
 // ---------- session status ----------
@@ -103,4 +145,5 @@ export interface Driver {
   status(session: SessionHandle): Promise<SessionStatus>;
   stop(session: SessionHandle): Promise<void>;
   dispose(): Promise<void>;
+  send(session: SessionHandle, input: SendInput, opts?: SendOpts): Promise<TurnHandle>;
 }

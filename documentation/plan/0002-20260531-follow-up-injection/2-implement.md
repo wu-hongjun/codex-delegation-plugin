@@ -221,7 +221,88 @@ Second T-task run under the A/B/C subagent pattern. The maintainer pinned T4 nar
 - All four lanes green: mock 58 + runtime 94 + driver 150 + plugin 217 = **519 pass / 0 fail**.
 - Plan 0001 architectural invariant (runtime/src bans `driver-claude-code` / `claude -p` / `node-pty`) still passes.
 - Driver smoke (manual): `node -e "import('@cc-plugin-codex/driver-claude-code').then((m) => console.log(typeof m.readSidecar, typeof m.resolveSidecarPath, typeof m.parseSidecarSnapshot))"` prints `function function function`.
-- Remote CI confirmation will be appended once T4 commit lands on `main`.
+- Remote CI on `e5ef130` (run `26719759537`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). One leg (`ubuntu-latest / Node 20`) was initially `cancelled` with no `--log-failed` content (transient runner-side hiccup, not a test failure); a `gh run rerun --failed` re-ran only that leg and it passed.
+
+## T5 — Driver `send()` + `attachAndSend`
+
+**Started**: 2026-05-31. **Status**: complete (pending CI confirmation).
+
+Third T-task under the A/B/C subagent pattern, and the load-bearing piece of Plan 0002 — the PTY-input transport that lets a follow-up prompt land in an already-running Claude background session.
+
+- **Subagent A (executor, sonnet)** — added `SendInput`/`TurnStatus`/`SendOpts`/`TurnHandle` types to `packages/runtime/src/driver.ts` (type-only, no node-pty import in runtime), implemented `attachAndSend` in `packages/driver-claude-code/src/attach.ts` (~424 lines, the sole node-pty user), and wired `ClaudeBackgroundDriver.send()` in `packages/driver-claude-code/src/index.ts`.
+- **Subagent B (test-engineer, sonnet)** — wrote `packages/driver-claude-code/test/send.test.mjs` (25 tests across 18 describe blocks) covering all 18 cases from the maintainer's brief plus a few sub-cases.
+- **Subagent C (code-reviewer, opus)** — independent scope/contract/security review. Verdict: **`ready-for-T6`**. 0 blocker/high/medium findings; 3 low (defensive observations, no action) + 3 nit (idiomatic). All three orchestrator follow-up fixes validated.
+
+### Files changed
+
+- `packages/runtime/src/driver.ts` — added `SendInput`, `TurnStatus`, `SendOpts`, `TurnHandle` types and `Driver.send()` signature. **No node-pty import** (type-only changes).
+- `packages/driver-claude-code/src/attach.ts` (new) — `attachAndSend()` with full lifecycle:
+  - Validate `shortId` (regex `/^[a-zA-Z0-9_-]{4,64}$/`), `input.type === 'text'`, non-empty trimmed text.
+  - Snapshot pre-send sidecar.
+  - Acquire per-`shortId` exclusive lock at `<companionHome>/locks/attach-<shortId>.lock` (`'wx'` flag; JSON body `{pid, createdAt, shortId, operation: 'send'}`). On `EEXIST` → `DriverError` (lock busy, fail-fast).
+  - Dynamic-import `node-pty` so load failures map to a `DriverError` with remediation text.
+  - Spawn `claude attach <shortId>` with `name: 'xterm-256color'`, `cols: 120`, `rows: 40`, explicit `cwd`/`env`. No shell strings.
+  - Drain PTY output to a bounded 8 KiB ring buffer; never parsed for semantics.
+  - Write `input.text + '\r'`; poll for prompt registration (5s default).
+  - Handle permission state via `opts.onPermissionRequest` callback. Null return → throw; no callback → throw.
+  - Poll for turn completion (10 min default).
+  - Build `TurnHandle` (job-agnostic — no `jobId`, no `turnIndex`).
+  - Write `0x1a` (Ctrl+Z) to detach; race against a `.unref()`-ed 2s exit timeout.
+  - Release lock in `finally`; if `term !== null` (error path), best-effort detach + `term.kill()` before lock release.
+- `packages/driver-claude-code/src/index.ts` — `export * from './attach.js'` and `ClaudeBackgroundDriver.send()` wrapper that merges `this.defaults` with `opts` (caller wins).
+- `packages/driver-claude-code/test/send.test.mjs` (new) — 25 tests, 18 describe blocks.
+
+### Orchestrator-applied follow-up fixes (after A+B returned)
+
+The integrated test suite initially had 4 failing test cases and a 30+ minute event-loop hang. Diagnosed and fixed three issues:
+
+1. **Deadline ordering in both polling loops** — the `Date.now() >= deadline` check was placed AFTER the registered/completed evaluations. With `promptRegisterTimeoutMs: 1` or `timeoutMs: 1`, the I/O above (sidecar read + agents-json spawn, ~50ms total) gave the mock time to land its turn before the deadline was checked, so the loop exited normally with `registered=true` or `completed=true` instead of timing out. Fix: moved each deadline check to BEFORE the registered/completed/waiting checks in both `attach.ts` polling loops, with inline comments explaining the ordering requirement.
+2. **PTY cleanup on error paths** — `attachAndSend`'s `try { ... } finally { releaseLock() }` released the lock on error paths but did NOT kill the PTY child. The leaked `term` + its `onData`/`onExit` listeners kept the test process's event loop alive past the function return — all 175 individual tests passed but the test FILE hung indefinitely. Fix: extended the `finally` block to best-effort write `0x1a` + call `term.kill()` when `term !== null` (i.e., on error paths; on the success path `term` is nulled to skip this branch). Also added `.unref()` to the post-detach 2s `setTimeout` so it doesn't keep the loop alive on success either.
+3. **Test 6 assertion relaxation** — the "missing sidecar falls back gracefully" test originally asserted `turn.finalMessage === undefined`. But the mock's T3 `cmdAttach` recreates the sidecar during processing, so by the time `send()`'s post-completion sidecar re-read runs, `output.result` is populated. Implementation is correct (spec says finalMessage MAY be undefined when sidecar absent, not MUST). Fix: relaxed the assertion to accept either `undefined` or `string`, with an inline comment explaining the mock-recreation behavior. The load-bearing assertion (`status === 'completed'` arriving within the per-test timeout, confirming the agents-json fallback didn't hang) still holds.
+
+Subagent C reviewed all three fixes and rated each `ok`. Specifically:
+- Deadline ordering is consistent across both loops; tests 12 and 13 confirm the timeout actually fires under tight deadlines.
+- PTY cleanup is symmetric (success-path nulls `term`; error-path executes the cleanup branch). `.unref()` on the post-detach timer eliminated the success-path delay leak.
+- Test 6 relaxation preserves the load-bearing assertion and accurately accommodates mock behavior; the sidecar-absent agents-json fallback path is still exercised by `send()` even though the post-completion read sees a recreated sidecar.
+
+### Subagent A's documented decisions (validated by C as `ok`)
+
+1. **`earlyExitCell` array-cell pattern** — TypeScript narrowing workaround. `let x: T | null = null` would narrow to `null` everywhere after closure capture. The single-element array sidesteps narrowing. Idiomatic; not hiding a bug.
+2. **`getAgentsStatus()` inner helper** — three call sites; factored locally to close over `session`/`opts`. Scope-appropriate.
+3. **`handlePermissionIfNeeded()` single-shot vs loop** — called once after registration and again inside the completion loop's `continue` branch. Multi-stage permission sequences are handled by the outer loop, matching the contract's "resume polling" wording.
+
+### Subagent C findings
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| L1 | low | `startedAt` captured at line 251 before final pre-write `checkAbort` at line 261. Harmless because abort-throw never returns a TurnHandle. | No action. |
+| L2 | low | Permission-helper `sleep(pollMs)` is unconditional; ties perceived permission latency to `pollIntervalMs`. | Defer to T10 dispatcher loop. |
+| L3 | low | Agents-json `idle` terminal condition could theoretically oscillate (transient permission grant). Best-effort fallback per § 3.3 / § 3.7. | No action. |
+| N1 | nit | `earlyExitCell` pattern. | Idiomatic. |
+| N2 | nit | `getAgentsStatus` factored locally. | Scope-appropriate. |
+| N3 | nit | `handlePermissionIfNeeded` single-shot + outer-loop continue. | Matches contract. |
+
+### Test impact
+
+| Lane | Before T5 | After T5 | Δ |
+|---|---|---|---|
+| test:mock | 58 | 58 | — |
+| test:runtime | 94 | 94 | — |
+| test:driver | 150 | 175 | +25 |
+| test:plugin | 217 | 217 | — |
+| **Total** | **519** | **544** | **+25** |
+
+### Acceptance evidence (2026-05-31)
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean.
+- All four lanes green: mock 58 + runtime 94 + driver 175 + plugin 217 = **544 pass / 0 fail**.
+- Plan 0001 architectural invariant (runtime/src bans `driver-claude-code` / `claude -p` / `node-pty`) still passes.
+- No node-pty import outside `packages/driver-claude-code/src/{attach,pty-probe}.ts`.
+- Driver smoke: `node -e "import('@cc-plugin-codex/driver-claude-code').then((m) => { const d = new m.ClaudeBackgroundDriver(); console.log(typeof d.send, typeof m.attachAndSend); })"` prints `function function`.
+- send.test.mjs runs in ~3 seconds end-to-end (PTY cleanup confirmed; no event-loop leak).
+- Remote CI confirmation will be appended once T5 commit lands on `main`.
 
 ## Deviations from the plan
 
@@ -229,8 +310,9 @@ Second T-task run under the A/B/C subagent pattern. The maintainer pinned T4 nar
 - **T2 absorbed minimal mock additions** that the plan listed under T3 (attach --help, --bg --help interception, jobs/ dir creation) — see T2 deviation above. The bigger T3 work was completed in T3.
 - **Architectural-invariant ban list relaxed** (T2) to drop `claude --bg` — see T2 deviation above. The load-bearing bans (`driver-claude-code`, `claude -p`, `node-pty`) remain.
 - **`withIsolatedHome` async-aware refactor** (T3) — not pre-specified but necessary for PTY tests to clean up correctly after `await`-based callbacks. Sync callers are unchanged.
-- **T4 narrower than 1-plan.md § 3.3** — the original plan text mentioned an optional `tailSidecar(shortId, opts): AsyncIterable<SidecarSnapshot>` "for poll-based updates". The maintainer's T4 brief explicitly excluded it ("a tailing/streaming API risks creeping toward the deferred watch() / daemon-like surface; T5 can poll readSidecar() directly during attachAndSend()"). T4 ships read-only `readSidecar` + `resolveSidecarPath` only. Scope discipline; no behavior loss for T5.
+- **T4 narrower than 1-plan.md § 3.3** — the original plan text mentioned an optional `tailSidecar(shortId, opts): AsyncIterable<SidecarSnapshot>` "for poll-based updates". The maintainer's T4 brief explicitly excluded it ("a tailing/streaming API risks creeping toward the deferred watch() / daemon-like surface; T5 can poll readSidecar() directly during attachAndSend()"). T4 ships read-only `readSidecar` + `resolveSidecarPath` only.
 - **`.prettierignore` added the malformed sidecar fixture** so `npm run format` doesn't try to parse it (fixture is intentionally invalid JSON).
+- **T5 timeout-ordering + PTY-cleanup follow-up fixes** (T5) — the executor's initial polling-loop timeout placement and `finally` block needed orchestrator-side fixes to make tight-deadline tests fire and to prevent the PTY child from leaking past the function return. All three fixes are validated by Subagent C and documented above.
 
 ## Surprises
 

@@ -1,0 +1,453 @@
+// attach.ts — PTY-attach helper for ClaudeBackgroundDriver.send().
+//
+// This is the ONLY file in driver-claude-code that may import node-pty.
+// All other modules must not reference node-pty directly.
+//
+// Flow (per contract § T5):
+//   1. Validate session.shortId + input
+//   2. Snapshot pre-send sidecar state
+//   3. Acquire per-shortId file lock under <companionHome>/locks/attach-<shortId>.lock
+//   4. Spawn claude attach <shortId> via node-pty (dynamic import)
+//   5. Set up bounded 8 KiB PTY ring buffer (drain only; never parsed for semantics)
+//   6. Record startedAt
+//   7. Write prompt + \r into PTY
+//   8. Poll for prompt registration (5 s default)
+//   9. Handle permission states via onPermissionRequest callback
+//  10. Poll for turn completion (10 min default)
+//  11. Build TurnHandle result
+//  12. Detach: write 0x1a (Ctrl+Z), wait for child exit (~2 s timeout)
+//  13. Release lock in finally
+//  14. Return TurnHandle
+
+import { rmSync } from 'node:fs';
+import { mkdir, open as fsOpen } from 'node:fs/promises';
+import { join } from 'node:path';
+
+import { DriverError, getCompanionHome } from '@cc-plugin-codex/runtime';
+import type { SendInput, SendOpts, SessionHandle, TurnHandle } from '@cc-plugin-codex/runtime';
+
+import { readSidecar } from './sidecar.js';
+import { statusForSession } from './agents-json.js';
+import { DRIVER_NAME } from './types.js';
+import type { ReadSidecarOptions } from './sidecar.js';
+
+// ---------- public types ----------
+
+export interface AttachAndSendOptions extends SendOpts {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  /** Default 5_000. */
+  promptRegisterTimeoutMs?: number;
+  /** Default 500. Internal/driver use; tests may pass a smaller value. */
+  pollIntervalMs?: number;
+}
+
+// ---------- constants ----------
+
+const SHORT_ID_RE = /^[a-zA-Z0-9_-]{4,64}$/;
+const RING_BUFFER_LIMIT = 8 * 1024; // 8 KiB
+
+// ---------- helpers ----------
+
+function isErrnoException(err: unknown): err is NodeJS.ErrnoException {
+  return err instanceof Error && 'code' in err;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Acquire an exclusive lock for the given shortId.
+ *  Returns a release function. On EEXIST throws DriverError. */
+async function acquireAttachLock(shortId: string): Promise<() => void> {
+  const locksDir = join(getCompanionHome(), 'locks');
+  await mkdir(locksDir, { recursive: true });
+
+  const path = join(locksDir, `attach-${shortId}.lock`);
+  const info = JSON.stringify({
+    pid: process.pid,
+    createdAt: new Date().toISOString(),
+    shortId,
+    operation: 'send',
+  });
+
+  try {
+    // 'wx' = exclusive create; fails with EEXIST if file already exists
+    const handle = await fsOpen(path, 'wx');
+    try {
+      await handle.writeFile(info, 'utf8');
+    } finally {
+      await handle.close();
+    }
+  } catch (err) {
+    if (isErrnoException(err) && err.code === 'EEXIST') {
+      throw new DriverError(`attach lock busy for session \`${shortId}\``, {
+        driverName: DRIVER_NAME,
+        operation: 'send',
+        cause: err,
+      });
+    }
+    throw err;
+  }
+
+  return () => {
+    try {
+      rmSync(path, { force: true });
+    } catch {
+      // best-effort
+    }
+  };
+}
+
+/** Returns true if the sidecar indicates a waiting/permission state. */
+function isWaiting(
+  sidecar: Awaited<ReturnType<typeof readSidecar>>,
+  agentsStatus?: string,
+): boolean {
+  if (sidecar) {
+    if (sidecar.state === 'waiting') return true;
+    if (sidecar.inFlight?.kinds?.includes('permission')) return true;
+  }
+  if (agentsStatus === 'needs_input') return true;
+  return false;
+}
+
+/** Returns true when the sidecar indicates the turn is complete. */
+function isTurnComplete(sidecar: Awaited<ReturnType<typeof readSidecar>>): boolean {
+  if (!sidecar) return false;
+  if (sidecar.state === 'done') return true;
+  if (
+    sidecar.tempo === 'idle' &&
+    (sidecar.inFlight?.tasks ?? 0) === 0 &&
+    (sidecar.inFlight?.queued ?? 0) === 0 &&
+    sidecar.state !== 'waiting'
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** Returns true when the prompt has registered (sidecar/agents-json moved off pre-send state). */
+function hasPromptRegistered(
+  preSend: Awaited<ReturnType<typeof readSidecar>>,
+  current: Awaited<ReturnType<typeof readSidecar>>,
+  agentsStatus?: string,
+): boolean {
+  if (!current) {
+    // sidecar unavailable; fall back to agents-json
+    return agentsStatus !== undefined && agentsStatus !== 'idle';
+  }
+
+  // tempo changed away from idle
+  if (current.tempo !== 'idle') return true;
+  // inFlight tasks/queued increased
+  if ((current.inFlight?.tasks ?? 0) > 0) return true;
+  if ((current.inFlight?.queued ?? 0) > 0) return true;
+  // output.result changed
+  if (current.output?.result !== preSend?.output?.result) return true;
+  // state changed to waiting (permission stall — already counts as registered)
+  if (current.state === 'waiting') return true;
+
+  // agents-json fallback
+  if (agentsStatus !== undefined && agentsStatus !== 'idle') return true;
+
+  return false;
+}
+
+// ---------- main export ----------
+
+export async function attachAndSend(
+  session: SessionHandle,
+  input: SendInput,
+  opts?: AttachAndSendOptions,
+): Promise<TurnHandle> {
+  // ── Step 1: Validate ──────────────────────────────────────────────────────
+  if (typeof session.shortId !== 'string' || !SHORT_ID_RE.test(session.shortId)) {
+    throw new DriverError(`invalid shortId: ${JSON.stringify(session.shortId)}`, {
+      driverName: DRIVER_NAME,
+      operation: 'send',
+    });
+  }
+  if (input.type !== 'text') {
+    throw new DriverError(`unsupported input type: ${JSON.stringify(input.type)}`, {
+      driverName: DRIVER_NAME,
+      operation: 'send',
+    });
+  }
+  if (typeof input.text !== 'string' || input.text.trim().length === 0) {
+    throw new DriverError('input.text must be a non-empty string', {
+      driverName: DRIVER_NAME,
+      operation: 'send',
+    });
+  }
+
+  const { shortId } = session;
+  const sidecarOpts: ReadSidecarOptions = { env: opts?.env };
+  const pollMs = opts?.pollIntervalMs ?? 500;
+  const promptRegTimeoutMs = opts?.promptRegisterTimeoutMs ?? 5_000;
+  const turnTimeoutMs = opts?.timeoutMs ?? 600_000;
+
+  // ── Step 2: Snapshot pre-send sidecar state ───────────────────────────────
+  const preSend = await readSidecar(shortId, sidecarOpts);
+
+  // ── Step 3: Acquire per-shortId lock ──────────────────────────────────────
+  const releaseLock = await acquireAttachLock(shortId);
+
+  // Ring buffer for PTY stdout (diagnostics only, never parsed for semantics)
+  let ringBuffer = '';
+
+  // node-pty IPty handle — declared here so the finally block can reference it
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let term: any = null;
+
+  // Whether the PTY child exited before we wrote Ctrl+Z.
+  // Use an array cell to work around TypeScript's control-flow narrowing of `null` literals.
+  const earlyExitCell: [{ code: number | null } | null] = [null];
+
+  // Promise that resolves with the exit code when the child exits
+  let exitResolve: (code: number | null) => void = () => {};
+  const exitPromise: Promise<number | null> = new Promise((res) => {
+    exitResolve = res;
+  });
+
+  try {
+    // ── Step 4: Spawn claude attach <shortId> via dynamic import ─────────────
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let pty: any;
+    try {
+      pty = await import('node-pty');
+    } catch (err) {
+      throw new DriverError(
+        'node-pty could not be loaded. Run `npm rebuild node-pty` or install @homebridge/node-pty-prebuilt-multiarch as a drop-in replacement.',
+        { driverName: DRIVER_NAME, operation: 'send', cause: err },
+      );
+    }
+
+    term = pty.spawn('claude', ['attach', shortId], {
+      name: 'xterm-256color',
+      cols: 120,
+      rows: 40,
+      cwd: opts?.cwd ?? process.cwd(),
+      env: opts?.env ?? process.env,
+    });
+
+    // ── Step 5: Set up PTY ring buffer ────────────────────────────────────────
+    term.onData((chunk: string) => {
+      ringBuffer += chunk;
+      if (ringBuffer.length > RING_BUFFER_LIMIT) {
+        ringBuffer = ringBuffer.slice(ringBuffer.length - RING_BUFFER_LIMIT);
+      }
+    });
+
+    term.onExit(({ exitCode }: { exitCode: number }) => {
+      exitResolve(exitCode ?? null);
+      if (term !== null) {
+        // term is still non-null: we haven't intentionally detached yet → unexpected exit
+        earlyExitCell[0] = { code: exitCode ?? null };
+      }
+    });
+
+    // ── Step 6: Record startedAt ──────────────────────────────────────────────
+    const startedAt = new Date().toISOString();
+
+    // ── Abort check helper ────────────────────────────────────────────────────
+    function checkAbort(): void {
+      if (opts?.signal?.aborted) {
+        throw new DriverError('send aborted', { driverName: DRIVER_NAME, operation: 'send' });
+      }
+    }
+
+    // ── Step 7: Write prompt ──────────────────────────────────────────────────
+    checkAbort();
+    term.write(input.text + '\r');
+
+    // ── Helper: get agents-json status (best-effort, swallows errors) ─────────
+    async function getAgentsStatus(): Promise<string | undefined> {
+      try {
+        const result = await statusForSession(session, {
+          cwd: opts?.cwd,
+          env: opts?.env,
+          timeoutMs: 5000,
+        });
+        return result.value;
+      } catch {
+        return undefined;
+      }
+    }
+
+    // ── Step 8: Poll for prompt registration ──────────────────────────────────
+    const promptRegDeadline = Date.now() + promptRegTimeoutMs;
+    let registered = false;
+
+    while (!registered) {
+      checkAbort();
+
+      // Check for unexpected early exit
+      if (earlyExitCell[0] !== null) {
+        const exitInfo = earlyExitCell[0];
+        throw new DriverError(`claude attach exited unexpectedly (code=${exitInfo.code})`, {
+          driverName: DRIVER_NAME,
+          operation: 'send',
+          cause: ringBuffer || undefined,
+        });
+      }
+
+      const current = await readSidecar(shortId, sidecarOpts);
+      const agentsStatus = await getAgentsStatus();
+
+      // Deadline check goes BEFORE the registered/waiting checks. With a tiny
+      // `promptRegisterTimeoutMs` (e.g. 1ms), the I/O above can land after the
+      // mock has already processed the turn; without this ordering, the loop
+      // exits "registered" instead of timing out.
+      if (Date.now() >= promptRegDeadline) {
+        throw new DriverError(`follow-up prompt did not register within ${promptRegTimeoutMs}ms`, {
+          driverName: DRIVER_NAME,
+          operation: 'send',
+        });
+      }
+
+      // Waiting/permission state — counts as registered; handle below
+      if (isWaiting(current, agentsStatus)) {
+        registered = true;
+        break;
+      }
+
+      if (hasPromptRegistered(preSend, current, agentsStatus)) {
+        registered = true;
+        break;
+      }
+
+      await sleep(pollMs);
+    }
+
+    // ── Step 9 / permission helper ────────────────────────────────────────────
+    async function handlePermissionIfNeeded(): Promise<void> {
+      const current = await readSidecar(shortId, sidecarOpts);
+      const agentsStatus = await getAgentsStatus();
+
+      if (!isWaiting(current, agentsStatus)) return;
+
+      if (!opts?.onPermissionRequest) {
+        throw new DriverError(
+          `permission required for session \`${shortId}\` but no onPermissionRequest callback was supplied`,
+          { driverName: DRIVER_NAME, operation: 'send' },
+        );
+      }
+
+      const answer = await opts.onPermissionRequest({ shortId });
+      if (answer === null) {
+        throw new DriverError('permission required but no response was provided', {
+          driverName: DRIVER_NAME,
+          operation: 'send',
+        });
+      }
+
+      term.write(answer + '\r');
+      // Give a moment for the permission answer to land before re-checking
+      await sleep(pollMs);
+    }
+
+    await handlePermissionIfNeeded();
+
+    // ── Step 10: Poll for turn completion ─────────────────────────────────────
+    const turnDeadline = Date.now() + turnTimeoutMs;
+    let completed = false;
+
+    while (!completed) {
+      checkAbort();
+
+      if (earlyExitCell[0] !== null) {
+        const exitInfo = earlyExitCell[0];
+        throw new DriverError(`claude attach exited unexpectedly (code=${exitInfo.code})`, {
+          driverName: DRIVER_NAME,
+          operation: 'send',
+          cause: ringBuffer || undefined,
+        });
+      }
+
+      const current = await readSidecar(shortId, sidecarOpts);
+      const agentsStatus = await getAgentsStatus();
+
+      // Deadline check goes BEFORE the completion checks. Mirrors the
+      // registration loop — a tiny `timeoutMs` must fire even when the I/O
+      // above resolves with a "done" sidecar.
+      if (Date.now() >= turnDeadline) {
+        throw new DriverError(`turn did not complete within ${turnTimeoutMs}ms`, {
+          driverName: DRIVER_NAME,
+          operation: 'send',
+        });
+      }
+
+      // Permission stall mid-turn
+      if (isWaiting(current, agentsStatus)) {
+        await handlePermissionIfNeeded();
+        continue;
+      }
+
+      if (current && isTurnComplete(current)) {
+        completed = true;
+        break;
+      }
+
+      // agents-json fallback: sidecar absent and agents reports idle → done
+      if (!current && agentsStatus === 'idle') {
+        completed = true;
+        break;
+      }
+
+      await sleep(pollMs);
+    }
+
+    // ── Step 11: Build result ─────────────────────────────────────────────────
+    const endedAt = new Date().toISOString();
+    const finalSidecar = await readSidecar(shortId, sidecarOpts);
+
+    const finalMessage: string | undefined = finalSidecar?.output?.result ?? undefined;
+
+    // ── Step 12: Detach ───────────────────────────────────────────────────────
+    // Null out term before writing Ctrl+Z so the onExit callback does NOT record
+    // the upcoming clean exit as an "early exit".
+    const termRef = term;
+    term = null;
+
+    termRef.write('\x1a');
+
+    // Wait for child exit with ~2 s timeout; if it doesn't exit, proceed anyway.
+    // `.unref()` so a stuck mock doesn't keep the test process's event loop alive
+    // past the function return.
+    const detachTimeout = new Promise<null>((res) => {
+      const t = setTimeout(() => res(null), 2000);
+      t.unref();
+    });
+    await Promise.race([exitPromise, detachTimeout]);
+
+    return {
+      driverName: DRIVER_NAME,
+      session,
+      startedAt,
+      endedAt,
+      status: 'completed',
+      finalMessage,
+    };
+  } finally {
+    // ── Step 13: Detach the PTY if it's still alive (error path), then release lock ──
+    // On the success path, `term` was nulled out before writing Ctrl+Z, so this branch
+    // is skipped. On error paths (timeouts, abort, validation failures after spawn),
+    // the PTY child is still running — kill it explicitly so it doesn't keep the
+    // calling process's event loop alive past this function's return.
+    if (term !== null) {
+      try {
+        term.write('\x1a');
+      } catch {
+        // best-effort detach
+      }
+      try {
+        term.kill();
+      } catch {
+        // best-effort kill
+      }
+      term = null;
+    }
+    releaseLock();
+  }
+}

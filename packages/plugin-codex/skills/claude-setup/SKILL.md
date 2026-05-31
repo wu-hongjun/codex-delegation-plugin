@@ -1,6 +1,6 @@
 ---
 name: claude-setup
-description: Check Claude Companion readiness: Codex, Claude Code, auth, transcripts, daemon.
+description: Check Claude Companion readiness across Codex, Claude Code, auth, transcripts, and daemon.
 ---
 
 You are the Codex skill wrapper for the Claude Companion dispatcher.

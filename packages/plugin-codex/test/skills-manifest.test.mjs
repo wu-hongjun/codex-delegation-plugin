@@ -224,6 +224,56 @@ describe('each SKILL.md has valid YAML frontmatter with name and description', (
   }
 });
 
+/**
+ * Strict frontmatter parse. Mirrors what Codex's stricter YAML parser does for the
+ * simple `key: scalar` lines we ship: each line must be `key: value` with `value`
+ * either quoted, or unquoted and free of `: ` (which YAML treats as a new mapping)
+ * and `#` (which YAML treats as a comment marker). Throws on the first offending line.
+ */
+function strictParseFrontmatter(body) {
+  const m = body.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!m) throw new Error('no frontmatter block');
+  const out = {};
+  for (const line of m[1].split('\n')) {
+    if (line.trim().length === 0) continue;
+    const km = line.match(/^([a-z][a-z0-9_-]*):\s+(.+)$/);
+    if (!km) throw new Error(`unparseable frontmatter line: "${line}"`);
+    const [, key, raw] = km;
+    const quoted = /^".*"$/.test(raw) || /^'.*'$/.test(raw);
+    if (!quoted) {
+      if (raw.includes(': ')) {
+        throw new Error(
+          `unquoted ": " in scalar value for "${key}": Codex's YAML parser treats this as a nested mapping. Quote the value or remove the inner colon.`,
+        );
+      }
+      if (raw.includes(' #') || raw.startsWith('#')) {
+        throw new Error(
+          `unquoted "#" in scalar value for "${key}": YAML treats this as a comment marker.`,
+        );
+      }
+    }
+    out[key] = raw.replace(/^['"]|['"]$/g, '');
+  }
+  return out;
+}
+
+describe('each SKILL.md frontmatter is parseable by a strict YAML reader (Codex compatibility)', () => {
+  for (const name of SKILL_NAMES) {
+    it(`${name}: strict frontmatter parse does not throw`, () => {
+      const body = readFileSync(skillPath(name), 'utf8');
+      let fm;
+      assert.doesNotThrow(() => {
+        fm = strictParseFrontmatter(body);
+      }, `${name}: strict YAML frontmatter parse failed`);
+      assert.equal(fm.name, name, `${name}: strict-parsed name should match directory`);
+      assert.ok(
+        typeof fm.description === 'string' && fm.description.length > 0,
+        `${name}: strict-parsed description must be non-empty`,
+      );
+    });
+  }
+});
+
 // ---------- Body content tests ----------
 
 describe('each SKILL.md references scripts/claude-companion.mjs', () => {

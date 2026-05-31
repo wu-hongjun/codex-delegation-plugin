@@ -8,7 +8,7 @@
 **Approved**: 2026-05-30 (all six open questions resolved by maintainer)
 **Stage 2 complete**: 2026-05-31
 **Stage 3 complete**: 2026-05-31 (independent audit, verdict PASS WITH FINDINGS — `63fa9fd`)
-**Stage 4 complete**: 2026-05-31 (all five audit findings resolved; 442 tests pass)
+**Stage 4 complete**: 2026-05-31 (all five audit findings resolved + one user-reported Codex YAML-strictness fix; 447 tests pass)
 **Last updated**: 2026-05-31
 **Completed**: —
 
@@ -21,7 +21,7 @@
 | 1 — Plan | [`1-plan.md`](1-plan.md) | **approved 2026-05-30** |
 | 2 — Implement | [`2-implement.md`](2-implement.md) | **complete 2026-05-31** (T1–T14 + T11/T12a/T12b remediations; 439 tests pass; CI green on `ubuntu+macos × Node 20+22`; live E2E confirmed against real Claude 2.1.149 + Codex 0.135.0) |
 | 3 — Audit | [`3-audit.md`](3-audit.md) | **complete 2026-05-31** (independent session, fresh context; verdict PASS WITH FINDINGS — 5 low/nit; commit `63fa9fd`) |
-| 4 — Polish | [`4-polish.md`](4-polish.md) | **complete 2026-05-31** (all five audit findings resolved in one bundled commit; lint/typecheck/format/test all green; 442 tests pass) |
+| 4 — Polish | [`4-polish.md`](4-polish.md) | **complete 2026-05-31** (all five audit findings resolved + Codex YAML-strictness fix for `claude-setup`; lint/typecheck/format/test all green; 447 tests pass) |
 | 5 — Report | [`5-report.md`](5-report.md) | not started |
 
 ## Dependencies / blockers

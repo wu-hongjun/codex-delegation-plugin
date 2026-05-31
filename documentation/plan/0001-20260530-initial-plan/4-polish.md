@@ -28,17 +28,18 @@ _(none — all five Stage 3 findings were addressed in Stage 4.)_
 
 - Header comment of `packages/driver-claude-code/src/index.ts` rewritten from "v1 implements probe() only. Lifecycle methods land in later T-tasks per plan 0001" to "v1 implements probe(), startSession(), status(), and stop(). watch() streaming is deliberately deferred to a later plan." This matches the v1 surface that actually shipped in Stage 2.
 - Rephrased the doctor.ts header comment to avoid the literal `claude -p` token while preserving its meaning (negation of synchronous print-mode transport). This unblocked A5's broader static scan.
+- **Codex YAML-strictness fix in `claude-setup/SKILL.md`**: Codex 0.135.0's frontmatter parser is stricter than Claude Code's. It rejected `description: Check Claude Companion readiness: Codex, Claude Code, auth, transcripts, daemon.` because the unquoted `: ` after "readiness" reads as a nested mapping. Rephrased to `Check Claude Companion readiness across Codex, Claude Code, auth, transcripts, and daemon.` (semantically identical, YAML-safe). The lenient inline parser in `skills-manifest.test.mjs` had hidden this — added a strict-parseability test (5 new tests, one per SKILL.md) that catches unquoted `: ` and `#` in scalar frontmatter values. Test count is now 447 (212 in test:plugin, was 207).
 
 ## Lint / typecheck / format / test pass after polish
 
 - [x] `npm run lint` clean (no warnings, exit 0)
 - [x] `npm run typecheck` clean (`tsc --build`, exit 0)
 - [x] `npm run format` clean (`prettier --check`, exit 0)
-- [x] `npm test` green — 442 tests / 4 lanes, 0 fail:
+- [x] `npm test` green — 447 tests / 4 lanes, 0 fail:
   - `test:mock` — 34 tests pass
   - `test:runtime` — 82 tests pass (no count change; A5 reshaped an existing test rather than adding one)
   - `test:driver` — 119 tests pass (A4 reshaped an existing assertion rather than adding one)
-  - `test:plugin` — 207 tests pass (+3 from Stage 2's 204: two new A3 regression tests for `result` + one for `stop`)
+  - `test:plugin` — 212 tests pass (+8 from Stage 2's 204: 3 A3 regression tests + 5 strict-frontmatter polish tests)
 - [x] CI green on the polished commit (verified after push)
 
 ## Notes for Stage 5

@@ -216,7 +216,7 @@ None. C's verdict is ready-to-commit; both findings are low and deferred per the
 
 ### CI
 
-_To be recorded in the follow-up `Plan 0003 T2 log: record CI success` commit._
+CI green on the T2 commit at `dae57b9` per run [`26783317864`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26783317864): `ubuntu-latest / Node 20`, `macos-latest / Node 20`, `ubuntu-latest / Node 22`, `macos-latest / Node 22` — all `success`.
 
 ---
 

@@ -39,6 +39,7 @@ None. All changes in this stage address the five designated audit findings.
   - `test:driver` — 175 tests pass (no change)
   - `test:plugin` — 340 tests pass (+4 from F-D2: T11-7b, T11-7c, T11-7d, T11-7e)
 - [x] `npm run test:attach` — 25 tests pass (no change)
+- [x] CI green on the polished commit at `cbbac8c` — run `26773231881`; ubuntu+macos × Node 20+22 all success.
 
 ## Notes for Stage 5
 

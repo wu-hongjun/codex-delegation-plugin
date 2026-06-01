@@ -1213,7 +1213,7 @@ vs. write-at-t+0s where sidecar `updatedAt` stayed frozen indefinitely.
   - No `claude -p` references introduced.
   - No bypass flags introduced.
   - OQ4 forbidden cost-claim tokens absent.
-- Remote CI: pending (commit + push imminent).
+- Remote CI on `2914be7` (run `26766403509`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). T15a reconciler-fix + adapter-wiring + attach-warmup + 6 regression tests all exercise cleanly on both Linux and macOS for both supported Node majors. Plan 0002 implementation phase complete.
 
 ## Deviations from the plan
 

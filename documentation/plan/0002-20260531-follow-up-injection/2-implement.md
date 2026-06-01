@@ -608,7 +608,7 @@ Three integration issues required orchestrator-side fixes before B's tests went 
 - Flag rejection wording matches the brief verbatim.
 - Target-workspace ack discipline enforced and tested in three scenarios.
 - Permission-required surfaces a clean message with `claude attach <shortId>` remediation (T10 will replace with the interactive handoff loop).
-- Remote CI confirmation will be appended once T8 commit lands on `main`.
+- Remote CI on `69845ba` (run `26732705383`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). User-facing followup subcommand + target-workspace ack discipline + status footer all exercise cleanly on both Linux and macOS for both supported Node majors.
 
 ## Deviations from the plan
 

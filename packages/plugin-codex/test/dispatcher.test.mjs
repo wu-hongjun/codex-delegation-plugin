@@ -18,6 +18,11 @@
 // Synthetic completed job: write the JobRecord JSON directly to
 //   ${TMP_HOME}/jobs/<jobId>.json with status:'completed', then write
 //   ${TMP_HOME}/jobs/<jobId>.result.md with the final message content.
+//
+// T10 note: The test-only env var CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS overrides the
+//   default 5-minute permission-read timeout. T10-3 sets it to 100 ms so the timeout
+//   path fires quickly without holding up the suite. This is NOT a CLI flag; only tests
+//   should set it.
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -36,6 +41,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 
 // ---------- path constants ----------
 
@@ -1856,5 +1862,361 @@ describe('isolation: real ~/.claude and ~/.codex are not touched', () => {
     const realCodex = join(process.env.HOME ?? '/root', '.codex', 'cc-plugin-codex');
     assert.notEqual(TMP_HOME, realCodex, 'TMP_HOME must not equal the real companion home');
     assert.ok(TMP_HOME.startsWith(tmpdir()), `TMP_HOME should be under tmpdir(), got: ${TMP_HOME}`);
+  });
+});
+
+// ==========================================================================
+// T10: followup permission handoff loop (plan 0002)
+// ==========================================================================
+//
+// Contract under test (implemented by Subagent A):
+//   - cmdFollowup passes an `onPermissionRequest` callback to driver.send.
+//   - The driver calls the callback when polling detects `waiting`/`needs_input`.
+//   - If the callback returns a string → driver writes it + \r into PTY, continues.
+//   - If the callback returns null → driver throws; dispatcher exits 1 with
+//     "claude attach <shortId>" hint.
+//   - Non-TTY stdin (process.stdin.isTTY === false): callback returns null immediately.
+//   - TTY stdin: reads one line via readline/promises; default 5-min timeout (overridable
+//     via CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS).
+//   - Timeout: emits WARNING to stderr, returns null → permissionTimedOut flag set →
+//     dispatcher exits 0 (NOT 1), job left in needs_input.
+//   - --allow-edit does NOT bypass the permission gate.
+//
+// TTY tests use node-pty so that process.stdin.isTTY === true inside the dispatcher.
+// Non-TTY tests use plain spawnSync (no PTY).
+//
+// Helper: writeMockClaudeConfig — writes a mock-claude config JSON to MOCK_HOME so
+//   the dispatcher subprocess can pick it up via CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG.
+// ==========================================================================
+
+// Resolve node-pty via CJS require (it is a native CJS module).
+const _requireCjs = createRequire(import.meta.url);
+const _pty = _requireCjs('node-pty');
+const _ptySpawn = _pty.spawn;
+
+/**
+ * Write a JSON config file for mock-claude and return its path.
+ * @param {string} home  MOCK_HOME directory
+ * @param {Record<string, unknown>} config
+ * @returns {string}  path to the written config file
+ */
+function writeMockClaudeConfig(home, config) {
+  mkdirSync(home, { recursive: true });
+  const cfgPath = join(home, 'mock-claude-config.json');
+  writeFileSync(cfgPath, JSON.stringify(config));
+  return cfgPath;
+}
+
+/**
+ * Build the standard env object for a dispatcher subprocess in the T10 suite.
+ * Callers may spread extra keys on top.
+ * @param {Record<string, string>} [extra]
+ * @returns {Record<string, string>}
+ */
+function t10Env(extra = {}) {
+  return {
+    ...process.env,
+    CC_PLUGIN_CODEX_HOME: TMP_HOME,
+    CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: MOCK_HOME,
+    PATH: `${MOCK_CODEX}${delimiter}${MOCK_CLAUDE}${delimiter}${process.env.PATH ?? ''}`,
+    ...extra,
+  };
+}
+
+/**
+ * Poll `predicate()` every 50 ms up to `timeoutMs` ms.
+ * Rejects with a descriptive error on deadline.
+ * @param {() => boolean} predicate
+ * @param {number} timeoutMs
+ * @param {string} label
+ * @returns {Promise<void>}
+ */
+function waitForCondition(predicate, timeoutMs, label = 'condition') {
+  return new Promise((res, rej) => {
+    const deadline = Date.now() + timeoutMs;
+    const tick = () => {
+      if (predicate()) {
+        res();
+        return;
+      }
+      if (Date.now() >= deadline) {
+        rej(new Error(`waitForCondition timed out after ${timeoutMs}ms waiting for: ${label}`));
+        return;
+      }
+      setTimeout(tick, 50);
+    };
+    tick();
+  });
+}
+
+/**
+ * Spawn the dispatcher script under node-pty so stdin is a real TTY inside the child.
+ * Returns `{ term, exitPromise, getOut }`.
+ *
+ * @param {string[]} scriptArgs  args to pass after the script path
+ * @param {Record<string, string>} env  full env for the subprocess
+ * @returns {{ term: import('node-pty').IPty, exitPromise: Promise<{ exitCode: number }>, getOut: () => string }}
+ */
+function spawnDispatcherPty(scriptArgs, env) {
+  let out = '';
+  const term = _ptySpawn(process.execPath, [SCRIPT, ...scriptArgs], {
+    name: 'xterm-color',
+    cols: 120,
+    rows: 30,
+    cwd: WORK_DIR,
+    env,
+  });
+  term.onData((d) => {
+    out += d;
+  });
+  const exitPromise = new Promise((res) => {
+    term.onExit((e) => res(e));
+  });
+  return { term, exitPromise, getOut: () => out };
+}
+
+describe('followup permission handoff (plan 0002 T10)', () => {
+  // --------------------------------------------------------------------------
+  // T10-1: Non-TTY stdin without ack-equivalent exits 1 with `claude attach` hint
+  // --------------------------------------------------------------------------
+  it('T10-1: non-TTY stdin triggers null callback, exits 1 with "claude attach" hint', () => {
+    const jobId = `job_t10a_${createHash('sha256').update('t10-nontty-exit1').digest('hex').slice(0, 8)}`;
+    const shortId = 'f0110t1a';
+    writeSyntheticAwaitingFollowupJob({ jobId, shortId });
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+    writeAck(WORK_DIR);
+
+    // permissionStall: true makes the mock transition sidecar to `waiting`
+    // on the first attach submit, exercising the callback path.
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, { permissionStall: true });
+
+    // spawnSync provides a pipe-stdin — process.stdin.isTTY is false/undefined.
+    const result = spawnSync(
+      process.execPath,
+      [SCRIPT, 'followup', jobId, '--yes', '--', 'trigger permission'],
+      {
+        cwd: WORK_DIR,
+        env: { ...t10Env({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath }) },
+        encoding: 'utf8',
+      },
+    );
+
+    // Must exit 1.
+    assert.equal(
+      result.status,
+      1,
+      `expected exit 1 for non-TTY permission stall; got ${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    );
+
+    // Output must mention "claude attach" and/or "permission".
+    const combined = result.stdout + result.stderr;
+    const mentionsAttach =
+      /claude attach/i.test(combined) ||
+      /permission required/i.test(combined) ||
+      /non-interactive/i.test(combined);
+    assert.ok(
+      mentionsAttach,
+      `expected "claude attach" or "permission required" hint in output; got:\n${combined}`,
+    );
+
+    // The lock file must NOT exist after the dispatcher exits — no lock leak.
+    const lockPath = join(TMP_HOME, 'locks', `attach-${shortId}.lock`);
+    assert.ok(
+      !existsSync(lockPath),
+      `lock file must NOT exist after non-TTY rejection: ${lockPath}`,
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // T10-2: TTY stdin with valid answer completes the turn (node-pty)
+  // --------------------------------------------------------------------------
+  it(
+    'T10-2: TTY stdin with valid answer completes the turn (node-pty)',
+    { timeout: 25000 },
+    async () => {
+      const jobId = `job_t10b_${createHash('sha256').update('t10-tty-answer').digest('hex').slice(0, 8)}`;
+      const shortId = 'f0110t2b';
+      writeSyntheticAwaitingFollowupJob({ jobId, shortId });
+      writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+      writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+      writeAck(WORK_DIR);
+
+      const cfgPath = writeMockClaudeConfig(MOCK_HOME, { permissionStall: true });
+      const env = t10Env({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath });
+
+      const { term, exitPromise, getOut } = spawnDispatcherPty(
+        ['followup', jobId, '--yes', '--', 'trigger permission'],
+        env,
+      );
+
+      // Wait for the permission prompt block to appear in PTY stdout.
+      // The dispatcher prints "Claude is asking for permission inside session <shortId>."
+      await waitForCondition(
+        () => /permission/i.test(getOut()),
+        12000,
+        'permission prompt in PTY stdout',
+      );
+
+      // Supply the answer.
+      term.write('y\r');
+
+      // Wait for the dispatcher to exit.
+      const { exitCode } = await exitPromise;
+
+      assert.equal(
+        exitCode,
+        0,
+        `expected exit 0 after answering permission prompt; got ${exitCode}\nPTY output:\n${getOut()}`,
+      );
+
+      // The job record must show turns.length >= 2 (turn injected successfully).
+      const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+      assert.ok(existsSync(recordPath), `job record must exist at ${recordPath}`);
+      const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+      assert.ok(
+        record.turns.length >= 2,
+        `expected turns.length >= 2 after successful permission handoff; got ${record.turns.length}`,
+      );
+    },
+  );
+
+  // --------------------------------------------------------------------------
+  // T10-3: Timeout path exits 0 with warning, job stays in needs_input
+  // --------------------------------------------------------------------------
+  it(
+    'T10-3: timeout (TTY, no answer) exits 0 with warning; job left in needs_input',
+    { timeout: 25000 },
+    async () => {
+      const jobId = `job_t10c_${createHash('sha256').update('t10-timeout').digest('hex').slice(0, 8)}`;
+      const shortId = 'f0110t3c';
+      writeSyntheticAwaitingFollowupJob({ jobId, shortId });
+      writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+      writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+      writeAck(WORK_DIR);
+
+      const cfgPath = writeMockClaudeConfig(MOCK_HOME, { permissionStall: true });
+      // CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS=100 makes the readline timeout fire in 100ms.
+      const env = t10Env({
+        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath,
+        CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS: '100',
+      });
+
+      const { exitPromise, getOut } = spawnDispatcherPty(
+        ['followup', jobId, '--yes', '--', 'trigger permission'],
+        env,
+      );
+
+      // Wait for the permission prompt to appear.
+      await waitForCondition(
+        () => /permission/i.test(getOut()),
+        12000,
+        'permission prompt in PTY stdout before timeout test',
+      );
+
+      // Do NOT write any answer — let the 100ms timeout fire.
+      // Wait for the process to exit (with extra slack past the timeout).
+      const { exitCode } = await exitPromise;
+
+      // Must exit 0 (timeout path is warn-but-don't-act).
+      assert.equal(
+        exitCode,
+        0,
+        `expected exit 0 after permission timeout; got ${exitCode}\nPTY output:\n${getOut()}`,
+      );
+
+      // Combined PTY output must contain a timeout warning marker.
+      const ptyOut = getOut();
+      const hasTimeoutWarning =
+        /timeout/i.test(ptyOut) ||
+        /timed out/i.test(ptyOut) ||
+        /permission.*timed/i.test(ptyOut) ||
+        /WARNING/i.test(ptyOut);
+      assert.ok(hasTimeoutWarning, `expected timeout warning in combined output; got:\n${ptyOut}`);
+
+      // Lock must be released.
+      const lockPath = join(TMP_HOME, 'locks', `attach-${shortId}.lock`);
+      assert.ok(!existsSync(lockPath), `lock file must NOT exist after timeout exit: ${lockPath}`);
+    },
+  );
+
+  // --------------------------------------------------------------------------
+  // T10-4: --allow-edit does NOT bypass the permission gate (non-TTY)
+  // --------------------------------------------------------------------------
+  it('T10-4: --allow-edit does not bypass the permission gate; non-TTY still exits 1', () => {
+    const jobId = `job_t10d_${createHash('sha256').update('t10-allowedit').digest('hex').slice(0, 8)}`;
+    const shortId = 'f0110t4d';
+    writeSyntheticAwaitingFollowupJob({ jobId, shortId });
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+    writeAck(WORK_DIR);
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, { permissionStall: true });
+
+    // --allow-edit is present; stdin is a pipe (non-TTY).
+    const result = spawnSync(
+      process.execPath,
+      [SCRIPT, 'followup', jobId, '--yes', '--allow-edit', '--', 'trigger permission'],
+      {
+        cwd: WORK_DIR,
+        env: { ...t10Env({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath }) },
+        encoding: 'utf8',
+      },
+    );
+
+    // Must still exit 1 — --allow-edit changes nothing.
+    assert.equal(
+      result.status,
+      1,
+      `expected exit 1 with --allow-edit on non-TTY permission stall; got ${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    );
+
+    const combined = result.stdout + result.stderr;
+    const mentionsAttach =
+      /claude attach/i.test(combined) ||
+      /permission required/i.test(combined) ||
+      /non-interactive/i.test(combined);
+    assert.ok(
+      mentionsAttach,
+      `expected "claude attach" or "permission required" hint even with --allow-edit; got:\n${combined}`,
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // T10-5: Permission failure releases the lock (explicit redundant assertion)
+  // --------------------------------------------------------------------------
+  it('T10-5: lock file does not exist after permission-failure exit (non-TTY)', () => {
+    const jobId = `job_t10e_${createHash('sha256').update('t10-lockrelease').digest('hex').slice(0, 8)}`;
+    const shortId = 'f0110t5e';
+    writeSyntheticAwaitingFollowupJob({ jobId, shortId });
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+    writeAck(WORK_DIR);
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, { permissionStall: true });
+
+    const result = spawnSync(
+      process.execPath,
+      [SCRIPT, 'followup', jobId, '--yes', '--', 'trigger permission for lock test'],
+      {
+        cwd: WORK_DIR,
+        env: { ...t10Env({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath }) },
+        encoding: 'utf8',
+      },
+    );
+
+    // Permission stall on non-TTY must exit non-zero.
+    assert.notEqual(
+      result.status,
+      0,
+      `expected non-zero exit for non-TTY permission stall; got 0\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    );
+
+    // The explicit T10-5 claim: no lock file after exit.
+    const lockPath = join(TMP_HOME, 'locks', `attach-${shortId}.lock`);
+    assert.ok(
+      !existsSync(lockPath),
+      `T10-5: lock file must NOT exist after permission-failure exit; found: ${lockPath}`,
+    );
   });
 });

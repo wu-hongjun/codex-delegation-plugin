@@ -671,6 +671,89 @@ Seventh T-task under the A/B/C subagent pattern. Smaller scope than T5/T6/T7/T8 
 - `npm run test:plugin -- --test-name-pattern claude-followup` passes the per-skill strict-frontmatter, dispatcher-path, no-forbidden-token, and no-`--yes` checks.
 - Remote CI on `3ab1e78` (run `26754655128`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). New skill is discovered and tested cleanly on both Linux and macOS for both supported Node majors.
 
+## T10 — Dispatcher permission handoff loop
+
+**Started**: 2026-06-01. **Status**: complete (pending CI confirmation).
+
+Eighth T-task under the A/B/C subagent pattern. Adds the interactive permission-handoff loop to `cmdFollowup` (only). When `driver.send` reports a `waiting`/`needs_input` state mid-turn, the dispatcher prompts the user via stdout, reads a one-line answer from stdin, and forwards it via `driver.send`'s `onPermissionRequest` callback (the T5 hook).
+
+- **Subagent A (executor, sonnet)** — added `readline/promises` import; `readPermissionAnswer` helper with `Promise.race` between `rl.question` and `setTimeout`; `onPermissionRequest` callback in `cmdFollowup` (non-TTY → immediate null; TTY → readline + timeout); outer-scoped `permissionTimedOut` flag for catch-block branching; test-only env var `CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS` (NOT exposed as a CLI flag).
+- **Subagent B (test-engineer, sonnet)** — 5 new tests in a `followup permission handoff (plan 0002 T10)` describe block: T10-1 (non-TTY exit 1 with `claude attach` hint + lock released), T10-2 (TTY happy path via node-pty, `y\r` answer → exit 0 + turns.length>=2), T10-3 (timeout → exit 0 + stderr warning + lock released), T10-4 (`--allow-edit` does NOT bypass), T10-5 (lock-release regression guard).
+- **Subagent C (code-reviewer, opus)** — security-focused review across Q1–Q10. Verdict: **`ready-for-T11`**. 0 critical/high; 1 medium (M1 — env-var input validation; fixed in this commit); 2 low cosmetic.
+
+### Files changed
+
+- `packages/plugin-codex/scripts/claude-companion.mjs`:
+  - Added `import { createInterface } from 'node:readline/promises'` at top.
+  - In `cmdFollowup`: defensive parse of `CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS` env var (Number.isFinite + > 0 check; falls back to 300_000 ms default on bad input — M1 fix); outer-scoped `let permissionTimedOut = false`; `readPermissionAnswer(timeoutMs)` helper using `Promise.race` between `rl.question` and a `setTimeout`-based sentinel; `onPermissionRequest` callback that returns null synchronously on non-TTY (no prompt printed, no read attempted) and returns the trimmed answer on TTY (or null + sets `permissionTimedOut` on timeout); outer catch block distinguishes timeout (exit 0 + single-line stderr warning) from non-TTY-null (exit 1 with `claude attach <shortId>` hint, matching the T8 path).
+- `packages/plugin-codex/test/dispatcher.test.mjs`: 5 new tests covering the security-critical paths (non-TTY fail-closed, TTY happy path, timeout warn-but-don't-act, `--allow-edit` non-bypass, lock-release regression).
+
+### Orchestrator-applied follow-up: Subagent C finding M1 (medium)
+
+C noted that `CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS` was parsed as `Number(rawValue)` without input validation. A non-numeric (`'foo'` → NaN → 1ms via setTimeout), empty string (`''` → 0 → immediate fire), or negative value (`'-1'` → immediate fire) would all produce a near-instant timeout. Since the env var controls a security-critical timeout, a misconfigured CI value could silently change the permission-handoff semantics.
+
+Fix: defensive parse:
+
+```js
+const PERMISSION_TIMEOUT_DEFAULT_MS = 300_000;
+const rawTimeoutOverride = process.env.CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS;
+const parsedTimeoutOverride = rawTimeoutOverride ? Number(rawTimeoutOverride) : NaN;
+const PERMISSION_TIMEOUT_MS =
+  Number.isFinite(parsedTimeoutOverride) && parsedTimeoutOverride > 0
+    ? parsedTimeoutOverride
+    : PERMISSION_TIMEOUT_DEFAULT_MS;
+```
+
+Not a silent-approval bug (timeout always returns null, never a string), but bounded by validation now. All 273 plugin tests still pass after the fix.
+
+### Subagent C findings (full list)
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| M1 | medium | `CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS` parsed without input validation. | **Fixed in this commit.** Defensive `Number.isFinite && > 0` check; bad input falls back to 5-min default. |
+| L1 | low | Outer catch branches on the literal substring `'permission required but no response'` (T8's pattern). Brittle to driver-side message rewording. | No action; could use a structured discriminator in a later cleanup. |
+| L2 | low | Permission prompt block goes to stdout (per maintainer brief), not stderr. If the user redirects stdout the prompt is invisible while readline still listens. | No action; matches the explicit spec. |
+
+### Subagent A's documented decisions (all validated by C as `ok`)
+
+1. **No new `permission.mjs` file** — the permission logic is local to `cmdFollowup` with no other callers; an extracted helper would be premature.
+2. **`format.mjs` not touched** — no new formatter was needed for the prompt block.
+3. **Outer-scoped `permissionTimedOut` flag** — declared `let` inside `cmdFollowup` (function-scope, not module-scope; fresh per invocation). Set only in the timeout branch of the callback. Read only in the outer catch block.
+
+### Security check (per Subagent C)
+
+- **No bypass flags introduced.** Boolean flag set unchanged: `['yes', 'json', 'all', 'allow-edit', 'help']`. No `--auto-yes` / `--approve-all` / `--no-permission`.
+- **Non-TTY fail-closed.** Callback returns `null` synchronously **before** any prompt write or readline call (`claude-companion.mjs:632–636`).
+- **`--allow-edit` does NOT bypass.** `cmdFollowup` never reads `flags['allow-edit']`; the callback path is identical regardless.
+- **Timeout = warn-but-don't-act.** Single-line stderr warning, `process.exit(0)`. No auto-`y` / `n` / `approve` / `deny` injected. Job stays in `needs_input` for next `$claude-status`.
+- **Test-only env var is internal.** Not in `BOOLEAN_FLAGS`, not in `printUsage()`, documented as test seam.
+- **Lock released on every failure path.** Driver's `attachAndSend` finally-block runs on null-callback throws.
+- **No silent approval.** Grep for hardcoded 'y'/'yes'/'approve'/'allow' return values in `cmdFollowup` returns zero hits.
+
+### Test impact
+
+| Lane | Before T10 | After T10 | Δ |
+|---|---|---|---|
+| test:mock | 58 | 58 | — |
+| test:runtime | 150 | 150 | — |
+| test:driver | 175 | 175 | — |
+| test:plugin | 268 | 273 | +5 (T10-1 through T10-5) |
+| **Total** | **651** | **656** | **+5** |
+
+### Acceptance evidence (2026-06-01)
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean.
+- All four lanes green: mock 58 + runtime 150 + driver 175 + plugin 273 = **656 pass / 0 fail**.
+- Plan 0001 architectural invariant still passes; no `node-pty` import in dispatcher; no `claude -p` references.
+- Non-TTY fail-closed verified by T10-1 + T10-4.
+- TTY happy path verified by T10-2 (under node-pty).
+- Timeout warn-but-don't-act verified by T10-3 (with `CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS=100` test override).
+- Lock-release invariant verified by T10-1 / T10-3 / T10-5.
+- M1 env-var input validation defensive against bad CI configuration.
+- Remote CI confirmation will be appended once T10 commit lands on `main`.
+
 ## Deviations from the plan
 
 - **node-pty version pin** (T1) — `^1.1.0` → `1.2.0-beta.13`. Reason: Node 25 ABI incompatibility with `1.1.0`. Maintainer approved.

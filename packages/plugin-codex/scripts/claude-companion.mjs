@@ -4,6 +4,7 @@
 // Subcommands: setup | delegate | status | result | stop
 // Exit codes: 0 success, 1 failure, 2 usage error
 
+import { createInterface } from 'node:readline/promises';
 import { readFile } from 'node:fs/promises';
 
 import {
@@ -586,10 +587,94 @@ async function cmdFollowup(flags, positional, json) {
   // 10. Write turn.requested event.
   await appendEvent(jobId, { type: 'turn.requested', at: now, turnIndex: newTurnIndex });
 
-  // 11. Call driver.send — do NOT pass onPermissionRequest (T10 defers the permission loop).
+  // 11. Build permission callback and call driver.send (T10 permission-handoff loop).
+  //
+  // The timeout default is 5 minutes (300_000 ms). Tests may override it via the
+  // CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS environment variable. This is a test seam
+  // only — do NOT expose it as a CLI flag.
+  //
+  // Defensive parse: a non-numeric, empty, zero, or negative env-var value falls
+  // back to the 5-minute default rather than firing an immediate timeout (which
+  // would silently change permission-handoff semantics in CI / misconfigured envs).
+  const PERMISSION_TIMEOUT_DEFAULT_MS = 300_000;
+  const rawTimeoutOverride = process.env.CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS;
+  const parsedTimeoutOverride = rawTimeoutOverride ? Number(rawTimeoutOverride) : NaN;
+  const PERMISSION_TIMEOUT_MS =
+    Number.isFinite(parsedTimeoutOverride) && parsedTimeoutOverride > 0
+      ? parsedTimeoutOverride
+      : PERMISSION_TIMEOUT_DEFAULT_MS;
+
+  // Flag set by the callback when the 5-minute read times out. Used in the outer
+  // catch block to distinguish timeout (exit 0) from hard failures (exit 1).
+  let permissionTimedOut = false;
+
+  /**
+   * Read one line from stdin with a soft timeout.
+   * Returns { timedOut: false, line: string } or { timedOut: true }.
+   * @param {number} timeoutMs
+   */
+  async function readPermissionAnswer(timeoutMs) {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    try {
+      const answerPromise = rl.question('> ');
+      let timeoutHandle;
+      const timeoutPromise = new Promise((resolve) => {
+        timeoutHandle = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
+      });
+      const winner = await Promise.race([
+        answerPromise.then((line) => ({ timedOut: false, line })),
+        timeoutPromise,
+      ]);
+      clearTimeout(timeoutHandle);
+      return winner;
+    } finally {
+      rl.close();
+    }
+  }
+
+  /**
+   * onPermissionRequest callback passed to driver.send.
+   * @param {{ shortId: string; message?: string }} request
+   * @returns {Promise<string | null>}
+   */
+  async function onPermissionRequest({ shortId: reqShortId }) {
+    // Non-TTY: fail closed immediately without printing the prompt.
+    if (!process.stdin.isTTY) {
+      return null;
+    }
+
+    // Print the prompt block to stdout (not stderr), as specified.
+    process.stdout.write(
+      [
+        `Claude is asking for permission inside session ${reqShortId}.`,
+        'Type your answer below; we will route it back into the session.',
+        '(To abort, press Ctrl+C; the session keeps running.)',
+        '',
+      ].join('\n'),
+    );
+
+    const result = await readPermissionAnswer(PERMISSION_TIMEOUT_MS);
+
+    if (result.timedOut) {
+      process.stderr.write(
+        `[followup] WARNING: timed out waiting for permission answer for session ${reqShortId}. ` +
+          `The session is left in needs_input state. Run \`claude attach ${reqShortId}\` to respond manually.\n`,
+      );
+      permissionTimedOut = true;
+      return null;
+    }
+
+    // Trim trailing newline; return the answer (empty string is acceptable).
+    return result.line.replace(/\r?\n$/, '');
+  }
+
   let sendResult;
   try {
-    sendResult = await driver.send(sessionHandle, { type: 'text', text: prompt }, {});
+    sendResult = await driver.send(
+      sessionHandle,
+      { type: 'text', text: prompt },
+      { onPermissionRequest },
+    );
   } catch (err) {
     // Check for permission stall.
     const msg = err instanceof Error ? err.message : String(err);
@@ -617,11 +702,31 @@ async function cmdFollowup(flags, positional, json) {
       message: msg,
     });
 
+    // Timeout path: the callback returned null after 5 min with no answer.
+    // Exit 0 — the job stays in needs_input and the reconciler will surface it.
+    if (permissionTimedOut) {
+      process.stderr.write(
+        `[followup] Permission handoff timed out. Job ${jobId} is left in needs_input state.\n`,
+      );
+      process.exit(0);
+    }
+
     if (isPermissionStall) {
       process.stderr.write(
         formatError(
           new Error(
             `Claude is asking for permission. Run claude attach ${sessionHandle.shortId} to approve manually, then retry $claude-followup.`,
+          ),
+          'followup',
+          json,
+        ) + '\n',
+      );
+    } else if (msg.includes('permission required but no response')) {
+      // Non-TTY null-return path: driver threw after callback returned null.
+      process.stderr.write(
+        formatError(
+          new Error(
+            `Permission required, but this dispatcher is non-interactive. Run \`claude attach ${sessionHandle.shortId}\` in your own terminal to approve manually.`,
           ),
           'followup',
           json,

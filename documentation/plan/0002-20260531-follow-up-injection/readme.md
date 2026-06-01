@@ -1,8 +1,10 @@
 # Plan 0002 — Follow-up injection for Claude background jobs
 
-**Status**: `implementing`
+**Status**: `auditing`
 **Started**: 2026-05-31
 **Approved**: 2026-05-31
+**Stage 2 complete**: 2026-06-01
+**Last updated**: 2026-06-01
 **Completed**: —
 
 ## Stages
@@ -10,7 +12,7 @@
 | Stage | File | Status |
 |---|---|---|
 | 1 — Plan | `1-plan.md` | **approved 2026-05-31** |
-| 2 — Implement | `2-implement.md` | in progress |
-| 3 — Audit | `3-audit.md` | not started |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-01** — T1–T15 complete, including T15a live-E2E remediation; 725 tests pass; `test:attach` 25/25; CI green on ubuntu+macos × Node 20+22; live E2E confirmed against real Claude Code 2.1.149 + Codex 0.135.0. |
+| 3 — Audit | `3-audit.md` | not started — requires independent context |
 | 4 — Polish | `4-polish.md` | not started |
 | 5 — Report | `5-report.md` | not started |

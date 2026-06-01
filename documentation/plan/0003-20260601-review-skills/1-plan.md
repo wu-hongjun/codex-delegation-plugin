@@ -1,4 +1,4 @@
-# Stage 1 — Plan: Review skills for Claude background jobs
+# Plan 0003 — Stage 1 planning: Review skills for Claude background jobs
 
 > **Status**: drafting
 > **Author**: Claude (assistant)
@@ -63,7 +63,7 @@ A complete vertical slice that lets a Codex user, from inside an active Codex se
 - Benchmark harness + cost-claim copy update (Plan 0004).
 - Stop-time review gate via hooks (Plan 0005).
 - Marketplace packaging + distribution polish (Plan 0006).
-- Review-of-review recursion (no hard prevention in Plan 0003; documented in SKILL.md as allowed-but-not-recommended).
+- Review-of-review as a default target is prevented by the non-review-turn rule (§ 3.X); explicit review-of-review via flags is deferred.
 - Multi-reviewer chains (two parallel reviews compared; critic + defender chain).
 - `--severity-threshold` flag (only show findings above a severity).
 - `--focus` flag (focus the review on security, performance, correctness, etc.).
@@ -151,6 +151,23 @@ Findings:
     Recommendation: Check for TODO(high), TODO(low) patterns.
 ```
 
+**Canonical raw output format**: Both review prompts instruct Claude to emit the structured findings as a fenced JSON block at the start of the response, using this shape:
+
+```json
+{
+  "verdict": "pass_with_findings",
+  "findings": [
+    {
+      "severity": "high",
+      "description": "...",
+      "recommendation": "...",
+      "file": null,
+      "line": null
+    }
+  ]
+}
+```
+
 **`--json` output**:
 
 ```json
@@ -174,37 +191,65 @@ Findings:
 }
 ```
 
-**Parsing strategy**: best-effort. The dispatcher attempts to parse the structured findings from Claude's response text. If parsing fails (Claude deviated from the expected format), the raw text is wrapped in a single finding with severity `nit` and the full text as the description. The `--json` output always has a `verdict` and `findings` array, even in the fallback case. The fallback verdict is `pass_with_findings`.
+**Parser strategy** (in `review-parser.mjs`):
+1. Try to parse the first fenced ` ```json ` block in the response.
+2. If no fenced block, try to parse the whole response as JSON.
+3. If JSON parsing fails, optionally attempt to parse markdown/human-format output (best-effort regex pattern matching).
+4. If all parsing fails, fall back to a single `nit` finding with the raw text as the description.
+
+The `--json` output always exposes `verdict` + `findings` array, even in the fallback case. The fallback verdict is `pass_with_findings`. This preserves best-effort behavior while making the test contract explicit.
+
+**Persistence**: the raw review response is stored as the review turn's `result.finalMessage` (or for adversarial review, the review job's `result.finalMessagePath` content), exactly like any other turn. Structured findings are parsed at command-output time and printed by the dispatcher. They are NOT added to `JobRecord` or `TurnRecord` schema in Plan 0003. Future consumers (Plan 0005 stop-time gate, automation hooks) can re-parse the stored review text using `review-parser.mjs`. This avoids schema creep while preserving the underlying data.
 
 ### 3.4 Execution model
 
 **Same-session review (`$claude-review`)**:
 
 1. Resolve job by ID prefix (same as `$claude-followup`).
-2. Status eligibility check: `awaiting_followup`, `needs_input`, or `completed`-with-live-idle-session (same as `$claude-followup`).
-3. Privacy ack against target job's workspace (same as `$claude-followup`).
-4. Construct the review prompt from the same-session template.
-5. Call the shared `sendFollowupTurn()` helper (extracted from `cmdFollowup`), which calls `driver.send()`.
-6. Parse structured findings from the response.
-7. Update the job's `turns[]` with the review turn (prompt summary prefixed `[review] `).
-8. Format and print the findings.
+2. Status eligibility check: `awaiting_followup` or `completed`-with-live-idle-session ONLY. `needs_input` is rejected — `$claude-review` is a review turn, not a permission-resolution turn; if the target job is `needs_input`, the user should resolve the permission with `claude attach` or the follow-up permission flow first. All other statuses (`running`, `queued`, `starting`, `stopped`, `failed`, `orphaned`, `completed` with no live session) are also rejected.
+3. Privacy ack against target job's `workspace.root` per the unified ack rule (§ 3.X).
+4. Select the review target: the latest completed non-review turn (defined as the latest turn whose `prompt.summary` does NOT start with `[review] ` or `[adversarial-review] ` and which has a result). If no such turn exists, exit with `"No reviewable non-review output found for this job."`.
+5. Construct the review prompt from the same-session template.
+6. Call the shared `sendFollowupTurn()` helper (extracted from `cmdFollowup`), which calls `driver.send()`.
+7. Parse structured findings from the response.
+8. Update the job's `turns[]` with the review turn (prompt summary prefixed `[review] `).
+9. Format and print the findings.
 
 **Adversarial review (`$claude-adversarial-review`)**:
 
 1. Resolve job by ID prefix.
 2. Status eligibility check: any status with `job.result` present (`awaiting_followup`, `completed`, `stopped`, `failed`, `orphaned` — all with result). `running`, `queued`, `starting` rejected. `needs_input` rejected (ambiguous state for review). Statuses without result rejected.
-3. Privacy ack against target job's workspace. The fresh session operates in the same workspace; no new ack needed beyond the existing workspace-scoped ack.
-4. Read the target job's result (from `job.result.finalMessagePath` on disk).
-5. Read the target job's original prompt (from `job.turns[0].prompt.summary`).
-6. Read the target job's touched files (from `job.result.touchedFiles`).
-7. Construct the adversarial review prompt from the template with the injected context.
-8. Call `driver.startSession()` with the constructed prompt (mirroring `cmdDelegate`).
-9. Create a new `JobRecord` with `reviewOf: { jobId: targetJobId }`.
-10. Reconcile in a loop with a **30-minute (1 800 000 ms) ceiling**, configurable via `CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_TIMEOUT_MS` (env-var parsed defensively: `NaN` or negative values fall back to the 30-minute default). On timeout: stop the underlying session (`driver.stop(sessionId)`), mark the job `failed`, exit with `"Adversarial review did not complete within <N> minutes."` This timeout is independent of the per-job 30-minute TTL for `awaiting_followup` jobs (Plan 0002 OQ-A); the TTL governs status display for idle reusable sessions, whereas this ceiling bounds the wall-clock duration of an active adversarial-review reconcile loop. See DD-1 in section 6.
-11. Parse structured findings from the review job's result.
-12. Format and print the findings.
+3. Privacy ack against target job's `workspace.root` per the unified ack rule (§ 3.X).
+4. Select the review target: the latest completed non-review turn (defined as the latest turn whose `prompt.summary` does NOT start with `[review] ` or `[adversarial-review] ` and which has a result). If no such turn exists, exit with `"No reviewable non-review output found for this job."`.
+5. Read the target turn's result (from the non-review turn's result, not blindly from `job.result.finalMessagePath`).
+6. Read the target turn's original prompt (from the non-review turn's `prompt.summary`, not blindly from `job.turns[0].prompt.summary`).
+7. Read the target job's touched files (from `job.result.touchedFiles`).
+8. Construct the adversarial review prompt from the template with the injected context.
+9. Call `driver.startSession()` with the constructed prompt (mirroring `cmdDelegate`).
+10. Create a new `JobRecord` with `reviewOf: { jobId: targetJobId }`.
+11. Reconcile in a loop with a **30-minute (1 800 000 ms) ceiling**, configurable via `CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_TIMEOUT_MS` (env-var parsed defensively: `NaN` or negative values fall back to the 30-minute default). On timeout:
+    - Best-effort call `driver.stop(reviewSessionHandle)` (errors ignored — the session may already be dead).
+    - Mark the review job's status as `failed`.
+    - Append a `review.failed` event to the event log (event name `review.failed`; if the codebase uses a different event-name pattern, use the closest established name and note the choice).
+    - Leave the original target job UNCHANGED. The timeout is on the review session, not the original delegated work. The original job's status, result, and `turns[]` stay untouched.
+    - Exit with non-zero status code and message: `"Adversarial review did not complete within <N> minutes."`.
+    This timeout is independent of the per-job 30-minute TTL for `awaiting_followup` jobs (Plan 0002 OQ-A); the TTL governs status display for idle reusable sessions, whereas this ceiling bounds the wall-clock duration of an active adversarial-review reconcile loop. See DD-1 in section 6.
+12. Parse structured findings from the review job's result.
+13. Format and print the findings.
 
-**Ack model clarification**: `$claude-review` (same-session) does not require a new ack because the original delegation already obtained one. `$claude-adversarial-review` operates in the same workspace as the original job; the existing workspace-scoped ack covers it. If the user runs `$claude-adversarial-review --all <jobId>` resolving to a different workspace, the ack check is against the target job's workspace (same precedent as `$claude-followup --all`).
+**Privacy ack model (both review commands)**: `$claude-review` and `$claude-adversarial-review` check privacy acknowledgement against the target job's `workspace.root`. The decision rule:
+1. If ack exists for the target workspace, proceed.
+2. If no ack and `--yes` is supplied, record ack for the target workspace and proceed.
+3. If no ack and `stdin` is a TTY, prompt interactively; record ack on positive response.
+4. If no ack and `stdin` is non-TTY, fail with the target workspace identified in the error message.
+
+In the common case, the original delegation already recorded this workspace ack, so no new prompt appears. The lookup-against-existing-ack is what makes this transparent. Do not skip the ack check.
+
+### 3.X Review target selection
+
+Both `$claude-review` and `$claude-adversarial-review` review the latest completed **non-review** turn by default. A non-review turn is defined as: `turn.prompt.summary` does NOT start with `[review] ` or `[adversarial-review] `. If no completed non-review turn has a result, both commands exit with the error `"No reviewable non-review output found for this job."`.
+
+This rule prevents review-of-review as the default target. Review-of-review recursion is not hard-prevented forever; it is simply not the default in Plan 0003. A future plan may add explicit `--target-turn` or `--review-review` flags to enable explicit review-of-review when the user intentionally requests it.
 
 ### 3.5 Schema additions
 
@@ -227,6 +272,8 @@ Same-session review turns are distinguished by the `prompt.summary` prefix `[rev
 
 ### 3.6 Status eligibility table
 
+Eligibility is checked against the *target turn* (the latest non-review turn with a result per § 3.X), not just the job status alone. A job that has a result but whose only completed turns are review turns is rejected by both commands.
+
 | Job status | `$claude-review` | `$claude-adversarial-review` |
 | --- | --- | --- |
 | `awaiting_followup` | allowed | allowed |
@@ -245,7 +292,7 @@ Same-session review turns are distinguished by the `prompt.summary` prefix `[rev
 
 `$claude-adversarial-review` is the only review variant that works on non-live jobs, because it starts a fresh session that does not require the original session to be alive. It requires only that `job.result` exists (the reviewer needs something to evaluate). If no result exists, exit with: `"No reviewable output. The job <status> before producing a result."`
 
-`$claude-review` requires the same eligibility as `$claude-followup` because it uses the same execution path (same-session `driver.send()`).
+`$claude-review` requires `awaiting_followup` or `completed`-with-live-idle-session (per § 3.6) because it uses the same execution path (same-session `driver.send()`). It is a review turn, not a permission-resolution turn; `needs_input` and non-live statuses are rejected.
 
 ---
 
@@ -263,7 +310,7 @@ In order. Each task has acceptance criteria. A task is not complete until its ac
 - [ ] Unit tests validate template output shape: delimiters present, format specification present, forced-finding instruction present.
 - **Files touched**: `packages/plugin-codex/scripts/lib/review-prompts.mjs` (new), `packages/plugin-codex/test/review-prompts.test.mjs` (new).
 - **Test count delta**: +10.
-- **Acceptance**: `node --test packages/plugin-codex/test/review-prompts.test.mjs` passes; templates produce well-formed prompt strings with all required sections; adversarial template correctly delimits injected content; same-session template includes the sycophancy caveat; neither template contains a numerical floor for findings (no "at least N" pattern).
+- **Acceptance**: `node --test packages/plugin-codex/test/review-prompts.test.mjs` passes; templates produce well-formed prompt strings with all required sections; templates explicitly instruct Claude to emit a fenced ` ```json ` block at the start of the response (assert this instruction is present in both template outputs); adversarial template correctly delimits injected content; same-session template includes the sycophancy caveat; neither template contains a numerical floor for findings (no "at least N" pattern).
 
 ### T2. Structured output parser
 
@@ -272,12 +319,40 @@ In order. Each task has acceptance criteria. A task is not complete until its ac
 - [ ] Verdicts: `pass`, `fail`, `pass_with_findings`.
 - [ ] Graceful fallback: if the text does not match the expected format, return `{ verdict: 'pass_with_findings', findings: [{ severity: 'nit', description: <raw text>, recommendation: null, file: null, line: null }] }`.
 - [ ] Module imports nothing from `node-pty`, nothing from driver or runtime packages.
-- [ ] Unit tests cover: well-formed input, malformed input (fallback), empty input, mixed severities, findings with and without file/line references.
+- [ ] Unit tests cover:
+  1. Fenced ` ```json ` block at the start of the response — parses correctly.
+  2. Whole response is bare JSON (no fenced block) — parses correctly.
+  3. Markdown/human-format output (if supported by the parser) — parses correctly.
+  4. Malformed JSON inside a fenced block — falls back to a single `nit` finding with the raw text.
+  5. JSON object with an unknown severity value — normalizes to `nit`.
+  6. JSON object missing the `findings` array — falls back safely.
+  7. JSON with `verdict: 'pass'` and empty `findings: []` — parses correctly, no error.
+  Additionally: well-formed input, malformed input (fallback), empty input, mixed severities, findings with and without file/line references.
 - **Files touched**: `packages/plugin-codex/scripts/lib/review-parser.mjs` (new), `packages/plugin-codex/test/review-parser.test.mjs` (new).
-- **Test count delta**: +15.
-- **Acceptance**: `node --test packages/plugin-codex/test/review-parser.test.mjs` passes; well-formed review text parses into correct verdict + findings array; garbage text triggers the graceful fallback with a single `nit` finding containing the raw text.
+- **Test count delta**: +17 (the seven explicit cases above plus ten additional cases covering well-formed input variants, mixed severities, and file/line reference handling).
+- **Acceptance**: `node --test packages/plugin-codex/test/review-parser.test.mjs` passes; well-formed review text parses into correct verdict + findings array; garbage text triggers the graceful fallback with a single `nit` finding containing the raw text; all seven explicit cases pass.
 
 ### T3. Shared `sendFollowupTurn` helper extraction
+
+`sendFollowupTurn()` assumes the caller has already resolved the job, checked status eligibility, and performed the target-workspace privacy acknowledgement.
+
+**It owns only:**
+- Append a `TurnRecord` to the job's `turns[]`.
+- Append a `turn.requested` event to the event log.
+- Call `driver.send()` with the constructed prompt.
+- Update the turn's `result` and `status` fields after `driver.send()` returns.
+- Append `turn.completed` or `turn.failed` event.
+- Preserve the previous `job.result` on failure (do not clobber with a partial result).
+- Sync compat aliases on the job record.
+- Apply the optional `promptSummaryPrefix` to the turn's `prompt.summary`.
+
+**It does NOT own:**
+- Job lookup by prefix (caller does this).
+- Status eligibility checks (caller-specific; `$claude-followup` and `$claude-review` have different rules).
+- Privacy ack (caller-specific).
+- Prompt construction (caller-specific; uses the templates for review commands).
+
+This keeps `$claude-followup` and `$claude-review` from becoming entangled.
 
 - [ ] Refactor `cmdFollowup` in `packages/plugin-codex/scripts/claude-companion.mjs` to extract the shared send-and-record flow (steps 9-14 of the current `cmdFollowup`) into a reusable helper function `sendFollowupTurn({ jobId, prompt, flags, driver, adapter, json, promptSummaryPrefix })`.
 - [ ] `cmdFollowup` calls `sendFollowupTurn` with no `promptSummaryPrefix` (backwards-compatible).
@@ -292,15 +367,18 @@ In order. Each task has acceptance criteria. A task is not complete until its ac
 - [ ] New `cmdReview` function in `packages/plugin-codex/scripts/claude-companion.mjs`.
 - [ ] Arg parser accepts: `--all`, `--json`, `--yes` only.
 - [ ] Arg parser rejects `--model`, `--effort`, `--permission-mode`, `--add-dir`, `--mcp-config`, `--name`, `--allow-edit` at parse time with clear error messages. `--allow-edit` rejection message: `"--allow-edit is not applicable to review skills. Reviews are read-only."`
-- [ ] Status eligibility per section 3.6 (same as `$claude-followup`).
+- [ ] Status eligibility per section 3.6 (`awaiting_followup` or `completed`-with-live-idle-session only; `needs_input` and all other statuses rejected).
+- [ ] Selects the review target: latest completed non-review turn per § 3.X; exits with `"No reviewable non-review output found for this job."` if none exists.
 - [ ] Constructs review prompt from the same-session template (T1).
 - [ ] Calls `sendFollowupTurn()` with `promptSummaryPrefix: '[review] '`.
 - [ ] Parses structured findings from the result via the parser (T2).
 - [ ] Formats human-readable and `--json` output via new format functions.
 - [ ] Dispatched from the main `switch` block as `case 'review':`.
+- [ ] Dispatcher's `--help` output includes both `review` and `adversarial-review` in the usage/subcommands section.
+- [ ] A test asserts `--help` output mentions both `review` and `adversarial-review` subcommand names.
 - **Files touched**: `packages/plugin-codex/scripts/claude-companion.mjs`, `packages/plugin-codex/scripts/lib/format.mjs` (new format functions).
 - **Test count delta**: +25.
-- **Acceptance**: dispatcher tests cover: all accepted flags, all rejected flags (with exact error messages), status eligibility checks, successful review with mock-claude returning structured output, fallback parsing on malformed mock output, `--json` output shape validation.
+- **Acceptance**: dispatcher tests cover: all accepted flags, all rejected flags (with exact error messages), status eligibility checks (including `needs_input` rejected), non-review-turn selection (job with only review turns exits with `"No reviewable non-review output found for this job."`), successful review with mock-claude returning structured output, fallback parsing on malformed mock output, `--json` output shape validation, `--help` output includes `review` subcommand name (assert `--help` text mentions both `review` and `adversarial-review`).
 
 ### T5. Runtime: `reviewOf` field on `JobRecord`
 
@@ -319,20 +397,22 @@ In order. Each task has acceptance criteria. A task is not complete until its ac
 - [ ] New `cmdAdversarialReview` function in `packages/plugin-codex/scripts/claude-companion.mjs`.
 - [ ] Arg parser accepts: `--all`, `--json`, `--yes`, `--model`, `--effort`, `--permission-mode` only.
 - [ ] Arg parser rejects `--add-dir`, `--mcp-config`, `--name`, `--allow-edit` at parse time. `--allow-edit` rejection message same as T4.
-- [ ] Status eligibility per section 3.6 (any terminal status with result present).
-- [ ] Reads target job's result from disk (`job.result.finalMessagePath`).
-- [ ] Reads target job's original prompt from `job.turns[0].prompt.summary`.
+- [ ] Status eligibility per section 3.6 (any terminal status with result present; `needs_input`, `running`, `queued`, `starting` rejected).
+- [ ] Selects the review target: latest completed non-review turn per § 3.X; exits with `"No reviewable non-review output found for this job."` if none exists.
+- [ ] Reads the target turn's result from the non-review turn's result (not blindly from `job.result.finalMessagePath`).
+- [ ] Reads the target turn's original prompt from the non-review turn's `prompt.summary` (not blindly from `job.turns[0].prompt.summary`).
 - [ ] Reads target job's touched files from `job.result.touchedFiles`.
 - [ ] Constructs adversarial review prompt from the template (T1) with injected context.
 - [ ] Calls `driver.startSession()` with: constructed prompt, `cwd` = target job's workspace root, session name = `codex:<repo>:review-<originalJobId-short>`, optional `--model` and `--effort` forwarding.
 - [ ] Creates new `JobRecord` with `reviewOf: { jobId: targetJobId }` via `createJob()` (depends on T5 runtime schema).
-- [ ] Reconcile loop with a **30-minute (1 800 000 ms) ceiling**, configurable via `CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_TIMEOUT_MS`. Env-var parsed defensively (`parseInt`; `NaN` or negative values fall back to the 30-minute default). On timeout: call `driver.stop(sessionId)`, mark the review job `failed`, exit with `"Adversarial review did not complete within <N> minutes."` (see DD-1 in section 6).
+- [ ] Reconcile loop with a **30-minute (1 800 000 ms) ceiling**, configurable via `CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_TIMEOUT_MS`. Env-var parsed defensively (`parseInt`; `NaN` or negative values fall back to the 30-minute default). On timeout: best-effort call `driver.stop(reviewSessionHandle)` (errors ignored), mark the review job `failed`, append a `review.failed` event, leave the original target job UNCHANGED, exit with non-zero status and message `"Adversarial review did not complete within <N> minutes."` The timeout cleanup must construct or retain the session handle from the started review session, including `shortId`, `sessionName`, `cwd`, and `startedAt`, to satisfy the `driver.stop()` signature. (See DD-1 in section 6.)
 - [ ] Parses structured findings from the review job's result.
 - [ ] Formats human-readable and `--json` output.
 - [ ] Dispatched from the main `switch` block as `case 'adversarial-review':`.
+- [ ] Dispatcher's `--help` output includes both `review` and `adversarial-review` in the usage/subcommands section (same assertion as T4 — a single test covers both subcommands).
 - **Files touched**: `packages/plugin-codex/scripts/claude-companion.mjs`, `packages/plugin-codex/scripts/lib/format.mjs`.
 - **Test count delta**: +30.
-- **Acceptance**: dispatcher tests cover: all accepted flags (including `--model` and `--effort` forwarding), all rejected flags, status eligibility (including stopped/failed/orphaned with result, and rejected without result), successful adversarial review with mock-claude, `reviewOf` field correctly set on the created job, session naming convention, `--json` output shape, fallback parsing, reconcile-loop timeout behavior (mock that never completes triggers timeout path; job marked `failed`; session stopped; exit message matches expected pattern), env-var override for timeout (valid number, NaN, negative).
+- **Acceptance**: dispatcher tests cover: all accepted flags (including `--model` and `--effort` forwarding), all rejected flags, status eligibility (including stopped/failed/orphaned with result, and rejected without result; `needs_input` rejected), non-review-turn selection (job with only review turns exits with `"No reviewable non-review output found for this job."`; result and prompt read from the non-review turn not from `job.turns[0]` or `job.result` blindly), successful adversarial review with mock-claude, `reviewOf` field correctly set on the created job, session naming convention, `--json` output shape, fallback parsing, reconcile-loop timeout behavior (mock that never completes triggers timeout path; job marked `failed`; review session stopped via `driver.stop(reviewSessionHandle)`; original target job UNCHANGED; exit message matches expected pattern), env-var override for timeout (valid number, NaN, negative), `--help` output includes `adversarial-review` subcommand name (assert `--help` text mentions both `review` and `adversarial-review`).
 
 ### T7. `$claude-status` review annotations
 
@@ -345,8 +425,8 @@ In order. Each task has acceptance criteria. A task is not complete until its ac
 
 ### T8. Skills + manifest
 
-- [ ] New `packages/plugin-codex/skills/claude-review/SKILL.md` mirroring `claude-followup` shape. Body calls `node <plugin-root>/scripts/claude-companion.mjs review <jobId> [flags]`. Does NOT inject `--yes`. Includes one-line API usage notice: "This skill sends an additional prompt to Claude Code, which incurs API usage."
-- [ ] New `packages/plugin-codex/skills/claude-adversarial-review/SKILL.md` mirroring `claude-delegate` shape. Body calls `node <plugin-root>/scripts/claude-companion.mjs adversarial-review <jobId> [flags] -- ""` (empty positional prompt; the dispatcher constructs the prompt from the template). Includes one-line API usage notice.
+- [ ] New `packages/plugin-codex/skills/claude-review/SKILL.md` mirroring `claude-followup` shape. Body calls `node <plugin-root>/scripts/claude-companion.mjs review <jobId> [flags]`. Does NOT inject `--yes`. Includes one-line usage notice: "This skill sends an additional prompt through Claude Code and may count toward your Claude Code usage."
+- [ ] New `packages/plugin-codex/skills/claude-adversarial-review/SKILL.md` mirroring `claude-delegate` shape. Body calls `node "<plugin-root>/scripts/claude-companion.mjs" adversarial-review <jobId-or-prefix> [flags]` (requires a job ID or unique prefix; forwards only supported flags; does NOT inject `--yes`; does NOT pass a prompt). Includes one-line usage notice: "This skill sends an additional prompt through Claude Code and may count toward your Claude Code usage."
 - [ ] Both frontmatter pass `strictParseFrontmatter` (Plan 0001 Stage 4 5be9b9d test) -- no unquoted `: ` or `#` in scalar values.
 - [ ] Neither skill body injects `--yes`.
 - [ ] Update `.codex-plugin/plugin.json` `defaultPrompt` with review-flavored sentences.
@@ -396,7 +476,8 @@ In order. Each task has acceptance criteria. A task is not complete until its ac
   5. `$claude-result <adversarial-review-jobId>` -- expect the adversarial review's findings.
   6. `$claude-stop <jobId>` -- cleanup.
 - [ ] Capture sidecar + `agents --json` snapshots at each transition.
-- [ ] Observational comparison: note whether same-session review findings differ from adversarial review findings on the same job (informational for Plan 0004 measurement, not a pass/fail gate).
+- [ ] Both review variants must compare against the SAME original delegated output (the non-review turn identified by § 3.X). Confirm in the artifact that `$claude-review` and `$claude-adversarial-review` both reference the same original turn's result.
+- [ ] Observational comparison: note whether same-session review findings differ from adversarial review findings on the same original non-review turn output (informational for Plan 0004 measurement, not a pass/fail gate).
 - [ ] Artifact at `artifacts/e2e-live-<date>.txt`.
 - **Files touched**: `documentation/plan/0003-20260601-review-skills/artifacts/e2e-live-<date>.txt` (new).
 - **Test count delta**: 0 (live test, not automated).
@@ -501,7 +582,13 @@ Reflected in section 2 (out of scope for doctor changes).
 
 **Rationale**: an adversarial review is a full Claude session running over a single delegated task's output. 30 minutes is generous for non-trivial reviews but prevents unbounded hangs on stuck sessions. This timeout is independent of the per-job 30-minute TTL for `awaiting_followup` jobs (Plan 0002 OQ-A): the TTL governs status-display for idle reusable sessions; the ceiling here bounds the wall-clock duration of an active reconcile loop.
 
-**On timeout**: stop the underlying session (`driver.stop(sessionId)`), mark the review job `failed`, exit with `"Adversarial review did not complete within <N> minutes."`.
+**On timeout**:
+- Best-effort call `driver.stop(reviewSessionHandle)` (errors ignored — the session may already be dead).
+- Mark the review job's status as `failed`.
+- Append a `review.failed` event to the event log (event name `review.failed`; if the codebase uses a different event-name pattern, use the closest established name and note the choice).
+- Leave the original target job UNCHANGED. The timeout is on the review session, not the original delegated work. The original job's status, result, and `turns[]` stay untouched.
+- Exit with non-zero status code and message: `"Adversarial review did not complete within <N> minutes."`.
+- Note: the timeout cleanup must construct or retain the session handle from the started review session, including `shortId`, `sessionName`, `cwd`, and `startedAt`, to satisfy the `driver.stop()` signature.
 
 **Override**: the maintainer may adjust the 30-minute default at approval time. The value is surfaced here so it is visible and overridable, not buried in implementation.
 
@@ -536,7 +623,7 @@ Plan 0003 is `complete` when all five stages have substantive content and the re
 
 These belong in later plans. Listing them here so they do not get smuggled into Plan 0003:
 
-- Review-of-review recursion prevention (no depth tracking; future plan if needed).
+- Review-of-review recursion prevention beyond the non-review-turn default rule (§ 3.X prevents it as the default; explicit `--target-turn` or `--review-review` flags deferred to a future plan).
 - Benchmark workload, measurement procedure, and cost-claim copy update (Plan 0004).
 - Stop-time review gate via hooks (Plan 0005).
 - Marketplace listing, `.codex-marketplace` config, install-doc polish (Plan 0006).
@@ -549,3 +636,4 @@ These belong in later plans. Listing them here so they do not get smuggled into 
 - Windows support beyond macOS + Linux.
 - Telemetry.
 - Doctor probe changes (review capability is implied by delegate + followup).
+- Persisting `findings: ReviewFinding[]` as structured data on `JobRecord` or `TurnRecord`. The raw review text is stored as the turn's `finalMessage`; consumers re-parse on demand via `review-parser.mjs`.

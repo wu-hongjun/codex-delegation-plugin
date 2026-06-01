@@ -1347,6 +1347,52 @@ describe('T15a — sidecar-evidence-of-completion (plan 0002)', () => {
     );
   });
 
+  it('idle driver + starting turn + sidecar done → awaiting_followup, turn flipped to completed', async () => {
+    // T15a-7: 'starting' is treated identically to 'queued'/'working' in the
+    // sidecar-evidence branch (reconciler.ts:228–235).
+    const job = await createJob(makeJobInput());
+    const { updateJob: updateJobFn } = await import('../dist/index.js');
+    await updateJobFn(job.jobId, (rec) => {
+      const turns = rec.turns.map((t, i) =>
+        i === rec.turns.length - 1 ? { ...t, status: 'starting' } : t,
+      );
+      return { ...rec, turns };
+    });
+
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'idle' },
+      sidecar: DONE_SIDECAR,
+    });
+    const nowFn = () => new Date(Date.parse(job.createdAt) + 1000).toISOString();
+    const result = await reconcileJob(job.jobId, adapter, { now: nowFn });
+
+    assert.equal(result.job.status, 'awaiting_followup');
+    assert.equal(result.job.turns[result.job.turns.length - 1].status, 'completed');
+  });
+
+  it('idle driver + injecting turn + sidecar done → awaiting_followup, turn flipped to completed', async () => {
+    // T15a-8: 'injecting' is treated identically to 'queued'/'working'/'starting'
+    // in the sidecar-evidence branch (reconciler.ts:228–235).
+    const job = await createJob(makeJobInput());
+    const { updateJob: updateJobFn } = await import('../dist/index.js');
+    await updateJobFn(job.jobId, (rec) => {
+      const turns = rec.turns.map((t, i) =>
+        i === rec.turns.length - 1 ? { ...t, status: 'injecting' } : t,
+      );
+      return { ...rec, turns };
+    });
+
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'idle' },
+      sidecar: DONE_SIDECAR,
+    });
+    const nowFn = () => new Date(Date.parse(job.createdAt) + 1000).toISOString();
+    const result = await reconcileJob(job.jobId, adapter, { now: nowFn });
+
+    assert.equal(result.job.status, 'awaiting_followup');
+    assert.equal(result.job.turns[result.job.turns.length - 1].status, 'completed');
+  });
+
   it('idle driver + completed turn (Plan 0002 path) + sidecar done → awaiting_followup (no double-flip)', async () => {
     // The dispatcher's followup path already sets turn[last].status='completed'.
     // T15a should not regress that case.

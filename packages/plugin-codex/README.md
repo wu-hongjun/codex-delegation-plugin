@@ -314,6 +314,30 @@ If `npm rebuild` does not resolve the issue, see the `node-pty` upstream documen
 
 The plugin reads Claude's per-job sidecar at `~/.claude/jobs/<shortId>/state.json` for richer status (turn `tempo`, `inFlight` counts, final-message hints). The schema is undocumented and treated as best-effort. If the sidecar file is missing, malformed, or unreadable, the plugin falls back to `claude agents --json` and `claude logs <shortId>`. `$claude-setup` reports a warning (not a hard fail) when `~/.claude/jobs/` is missing — sidecar absence does not gate `$claude-followup` from running.
 
+### Follow-up prompt did not register (slow TTY warmup)
+
+**Symptom**: `$claude-followup` exits with `Error: follow-up prompt did not register within 5000ms`, or the follow-up input appears to be silently ignored on the first attempt, requiring a retry.
+
+**Cause**: After attaching to the Claude PTY, the dispatcher waits a short period for the terminal handshake to settle before writing the follow-up prompt. On slower machines or high-load environments, the default wait (2000 ms) may not be sufficient.
+
+**Resolution**: Set `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` to a higher value before running `$claude-followup`:
+
+```bash
+CC_PLUGIN_CODEX_ATTACH_WARMUP_MS=4000 $claude-followup <jobId> "your follow-up prompt"
+```
+
+Acceptable values: any non-negative integer (milliseconds). Use `0` only in mock-driven test environments where the PTY responds instantly — setting it to `0` in a real Claude session will cause the follow-up prompt to be dropped.
+
+### `$claude-followup` inside a terminal multiplexer (tmux / GNU screen)
+
+**Symptom**: `$claude-followup` appears to hang or detach unexpectedly when run inside an outer `tmux` or GNU `screen` session.
+
+**Cause**: `$claude-followup` attaches to the Claude PTY and uses `Ctrl+Z` (`0x1a`) as part of the attach/detach handshake. When the outer terminal multiplexer's escape sequence overlaps with `Ctrl+Z`, the signal can be intercepted by the multiplexer rather than forwarded to the Claude child process.
+
+**Workarounds**:
+- Run `$claude-followup` outside the multiplexer (e.g., in a plain terminal or a sub-shell that is not inside `tmux`/`screen`).
+- Configure the multiplexer to use a different escape key so that `Ctrl+Z` is forwarded to the child. For `tmux`, this is done by changing `prefix` in `~/.tmux.conf`. For GNU `screen`, set `escape` in `~/.screenrc`.
+
 ## Development
 
 ### Install dependencies

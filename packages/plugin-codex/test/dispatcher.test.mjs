@@ -153,10 +153,22 @@ function writeSyntheticCompletedJob({
   const now = new Date().toISOString();
   const resultPath = join(jobsDir, `${jobId}.result.md`);
 
-  /** @type {import('@cc-plugin-codex/runtime').JobRecord} */
+  const promptCtx = {
+    summary: prompt.slice(0, 120),
+    sha256: createHash('sha256').update(prompt).digest('hex'),
+    bytesLen: Buffer.byteLength(prompt, 'utf8'),
+  };
+  const resultCtx = {
+    finalMessagePath: resultPath,
+    finalMessagePreview: resultContent.slice(0, 120),
+  };
+
+  // schemaVersion 2: includes turns[] as required by the locked v2 JobRecord
+  // interface (plan 0002 T6). The @type cast was removed because v1 records are
+  // only valid on disk pre-migration; the in-memory type is always v2.
   const record = {
     jobId,
-    schemaVersion: 1,
+    schemaVersion: 2,
     createdAt: now,
     updatedAt: now,
     status: 'completed',
@@ -179,15 +191,17 @@ function writeSyntheticCompletedJob({
       cwd: workspaceRoot,
       logsCommand: `claude logs aabbcc`,
     },
-    prompt: {
-      summary: prompt.slice(0, 120),
-      sha256: createHash('sha256').update(prompt).digest('hex'),
-      bytesLen: Buffer.byteLength(prompt, 'utf8'),
-    },
-    result: {
-      finalMessagePath: resultPath,
-      finalMessagePreview: resultContent.slice(0, 120),
-    },
+    prompt: promptCtx,
+    result: resultCtx,
+    turns: [
+      {
+        prompt: promptCtx,
+        startedAt: now,
+        endedAt: now,
+        status: 'completed',
+        result: resultCtx,
+      },
+    ],
   };
 
   writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify(record, null, 2));
@@ -2782,6 +2796,110 @@ describe('stop bulk --all-awaiting-followup (plan 0002 T11)', () => {
       ['stopped', 'orphaned'].includes(stpAfter.status),
       `expected already-stopped job to remain 'stopped' or be reconciler-flipped to 'orphaned'; got '${stpAfter.status}'`,
     );
+
+    const okRecord = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobOk}.json`), 'utf8'));
+    assert.equal(okRecord.status, 'stopped', `expected awaiting_followup job to be 'stopped'`);
+  });
+
+  // T11-7b: 'queued' job is skipped (spot-check for F-D2 coverage)
+  it('T11-7b: skips a job with status "queued"; awaiting_followup job still stopped', () => {
+    const jobQueued = 'job_qud_aaaaaaaa';
+    const jobOk = 'job_ok5_bbbbbbbb';
+
+    writeSyntheticCompletedJob({ jobId: jobQueued, workspaceRoot: WORK_DIR });
+    const queuedPath = join(TMP_HOME, 'jobs', `${jobQueued}.json`);
+    const queuedRecord = JSON.parse(readFileSync(queuedPath, 'utf8'));
+    queuedRecord.status = 'queued';
+    writeFileSync(queuedPath, JSON.stringify(queuedRecord, null, 2));
+
+    writeSyntheticAwaitingFollowupJob({ jobId: jobOk, shortId: 'ok777777' });
+    writeMockAgentSession('ok777777', shortIdToSessionId('ok777777'), 'idle');
+    writeMockIdleSidecar('ok777777', shortIdToSessionId('ok777777'));
+
+    const result = runDispatcher(['stop', '--all-awaiting-followup']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const queuedAfter = JSON.parse(readFileSync(queuedPath, 'utf8'));
+    assert.notEqual(queuedAfter.status, 'stopped', `queued job must not become 'stopped'`);
+
+    const okRecord = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobOk}.json`), 'utf8'));
+    assert.equal(okRecord.status, 'stopped', `expected awaiting_followup job to be 'stopped'`);
+  });
+
+  // T11-7c: 'starting' job is skipped (spot-check for F-D2 coverage)
+  it('T11-7c: skips a job with status "starting"; awaiting_followup job still stopped', () => {
+    const jobStarting = 'job_stg_aaaaaaaa';
+    const jobOk = 'job_ok6_bbbbbbbb';
+
+    writeSyntheticCompletedJob({ jobId: jobStarting, workspaceRoot: WORK_DIR });
+    const startingPath = join(TMP_HOME, 'jobs', `${jobStarting}.json`);
+    const startingRecord = JSON.parse(readFileSync(startingPath, 'utf8'));
+    startingRecord.status = 'starting';
+    writeFileSync(startingPath, JSON.stringify(startingRecord, null, 2));
+
+    writeSyntheticAwaitingFollowupJob({ jobId: jobOk, shortId: 'ok888888' });
+    writeMockAgentSession('ok888888', shortIdToSessionId('ok888888'), 'idle');
+    writeMockIdleSidecar('ok888888', shortIdToSessionId('ok888888'));
+
+    const result = runDispatcher(['stop', '--all-awaiting-followup']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const startingAfter = JSON.parse(readFileSync(startingPath, 'utf8'));
+    assert.notEqual(startingAfter.status, 'stopped', `starting job must not become 'stopped'`);
+
+    const okRecord = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobOk}.json`), 'utf8'));
+    assert.equal(okRecord.status, 'stopped', `expected awaiting_followup job to be 'stopped'`);
+  });
+
+  // T11-7d: 'failed' job is skipped (spot-check for F-D2 coverage)
+  it('T11-7d: skips a job with status "failed"; awaiting_followup job still stopped', () => {
+    const jobFailed = 'job_fld_aaaaaaaa';
+    const jobOk = 'job_ok7_bbbbbbbb';
+
+    writeSyntheticCompletedJob({ jobId: jobFailed, workspaceRoot: WORK_DIR });
+    const failedPath = join(TMP_HOME, 'jobs', `${jobFailed}.json`);
+    const failedRecord = JSON.parse(readFileSync(failedPath, 'utf8'));
+    failedRecord.status = 'failed';
+    writeFileSync(failedPath, JSON.stringify(failedRecord, null, 2));
+
+    writeSyntheticAwaitingFollowupJob({ jobId: jobOk, shortId: 'ok999999' });
+    writeMockAgentSession('ok999999', shortIdToSessionId('ok999999'), 'idle');
+    writeMockIdleSidecar('ok999999', shortIdToSessionId('ok999999'));
+
+    const result = runDispatcher(['stop', '--all-awaiting-followup']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const failedAfter = JSON.parse(readFileSync(failedPath, 'utf8'));
+    assert.notEqual(failedAfter.status, 'stopped', `failed job must not become 'stopped'`);
+
+    const okRecord = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobOk}.json`), 'utf8'));
+    assert.equal(okRecord.status, 'stopped', `expected awaiting_followup job to be 'stopped'`);
+  });
+
+  // T11-7e: 'orphaned' job is skipped (spot-check for F-D2 coverage)
+  it('T11-7e: skips a job with status "orphaned"; awaiting_followup job still stopped', () => {
+    const jobOrphaned = 'job_orp_aaaaaaaa';
+    const jobOk = 'job_ok8_bbbbbbbb';
+
+    writeSyntheticCompletedJob({ jobId: jobOrphaned, workspaceRoot: WORK_DIR });
+    const orphanedPath = join(TMP_HOME, 'jobs', `${jobOrphaned}.json`);
+    const orphanedRecord = JSON.parse(readFileSync(orphanedPath, 'utf8'));
+    orphanedRecord.status = 'orphaned';
+    writeFileSync(orphanedPath, JSON.stringify(orphanedRecord, null, 2));
+
+    writeSyntheticAwaitingFollowupJob({ jobId: jobOk, shortId: 'ok000aaa' });
+    writeMockAgentSession('ok000aaa', shortIdToSessionId('ok000aaa'), 'idle');
+    writeMockIdleSidecar('ok000aaa', shortIdToSessionId('ok000aaa'));
+
+    const result = runDispatcher(['stop', '--all-awaiting-followup']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const orphanedAfter = JSON.parse(readFileSync(orphanedPath, 'utf8'));
+    assert.notEqual(orphanedAfter.status, 'stopped', `orphaned job must not become 'stopped'`);
 
     const okRecord = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobOk}.json`), 'utf8'));
     assert.equal(okRecord.status, 'stopped', `expected awaiting_followup job to be 'stopped'`);

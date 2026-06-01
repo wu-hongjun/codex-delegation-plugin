@@ -29,6 +29,7 @@ const REQUIRED_HEADINGS = [
   '## Commands and skills',
   '## Direct dispatcher usage',
   '## Privacy and workspace disclosure',
+  '## Follow-up injection',
   '## Cost and prompt-cache wording',
   '## Known limitations',
   '## Troubleshooting',
@@ -44,6 +45,7 @@ const REQUIRED_SKILLS = [
   '$claude-status',
   '$claude-result',
   '$claude-stop',
+  '$claude-followup',
 ];
 
 // ---------- forbidden tokens / patterns (mirrored from skills-manifest.test.mjs) ----------
@@ -116,9 +118,9 @@ describe('README.md contains all required section headings in order', () => {
   });
 });
 
-// ---------- 3. All five skills mentioned ----------
+// ---------- 3. All six skills mentioned ----------
 
-describe('README.md mentions all five skill names', () => {
+describe('README.md mentions all six skill names', () => {
   for (const skill of REQUIRED_SKILLS) {
     it(`contains substring "${skill}"`, () => {
       const body = readReadme();
@@ -183,27 +185,26 @@ describe('README.md clarifies that claude -p is not used in v1', () => {
   });
 });
 
-// ---------- 7. Mentions no multi-turn reuse ----------
+// ---------- 7. No longer claims "No multi-turn reuse yet" ----------
 
-describe('README.md mentions no multi-turn reuse', () => {
-  it('contains "multi-turn" or "multi turn" substring', () => {
+describe('README.md no longer claims "No multi-turn reuse yet" (plan 0002 T13)', () => {
+  it('does not contain the stale "No multi-turn reuse yet" limitation', () => {
     const body = readReadme();
-    const lower = body.toLowerCase();
     assert.ok(
-      lower.includes('multi-turn') || lower.includes('multi turn'),
-      'README.md does not mention "multi-turn" / "multi turn" (no-multi-turn-reuse contract)',
+      !body.includes('No multi-turn reuse yet'),
+      'README.md still contains the stale "No multi-turn reuse yet" limitation; plan 0002 ships follow-up injection',
     );
   });
 });
 
-// ---------- 8. Mentions no PTY attach ----------
+// ---------- 8. No longer claims "No PTY attach yet" ----------
 
-describe('README.md mentions no PTY attach', () => {
-  it('contains "PTY" or "pty" substring', () => {
+describe('README.md no longer claims "No PTY attach yet" (plan 0002 T13)', () => {
+  it('does not contain the stale "No PTY attach yet" limitation', () => {
     const body = readReadme();
     assert.ok(
-      body.toLowerCase().includes('pty'),
-      'README.md does not mention PTY (missing no-pty-attach disclosure)',
+      !body.includes('No PTY attach yet'),
+      'README.md still contains the stale "No PTY attach yet" limitation; plan 0002 ships PTY-based input transport',
     );
   });
 });
@@ -358,15 +359,26 @@ describe('README.md does not present hooks as currently available', () => {
   });
 });
 
-// ---------- 18. No node-pty ----------
+// ---------- 18. node-pty only in troubleshooting context ----------
 
-describe('README.md does not mention node-pty as installed or required', () => {
-  it('substring "node-pty" is absent', () => {
+describe('README.md mentions node-pty only in troubleshooting context (plan 0002 T13)', () => {
+  it('every line mentioning "node-pty" is part of troubleshooting / setup guidance, not a v1 absence claim', () => {
     const body = readReadme();
+    const lines = body.split('\n');
+    const mentions = lines.filter((l) => l.includes('node-pty'));
+    assert.ok(
+      mentions.length > 0,
+      'README.md should mention node-pty in plan 0002 troubleshooting guidance',
+    );
+    // No line should claim node-pty is "never installed" or "not used" (that was the v1 wording).
+    const stale = mentions.filter((l) => {
+      const lower = l.toLowerCase();
+      return lower.includes('never installed') || lower.includes('not used');
+    });
     assert.equal(
-      body.includes('node-pty'),
-      false,
-      'README.md mentions "node-pty" — it is never installed in v1',
+      stale.length,
+      0,
+      `Lines still treat node-pty as absent in v1:\n${stale.join('\n')}`,
     );
   });
 });
@@ -376,9 +388,11 @@ describe('README.md does not mention node-pty as installed or required', () => {
 describe('README.md skill invocation examples do not include --yes', () => {
   it('no line that looks like a $claude-* skill invocation also contains "--yes"', () => {
     const body = readReadme();
+    // Only flag lines where the skill name appears at the start of the line
+    // (i.e. actual invocation examples, not prose paragraphs that mention the skill).
     const offending = body
       .split('\n')
-      .filter((l) => /\$claude-(setup|delegate|status|result|stop)/.test(l))
+      .filter((l) => /^\s*\$claude-(setup|delegate|status|result|stop|followup)/.test(l))
       .filter((l) => l.includes('--yes'));
     assert.equal(
       offending.length,
@@ -467,4 +481,258 @@ describe('README.md mentions future plan numbers', () => {
       assert.ok(body.includes(plan), `README.md does not mention "${plan}"`);
     });
   }
+});
+
+// ==========================================================================
+// T13: plugin README updates for plan 0002 follow-up injection
+// ==========================================================================
+
+// ---------- T13-1. README mentions $claude-followup ----------
+
+describe('README.md mentions $claude-followup (T13-1)', () => {
+  it('contains substring "$claude-followup"', () => {
+    const body = readReadme();
+    assert.ok(body.includes('$claude-followup'), 'README.md does not mention "$claude-followup"');
+  });
+});
+
+// ---------- T13-2. README documents the followup dispatcher command ----------
+
+describe('README.md documents the followup dispatcher command (T13-2)', () => {
+  it('contains "claude-companion.mjs followup"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('claude-companion.mjs followup'),
+      'README.md does not document the direct dispatcher command "claude-companion.mjs followup"',
+    );
+  });
+});
+
+// ---------- T13-3. README documents awaiting_followup ----------
+
+describe('README.md documents awaiting_followup state (T13-3)', () => {
+  it('contains substring "awaiting_followup"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('awaiting_followup'),
+      'README.md does not document the "awaiting_followup" state',
+    );
+  });
+});
+
+// ---------- T13-4. README documents the 30-minute TTL ----------
+
+describe('README.md documents the 30-minute TTL (T13-4)', () => {
+  it('contains "30 minutes" or "30-minute"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('30 minutes') || body.includes('30-minute'),
+      'README.md does not document the 30-minute TTL for awaiting_followup state',
+    );
+  });
+});
+
+// ---------- T13-5. README documents target-workspace acknowledgement ----------
+
+describe('README.md documents target-workspace acknowledgement (T13-5)', () => {
+  it('mentions "target-workspace", "target job\'s workspace", or "target workspace"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('target-workspace') ||
+        body.includes("target job's workspace") ||
+        body.includes('target workspace'),
+      'README.md does not document the target-workspace acknowledgement requirement',
+    );
+  });
+});
+
+// ---------- T13-6. README says --allow-edit does not bypass acknowledgement ----------
+
+describe('README.md says --allow-edit does not bypass acknowledgement (T13-6)', () => {
+  it('has a line mentioning --allow-edit that also contains a negation (not bypass / does not / never bypass)', () => {
+    const body = readReadme();
+    const lines = body.split('\n');
+    const matched = lines
+      .filter((l) => l.includes('--allow-edit'))
+      .filter((l) => {
+        const lower = l.toLowerCase();
+        return (
+          lower.includes('not bypass') ||
+          lower.includes('does not') ||
+          lower.includes('never bypass')
+        );
+      });
+    assert.ok(matched.length > 0, 'README.md must say --allow-edit does NOT bypass the ack');
+  });
+});
+
+// ---------- T13-7. README documents accepted followup flags ----------
+
+describe('README.md documents accepted followup flags (T13-7)', () => {
+  for (const flag of ['--all', '--json', '--yes', '--allow-edit']) {
+    it(`contains flag "${flag}"`, () => {
+      const body = readReadme();
+      assert.ok(
+        body.includes(flag),
+        `README.md does not document accepted followup flag "${flag}"`,
+      );
+    });
+  }
+});
+
+// ---------- T13-8. README documents rejected startup-only flags ----------
+
+describe('README.md documents rejected startup-only flags (T13-8)', () => {
+  for (const flag of [
+    '--model',
+    '--effort',
+    '--permission-mode',
+    '--add-dir',
+    '--mcp-config',
+    '--name',
+  ]) {
+    it(`contains flag "${flag}"`, () => {
+      const body = readReadme();
+      assert.ok(
+        body.includes(flag),
+        `README.md does not document rejected startup-only flag "${flag}"`,
+      );
+    });
+  }
+});
+
+// ---------- T13-9. README documents permission handoff ----------
+
+describe('README.md documents permission handoff (T13-9)', () => {
+  it('"permission" and "handoff" appear within 800 characters of each other (closest pair)', () => {
+    const body = readReadme();
+    const lower = body.toLowerCase();
+    const findAll = (s, needle) => {
+      const out = [];
+      let i = 0;
+      while ((i = s.indexOf(needle, i)) !== -1) {
+        out.push(i);
+        i += needle.length;
+      }
+      return out;
+    };
+    const permHits = findAll(lower, 'permission');
+    const handoffHits = findAll(lower, 'handoff');
+    assert.ok(
+      permHits.length > 0 && handoffHits.length > 0,
+      'README.md must mention both "permission" and "handoff"',
+    );
+    let minDist = Infinity;
+    for (const a of permHits) {
+      for (const b of handoffHits) {
+        const d = Math.abs(a - b);
+        if (d < minDist) minDist = d;
+      }
+    }
+    assert.ok(
+      minDist < 800,
+      `README.md must document the permission handoff (closest "permission"/"handoff" pair is ${minDist} chars apart; expected < 800)`,
+    );
+  });
+});
+
+// ---------- T13-10. README documents non-TTY manual `claude attach` fallback ----------
+
+describe('README.md documents non-TTY manual `claude attach` fallback (T13-10)', () => {
+  it('contains "claude attach"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('claude attach'),
+      'README.md must mention `claude attach` as the manual fallback',
+    );
+  });
+
+  it('mentions non-interactive or non-TTY context', () => {
+    const body = readReadme();
+    const nearby =
+      body.toLowerCase().includes('non-tty') || body.toLowerCase().includes('non-interactive');
+    assert.ok(
+      nearby,
+      'README.md must describe the non-interactive (non-TTY) permission fallback path',
+    );
+  });
+});
+
+// ---------- T13-11. README documents node-pty rebuild remediation ----------
+
+describe('README.md documents node-pty rebuild remediation (T13-11)', () => {
+  it('contains "npm rebuild node-pty"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('npm rebuild node-pty'),
+      'README.md must include the "npm rebuild node-pty" remediation command in troubleshooting',
+    );
+  });
+});
+
+// ---------- T13-12. README documents sidecar best-effort behavior ----------
+
+describe('README.md documents sidecar best-effort behavior (T13-12)', () => {
+  it('contains "sidecar"', () => {
+    const body = readReadme();
+    assert.ok(body.includes('sidecar'), 'README.md must mention the "sidecar" component');
+  });
+
+  it('contains "best-effort" or "best effort"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('best-effort') || body.includes('best effort'),
+      'README.md must describe the sidecar as best-effort',
+    );
+  });
+});
+
+// ---------- T13-13. README no longer says "No multi-turn reuse yet" ----------
+
+describe('README.md no longer says "No multi-turn reuse yet" (T13-13)', () => {
+  it('does not contain stale limitation phrase "No multi-turn reuse yet"', () => {
+    const body = readReadme();
+    assert.ok(
+      !body.includes('No multi-turn reuse yet'),
+      'README.md still contains the stale "No multi-turn reuse yet" limitation',
+    );
+  });
+});
+
+// ---------- T13-14. README no longer says "No PTY attach yet" ----------
+
+describe('README.md no longer says "No PTY attach yet" (T13-14)', () => {
+  it('does not contain stale limitation phrase "No PTY attach yet"', () => {
+    const body = readReadme();
+    assert.ok(
+      !body.includes('No PTY attach yet'),
+      'README.md still contains the stale "No PTY attach yet" limitation',
+    );
+  });
+});
+
+// ---------- T13-15. README says watch/streaming is not implemented ----------
+
+describe('README.md says watch/streaming is not implemented (T13-15)', () => {
+  it('mentions watch() or streaming AND a "not implemented" qualifier', () => {
+    const body = readReadme();
+    const lower = body.toLowerCase();
+    const hasWatch = lower.includes('watch()') || lower.includes('streaming');
+    const hasNeg = lower.includes('not implemented') || lower.includes('not implemented yet');
+    assert.ok(hasWatch && hasNeg, 'README.md must say watch()/streaming is not yet implemented');
+  });
+});
+
+// ---------- T13-21. Cost paragraph preserved verbatim ----------
+
+describe('README.md preserves the cost paragraph verbatim (plan 0002 T13)', () => {
+  it('contains the exact cost-and-prompt-cache paragraph from plan 0001', () => {
+    const body = readReadme();
+    const expected =
+      'This v1 uses Claude Code background sessions and does not use `claude -p`. It is designed to preserve the architecture needed for future session/cache reuse experiments. Cost savings have not been benchmarked yet. Plan 0004 is reserved for measurement.';
+    assert.ok(
+      body.includes(expected),
+      'README.md cost paragraph must be byte-identical to the plan 0001 wording',
+    );
+  });
 });

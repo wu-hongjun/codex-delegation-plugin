@@ -8,15 +8,16 @@ Key design choice: this v1 uses Claude Code background sessions directly and doe
 
 ## Current v1 scope
 
-Five skills are available:
+Six skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
 - **`$claude-delegate`** — start a new background session for a task
 - **`$claude-status`** — list all delegated jobs in the current workspace
 - **`$claude-result`** — print the final answer and transcript/log paths for a completed job
 - **`$claude-stop`** — terminate a background session explicitly
+- **`$claude-followup`** — send a follow-up instruction to an existing Claude background job (added in plan 0002)
 
-Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json`; `result` prints the final assistant message; `stop` is optional cleanup. For plan 0001's start-only jobs, real Claude Code `idle` status is treated as `completed` because there is no v1 follow-up prompt injection. This mapping may change in the future when multi-turn session reuse exists.
+Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
 
 ## Requirements
 
@@ -110,6 +111,32 @@ $claude-status
 
 Shows job ID, status (running/completed/stopped/orphaned), Claude session ID, and session name.
 
+### $claude-followup
+
+Send a follow-up instruction to an existing Claude background job. Useful while a job is in `awaiting_followup` (recently completed; session still live) and you want the next turn without starting a new delegation.
+
+```bash
+$claude-followup <jobId> -- "Now sort the TODOs by file name and print the count."
+```
+
+Accepted flags:
+
+- `--all` — search for `<jobId-or-prefix>` across all workspaces (default scope is the current workspace).
+- `--json` — machine-readable output.
+- `--yes` — record the privacy acknowledgement non-interactively (see Privacy section).
+- `--allow-edit` — policy / framing flag only; does not bypass the privacy acknowledgement and does not affect Claude permissions.
+
+Rejected at parse time (these are startup-only flags that belong to `$claude-delegate`):
+
+- `--model`
+- `--effort`
+- `--permission-mode`
+- `--add-dir`
+- `--mcp-config`
+- `--name`
+
+These configure a *new* Claude session; passing them to `$claude-followup` produces a clear error pointing at `$claude-delegate`.
+
 ### $claude-result
 
 Retrieve the final assistant message and log paths for a completed job.
@@ -132,17 +159,25 @@ Optional cleanup. Not required before calling `result`.
 
 ## Direct dispatcher usage
 
-All five commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All six commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-codex/scripts/claude-companion.mjs setup
 node packages/plugin-codex/scripts/claude-companion.mjs delegate --yes -- "Inspect this repo."
 node packages/plugin-codex/scripts/claude-companion.mjs status
+node packages/plugin-codex/scripts/claude-companion.mjs followup <jobId> -- "Next instruction."
 node packages/plugin-codex/scripts/claude-companion.mjs result <jobId>
 node packages/plugin-codex/scripts/claude-companion.mjs stop <jobId>
 ```
 
-All commands support `--json` for machine-readable output. The `--yes` flag on `delegate` skips the interactive privacy acknowledgement.
+All commands support `--json` for machine-readable output. The `--yes` flag on `delegate` and `followup` skips the interactive privacy acknowledgement; `--allow-edit` is a policy/framing flag and does NOT bypass that acknowledgement.
+
+For bulk-stop of awaiting-followup jobs (added in plan 0002):
+
+```bash
+node packages/plugin-codex/scripts/claude-companion.mjs stop --all-awaiting-followup
+node packages/plugin-codex/scripts/claude-companion.mjs stop --all-awaiting-followup --all
+```
 
 ## Privacy and workspace disclosure
 
@@ -152,6 +187,34 @@ On first delegation in a workspace, you will be prompted to acknowledge this pol
 
 The `--yes` flag skips this prompt for intentional non-interactive use only.
 
+For `$claude-followup`, the acknowledgement is checked against the **target job's workspace**, not the caller's current directory. If you run `$claude-followup --all` from repository A against a job that was created in repository B, the acknowledgement must exist for repository B. The `--yes` flag records the acknowledgement against the target workspace; the `--allow-edit` flag is policy/framing only and never bypasses the acknowledgement.
+
+## Follow-up injection
+
+Plan 0002 adds follow-up injection: after `$claude-delegate` completes its first turn, the background session is still alive and idle. You can send the next instruction via `$claude-followup` without spawning a new session. The mechanism is internal: the dispatcher attaches via PTY, writes the next prompt, polls the per-job sidecar (`~/.claude/jobs/<shortId>/state.json`) for completion, and detaches.
+
+Typical flow:
+
+```bash
+$claude-delegate "Inspect this repo and summarize TODOs. Do not edit files."
+$claude-status
+$claude-followup <jobId> -- "Now sort the TODOs by file name and print the count."
+$claude-result <jobId>
+$claude-stop <jobId>
+```
+
+### `awaiting_followup` state
+
+`awaiting_followup` means the most recent Claude turn has completed, the background session is still alive (`idle` in `claude agents --json`), and the follow-up TTL has not elapsed. While in this state, the job is a valid target for `$claude-followup`.
+
+The default follow-up window is **30 minutes** from the last completed activity. After the TTL, `$claude-status` displays the job as `completed`, but an explicit `$claude-followup <jobId>` may still attempt to attach if the live Claude session still exists. The TTL is default UX/status reporting, not a hard capability cutoff.
+
+This state model is Plan 0002-specific and may be refined in a later plan if richer session-reuse semantics surface.
+
+### Permission handoff
+
+If Claude asks for permission mid-turn during `$claude-followup`, an interactive terminal prompts for one line and routes it back into the attached Claude session. In non-interactive (non-TTY) mode, the dispatcher fails closed and prints a manual `claude attach <shortId>` instruction — there is no automatic approval and no bypass flag. If the dispatcher times out waiting for a permission answer, the Claude session keeps running and the job remains inspectable with `$claude-status`; you can resume the permission turn manually with `claude attach <shortId>`.
+
 ## Cost and prompt-cache wording
 
 This v1 uses Claude Code background sessions and does not use `claude -p`. It is designed to preserve the architecture needed for future session/cache reuse experiments. Cost savings have not been benchmarked yet. Plan 0004 is reserved for measurement.
@@ -159,14 +222,15 @@ This v1 uses Claude Code background sessions and does not use `claude -p`. It is
 ## Known limitations
 
 - **One fresh session per job** — each delegation creates a new background session. No session reuse across delegations.
-- **No multi-turn reuse yet** — delegations are start-only. Follow-up input requires a new delegation or manual attach.
-- **No PTY attach yet** — you cannot interactively attach to a background session from Codex in v1.
+- **Follow-up injection exists; `watch()` / streaming AsyncIterable is not implemented yet** — `$claude-followup` polls the sidecar for turn completion rather than streaming intermediate events. A later plan may add an AsyncIterable streaming API.
+- **PTY is used internally for input injection only** — the plugin does not parse TUI bytes for semantic events. PTY output is drained into a bounded buffer for diagnostics only.
+- **Sidecar reading is best-effort** — the `~/.claude/jobs/<shortId>/state.json` schema is undocumented. The plugin parses it defensively and falls back to `claude agents --json` and `claude logs <shortId>` when sidecar is absent or malformed.
 - **No Claude Code channels yet** — prompt injection via channels is not supported.
 - **No `$claude-review` yet** — review/adversarial-review skills are planned for plan 0003.
 - **No stop-time hook or review gate yet** — plan 0005 will add this.
 - **No benchmarked cost-savings claim** — we measure in plan 0004.
 - **No committed marketplace packaging** — plan 0006 handles distribution polish.
-- **Windows not tested in plan 0001** — development and testing are on macOS and Linux only.
+- **Windows not supported or tested in plan 0001 or plan 0002** — development and testing are on macOS and Linux only.
 - **Real Claude agents --json schema differs from mock** — plan 0001 supports the 2.1.149-style row format with derived short IDs (shortId is the first 8 hex characters of the UUID, stripped of dashes). The reconciler uses this derivation for matching.
 
 ## Troubleshooting
@@ -228,6 +292,28 @@ Transcripts are available only if Claude Code writes them. If transcripts are mi
 
 If `$claude-stop` exits non-zero, verify the job ID is correct by running `$claude-status`. The job may already be stopped or orphaned.
 
+### Permission handoff during `$claude-followup`
+
+If Claude asks for permission while `$claude-followup` is attached, the dispatcher prints a one-line prompt to stdout and waits for your answer on stdin. Type your response (e.g. `y` or `n`) and press Enter; the dispatcher writes that line back into the attached Claude session and continues waiting for turn completion.
+
+In non-interactive contexts (no TTY on stdin), the dispatcher exits 1 with a message pointing at `claude attach <shortId>` so you can approve manually in your own terminal. There is no automatic approval and no bypass flag.
+
+If the dispatcher times out waiting for a permission answer (default ~5 minutes), it emits a warning, exits 0, and leaves the Claude session running. `$claude-status` will continue to show the job in `needs_input`; you can resume the permission turn with `claude attach <shortId>`.
+
+### `node-pty` build failure
+
+Follow-up injection requires `node-pty` to load successfully. Run `$claude-setup` and inspect the "follow-up capability" group; if the `pty-build` probe is failing, the most common cause is a native-build error.
+
+```
+npm rebuild node-pty
+```
+
+If `npm rebuild` does not resolve the issue, see the `node-pty` upstream documentation for platform-specific guidance. Plan 0002 ships `node-pty` as a dispatcher dependency; prebuilt alternative packages mentioned in setup output are troubleshooting guidance only — the production dependency is `node-pty`.
+
+### Sidecar missing or unreadable
+
+The plugin reads Claude's per-job sidecar at `~/.claude/jobs/<shortId>/state.json` for richer status (turn `tempo`, `inFlight` counts, final-message hints). The schema is undocumented and treated as best-effort. If the sidecar file is missing, malformed, or unreadable, the plugin falls back to `claude agents --json` and `claude logs <shortId>`. `$claude-setup` reports a warning (not a hard fail) when `~/.claude/jobs/` is missing — sidecar absence does not gate `$claude-followup` from running.
+
 ## Development
 
 ### Install dependencies
@@ -278,7 +364,7 @@ Tests use `node:test` (built-in); no external test framework dependency.
 
 Later plans are reserved for:
 
-- **Plan 0002** — multi-turn reuse via PTY attach or structured input
+- **Plan 0002** *(shipped)* — follow-up injection for Claude background jobs (`$claude-followup`, `awaiting_followup`, PTY-based input transport, sidecar best-effort enrichment).
 - **Plan 0003** — `$claude-review` and `$claude-adversarial-review` skills
 - **Plan 0004** — benchmark harness and cost-savings measurement
 - **Plan 0005** — stop-time hook and review gate integration

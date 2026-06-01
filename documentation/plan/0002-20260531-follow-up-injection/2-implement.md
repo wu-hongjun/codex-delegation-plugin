@@ -919,6 +919,93 @@ No medium-or-higher findings on the implementation itself. All 10 privacy/securi
 - T8-11/T8-12/T8-13 still pass (verified inside the post-integration run).
 - Remote CI on `5c3656e` (run `26760838593`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). Target-workspace ack scoping + `--allow-edit` non-bypass + delegate regression guard + the existing T8 ack tests all exercise cleanly on both Linux and macOS for both supported Node majors.
 
+## T13 — Plugin README updates
+
+**Started**: 2026-06-01. **Status**: complete (pending CI confirmation).
+
+Eleventh T-task under the A/B/C subagent pattern. **Documentation-only** task: extend `packages/plugin-codex/README.md` to cover the Plan 0002 user-facing follow-up flow, the `awaiting_followup` state, the 30-minute TTL, target-workspace ack scoping, and the three new troubleshooting areas (permission handoff, `node-pty` build, sidecar absence). Static-validation tests in `readme.test.mjs` are updated to match. No runtime/driver/dispatcher/skill/manifest behavior changes; no CI changes; cost paragraph byte-identical.
+
+- **Subagent A (writer, haiku)** — extended the README with (1) a new `## Follow-up injection` section between `## Privacy and workspace disclosure` and `## Cost and prompt-cache wording`, (2) a new `### $claude-followup` subsection under "Commands and skills" documenting accepted flags (`--all`, `--json`, `--yes`, `--allow-edit`) and rejected startup-only flags (`--model`, `--effort`, `--permission-mode`, `--add-dir`, `--mcp-config`, `--name`), (3) target-workspace ack paragraph under Privacy, (4) three new troubleshooting entries (permission handoff TTY/non-TTY/timeout, `node-pty` build failure + `npm rebuild node-pty`, sidecar best-effort fallback), (5) updated "Known limitations" — dropped stale "No multi-turn reuse yet" and "No PTY attach yet"; added Plan 0002-accurate entries (no `watch()`/streaming AsyncIterable; PTY input-injection only; sidecar best-effort), (6) marked Plan 0002 *(shipped)* in "What comes next". The cost paragraph at the top of "## Cost and prompt-cache wording" is byte-identical to Plan 0001.
+- **Subagent B (test-engineer, sonnet)** — extended `readme.test.mjs`: added `'$claude-followup'` to `REQUIRED_SKILLS` (so the existing per-skill loop covers six skills); added `'## Follow-up injection'` to `REQUIRED_HEADINGS` in order; inverted three existing tests (no-multi-turn-reuse, no-PTY-attach, no-node-pty) to assert the **absence** of the stale wording while permitting `node-pty` in troubleshooting context; extended the `$claude-* invocation lines must not include --yes` regex to cover `followup`; added new T13-1 through T13-15 plus T13-21 (cost-paragraph byte-identical guard). Together this lands 27 net new test cases.
+- **Subagent C (code-reviewer, opus)** — read-only documentation review against the Q1–Q10 invariants. Verdict: **`ready-for-T14`** on the content; all 10 invariants pass; scope discipline clean. One finding: **F1 (medium) — prettier format failure on `readme.test.mjs`** (long lines in T13-8/T13-10 blocks). Orchestrator ran `npx prettier --write packages/plugin-codex/test/readme.test.mjs`; format clean afterward. C respected the read-only contract (no `git checkout` mishap).
+
+### Files changed
+
+- `packages/plugin-codex/README.md`:
+  - "## Current v1 scope": skill count 5 → 6 with `$claude-followup` bullet; lifecycle paragraph rewritten to include `awaiting_followup`, PTY-based input injection, and 30-minute TTL semantics.
+  - "## Commands and skills": new `### $claude-followup` subsection between status and result, with run-line example, accepted-flag list, and rejected-startup-only-flag list with rationale.
+  - "## Direct dispatcher usage": example block extended with the `followup` line; "All five commands" → "All six commands"; a brief block on `--all-awaiting-followup` bulk stop added.
+  - "## Privacy and workspace disclosure": target-workspace paragraph added explaining that `$claude-followup` checks ack against `job.workspace.root`, not caller `cwd`; `--yes` records ack against target workspace; `--allow-edit` never bypasses.
+  - "## Follow-up injection" (new): typical flow example, `awaiting_followup` state semantics, 30-minute TTL, permission-handoff behavior across TTY / non-TTY / timeout.
+  - "## Known limitations": removed "No multi-turn reuse yet" and "No PTY attach yet"; added "Follow-up injection exists; `watch()` / streaming AsyncIterable not implemented yet", "PTY is used internally for input injection only — no TUI parsing", "Sidecar reading is best-effort". Limitation count is still ≥ 5.
+  - "## Troubleshooting": three new entries — Permission handoff during `$claude-followup`; `node-pty` build failure (with `npm rebuild node-pty`); Sidecar missing or unreadable (best-effort fallback to `agents --json` + `logs`).
+  - "## What comes next": Plan 0002 marked *(shipped)* with a short summary of what landed. Plan 0003–Plan 0006 entries preserved.
+  - "## Cost and prompt-cache wording": **byte-identical** to Plan 0001 (guarded by T13-21).
+- `packages/plugin-codex/test/readme.test.mjs`:
+  - `REQUIRED_HEADINGS` += `'## Follow-up injection'`.
+  - `REQUIRED_SKILLS` += `'$claude-followup'`.
+  - "Mentions no multi-turn reuse" → "no longer claims 'No multi-turn reuse yet'" (inverted).
+  - "Mentions no PTY attach" → "no longer claims 'No PTY attach yet'" (inverted).
+  - "Does not mention node-pty" → "mentions node-pty only in troubleshooting context" (replaced; positive presence + stale-wording guard).
+  - Skill-invocation `--yes` exclusion regex extended to include `followup`.
+  - New T13-1 through T13-15 plus T13-21 describe blocks (16 new it() entries plus the inversions/additions = net +27 cases).
+
+### Orchestrator-applied follow-ups
+
+1. **F1 (medium) — prettier format on `readme.test.mjs`**: Subagent B's added blocks had long lines (assertion messages + flag-iteration arrays). Ran `npx prettier --write packages/plugin-codex/test/readme.test.mjs`. `npm run format` clean afterward.
+
+### Subagent C findings (full list)
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| F1 | medium | `prettier --check` failed on `readme.test.mjs` (long lines in T13-8/T13-10). | **Fixed in this commit** via `npx prettier --write`. |
+
+No content findings. All Q1–Q10 documentation invariants pass.
+
+### Documentation invariants verified by Subagent C
+
+| ID | Invariant | Status |
+|---|---|---|
+| Q1 | README matches T12 behavior ($claude-followup syntax, awaiting_followup definition, 30-min TTL, target-workspace ack, --allow-edit non-bypass, TTY/non-TTY/timeout permission handoff). | pass |
+| Q2 | No unmeasured cost-savings claim; FORBIDDEN_TOKENS / FORBIDDEN_PATTERNS produce zero hits; cost paragraph byte-identical. | pass |
+| Q3 | watch()/streaming AsyncIterable is explicitly NOT implemented. | pass |
+| Q4 | $claude-review, hooks, benchmark harness, committed marketplace packaging all properly qualified as future / not-yet. | pass |
+| Q5 | Every `claude -p` mention in negation context. | pass |
+| Q6 | PTY is documented as internal input-injection only; no TUI-parsing claim. | pass |
+| Q7 | Privacy ack wording distinguishes delegate (caller cwd) from followup (target job's workspace); --yes target-scoped; --allow-edit non-bypass. | pass |
+| Q8 | Zero runtime/driver/dispatcher/skill/manifest/CI/package.json changes. | pass |
+| Q9 | 15 required ## headings in order; all six skills mentioned; local marketplace install paragraphs preserved; dev commands preserved; Plan 0002–0006 mentioned. | pass |
+| Q10 | Cost paragraph byte-identical (T13-21 locks this). | pass |
+
+### Scope discipline preserved
+
+- No SKILL.md / plugin.json / source / driver / runtime / CI / package.json changes.
+- Only two files in the diff: `README.md` and `readme.test.mjs`.
+- No new `node-pty` import in any source file; the README mention is in troubleshooting context only.
+- All Plan 0001 / Plan 0002 architectural invariants intact.
+
+### Test impact
+
+| Lane | Before T13 | After T13 | Δ |
+|---|---|---|---|
+| test:mock | 58 | 58 | — |
+| test:runtime | 150 | 150 | — |
+| test:driver | 175 | 175 | — |
+| test:plugin | 294 | 321 | +27 (T13-1 through T13-15, T13-21, REQUIRED_SKILLS loop +1, REQUIRED_HEADINGS check, inverted/replaced cases, et al.) |
+| **Total** | **677** | **704** | **+27** |
+
+### Acceptance evidence (2026-06-01)
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean (after orchestrator's `prettier --write` fix-up for F1).
+- All four lanes green: mock 58 + runtime 150 + driver 175 + plugin 321 = **704 pass / 0 fail**.
+- README documents `$claude-followup`, `awaiting_followup`, 30-minute TTL, target-workspace ack, permission handoff (TTY/non-TTY/timeout), `node-pty` rebuild guidance, sidecar best-effort fallback.
+- Stale Plan 0001 limitations ("No multi-turn reuse yet", "No PTY attach yet") removed.
+- Cost paragraph byte-identical (T13-21 enforces).
+- `$claude-review` / hooks / benchmark / marketplace properly qualified as future plans.
+- Remote CI: pending (commit + push imminent).
+
 ## Deviations from the plan
 
 - **node-pty version pin** (T1) — `^1.1.0` → `1.2.0-beta.13`. Reason: Node 25 ABI incompatibility with `1.1.0`. Maintainer approved.

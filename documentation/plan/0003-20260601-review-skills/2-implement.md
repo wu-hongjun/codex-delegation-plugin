@@ -332,7 +332,9 @@ F-H2 trace from `sendFollowupTurn` parameter to `TurnRecord.prompt.summary` is v
 
 ### CI
 
-_To be recorded in the follow-up `Plan 0003 T3 log: record CI success` commit._
+CI green on the T3 commit at `4cf1c0f` per run [`26785816862`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26785816862): `ubuntu-latest / Node 20`, `macos-latest / Node 20`, `ubuntu-latest / Node 22`, `macos-latest / Node 22` — all `success`.
+
+**Transient flake note**: the initial attempt cancelled the `ubuntu-latest / Node 22` leg mid-`npm test` at ~15 min (steps 1–8 succeeded; step 9 "Test" cancelled). Cause appears to be runner-side (no newer push, no concurrency cancel). `gh run rerun 26785816862 --failed` re-ran the cancelled leg, which then completed in normal time. The other three legs were green on the first attempt. Logged here as evidence-of-record in case the pattern repeats.
 
 ---
 

@@ -839,6 +839,86 @@ No medium-or-higher findings on the implementation itself. Q1–Q10 all pass.
 - Workspace scoping verified by T11-2 (other-workspace job stays untouched without `--all`).
 - Remote CI on `11266cb` (run `26759838590`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). Bulk-stop + active-protection invariant + `--all-idle` rejection + single-job regression guard all exercise cleanly on both Linux and macOS for both supported Node majors.
 
+## T12 — Privacy ack target-workspace scoping refinement
+
+**Started**: 2026-06-01. **Status**: complete (pending CI confirmation).
+
+Tenth T-task under the A/B/C subagent pattern. T12 is a **hardening + coverage** pass over T8's already-correct target-workspace ack code. T8 wired `cmdFollowup` to check ack against `job.workspace.root` (claude-companion.mjs:536) and added T8-11/T8-12/T8-13 (non-TTY rejection / target path in error / `--yes` writes target ack). T12 makes the rule machine-checkable via a small helper extraction in `lib/ack.mjs` and tightens test coverage for the remaining cases the maintainer's brief enumerated (caller-ack does NOT imply target-ack; `--allow-edit` does NOT bypass; delegate regression guard; followup-without-`--all` still uses target).
+
+Maintainer's explicit guidance: *"If the current code is already correct, A may make only a tiny clarity refactor or comments. No need to force code churn."* T12 follows that — only the followup ack block changed; `cmdDelegate` is byte-identical.
+
+- **Subagent A (executor, sonnet)** — extracted `resolveWorkspaceAck({ workspaceRoot, useYes, isTTY }) → { verdict: 'satisfied' | 'recorded' | 'rejected', workspaceRoot }` in `lib/ack.mjs`. `cmdFollowup`'s ack block (claude-companion.mjs:629–652) now reads as a single call + a guard on the rejected verdict, with the error-message copy still inline at the call site so it stays followup-specific. `cmdDelegate` untouched.
+- **Subagent B (test-engineer, sonnet)** — 6 new tests under `describe('followup target-workspace ack scoping (plan 0002 T12)', ...)`: T12-1 (caller ack does NOT satisfy target ack), T12-2 (`--all --yes` records ack for target only, with `status === 0` assertion that T8-13 missed), T12-5 (pre-existing target ack → success without `--yes`), T12-7 (`--allow-edit` does NOT bypass ack), T12-8 (delegate regression — still uses caller workspace), T12-9 (followup without `--all` uses target = cwd path; second-run with `--yes` records ack for cwd). No source modifications.
+- **Subagent C (code-reviewer, opus)** — read-only privacy/security review against I1–I10 invariants. Verdict: **`ready-for-T13`** on the implementation. All 10 invariants pass. One finding: **F1 (medium) — prettier format failure on the test file**; orchestrator ran `npx prettier --write` to fix. C respected the read-only contract this time (no `git checkout` mishap).
+
+### Files changed
+
+- `packages/plugin-codex/scripts/lib/ack.mjs`:
+  - New exported `resolveWorkspaceAck` with JSDoc explaining the three verdicts. Encodes the previously-inline `hasAck → useYes/TTY auto-record → exit 1 fall-through` decision tree.
+  - `hasAck` / `recordAck` unchanged (still used by `cmdDelegate`).
+- `packages/plugin-codex/scripts/claude-companion.mjs`:
+  - Added `resolveWorkspaceAck` to the `ack.mjs` import.
+  - `cmdFollowup` ack block replaced with `resolveWorkspaceAck(...)` call + a single `if (verdict === 'rejected')` guard. Error wording and exit code unchanged.
+- `packages/plugin-codex/test/dispatcher.test.mjs`:
+  - New describe block with T12-1, T12-2, T12-5, T12-7, T12-8, T12-9.
+  - Helper hardening from T11 (`writeMockAgentSession` ensures `MOCK_HOME/logs/`) carries through; T12 tests reuse it.
+
+### Orchestrator-applied follow-ups
+
+1. **F1 (medium) — prettier format**: T12 test file had long lines exceeding print width. Same pattern as T11. Ran `npx prettier --write packages/plugin-codex/test/dispatcher.test.mjs`; `npm run format` passes.
+
+### Subagent C findings (full list)
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| F1 | medium | `prettier --check` failed on `dispatcher.test.mjs` (long lines exceeding print width). | **Fixed in this commit** via `npx prettier --write`; `npm run format` now passes. |
+
+No medium-or-higher findings on the implementation itself. All 10 privacy/security invariants pass.
+
+### Privacy/security invariants verified by Subagent C
+
+| ID | Invariant | Status |
+|---|---|---|
+| I1 | No automatic `--yes` (no implicit flag-flip). | pass |
+| I2 | No cross-workspace ack inheritance (ack path derived only from passed `workspaceRoot`). | pass |
+| I3 | No new bypass flags (`BOOLEAN_FLAGS` unchanged; `args.mjs` not in diff). | pass |
+| I4 | `--allow-edit` does NOT appear in `ack.mjs` or the ack decision path. | pass |
+| I5 | `cmdDelegate` ack logic byte-identical to pre-T12. | pass |
+| I6 | `cmdFollowup` passes `job.workspace.root`, never `process.cwd()`. | pass |
+| I7 | `resolveWorkspaceAck` has no hidden side effects (no stdout/stderr, no env reads, no globs). | pass |
+| I8 | Test absence assertions are real (run dispatcher first, then assert no-write). | pass |
+| I9 | No `node-pty` import in `packages/runtime/src/**` or `packages/plugin-codex/scripts/**`. | pass |
+| I10 | No new `claude -p` references. | pass |
+
+### Scope discipline preserved
+
+- No `SKILL.md` / `README.md` / `.github/workflows/ci.yml` / `package.json` / `1-plan.md` / driver / runtime changes.
+- No new TypeScript files; only new export is `resolveWorkspaceAck`.
+- T8's ack tests (T8-11/T8-12/T8-13) still pass alongside the new T12 block — the refactor is behavior-preserving.
+
+### Test impact
+
+| Lane | Before T12 | After T12 | Δ |
+|---|---|---|---|
+| test:mock | 58 | 58 | — |
+| test:runtime | 150 | 150 | — |
+| test:driver | 175 | 175 | — |
+| test:plugin | 288 | 294 | +6 (T12-1, T12-2, T12-5, T12-7, T12-8, T12-9) |
+| **Total** | **671** | **677** | **+6** |
+
+### Acceptance evidence (2026-06-01)
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean (after orchestrator's `prettier --write` fix-up for F1).
+- All four lanes green: mock 58 + runtime 150 + driver 175 + plugin 294 = **677 pass / 0 fail**.
+- Plan 0001 / Plan 0002 architectural invariants preserved.
+- Target-workspace ack scoping locked by T12-1 (caller ack does not bypass) and T12-5 (target ack alone suffices).
+- `--allow-edit` non-bypass locked by T12-7.
+- Delegate regression guarded by T12-8.
+- T8-11/T8-12/T8-13 still pass (verified inside the post-integration run).
+- Remote CI: pending (commit + push imminent).
+
 ## Deviations from the plan
 
 - **node-pty version pin** (T1) — `^1.1.0` → `1.2.0-beta.13`. Reason: Node 25 ABI incompatibility with `1.1.0`. Maintainer approved.

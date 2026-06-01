@@ -35,7 +35,7 @@ import {
   formatError,
 } from './lib/format.mjs';
 import { makeClaudeAdapter } from './lib/adapter.mjs';
-import { hasAck, recordAck } from './lib/ack.mjs';
+import { hasAck, recordAck, resolveWorkspaceAck } from './lib/ack.mjs';
 import { makePromptMeta } from './lib/prompt-meta.mjs';
 
 // ---------- main ----------
@@ -629,29 +629,26 @@ async function cmdFollowup(flags, positional, json) {
   // At this point status must be awaiting_followup, needs_input, or completed-with-idle-session.
 
   // 7. Target-workspace privacy ack — MUST use job.workspace.root, not process.cwd().
-  const targetWorkspace = job.workspace.root;
-  const useYes = Boolean(flags['yes']);
-
-  if (!hasAck(targetWorkspace)) {
-    if (useYes) {
-      recordAck(targetWorkspace);
-    } else if (process.stdin.isTTY === true) {
-      // Interactive prompt referencing the target workspace.
-      recordAck(targetWorkspace);
-    } else {
-      const msg = [
-        'Privacy acknowledgement required for target workspace.',
-        '',
-        `This command will inject a follow-up prompt into job ${jobId}.`,
-        "Claude Code's existing session has access to files in:",
-        '',
-        `Target workspace: ${targetWorkspace}`,
-        '',
-        'Re-run with --yes to acknowledge and proceed.',
-      ].join('\n');
-      process.stderr.write(formatError(new Error(msg), 'followup', json) + '\n');
-      process.exit(1);
-    }
+  // The dispatcher already resolved the target job above; ack is scoped to the
+  // job's workspace so that --all cannot inherit an ack across workspaces.
+  const ackResult = resolveWorkspaceAck({
+    workspaceRoot: job.workspace.root,
+    useYes: Boolean(flags['yes']),
+    isTTY: process.stdin.isTTY === true,
+  });
+  if (ackResult.verdict === 'rejected') {
+    const msg = [
+      'Privacy acknowledgement required for target workspace.',
+      '',
+      `This command will inject a follow-up prompt into job ${jobId}.`,
+      "Claude Code's existing session has access to files in:",
+      '',
+      `Target workspace: ${ackResult.workspaceRoot}`,
+      '',
+      'Re-run with --yes to acknowledge and proceed.',
+    ].join('\n');
+    process.stderr.write(formatError(new Error(msg), 'followup', json) + '\n');
+    process.exit(1);
   }
 
   // 8. Reconstitute session handle.

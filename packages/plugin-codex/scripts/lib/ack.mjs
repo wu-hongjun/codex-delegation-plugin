@@ -43,3 +43,28 @@ export function recordAck(workspaceRoot) {
     JSON.stringify({ workspaceRoot, ackedAt: new Date().toISOString() }, null, 2),
   );
 }
+
+/**
+ * Resolve the privacy-ack decision for a workspace, given user flags and TTY
+ * state. Caller is responsible for printing + exiting on the 'rejected' verdict.
+ *
+ * - 'satisfied' — ack already on disk; proceed.
+ * - 'recorded'  — no prior ack but --yes or TTY auto-recorded one; proceed.
+ * - 'rejected'  — no prior ack, no --yes, non-TTY stdin; caller must fail.
+ *
+ * The workspaceRoot is echoed back in the result so callers can render the
+ * target workspace path in error messages without re-deriving it.
+ *
+ * @param {{ workspaceRoot: string; useYes: boolean; isTTY: boolean }} input
+ * @returns {{ verdict: 'satisfied' | 'recorded' | 'rejected'; workspaceRoot: string }}
+ */
+export function resolveWorkspaceAck({ workspaceRoot, useYes, isTTY }) {
+  if (hasAck(workspaceRoot)) {
+    return { verdict: 'satisfied', workspaceRoot };
+  }
+  if (useYes || isTTY) {
+    recordAck(workspaceRoot);
+    return { verdict: 'recorded', workspaceRoot };
+  }
+  return { verdict: 'rejected', workspaceRoot };
+}

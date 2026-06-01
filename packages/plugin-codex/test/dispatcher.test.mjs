@@ -1609,6 +1609,279 @@ describe('followup ack checks target workspace (T8)', () => {
   });
 });
 
+// ---------- T12: privacy ack target-workspace scoping refinement ----------
+// Plan 0002 T12 — hardening + coverage pass over T8's target-workspace ack work.
+//
+// Maintainer case coverage:
+//   Cases 1, 2      — covered by T8-11 / T8-12 (see above; not duplicated here)
+//   Cases 3, 4      — covered by T8-13 (ack write); T12-2 tightens to assert exit 0
+//   Case  5, 6      — T12-5 (pre-existing target ack → no --yes needed)
+//   Case  7         — T12-7 (--allow-edit does NOT bypass ack)
+//   Case  8         — T12-8 (delegate still uses caller workspace for ack)
+//   Case  9         — T12-9 (followup without --all on same-workspace job)
+//   Case 10         — regression: T8-11/12/13 remain intact above
+
+describe('followup target-workspace ack scoping (plan 0002 T12)', () => {
+  // T12-1: caller's ack does NOT bypass target ack requirement.
+  // The caller has fully ack'd their own WORK_DIR; that ack must not extend to
+  // the target job's workspace (workspaceA).
+  it('T12-1: caller workspace ack does not satisfy target workspace ack requirement', () => {
+    const workspaceA = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-t12a-')));
+    try {
+      const jobId = `job_t12a_${createHash('sha256').update('t12-1-caller-ack').digest('hex').slice(0, 8)}`;
+      const shortId = 'c12a0001';
+      writeSyntheticAwaitingFollowupJob({ jobId, workspaceRoot: workspaceA, shortId });
+      writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+      writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+      // Write ack for WORK_DIR (caller workspace) only — NOT for workspaceA.
+      writeAck(WORK_DIR);
+
+      const result = runDispatcher(['followup', jobId, '--all', '--', 'cross-workspace prompt']);
+
+      assert.equal(
+        result.status,
+        1,
+        `expected exit 1 when target ack missing; got ${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+      );
+      assert.ok(
+        result.stderr.includes(workspaceA),
+        `expected target workspace path (${workspaceA}) in stderr; got:\n${result.stderr}`,
+      );
+
+      // No auto-record should have happened for target workspace.
+      const targetAckFile = join(TMP_HOME, 'acks', `${ackHex(workspaceA)}.json`);
+      const targetAckFileResolved = join(
+        realpathSync(TMP_HOME),
+        'acks',
+        `${ackHex(workspaceA)}.json`,
+      );
+      assert.ok(
+        !existsSync(targetAckFile) && !existsSync(targetAckFileResolved),
+        `did NOT expect ack file for target workspace at ${targetAckFile}`,
+      );
+    } finally {
+      rmSync(workspaceA, { recursive: true, force: true });
+    }
+  });
+
+  // T12-2: --yes from A targeting B records ack for B and exits 0.
+  // T8-13 only verified the ack file was written; this test additionally asserts
+  // exit 0 (followup completes) and that no caller-workspace ack was implicitly created.
+  it('T12-2: --all --yes from caller targeting different workspace exits 0 and records ack for target only', () => {
+    const workspaceA = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-t12b-')));
+    try {
+      const jobId = `job_t12b_${createHash('sha256').update('t12-2-yes-target').digest('hex').slice(0, 8)}`;
+      const shortId = 'c12a0002';
+      writeSyntheticAwaitingFollowupJob({ jobId, workspaceRoot: workspaceA, shortId });
+      writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+      writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+      // No pre-existing ack anywhere.
+
+      const result = runDispatcher([
+        'followup',
+        jobId,
+        '--all',
+        '--yes',
+        '--',
+        'yes-records-target',
+      ]);
+
+      assert.equal(
+        result.status,
+        0,
+        `expected exit 0 with --yes; got ${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+      );
+
+      // Ack file for target workspace must exist.
+      const resolvedTmpHome = realpathSync(TMP_HOME);
+      const targetAckFile = join(TMP_HOME, 'acks', `${ackHex(workspaceA)}.json`);
+      const targetAckFileResolved = join(resolvedTmpHome, 'acks', `${ackHex(workspaceA)}.json`);
+      assert.ok(
+        existsSync(targetAckFile) || existsSync(targetAckFileResolved),
+        `expected ack file for target workspace at ${targetAckFile}`,
+      );
+
+      // No ack file for WORK_DIR should have been created implicitly.
+      const callerAckFile = join(TMP_HOME, 'acks', `${ackHex(WORK_DIR)}.json`);
+      const callerAckFileResolved = join(resolvedTmpHome, 'acks', `${ackHex(WORK_DIR)}.json`);
+      assert.ok(
+        !existsSync(callerAckFile) && !existsSync(callerAckFileResolved),
+        `did NOT expect caller ack file to be implicitly created at ${callerAckFile}`,
+      );
+    } finally {
+      rmSync(workspaceA, { recursive: true, force: true });
+    }
+  });
+
+  // T12-5: pre-existing ack for target workspace → followup succeeds without --yes.
+  // Tests that target-workspace ack is respected even when caller (WORK_DIR) has no ack.
+  it('T12-5: pre-existing target workspace ack allows followup without --yes (target dominates)', () => {
+    const workspaceA = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-t12c-')));
+    try {
+      const jobId = `job_t12c_${createHash('sha256').update('t12-5-preack-target').digest('hex').slice(0, 8)}`;
+      const shortId = 'c12a0005';
+      writeSyntheticAwaitingFollowupJob({ jobId, workspaceRoot: workspaceA, shortId });
+      writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+      writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+      // Write ack for target workspace A; do NOT ack WORK_DIR.
+      writeAck(workspaceA);
+
+      const result = runDispatcher(['followup', jobId, '--all', '--', 'b-has-ack-a-does-not']);
+
+      assert.equal(
+        result.status,
+        0,
+        `expected exit 0 when target already ack'd; got ${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+      );
+
+      // No privacy-ack error message should appear.
+      assert.ok(
+        !result.stderr.toLowerCase().includes('privacy acknowledgement required'),
+        `did NOT expect privacy ack error in stderr; got:\n${result.stderr}`,
+      );
+    } finally {
+      rmSync(workspaceA, { recursive: true, force: true });
+    }
+  });
+
+  // T12-7: --allow-edit does NOT bypass the ack requirement.
+  // Policy invariant: --allow-edit is UX/policy only, never a permission bypass.
+  it('T12-7: --allow-edit does not bypass target workspace ack requirement', () => {
+    const workspaceA = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-t12d-')));
+    try {
+      const jobId = `job_t12d_${createHash('sha256').update('t12-7-allowedit-nobypass').digest('hex').slice(0, 8)}`;
+      const shortId = 'c12a0007';
+      writeSyntheticAwaitingFollowupJob({ jobId, workspaceRoot: workspaceA, shortId });
+      writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+      writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+      // No ack for workspaceA.
+
+      const result = runDispatcher([
+        'followup',
+        jobId,
+        '--all',
+        '--allow-edit',
+        '--',
+        'allow-edit-no-bypass',
+      ]);
+
+      assert.equal(
+        result.status,
+        1,
+        `expected exit 1 even with --allow-edit; got ${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+      );
+      assert.ok(
+        result.stderr.includes(workspaceA),
+        `expected target workspace path (${workspaceA}) in error; got:\n${result.stderr}`,
+      );
+
+      // No ack should have been auto-recorded for target.
+      const targetAckFile = join(TMP_HOME, 'acks', `${ackHex(workspaceA)}.json`);
+      const targetAckFileResolved = join(
+        realpathSync(TMP_HOME),
+        'acks',
+        `${ackHex(workspaceA)}.json`,
+      );
+      assert.ok(
+        !existsSync(targetAckFile) && !existsSync(targetAckFileResolved),
+        `did NOT expect ack file for target workspace to be created; checked ${targetAckFile}`,
+      );
+    } finally {
+      rmSync(workspaceA, { recursive: true, force: true });
+    }
+  });
+
+  // T12-8: delegate ack regression — delegate still uses caller (process.cwd()) workspace.
+  // T12's refactor must NOT change delegate's ack behavior.
+  it('T12-8: delegate without --yes exits 1 and mentions caller workspace (not a target workspace)', () => {
+    // No ack for WORK_DIR (fresh test state).
+
+    const result = runDispatcher(['delegate', '--', 'delegate-ack-regression-test']);
+
+    assert.equal(
+      result.status,
+      1,
+      `expected exit 1 for delegate without --yes; got ${result.status}\nstdout: ${result.stdout}\nstderr: ${result.stderr}`,
+    );
+
+    const combined = result.stdout + result.stderr;
+    // Delegate error should mention the caller workspace (WORK_DIR).
+    assert.ok(
+      combined.includes(WORK_DIR),
+      `expected caller workspace path (${WORK_DIR}) in error output; got:\n${combined}`,
+    );
+
+    // The error must use the delegate-specific wording (not the "for target workspace" variant).
+    assert.ok(
+      combined.toLowerCase().includes('privacy') ||
+        combined.toLowerCase().includes('acknowledge') ||
+        combined.toLowerCase().includes('--yes'),
+      `expected privacy/acknowledge/--yes wording in delegate error; got:\n${combined}`,
+    );
+
+    // No ack file for WORK_DIR should have been created.
+    assert.ok(
+      !existsSync(ackPath()),
+      `did NOT expect caller ack file to be created at ${ackPath()}`,
+    );
+  });
+
+  // T12-9: followup without --all on a current-workspace job uses target (== cwd).
+  // When target == cwd, behavior must be identical to single-workspace case — still
+  // requires ack, and --yes records it.
+  it('T12-9: followup without --all on same-workspace job requires ack and --yes records it', () => {
+    const jobId = `job_t12e_${createHash('sha256').update('t12-9-no-all-flag').digest('hex').slice(0, 8)}`;
+    const shortId = 'c12a0009';
+    // Job in WORK_DIR (no cross-workspace).
+    writeSyntheticAwaitingFollowupJob({ jobId, workspaceRoot: WORK_DIR, shortId });
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+    // No ack for WORK_DIR.
+
+    // First run: non-TTY, no --yes → should reject.
+    const result1 = runDispatcher(['followup', jobId, '--', 'no-all-flag-still-uses-target']);
+
+    assert.equal(
+      result1.status,
+      1,
+      `expected exit 1 without ack; got ${result1.status}\nstdout: ${result1.stdout}\nstderr: ${result1.stderr}`,
+    );
+    assert.ok(
+      result1.stderr.includes(WORK_DIR),
+      `expected WORK_DIR path (${WORK_DIR}) in error; got:\n${result1.stderr}`,
+    );
+    assert.ok(
+      !existsSync(ackPath()),
+      `did NOT expect ack file created on rejection; path: ${ackPath()}`,
+    );
+
+    // Second run: with --yes → should succeed and record ack.
+    const result2 = runDispatcher([
+      'followup',
+      jobId,
+      '--yes',
+      '--',
+      'no-all-flag-still-uses-target',
+    ]);
+
+    assert.equal(
+      result2.status,
+      0,
+      `expected exit 0 with --yes; got ${result2.status}\nstdout: ${result2.stdout}\nstderr: ${result2.stderr}`,
+    );
+
+    const resolvedTmpHome = realpathSync(TMP_HOME);
+    const ackFile = join(TMP_HOME, 'acks', `${ackHex(WORK_DIR)}.json`);
+    const ackFileResolved = join(resolvedTmpHome, 'acks', `${ackHex(WORK_DIR)}.json`);
+    assert.ok(
+      existsSync(ackFile) || existsSync(ackFileResolved),
+      `expected ack file for WORK_DIR at ${ackFile} after --yes run`,
+    );
+  });
+});
+
 // ---------- T8-14 / T8-15: allowed statuses ----------
 
 describe('followup allowed job statuses (T8)', () => {

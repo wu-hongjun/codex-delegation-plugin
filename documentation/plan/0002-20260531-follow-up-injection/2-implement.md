@@ -1091,11 +1091,28 @@ No content findings. All Q1–Q10 invariants pass.
 - `npm run typecheck` clean.
 - `npm run format` clean (after orchestrator's `prettier --write` fix-up for F1).
 - All four lanes green: mock 58 + runtime 150 + driver 175 + plugin 335 = **718 pass / 0 fail**.
-- `npm run test:attach` clean: 25/25 pass (`attach.test.mjs` + `send.test.mjs`).
+- `npm run test:attach` clean: 25/25 pass (just `send.test.mjs` — see post-CI fix below).
 - `Test attach lane` step appears in CI workflow, after the main `Test` step.
 - PTY smoke step from T1 preserved verbatim; appears exactly once.
 - CI security posture unchanged (no secrets, no real Claude / Codex install, contents-read only).
-- Remote CI: pending (commit + push imminent).
+- Remote CI on `15689d6` (run `26763407988`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+
+### Post-CI fix on `15689d6`
+
+The initial T14 commit `9db5020` failed CI on **Node 20 legs** (both ubuntu and macos) while Node 22 legs passed. Root cause: both subagents (A and B) hallucinated a file named `attach.test.mjs`. The driver-claude-code test directory contains only: `agents-json`, `logs`, `probe`, `pty-probe`, `send`, `sidecar`, `start-session`, `status`, `stop`, `transcript`. The PTY-dependent coverage lives entirely in `send.test.mjs` (it covers both `driver.send()` and the internal `attachAndSend` helper).
+
+Node version behavior differs:
+- **Node 22 / Node 25** (locally): silently skips missing test paths passed to `--test`; `npm run test:attach` completes 25/25 from `send.test.mjs` alone.
+- **Node 20** (CI legs that failed): errors with `Could not find '.../packages/driver-claude-code/test/attach.test.mjs'` and exits 1.
+
+That divergence let the bug ship past local gates AND past two of the four CI legs. Orchestrator-applied fix in commit `15689d6`:
+
+1. `package.json`: `test:attach` script tightened to reference only `send.test.mjs`.
+2. `packages/plugin-codex/test/ci-workflow.test.mjs` T14-2: split into two assertions — positive presence of `send.test.mjs` AND a **negative regression guard** that explicitly forbids `attach.test.mjs` in the script body (with a comment explaining why). The negative guard means any future re-introduction of the hallucinated filename will fail the static suite.
+
+Test count after fix: 336 plugin (was 335, +1 because T14-2 now has 2 it() blocks). Total: **719 pass / 0 fail**. CI on `15689d6`: green on all four matrix legs.
+
+Lesson logged: when extending `node --test` invocations, always confirm the file list against `ls` — Node 22's silent-skip behavior makes file-name typos invisible until a Node-20 CI leg hits them.
 
 ## Deviations from the plan
 

@@ -752,7 +752,7 @@ Not a silent-approval bug (timeout always returns null, never a string), but bou
 - Timeout warn-but-don't-act verified by T10-3 (with `CC_PLUGIN_CODEX_PERMISSION_TIMEOUT_MS=100` test override).
 - Lock-release invariant verified by T10-1 / T10-3 / T10-5.
 - M1 env-var input validation defensive against bad CI configuration.
-- Remote CI confirmation will be appended once T10 commit lands on `main`.
+- Remote CI on `4f218df` (run `26756793901`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). Permission handoff + timeout + non-TTY fail-closed + lock-release invariants all exercise cleanly on both Linux and macOS for both supported Node majors.
 
 ## Deviations from the plan
 

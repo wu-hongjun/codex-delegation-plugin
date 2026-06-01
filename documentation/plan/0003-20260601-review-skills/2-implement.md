@@ -220,4 +220,122 @@ CI green on the T2 commit at `dae57b9` per run [`26783317864`](https://github.co
 
 ---
 
+## T3 — Shared sendFollowupTurn helper extraction
+
+**Status**: complete (pending CI)
+**Files**:
+
+- `packages/plugin-codex/scripts/claude-companion.mjs` (modified, +48 net LOC after the JSDoc fix below; helper at lines 475–724; cmdFollowup helper call at lines 915–929)
+- `documentation/plan/0003-20260601-review-skills/2-implement.md` (this file, T3 entry appended)
+
+**Test impact**: `test:plugin` unchanged at **426** (0 delta — pure refactor). Other lanes unchanged. `test:attach` unchanged at 25/25.
+
+### Subagent A — refactor (executor)
+
+Extracted the send-and-record portion of `cmdFollowup` (former steps 9–13) into a private local helper:
+
+```js
+async function sendFollowupTurn({
+  jobId,
+  prompt,
+  driver,
+  adapter,
+  json,
+  sessionHandle,
+  job,
+  promptSummaryPrefix,
+}) { ... }
+```
+
+Returns `{ finalJob, sendResult, newTurnIndex }`. The caller (cmdFollowup) at line 915–929 passes `promptSummaryPrefix: undefined` so behavior is byte-identical to pre-refactor for `$claude-followup`.
+
+Signature deviations from the maintainer's suggested shape:
+
+- **`flags` omitted**: not referenced inside the extracted body. Grep of helper lines 494–723 returns zero `flags` matches.
+- **`sessionHandle` added**: passed into `driver.send()` (line 612) and read for `.shortId` in error messages (lines 655, 666). Caller constructs the handle at lines 907–913.
+- **`job` added**: read-only access to `job.turns.length` only (line 506). All job mutations go through `updateJob(jobId, …)`.
+
+Helper is private — no `export` keyword; not surfaced from the module.
+
+A's verification: `node --check` clean; lint clean; format clean; `npm run test:plugin` 426/426 (no regression).
+
+### Subagent B — regression verification (handled in-thread by orchestrator)
+
+Per the maintainer's brief, B's role for T3 is regression-only: confirm existing cmdFollowup tests pass unchanged and decide whether `promptSummaryPrefix` needs direct test coverage. Both points settled without dispatching a separate Sonnet agent:
+
+- **Regression**: `npm run test:plugin` exits 0 with `tests 426 / pass 426 / fail 0`. Independent confirmation via A's run plus orchestrator-side run on the working tree.
+- **`promptSummaryPrefix` coverage**: maintainer brief explicitly directed "do not export the helper just to test the prefix; T4 will cover `[review] ` through the public command." Helper is private; no direct test added.
+
+**Test-count delta for T3: 0** (acceptable per brief).
+
+### Subagent C — read-only review (code-reviewer)
+
+Strict read-only contract per F-H1; verified F-H2 trace step explicitly. Verdict: **ready-to-commit**. No CRITICAL/HIGH/MEDIUM findings.
+
+C explicitly evaluated A's three design judgments:
+
+- **Judgment 1 — Signature shape (omit `flags`, add `sessionHandle` / `job`)**: ACCEPTABLE. Each added field is consumed read-only by the helper; `sessionHandle` construction stays in the caller (line 907–913); `job` is read for `turns.length` only, no mutation leakage.
+- **Judgment 2 — Permission callback construction inside helper**: ACCEPTABLE (pragmatic deviation from Edit 10). C: "the callback is tightly coupled to driver.send and the catch-block branching; extracting it would require passing mutable state back and forth and risks regression."
+- **Judgment 3 — `process.exit` calls inside helper**: ACCEPTABLE with future-work note. The two exits (permission-timeout exit(0) at line 648, send-failure exit(1) at line 675) sit inside the helper because they trigger inside `driver.send`'s catch block; moving them out would require a discriminated return shape and would change observable cmdFollowup behavior. Surfaced as a Stage 4 polish item if `cmdAdversarialReview` needs different exit semantics.
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| F-1 | low | JSDoc at line 478–480 incorrectly listed `process.exit` in the does-NOT-own list, but the helper actually contains `process.exit(0)` (line 648) and `process.exit(1)` (line 675). | **Fixed pre-commit** — orchestrator amended the JSDoc to accurately describe what the helper owns and why the exits remain. |
+| F-2 | low | `process.exit` calls inside helper deviate from Edit 10's strict reading. | Accepted as known deviation (Judgment 3). Surface in Stage 4 polish or T4 if review variants need different exit semantics. |
+| F-3 | low | Permission callback construction inside helper deviates from Edit 10's strict reading. | Accepted as known deviation (Judgment 2). No rework required. |
+
+C's verification (each ✓): helper private; helper local to `claude-companion.mjs`; `promptSummaryPrefix: undefined` passed by caller; no new dependencies; no new imports; no `cmdReview` / `cmdAdversarialReview` / parser / template / `reviewOf` references in the diff; no `node-pty`, `claude -p`, bypass flags, or OQ4-forbidden tokens added.
+
+### F-H2 optional capability trace
+
+The optional capability for T3 is `promptSummaryPrefix`. Trace:
+
+- Helper signature destructures it at line 502.
+- Helper applies it at line 510–511 via `summary = promptSummaryPrefix ? \`${promptSummaryPrefix}${baseSummary}\` : baseSummary`.
+- Helper writes it into the TurnRecord at line 513.
+- Caller (`cmdFollowup`) passes `undefined` at line 924, exercising the no-prefix branch (byte-identical to pre-refactor).
+- The falsy check at line 511 correctly handles `undefined`, `null`, and empty string.
+- T4 will exercise the non-undefined branch through `cmdReview` with `promptSummaryPrefix: '[review] '`.
+
+F-H2 trace from `sendFollowupTurn` parameter to `TurnRecord.prompt.summary` is verified; the optional capability is wired correctly at both the helper definition and the caller invocation.
+
+### Orchestrator follow-up
+
+- **F-1 fix applied pre-commit**: JSDoc at lines 477–483 amended. Old wording listed `process.exit` in the does-NOT-own list (factually incorrect after A's refactor); new wording explicitly explains why the two exits remain inside the helper. Net change: +2 lines in the JSDoc block. Gates re-verified (lint / format / syntax) after the edit.
+- **F-2 and F-3** logged as accepted deviations from Edit 10's strict reading per C's rulings; documented above and in C's findings table.
+
+### Deviation from 1-plan.md
+
+- **Edit 10 strict-reading deviations** (F-2, F-3): Edit 10 attributed `process.exit` behavior and permission-callback construction to the caller. A's pragmatic implementation kept both inside the helper because they're inseparable from `driver.send`'s error-path side effects. C accepted both as defensible refactor pragmatics; future T4 / Stage 4 may revisit if `cmdAdversarialReview` requires distinct exit semantics.
+- **Helper signature**: added `sessionHandle` and `job`, omitted `flags`. C accepted as boundary-consistent.
+
+### Acceptance evidence
+
+- Helper extracted at lines 475–724 (`sendFollowupTurn`): ✓
+- Helper is private (no `export`): ✓
+- Helper local to `claude-companion.mjs` (no new file created): ✓
+- `cmdFollowup` calls helper with `promptSummaryPrefix: undefined`: ✓ (line 924)
+- Helper supports `promptSummaryPrefix` for future review use: ✓ (line 510–511)
+- No parser/review-command integration yet: ✓ (no `parseReviewOutput`, `review-prompts.mjs`, `cmdReview`, `cmdAdversarialReview` references)
+- No runtime/driver changes: ✓ (only `claude-companion.mjs` modified)
+- No new dependency: ✓ (`package.json` unchanged)
+- No new imports added to `claude-companion.mjs`: ✓
+- No `node-pty` import in plugin: ✓
+- No `claude -p` literal: ✓
+- No `--dangerously-skip-permissions`: ✓
+- No OQ4-forbidden cost-claim tokens: ✓
+- `node --check` clean (post JSDoc fix): ✓
+- `npm run lint` clean: ✓
+- `npm run format -- --check` clean: ✓
+- `npm run test:plugin` → 426/426 (exact match to pre-T3 count): ✓
+- All four lanes green via `npm test`: ✓
+
+### CI
+
+_To be recorded in the follow-up `Plan 0003 T3 log: record CI success` commit._
+
+---
+
+---
+
 ---

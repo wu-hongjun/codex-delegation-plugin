@@ -472,201 +472,48 @@ async function cmdStop(flags, positional, json) {
   process.stdout.write(formatStop(stoppedJob, json) + '\n');
 }
 
-// ---------- followup ----------
+// ---------- sendFollowupTurn (shared helper) ----------
 
-async function cmdFollowup(flags, positional, json) {
-  // Flags that are startup-only and must be rejected at parse time for followup.
-  // Defined locally (not at module scope) because the top-level dispatch switch
-  // runs before later module-scope `const` declarations are initialized; a
-  // module-scope const referenced from inside an early-dispatch path would hit
-  // the temporal-dead-zone (TDZ) and throw `Cannot access ... before initialization`.
-  const FOLLOWUP_REJECTED_FLAGS = new Set([
-    'model',
-    'effort',
-    'permission-mode',
-    'add-dir',
-    'mcp-config',
-    'name',
-  ]);
-  // 1. Check for rejected startup-only flags.
-  for (const flag of FOLLOWUP_REJECTED_FLAGS) {
-    if (flags[flag] !== undefined) {
-      process.stderr.write(
-        formatError(
-          new Error(
-            `--${flag} is a startup-only flag; use it with $claude-delegate, not $claude-followup.`,
-          ),
-          'followup',
-          json,
-        ) + '\n',
-      );
-      process.exit(2);
-    }
-  }
-
-  // 2. jobId-or-prefix positional.
-  const prefix = positional[0];
-  if (!prefix) {
-    process.stderr.write(
-      formatError(
-        new Error('usage: claude-companion followup <jobId-or-prefix> [flags] -- "<prompt>"'),
-        'followup',
-        json,
-      ) + '\n',
-    );
-    process.exit(2);
-  }
-
-  // 3. Prompt (remaining positionals after the prefix — everything after --).
-  const promptParts = positional.slice(1);
-  const prompt = promptParts.join(' ').trim();
-  if (!prompt) {
-    process.stderr.write(
-      formatError(
-        new Error(`prompt is required: claude-companion followup <jobId-or-prefix> -- "<prompt>"`),
-        'followup',
-        json,
-      ) + '\n',
-    );
-    process.exit(2);
-  }
-
-  // 4. Prefix resolution.
-  const workspace = process.cwd();
-  const showAll = Boolean(flags['all']);
-  const listed = showAll ? await listJobs() : await listJobsForWorkspace(workspace);
-  const allIds = listed.jobs.map((j) => j.jobId);
-  const resolved = resolveJobIdPrefix(allIds, prefix);
-
-  if ('error' in resolved) {
-    const msg =
-      resolved.error === 'ambiguous'
-        ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
-        : showAll
-          ? `No job found matching "${prefix}"`
-          : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
-    process.stderr.write(formatError(new Error(msg), 'followup', json) + '\n');
-    process.exit(1);
-  }
-
-  const jobId = resolved.match;
-
-  // 5. Reconcile to get fresh status.
-  const driver = new ClaudeBackgroundDriver({ cwd: workspace });
-  const adapter = makeClaudeAdapter(driver);
-
-  let job;
-  try {
-    const r = await reconcileJob(jobId, adapter);
-    job = r.job;
-  } catch {
-    job = await readJob(jobId);
-  }
-
-  // 6. Status eligibility check.
-  const { status } = job;
-
-  if (status === 'running') {
-    process.stderr.write(
-      formatError(
-        new Error(
-          `Job ${jobId} is running; wait for $claude-status to show awaiting_followup before sending a follow-up.`,
-        ),
-        'followup',
-        json,
-      ) + '\n',
-    );
-    process.exit(1);
-  }
-
-  if (
-    status === 'queued' ||
-    status === 'starting' ||
-    status === 'failed' ||
-    status === 'stopped' ||
-    status === 'orphaned'
-  ) {
-    process.stderr.write(
-      formatError(
-        new Error(`Job ${jobId} is ${status}; start a new $claude-delegate job instead.`),
-        'followup',
-        json,
-      ) + '\n',
-    );
-    process.exit(1);
-  }
-
-  if (status === 'completed') {
-    // Require a live idle Claude session.
-    const sessionHandle = {
-      driverName: job.driver.name,
-      shortId: job.claude.shortId,
-      sessionId: job.claude.sessionId,
-      sessionName: job.claude.sessionName,
-      cwd: job.claude.cwd,
-      startedAt: job.claude.startedAt ?? job.createdAt,
-    };
-    let driverStatus;
-    try {
-      driverStatus = await driver.status(sessionHandle);
-    } catch {
-      driverStatus = null;
-    }
-    if (!driverStatus || driverStatus.value !== 'idle') {
-      process.stderr.write(
-        formatError(
-          new Error(
-            `Job ${jobId} is completed and no live idle Claude session was found; start a new $claude-delegate job instead.`,
-          ),
-          'followup',
-          json,
-        ) + '\n',
-      );
-      process.exit(1);
-    }
-  }
-
-  // At this point status must be awaiting_followup, needs_input, or completed-with-idle-session.
-
-  // 7. Target-workspace privacy ack — MUST use job.workspace.root, not process.cwd().
-  // The dispatcher already resolved the target job above; ack is scoped to the
-  // job's workspace so that --all cannot inherit an ack across workspaces.
-  const ackResult = resolveWorkspaceAck({
-    workspaceRoot: job.workspace.root,
-    useYes: Boolean(flags['yes']),
-    isTTY: process.stdin.isTTY === true,
-  });
-  if (ackResult.verdict === 'rejected') {
-    const msg = [
-      'Privacy acknowledgement required for target workspace.',
-      '',
-      `This command will inject a follow-up prompt into job ${jobId}.`,
-      "Claude Code's existing session has access to files in:",
-      '',
-      `Target workspace: ${ackResult.workspaceRoot}`,
-      '',
-      'Re-run with --yes to acknowledge and proceed.',
-    ].join('\n');
-    process.stderr.write(formatError(new Error(msg), 'followup', json) + '\n');
-    process.exit(1);
-  }
-
-  // 8. Reconstitute session handle.
-  const sessionHandle = {
-    driverName: job.driver.name,
-    shortId: job.claude.shortId,
-    sessionId: job.claude.sessionId,
-    sessionName: job.claude.sessionName,
-    cwd: job.claude.cwd,
-    startedAt: job.claude.startedAt ?? job.createdAt,
-  };
-
+/**
+ * Execute a single follow-up turn: append a TurnRecord, fire driver.send,
+ * record turn events, and reconcile. Does NOT own: job lookup, eligibility
+ * checks, privacy ack, argument parsing, or output formatting. Process exits
+ * on permission-handoff timeout (0) and send failure (1) remain inside this
+ * helper because they are intrinsic to driver.send's error-path side effects;
+ * future review consumers reuse the same exit semantics.
+ *
+ * @param {{
+ *   jobId: string;
+ *   prompt: string;
+ *   driver: import('@cc-plugin-codex/driver-claude-code').ClaudeBackgroundDriver;
+ *   adapter: object;
+ *   json: boolean;
+ *   sessionHandle: object;
+ *   job: object;
+ *   promptSummaryPrefix?: string;
+ * }} opts
+ * @returns {Promise<{ finalJob: object; sendResult: object; newTurnIndex: number }>}
+ */
+async function sendFollowupTurn({
+  jobId,
+  prompt,
+  driver,
+  adapter,
+  json,
+  sessionHandle,
+  job,
+  promptSummaryPrefix,
+}) {
   // 9. Build new TurnRecord and append to job.turns.
   const now = new Date().toISOString();
   const newTurnIndex = job.turns.length;
   const promptMeta = makePromptMeta(prompt);
+
+  // Apply optional prefix to the turn's prompt.summary (e.g. '[review] ').
+  const baseSummary = promptMeta.summary;
+  const summary = promptSummaryPrefix ? `${promptSummaryPrefix}${baseSummary}` : baseSummary;
   const newTurn = {
-    prompt: promptMeta,
+    prompt: { ...promptMeta, summary },
     startedAt: now,
     status: 'injecting',
   };
@@ -875,6 +722,210 @@ async function cmdFollowup(flags, positional, json) {
     // Non-fatal: surface as warning only.
     process.stderr.write('[followup] warning: post-send reconcile failed\n');
   }
+
+  return { finalJob, sendResult, newTurnIndex };
+}
+
+// ---------- followup ----------
+
+async function cmdFollowup(flags, positional, json) {
+  // Flags that are startup-only and must be rejected at parse time for followup.
+  // Defined locally (not at module scope) because the top-level dispatch switch
+  // runs before later module-scope `const` declarations are initialized; a
+  // module-scope const referenced from inside an early-dispatch path would hit
+  // the temporal-dead-zone (TDZ) and throw `Cannot access ... before initialization`.
+  const FOLLOWUP_REJECTED_FLAGS = new Set([
+    'model',
+    'effort',
+    'permission-mode',
+    'add-dir',
+    'mcp-config',
+    'name',
+  ]);
+  // 1. Check for rejected startup-only flags.
+  for (const flag of FOLLOWUP_REJECTED_FLAGS) {
+    if (flags[flag] !== undefined) {
+      process.stderr.write(
+        formatError(
+          new Error(
+            `--${flag} is a startup-only flag; use it with $claude-delegate, not $claude-followup.`,
+          ),
+          'followup',
+          json,
+        ) + '\n',
+      );
+      process.exit(2);
+    }
+  }
+
+  // 2. jobId-or-prefix positional.
+  const prefix = positional[0];
+  if (!prefix) {
+    process.stderr.write(
+      formatError(
+        new Error('usage: claude-companion followup <jobId-or-prefix> [flags] -- "<prompt>"'),
+        'followup',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  // 3. Prompt (remaining positionals after the prefix — everything after --).
+  const promptParts = positional.slice(1);
+  const prompt = promptParts.join(' ').trim();
+  if (!prompt) {
+    process.stderr.write(
+      formatError(
+        new Error(`prompt is required: claude-companion followup <jobId-or-prefix> -- "<prompt>"`),
+        'followup',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  // 4. Prefix resolution.
+  const workspace = process.cwd();
+  const showAll = Boolean(flags['all']);
+  const listed = showAll ? await listJobs() : await listJobsForWorkspace(workspace);
+  const allIds = listed.jobs.map((j) => j.jobId);
+  const resolved = resolveJobIdPrefix(allIds, prefix);
+
+  if ('error' in resolved) {
+    const msg =
+      resolved.error === 'ambiguous'
+        ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
+        : showAll
+          ? `No job found matching "${prefix}"`
+          : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
+    process.stderr.write(formatError(new Error(msg), 'followup', json) + '\n');
+    process.exit(1);
+  }
+
+  const jobId = resolved.match;
+
+  // 5. Reconcile to get fresh status.
+  const driver = new ClaudeBackgroundDriver({ cwd: workspace });
+  const adapter = makeClaudeAdapter(driver);
+
+  let job;
+  try {
+    const r = await reconcileJob(jobId, adapter);
+    job = r.job;
+  } catch {
+    job = await readJob(jobId);
+  }
+
+  // 6. Status eligibility check.
+  const { status } = job;
+
+  if (status === 'running') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Job ${jobId} is running; wait for $claude-status to show awaiting_followup before sending a follow-up.`,
+        ),
+        'followup',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  if (
+    status === 'queued' ||
+    status === 'starting' ||
+    status === 'failed' ||
+    status === 'stopped' ||
+    status === 'orphaned'
+  ) {
+    process.stderr.write(
+      formatError(
+        new Error(`Job ${jobId} is ${status}; start a new $claude-delegate job instead.`),
+        'followup',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  if (status === 'completed') {
+    // Require a live idle Claude session.
+    const sessionHandle = {
+      driverName: job.driver.name,
+      shortId: job.claude.shortId,
+      sessionId: job.claude.sessionId,
+      sessionName: job.claude.sessionName,
+      cwd: job.claude.cwd,
+      startedAt: job.claude.startedAt ?? job.createdAt,
+    };
+    let driverStatus;
+    try {
+      driverStatus = await driver.status(sessionHandle);
+    } catch {
+      driverStatus = null;
+    }
+    if (!driverStatus || driverStatus.value !== 'idle') {
+      process.stderr.write(
+        formatError(
+          new Error(
+            `Job ${jobId} is completed and no live idle Claude session was found; start a new $claude-delegate job instead.`,
+          ),
+          'followup',
+          json,
+        ) + '\n',
+      );
+      process.exit(1);
+    }
+  }
+
+  // At this point status must be awaiting_followup, needs_input, or completed-with-idle-session.
+
+  // 7. Target-workspace privacy ack — MUST use job.workspace.root, not process.cwd().
+  // The dispatcher already resolved the target job above; ack is scoped to the
+  // job's workspace so that --all cannot inherit an ack across workspaces.
+  const ackResult = resolveWorkspaceAck({
+    workspaceRoot: job.workspace.root,
+    useYes: Boolean(flags['yes']),
+    isTTY: process.stdin.isTTY === true,
+  });
+  if (ackResult.verdict === 'rejected') {
+    const msg = [
+      'Privacy acknowledgement required for target workspace.',
+      '',
+      `This command will inject a follow-up prompt into job ${jobId}.`,
+      "Claude Code's existing session has access to files in:",
+      '',
+      `Target workspace: ${ackResult.workspaceRoot}`,
+      '',
+      'Re-run with --yes to acknowledge and proceed.',
+    ].join('\n');
+    process.stderr.write(formatError(new Error(msg), 'followup', json) + '\n');
+    process.exit(1);
+  }
+
+  // 8. Reconstitute session handle.
+  const sessionHandle = {
+    driverName: job.driver.name,
+    shortId: job.claude.shortId,
+    sessionId: job.claude.sessionId,
+    sessionName: job.claude.sessionName,
+    cwd: job.claude.cwd,
+    startedAt: job.claude.startedAt ?? job.createdAt,
+  };
+
+  // 9-13. Send the follow-up turn and record all events (delegated to shared helper).
+  const { finalJob, sendResult, newTurnIndex } = await sendFollowupTurn({
+    jobId,
+    prompt,
+    driver,
+    adapter,
+    json,
+    sessionHandle,
+    job,
+    promptSummaryPrefix: undefined, // T3: no prefix; T4 will pass '[review] '
+  });
 
   // 14. Print result.
   process.stdout.write(formatFollowup(finalJob, sendResult, newTurnIndex, json) + '\n');

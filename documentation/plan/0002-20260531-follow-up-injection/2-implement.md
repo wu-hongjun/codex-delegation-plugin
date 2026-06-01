@@ -1004,7 +1004,7 @@ No content findings. All Q1–Q10 documentation invariants pass.
 - Stale Plan 0001 limitations ("No multi-turn reuse yet", "No PTY attach yet") removed.
 - Cost paragraph byte-identical (T13-21 enforces).
 - `$claude-review` / hooks / benchmark / marketplace properly qualified as future plans.
-- Remote CI: pending (commit + push imminent).
+- Remote CI on `5b32b34` (run `26761985150`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). The new `## Follow-up injection` section, the rewritten Known limitations, and the T13-1..15 + T13-21 static-validation tests all exercise cleanly on both Linux and macOS for both supported Node majors.
 
 ## Deviations from the plan
 

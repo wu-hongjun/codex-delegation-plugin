@@ -669,7 +669,7 @@ Seventh T-task under the A/B/C subagent pattern. Smaller scope than T5/T6/T7/T8 
 - The new SKILL.md exists at `packages/plugin-codex/skills/claude-followup/SKILL.md`; `ls packages/plugin-codex/skills/` shows the six expected directories.
 - `plugin.json` `defaultPrompt` now has 6 entries; the new one mentions follow-up.
 - `npm run test:plugin -- --test-name-pattern claude-followup` passes the per-skill strict-frontmatter, dispatcher-path, no-forbidden-token, and no-`--yes` checks.
-- Remote CI confirmation will be appended once T9 commit lands on `main`.
+- Remote CI on `3ab1e78` (run `26754655128`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). New skill is discovered and tested cleanly on both Linux and macOS for both supported Node majors.
 
 ## Deviations from the plan
 

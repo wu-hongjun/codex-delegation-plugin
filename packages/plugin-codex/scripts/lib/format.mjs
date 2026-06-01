@@ -113,7 +113,67 @@ export function formatStatus(jobs, json, workspaceRoot) {
     return `  ${cols.join('  ')}`.trimEnd();
   });
 
-  return [header, '', ...rows].join('\n');
+  const lines = [header, '', ...rows];
+
+  // Footer hint when any job is awaiting a follow-up (human output only).
+  const awaitingJob = jobs.find((j) => j.status === 'awaiting_followup');
+  if (awaitingJob) {
+    lines.push(
+      '',
+      `Follow-up available: run $claude-followup ${awaitingJob.jobId} -- "next instruction"`,
+    );
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * @param {import('@cc-plugin-codex/runtime').JobRecord} job
+ * @param {import('@cc-plugin-codex/runtime').TurnHandle | null} turnHandle
+ * @param {number} turnIndex
+ * @param {boolean} json
+ * @returns {string}
+ */
+export function formatFollowup(job, turnHandle, turnIndex, json) {
+  const turn = job.turns[turnIndex];
+  const turnStatus = turn?.status ?? 'unknown';
+  const finalMessagePreview = turn?.result?.finalMessagePreview ?? turnHandle?.finalMessage ?? null;
+
+  if (json) {
+    return JSON.stringify(
+      {
+        ok: true,
+        job: {
+          jobId: job.jobId,
+          status: job.status,
+          shortId: job.claude.shortId,
+          sessionName: job.claude.sessionName,
+          resultPreview: turn?.result?.finalMessagePreview ?? null,
+        },
+        turn: {
+          index: turnIndex,
+          status: turnStatus,
+          finalMessagePreview: finalMessagePreview ?? null,
+        },
+      },
+      null,
+      2,
+    );
+  }
+
+  const lines = [
+    'Claude follow-up sent',
+    `Job ID:         ${job.jobId}`,
+    `Turn:           ${turnIndex} (${turnStatus})`,
+    `Claude session: ${job.claude.shortId}`,
+    `Status:         ${job.status}`,
+  ];
+
+  if (finalMessagePreview) {
+    lines.push('', finalMessagePreview);
+  }
+
+  return lines.join('\n');
 }
 
 /**

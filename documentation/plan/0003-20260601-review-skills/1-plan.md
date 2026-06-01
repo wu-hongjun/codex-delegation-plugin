@@ -1,6 +1,7 @@
 # Plan 0003 — Stage 1 planning: Review skills for Claude background jobs
 
-> **Status**: drafting
+> **Status**: approved
+> **Date approved**: 2026-06-01
 > **Author**: Claude (assistant)
 > **Date drafted**: 2026-06-01
 

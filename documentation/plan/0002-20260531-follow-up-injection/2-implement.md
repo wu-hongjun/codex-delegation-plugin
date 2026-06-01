@@ -459,7 +459,7 @@ C's nits N1 (`awaiting_followup` in the `mergedTurns` change set even though T7 
 - Reconciler emits `awaiting_followup` only when `driver-idle + latestTurn-completed + !ttlElapsed`; otherwise the state machine drops through to the appropriate Plan 0001 mapping.
 - Dispatcher `cmdResult` accepts `awaiting_followup` as result-printable (verified by B's new dispatcher tests).
 - M1/M2 regression guards both pass.
-- Remote CI confirmation will be appended once T7 commit lands on `main`.
+- Remote CI on `f032028` (run `26728133665`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). Context-aware mapping + TTL + sidecar best-effort + M1/M2 fixes exercise cleanly on both Linux and macOS for both supported Node majors.
 
 ## Deviations from the plan
 

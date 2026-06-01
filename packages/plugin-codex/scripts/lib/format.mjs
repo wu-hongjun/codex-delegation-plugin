@@ -232,6 +232,64 @@ export function formatStop(job, json) {
 }
 
 /**
+ * Format the result of a bulk stop operation (--all-awaiting-followup).
+ *
+ * @param {{ stopped: Array<{ jobId: string; shortId: string; status: string }>; skipped: Array<{ jobId: string; status: string; reason: string }>; failed: Array<{ jobId: string; message: string }>; showAll: boolean }} result
+ * @param {boolean} json
+ * @returns {string}
+ */
+export function formatBulkStop(result, json) {
+  const { stopped, skipped, failed, showAll } = result;
+
+  if (json) {
+    return JSON.stringify(
+      {
+        ok: failed.length === 0,
+        stopped,
+        skipped,
+        failed,
+      },
+      null,
+      2,
+    );
+  }
+
+  const lines = [];
+
+  if (stopped.length > 0) {
+    lines.push(
+      `Stopped ${stopped.length} awaiting-followup Claude job${stopped.length === 1 ? '' : 's'}.`,
+    );
+    lines.push('Stopped:');
+    for (const s of stopped) {
+      lines.push(`  ${s.jobId}  ${s.shortId}  ${s.status}`);
+    }
+  } else {
+    lines.push(
+      showAll
+        ? 'No awaiting-followup Claude jobs found.'
+        : 'No awaiting-followup Claude jobs found for this workspace.',
+    );
+  }
+
+  if (skipped.length > 0) {
+    lines.push('Skipped:');
+    for (const s of skipped) {
+      lines.push(`  ${s.jobId}  ${s.status}`);
+    }
+  }
+
+  if (failed.length > 0) {
+    lines.push('Failed:');
+    for (const f of failed) {
+      lines.push(`  ${f.jobId}  ${f.message}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
  * @param {unknown} err
  * @param {string} command
  * @param {boolean} json

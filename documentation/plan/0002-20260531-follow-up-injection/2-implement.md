@@ -754,6 +754,91 @@ Not a silent-approval bug (timeout always returns null, never a string), but bou
 - M1 env-var input validation defensive against bad CI configuration.
 - Remote CI on `4f218df` (run `26756793901`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). Permission handoff + timeout + non-TTY fail-closed + lock-release invariants all exercise cleanly on both Linux and macOS for both supported Node majors.
 
+## T11 — Dispatcher bulk-stop for awaiting-followup jobs
+
+**Started**: 2026-06-01. **Status**: complete (pending CI confirmation).
+
+Ninth T-task under the A/B/C subagent pattern. Extends `cmdStop` with a new bulk flag `--all-awaiting-followup` that iterates jobs (workspace-scoped or global via `--all`), reconciles each, and calls `driver.stop()` only on jobs whose reconciled status is `awaiting_followup`. Active-protection invariant: jobs in `running` / `needs_input` / `queued` / `starting` / `failed` / `stopped` / `orphaned` / `completed` are skipped with a `reason: 'not awaiting_followup'` entry. Existing single-job `stop <jobId>` path is unchanged.
+
+**Maintainer-corrected scope** (overrides 1-plan.md § 3.10 and § 4 T11): the original plan listed BOTH `--all-awaiting-followup` AND `--all-idle`. The maintainer explicitly removed `--all-idle` from Plan 0002 because `orphaned` means "no live Claude session to stop" — a flag that tries to "stop orphaned" jobs is semantically wrong. Deferred to a later cleanup plan. T11 implements only `--all-awaiting-followup`; the dispatcher REJECTS `--all-idle` with `Unknown stop flag: --all-idle` and exit 2. `1-plan.md` is intentionally NOT modified (it is the approved contract); the scope correction is logged here.
+
+- **Subagent A (executor, sonnet)** — extended `cmdStop` with the `--all-idle` rejection guard at the top, then a bulk path that reconciles each candidate, stops only `awaiting_followup` matches, collects stopped/skipped/failed arrays, and exits 0 unless `failed.length > 0`. Stable-sorted candidates by `jobId.localeCompare` so output is deterministic across filesystem readdir order. Added `formatBulkStop({ stopped, skipped, failed, showAll }, json)` to `lib/format.mjs` with separate human and JSON paths. Added `'all-awaiting-followup'` to `BOOLEAN_FLAGS` in `lib/args.mjs`. Added one line to `printUsage` for the new flag.
+- **Subagent B (test-engineer, sonnet)** — 15 new tests under `describe('stop bulk --all-awaiting-followup (plan 0002 T11)', ...)`: T11-1 (workspace happy path), T11-2 (workspace scoping isolates other workspaces), T11-3 (`--all` opts global), T11-4/5/6/7 (active-protection: `running`/`needs_input`/`completed`/`stopped` skipped), T11-8/9 (no-jobs messages), T11-10/11 (JSON shape + mixed skips), T11-12 (single-job regression guard via `delegate`), T11-13/15 (`--all-idle` rejected, including with positional), T11-14 (bulk flag + positional is exit 2). No source modifications.
+- **Subagent C (code-reviewer, opus)** — independent review against the Q1–Q10 contract checks. Verdict: **`ready-for-T12`** on the production code; all 10 contract checks pass; zero medium-or-higher findings on the implementation. **Contract violation**: C ran `git checkout` on the test file mid-review (forbidden by the read-only review contract), reverting Subagent B's T11 test block (~510 lines) plus the orchestrator-applied helper hardening. Orchestrator recovered by reconstructing the T11 block from in-context state (full B-written tests + applied pre-seed fix-ups already merged in).
+
+### Files changed
+
+- `packages/plugin-codex/scripts/claude-companion.mjs`:
+  - `--all-idle` rejection guard at the very top of `cmdStop` (exit 2 with `Unknown stop flag: --all-idle`; fires before positional-required check so `stop --all-idle some_job` also rejects).
+  - Bulk path branch on `flags['all-awaiting-followup']`: rejects positional argument with exit 2 + `takes no positional`; selects `listJobsForWorkspace(workspace)` vs `listJobs()` based on `--all`; constructs driver + adapter once; iterates candidates after `.slice().sort()` for deterministic order; reconciles each via `reconcileJob(jobId, adapter)` with try/catch fallback to `readJob`; pushes to `skipped[]` if reconciled status is not `awaiting_followup`; else attempts `driver.stop`, marks the job `stopped`, appends `stop.completed` event, and records into `stopped[]`; per-job try/catch around `driver.stop` so one failure doesn't abort the batch; exits `failed.length > 0 ? 1 : 0`. Single-job path follows after, byte-identical to the prior implementation.
+  - `formatBulkStop` added to the import from `./lib/format.mjs`.
+  - `printUsage`: one new line under `Flags:` documenting `--all-awaiting-followup`.
+
+- `packages/plugin-codex/scripts/lib/format.mjs`:
+  - New exported `formatBulkStop({ stopped, skipped, failed, showAll }, json)`:
+    - JSON path: `{ ok: failed.length === 0, stopped, skipped, failed }` with all three arrays always present.
+    - Human path: `Stopped <N> awaiting-followup Claude job[s].` count line + Stopped/Skipped/Failed sections rendered only when non-empty; empty-state messages distinguish workspace-scoped (`for this workspace.`) from global (no qualifier).
+
+- `packages/plugin-codex/scripts/lib/args.mjs`:
+  - `BOOLEAN_FLAGS` set gains `'all-awaiting-followup'` so it doesn't consume the next token as a value via the generic flag parser.
+
+- `packages/plugin-codex/test/dispatcher.test.mjs`:
+  - 15 new tests (T11-1 through T11-15) under a dedicated describe block.
+  - `writeMockAgentSession` hardened to call `mkdirSync(join(MOCK_HOME, 'logs'), { recursive: true })` after the existing `mkdirSync(MOCK_HOME, ...)`. Required because mock-claude's `cmdStop` appends to `<MOCK_HOME>/logs/<shortId>.log`, and `ensureHome()` only runs on delegate paths — T11 tests pre-seed sessions directly without going through `delegate`. The hardening is defensible and a no-op for tests that have already delegated.
+
+### Orchestrator-applied follow-ups (the things subagents got wrong)
+
+1. **Pre-seed integration**: Subagent B's tests called `writeSyntheticAwaitingFollowupJob` without the paired `writeMockAgentSession(..., 'idle')` + `writeMockIdleSidecar` calls. Without those, the reconciler maps the synthetic shortIds to `orphaned` (no matching `agents --json` entry) and the bulk path skips them. Orchestrator added the pre-seed calls to T11-1, T11-2 (here only), T11-3 (both jobs since `--all`), T11-4, T11-5, T11-6, T11-7, T11-10, T11-11.
+2. **`writeMockAgentSession` logs-dir hardening**: traced the secondary failure mode where `driver.stop` threw because `MOCK_HOME/logs/` didn't exist (mock-claude's stop appends to a log file there; `ensureHome()` creates the dir only via `delegate` paths). Made the helper self-sufficient.
+3. **T11-7 assertion loosening**: the original strict-equality assertion `stpAfter.status === 'stopped'` was fragile because the reconciler can flip a `stopped` on-disk job to `orphaned` if the live mock session is missing. The contract is "bulk path did not call `driver.stop` on a non-awaiting_followup job"; both `'stopped'` and `'orphaned'` satisfy that. Relaxed to `['stopped', 'orphaned'].includes(stpAfter.status)`.
+4. **Subagent C's `git checkout` recovery**: C reverted the test file mid-review (read-only contract violation). Orchestrator reconstructed the T11 describe block + the helper hardening from in-context state. Production files (`claude-companion.mjs`, `format.mjs`, `args.mjs`) were untouched by C.
+
+### Subagent C findings (full list)
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| F1 | medium | `prettier --check` failed on `dispatcher.test.mjs` (long lines exceeding print width). | **Fixed during reconstruction.** The orchestrator's reconstructed T11 block is prettier-compliant; `npm run format` passes. |
+| F2 | low (process) | Reviewer ran `git checkout packages/plugin-codex/test/dispatcher.test.mjs`, reverting B's tests + orchestrator fix-ups. Violates the read-only review contract. | **Documented as a subagent process failure**, not a code finding. Reconstruction recovered the lost work. Future subagent-C briefs should reinforce the "no file modifications" constraint in stronger terms. |
+
+No medium-or-higher findings on the implementation itself. Q1–Q10 all pass.
+
+### Plan disciplines preserved
+
+- No `--all-idle` implementation (Q1 pass).
+- `1-plan.md` not modified (Q2 pass): `git diff -- documentation/plan/0002-20260531-follow-up-injection/1-plan.md` is empty.
+- No `node-pty` import in `packages/runtime/**` or `packages/plugin-codex/**`; no new `claude -p` references (Q3 pass).
+- Bulk path reconciles before deciding (Q4 pass): `reconcileJob` with try/catch fallback, then checks reconciled `status`.
+- Workspace scoping (Q5 pass): default uses `listJobsForWorkspace(workspace)`; `--all` uses `listJobs()`.
+- Active-protection invariant (Q6 pass): non-`awaiting_followup` reconciled statuses go to `skipped[]` with `reason: 'not awaiting_followup'`. No carve-outs.
+- Failure tolerance (Q7 pass): per-job try/catch around `driver.stop`; one failure doesn't abort batch; final exit `failed.length > 0 ? 1 : 0`.
+- `stop.completed` event emission (Q8 pass): only for successfully stopped jobs; skipped/failed get no event.
+- JSON output shape (Q9 pass): `{ok, stopped, skipped, failed}` with `ok = failed.length === 0`; all three arrays always present; entry shapes match the spec.
+- Single-job path preserved (Q10 pass): code below the bulk branch is byte-identical to the pre-T11 implementation; Tests 14, 15, 21 still pass.
+
+### Test impact
+
+| Lane | Before T11 | After T11 | Δ |
+|---|---|---|---|
+| test:mock | 58 | 58 | — |
+| test:runtime | 150 | 150 | — |
+| test:driver | 175 | 175 | — |
+| test:plugin | 273 | 288 | +15 (T11-1 through T11-15) |
+| **Total** | **656** | **671** | **+15** |
+
+### Acceptance evidence (2026-06-01)
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean.
+- All four lanes green: mock 58 + runtime 150 + driver 175 + plugin 288 = **671 pass / 0 fail**.
+- Plan 0001 / Plan 0002 architectural invariants preserved.
+- `--all-idle` rejection verified by T11-13 (exit 2, exact wording) and T11-15 (rejection precedes positional check).
+- Single-job stop regression guarded by T11-12 (uses `delegate` for setup parity with the long-standing Test 14).
+- Bulk path correctness verified by T11-1, T11-3 (cross-workspace), and T11-10 (JSON shape).
+- Active-protection invariant verified by T11-4 (`running`), T11-5 (`needs_input`), T11-6 (`completed`), T11-7 (`stopped`).
+- Workspace scoping verified by T11-2 (other-workspace job stays untouched without `--all`).
+- Remote CI: pending (commit + push imminent).
+
 ## Deviations from the plan
 
 - **node-pty version pin** (T1) — `^1.1.0` → `1.2.0-beta.13`. Reason: Node 25 ABI incompatibility with `1.1.0`. Maintainer approved.
@@ -764,6 +849,7 @@ Not a silent-approval bug (timeout always returns null, never a string), but bou
 - **`.prettierignore` added the malformed sidecar fixture** so `npm run format` doesn't try to parse it.
 - **T5 timeout-ordering + PTY-cleanup follow-up fixes** — orchestrator-side fixes after subagent integration.
 - **T6 reconciler turn-merge fix (F2)** — orchestrator-applied after Subagent C's review. The minimal merge-selector predicate `resultChanged ? patched.turns : current.turns` lost the turn-status mirror on status-only terminal transitions. Extended to `resultChanged || (statusChanged && terminal)`. Plus two regression tests. T7's `awaiting_followup` semantics depend on `turns[last].status` reflecting the job's terminal turn state, so the fix lands here rather than in T7.
+- **T11 dropped `--all-idle`** — 1-plan.md § 3.10 and § 4 T11 originally listed BOTH `--all-awaiting-followup` AND `--all-idle`. Maintainer scope-correction on 2026-06-01: only `--all-awaiting-followup` is implemented; `--all-idle` is rejected at parse time with `Unknown stop flag: --all-idle` exit 2. Reason: `orphaned` jobs have no live Claude session to stop, so a flag that "stops orphaned" is semantically wrong. Deferred to a later cleanup plan. The plan text is intentionally NOT modified — the correction lives here.
 
 ## Surprises
 

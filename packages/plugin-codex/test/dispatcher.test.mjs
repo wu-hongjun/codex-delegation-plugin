@@ -1074,6 +1074,11 @@ function writeMockAgentSession(
     }
   }
   mkdirSync(MOCK_HOME, { recursive: true });
+  // mock-claude's cmdStop appends to MOCK_HOME/logs/<shortId>.log. ensureHome()
+  // creates this dir for delegate paths, but tests that pre-seed directly via
+  // this helper (e.g. T11 bulk-stop) skip the delegate flow, so we ensure the
+  // dir exists here. No-op for tests that have already delegated.
+  mkdirSync(join(MOCK_HOME, 'logs'), { recursive: true });
   const now = new Date().toISOString();
   state.sessions.push({
     shortId,
@@ -2217,6 +2222,479 @@ describe('followup permission handoff (plan 0002 T10)', () => {
     assert.ok(
       !existsSync(lockPath),
       `T10-5: lock file must NOT exist after permission-failure exit; found: ${lockPath}`,
+    );
+  });
+});
+
+// ==========================================================================
+// T11: bulk-stop for awaiting_followup jobs (plan 0002)
+// ==========================================================================
+//
+// Maintainer-corrected scope: only --all-awaiting-followup is implemented.
+// --all-idle is explicitly OUT OF SCOPE and must be REJECTED with exit 2.
+// See documentation/plan/0002-20260531-follow-up-injection/2-implement.md
+// for the scope-correction rationale (orphaned ≠ "stoppable").
+//
+// Infrastructure notes:
+//   - writeSyntheticAwaitingFollowupJob writes a job record to TMP_HOME/jobs/.
+//   - For the reconciler to keep an awaiting_followup job in that state (rather
+//     than flipping to 'orphaned'), the corresponding mock-claude session must
+//     be pre-seeded via writeMockAgentSession + writeMockIdleSidecar (mirrors
+//     the T8 pattern at line ~1117).
+//   - Cross-workspace tests (T11-2, T11-3) create a second temp dir and clean
+//     it up themselves via try/finally since afterEach only clears WORK_DIR.
+// ==========================================================================
+
+describe('stop bulk --all-awaiting-followup (plan 0002 T11)', () => {
+  // T11-1: workspace-scoped bulk stop happy path
+  it('T11-1: exits 0, stops both awaiting_followup jobs in current workspace, emits stop.completed events', () => {
+    const jobIdA = 'job_aaa_aaaaaaaa';
+    const jobIdB = 'job_bbb_bbbbbbbb';
+    writeSyntheticAwaitingFollowupJob({ jobId: jobIdA, shortId: 'aaa11111' });
+    writeSyntheticAwaitingFollowupJob({ jobId: jobIdB, shortId: 'bbb22222' });
+    // Pre-seed live idle mock sessions so the reconciler preserves
+    // awaiting_followup (mapStatus requires driver='idle' + turn='completed' +
+    // not-TTL-elapsed). Without these, both jobs would map to 'orphaned'.
+    for (const sid of ['aaa11111', 'bbb22222']) {
+      writeMockAgentSession(sid, shortIdToSessionId(sid), 'idle');
+      writeMockIdleSidecar(sid, shortIdToSessionId(sid));
+    }
+
+    const result = runDispatcher(['stop', '--all-awaiting-followup']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    for (const jobId of [jobIdA, jobIdB]) {
+      const record = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobId}.json`), 'utf8'));
+      assert.equal(
+        record.status,
+        'stopped',
+        `expected job ${jobId} to be 'stopped', got '${record.status}'`,
+      );
+    }
+
+    for (const jobId of [jobIdA, jobIdB]) {
+      const eventsPath = join(TMP_HOME, 'jobs', `${jobId}.events.jsonl`);
+      assert.ok(existsSync(eventsPath), `expected events file at ${eventsPath}`);
+      const events = readFileSync(eventsPath, 'utf8')
+        .split('\n')
+        .filter(Boolean)
+        .map((l) => JSON.parse(l));
+      assert.ok(
+        events.some((e) => e.type === 'stop.completed'),
+        `expected stop.completed event for ${jobId}; got types: ${events.map((e) => e.type).join(', ')}`,
+      );
+    }
+
+    assert.ok(
+      result.stdout.includes('Stopped 2 awaiting-followup Claude jobs.'),
+      `expected "Stopped 2 awaiting-followup Claude jobs." in stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(result.stdout.includes('aaa11111'), `expected shortId 'aaa11111' in stdout`);
+    assert.ok(result.stdout.includes('bbb22222'), `expected shortId 'bbb22222' in stdout`);
+  });
+
+  // T11-2: workspace scoping — does NOT see jobs from other workspaces by default
+  it('T11-2: does not stop awaiting_followup jobs belonging to a different workspace', () => {
+    const otherWorkspace = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-other-')));
+    try {
+      const jobHere = 'job_here_aaaaaaaa';
+      const jobElse = 'job_else_bbbbbbbb';
+      writeSyntheticAwaitingFollowupJob({ jobId: jobHere, shortId: 'here1111' });
+      writeSyntheticAwaitingFollowupJob({
+        jobId: jobElse,
+        shortId: 'else2222',
+        workspaceRoot: otherWorkspace,
+      });
+      // Only the current-workspace job is enumerated (listJobsForWorkspace);
+      // the other-workspace job is never reconciled, so it stays untouched.
+      writeMockAgentSession('here1111', shortIdToSessionId('here1111'), 'idle');
+      writeMockIdleSidecar('here1111', shortIdToSessionId('here1111'));
+
+      const result = runDispatcher(['stop', '--all-awaiting-followup']);
+
+      assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+      const hereRecord = JSON.parse(
+        readFileSync(join(TMP_HOME, 'jobs', `${jobHere}.json`), 'utf8'),
+      );
+      assert.equal(
+        hereRecord.status,
+        'stopped',
+        `expected job_here_aaaaaaaa to be 'stopped', got '${hereRecord.status}'`,
+      );
+
+      const elseRecord = JSON.parse(
+        readFileSync(join(TMP_HOME, 'jobs', `${jobElse}.json`), 'utf8'),
+      );
+      assert.equal(
+        elseRecord.status,
+        'awaiting_followup',
+        `expected job_else_bbbbbbbb to remain 'awaiting_followup', got '${elseRecord.status}'`,
+      );
+
+      assert.ok(
+        result.stdout.includes('Stopped 1 awaiting-followup Claude job'),
+        `expected exactly 1 job stopped in stdout; got:\n${result.stdout}`,
+      );
+    } finally {
+      rmSync(otherWorkspace, { recursive: true, force: true });
+    }
+  });
+
+  // T11-3: --all opts into cross-workspace bulk stop
+  it('T11-3: --all flag includes awaiting_followup jobs from all workspaces', () => {
+    const otherWorkspace = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-other-')));
+    try {
+      const jobHere = 'job_here_aaaaaaaa';
+      const jobElse = 'job_else_bbbbbbbb';
+      writeSyntheticAwaitingFollowupJob({ jobId: jobHere, shortId: 'here1111' });
+      writeSyntheticAwaitingFollowupJob({
+        jobId: jobElse,
+        shortId: 'else2222',
+        workspaceRoot: otherWorkspace,
+      });
+      for (const sid of ['here1111', 'else2222']) {
+        writeMockAgentSession(sid, shortIdToSessionId(sid), 'idle');
+        writeMockIdleSidecar(sid, shortIdToSessionId(sid));
+      }
+
+      const result = runDispatcher(['stop', '--all-awaiting-followup', '--all']);
+
+      assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+      for (const jobId of [jobHere, jobElse]) {
+        const record = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobId}.json`), 'utf8'));
+        assert.equal(
+          record.status,
+          'stopped',
+          `expected ${jobId} to be 'stopped', got '${record.status}'`,
+        );
+      }
+
+      assert.ok(
+        result.stdout.includes('Stopped 2 awaiting-followup Claude jobs.'),
+        `expected "Stopped 2 awaiting-followup Claude jobs." in stdout; got:\n${result.stdout}`,
+      );
+    } finally {
+      rmSync(otherWorkspace, { recursive: true, force: true });
+    }
+  });
+
+  // T11-4: 'running' job is skipped (active-protection)
+  it('T11-4: skips a job with status "running"; awaiting_followup job is still stopped', () => {
+    const jobRun = 'job_run_aaaaaaaa';
+    const jobOk = 'job_ok_bbbbbbbb';
+
+    writeSyntheticCompletedJob({ jobId: jobRun, workspaceRoot: WORK_DIR });
+    const runPath = join(TMP_HOME, 'jobs', `${jobRun}.json`);
+    const runRecord = JSON.parse(readFileSync(runPath, 'utf8'));
+    runRecord.status = 'running';
+    writeFileSync(runPath, JSON.stringify(runRecord, null, 2));
+
+    writeSyntheticAwaitingFollowupJob({ jobId: jobOk, shortId: 'ok333333' });
+    // Pre-seed only the awaiting_followup job. The 'running' job has no mock
+    // session; reconciler may flip it to 'orphaned', which is fine: the
+    // contract is "skip anything that isn't awaiting_followup".
+    writeMockAgentSession('ok333333', shortIdToSessionId('ok333333'), 'idle');
+    writeMockIdleSidecar('ok333333', shortIdToSessionId('ok333333'));
+
+    const result = runDispatcher(['stop', '--all-awaiting-followup']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const runAfter = JSON.parse(readFileSync(runPath, 'utf8'));
+    assert.notEqual(
+      runAfter.status,
+      'stopped',
+      `expected job_run_aaaaaaaa NOT to be stopped; got '${runAfter.status}'`,
+    );
+
+    const okRecord = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobOk}.json`), 'utf8'));
+    assert.equal(
+      okRecord.status,
+      'stopped',
+      `expected job_ok_bbbbbbbb to be 'stopped', got '${okRecord.status}'`,
+    );
+
+    assert.ok(
+      result.stdout.includes('Skipped:'),
+      `expected "Skipped:" in stdout; got:\n${result.stdout}`,
+    );
+  });
+
+  // T11-5: 'needs_input' job is skipped
+  it('T11-5: skips a job with status "needs_input"; awaiting_followup job still stopped', () => {
+    const jobNeeds = 'job_nds_aaaaaaaa';
+    const jobOk = 'job_ok2_bbbbbbbb';
+
+    writeSyntheticCompletedJob({ jobId: jobNeeds, workspaceRoot: WORK_DIR });
+    const needsPath = join(TMP_HOME, 'jobs', `${jobNeeds}.json`);
+    const needsRecord = JSON.parse(readFileSync(needsPath, 'utf8'));
+    needsRecord.status = 'needs_input';
+    writeFileSync(needsPath, JSON.stringify(needsRecord, null, 2));
+
+    writeSyntheticAwaitingFollowupJob({ jobId: jobOk, shortId: 'ok444444' });
+    writeMockAgentSession('ok444444', shortIdToSessionId('ok444444'), 'idle');
+    writeMockIdleSidecar('ok444444', shortIdToSessionId('ok444444'));
+
+    const result = runDispatcher(['stop', '--all-awaiting-followup']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const needsAfter = JSON.parse(readFileSync(needsPath, 'utf8'));
+    assert.notEqual(
+      needsAfter.status,
+      'stopped',
+      `expected job_nds_aaaaaaaa NOT to be stopped; got '${needsAfter.status}'`,
+    );
+
+    const okRecord = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobOk}.json`), 'utf8'));
+    assert.equal(okRecord.status, 'stopped', `expected job_ok2_bbbbbbbb to be 'stopped'`);
+  });
+
+  // T11-6: 'completed' job is skipped
+  it('T11-6: skips a job with status "completed"; awaiting_followup job still stopped', () => {
+    const jobDone = 'job_done_aaaaaaaa';
+    const jobOk = 'job_ok3_bbbbbbbb';
+
+    writeSyntheticCompletedJob({ jobId: jobDone, workspaceRoot: WORK_DIR });
+    writeSyntheticAwaitingFollowupJob({ jobId: jobOk, shortId: 'ok555555' });
+    writeMockAgentSession('ok555555', shortIdToSessionId('ok555555'), 'idle');
+    writeMockIdleSidecar('ok555555', shortIdToSessionId('ok555555'));
+
+    const result = runDispatcher(['stop', '--all-awaiting-followup']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const doneRecord = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobDone}.json`), 'utf8'));
+    assert.notEqual(doneRecord.status, 'stopped', `completed job must not become 'stopped'`);
+
+    const okRecord = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobOk}.json`), 'utf8'));
+    assert.equal(okRecord.status, 'stopped', `expected awaiting_followup job to be 'stopped'`);
+  });
+
+  // T11-7: 'stopped' job is skipped
+  it('T11-7: skips a job already in status "stopped"; awaiting_followup job still stopped', () => {
+    const jobAlreadyStopped = 'job_stp_aaaaaaaa';
+    const jobOk = 'job_ok4_bbbbbbbb';
+
+    writeSyntheticCompletedJob({ jobId: jobAlreadyStopped, workspaceRoot: WORK_DIR });
+    const stpPath = join(TMP_HOME, 'jobs', `${jobAlreadyStopped}.json`);
+    const stpRecord = JSON.parse(readFileSync(stpPath, 'utf8'));
+    stpRecord.status = 'stopped';
+    writeFileSync(stpPath, JSON.stringify(stpRecord, null, 2));
+
+    writeSyntheticAwaitingFollowupJob({ jobId: jobOk, shortId: 'ok666666' });
+    writeMockAgentSession('ok666666', shortIdToSessionId('ok666666'), 'idle');
+    writeMockIdleSidecar('ok666666', shortIdToSessionId('ok666666'));
+
+    const result = runDispatcher(['stop', '--all-awaiting-followup']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    // The bulk path must not have bulk-stopped the already-stopped job. The
+    // reconciler may flip 'stopped' → 'orphaned' (no live mock session matches
+    // the synthetic shortId); either outcome proves the bulk path did not call
+    // driver.stop on this job. The contract is "skip anything not awaiting_followup".
+    const stpAfter = JSON.parse(readFileSync(stpPath, 'utf8'));
+    assert.ok(
+      ['stopped', 'orphaned'].includes(stpAfter.status),
+      `expected already-stopped job to remain 'stopped' or be reconciler-flipped to 'orphaned'; got '${stpAfter.status}'`,
+    );
+
+    const okRecord = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobOk}.json`), 'utf8'));
+    assert.equal(okRecord.status, 'stopped', `expected awaiting_followup job to be 'stopped'`);
+  });
+
+  // T11-8: no matching jobs in workspace
+  it('T11-8: exits 0 with workspace-scoped "no jobs found" message when no awaiting_followup jobs exist', () => {
+    const result = runDispatcher(['stop', '--all-awaiting-followup']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes('No awaiting-followup Claude jobs found for this workspace.'),
+      `expected workspace-scoped no-jobs message; got:\n${result.stdout}`,
+    );
+  });
+
+  // T11-9: no matching jobs with --all
+  it('T11-9: exits 0 with global "no jobs found" message when --all but no jobs exist anywhere', () => {
+    const result = runDispatcher(['stop', '--all-awaiting-followup', '--all']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes('No awaiting-followup Claude jobs found.'),
+      `expected global no-jobs message; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      !result.stdout.includes('for this workspace'),
+      `must NOT say "for this workspace" in the --all variant; got:\n${result.stdout}`,
+    );
+  });
+
+  // T11-10: JSON output shape for two stopped jobs
+  it('T11-10: --json returns {ok,stopped,skipped,failed} with two stopped entries', () => {
+    const jobIdA = 'job_aaa_aaaaaaaa';
+    const jobIdB = 'job_bbb_bbbbbbbb';
+    writeSyntheticAwaitingFollowupJob({ jobId: jobIdA, shortId: 'aaa11111' });
+    writeSyntheticAwaitingFollowupJob({ jobId: jobIdB, shortId: 'bbb22222' });
+    for (const sid of ['aaa11111', 'bbb22222']) {
+      writeMockAgentSession(sid, shortIdToSessionId(sid), 'idle');
+      writeMockIdleSidecar(sid, shortIdToSessionId(sid));
+    }
+
+    const result = runDispatcher(['stop', '--all-awaiting-followup', '--json']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout must be valid JSON; got:\n${result.stdout}`);
+
+    assert.equal(parsed.ok, true, `expected ok:true; got ${JSON.stringify(parsed)}`);
+    assert.ok(Array.isArray(parsed.stopped), 'expected stopped to be an array');
+    assert.ok(Array.isArray(parsed.skipped), 'expected skipped to be an array');
+    assert.ok(Array.isArray(parsed.failed), 'expected failed to be an array');
+    assert.equal(
+      parsed.stopped.length,
+      2,
+      `expected 2 stopped entries; got ${parsed.stopped.length}`,
+    );
+
+    for (const entry of parsed.stopped) {
+      assert.ok(entry.jobId, `each stopped entry must have jobId; got ${JSON.stringify(entry)}`);
+      assert.ok(
+        entry.shortId,
+        `each stopped entry must have shortId; got ${JSON.stringify(entry)}`,
+      );
+      assert.equal(
+        entry.status,
+        'stopped',
+        `each stopped entry must have status:'stopped'; got '${entry.status}'`,
+      );
+    }
+  });
+
+  // T11-11: JSON output with mixed skips
+  it('T11-11: --json shows skipped entry with reason:"not awaiting_followup" for a completed job', () => {
+    const jobAf = 'job_afj_aaaaaaaa';
+    const jobDone = 'job_dnj_bbbbbbbb';
+    writeSyntheticAwaitingFollowupJob({ jobId: jobAf, shortId: 'af777777' });
+    writeMockAgentSession('af777777', shortIdToSessionId('af777777'), 'idle');
+    writeMockIdleSidecar('af777777', shortIdToSessionId('af777777'));
+    writeSyntheticCompletedJob({ jobId: jobDone, workspaceRoot: WORK_DIR });
+
+    const result = runDispatcher(['stop', '--all-awaiting-followup', '--json']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout must be valid JSON; got:\n${result.stdout}`);
+
+    assert.equal(parsed.ok, true, `expected ok:true`);
+    assert.equal(parsed.stopped.length, 1, `expected 1 stopped entry`);
+    assert.equal(parsed.skipped.length, 1, `expected 1 skipped entry`);
+
+    const skipped = parsed.skipped[0];
+    assert.ok(skipped.jobId, `skipped entry must have jobId`);
+    assert.ok(skipped.status, `skipped entry must have status`);
+    assert.equal(
+      skipped.reason,
+      'not awaiting_followup',
+      `expected reason:'not awaiting_followup'; got '${skipped.reason}'`,
+    );
+  });
+
+  // T11-12: existing single-job stop still works (regression guard)
+  it('T11-12: single-job stop <jobId> still exits 0 and marks job stopped on disk', () => {
+    // Use delegate first (same pattern as Test 14) so a real mock session exists.
+    const delegateResult = runDispatcher(['delegate', '--yes', '--', 't11-single-guard-task']);
+    assert.equal(
+      delegateResult.status,
+      0,
+      `T11-12 setup: delegate failed: ${delegateResult.stderr}`,
+    );
+    const jobIdMatch = delegateResult.stdout.match(/job_[a-z0-9]+_[a-f0-9]{8}/);
+    assert.ok(jobIdMatch, 'T11-12 setup: could not find jobId in delegate stdout');
+    const jobId = jobIdMatch[0];
+
+    const result = runDispatcher(['stop', jobId]);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 from single-job stop, got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    const record = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobId}.json`), 'utf8'));
+    assert.equal(record.status, 'stopped', `expected status 'stopped', got '${record.status}'`);
+
+    assert.ok(
+      result.stdout.toLowerCase().includes('stop') ||
+        result.stdout.includes(jobId) ||
+        result.stdout.toLowerCase().includes('success'),
+      `expected stop confirmation in stdout; got:\n${result.stdout}`,
+    );
+  });
+
+  // T11-13: --all-idle is rejected (maintainer scope correction)
+  it('T11-13: --all-idle is rejected with exit 2 and "Unknown stop flag: --all-idle"', () => {
+    const result = runDispatcher(['stop', '--all-idle']);
+
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for --all-idle, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    assert.ok(
+      result.stderr.includes('Unknown stop flag: --all-idle'),
+      `expected "Unknown stop flag: --all-idle" in stderr; got:\n${result.stderr}`,
+    );
+
+    const jobsDir = join(TMP_HOME, 'jobs');
+    const jobCount = existsSync(jobsDir) ? listJobIds().length : 0;
+    assert.equal(
+      jobCount,
+      0,
+      `expected no jobs on disk after rejected --all-idle; found ${jobCount}`,
+    );
+  });
+
+  // T11-14: bulk flag with positional is a usage error
+  it('T11-14: --all-awaiting-followup combined with a positional jobId exits 2 with usage error', () => {
+    const result = runDispatcher(['stop', '--all-awaiting-followup', 'job_foo']);
+
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for bulk flag + positional, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    assert.ok(
+      result.stderr.includes('takes no positional'),
+      `expected "takes no positional" in stderr; got:\n${result.stderr}`,
+    );
+  });
+
+  // T11-15: --all-idle rejection precedes positional-required check
+  it('T11-15: --all-idle is rejected even when combined with a positional jobId', () => {
+    const result = runDispatcher(['stop', '--all-idle', 'job_foo']);
+
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for --all-idle + positional, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    assert.ok(
+      result.stderr.includes('Unknown stop flag: --all-idle'),
+      `expected "Unknown stop flag: --all-idle" in stderr; got:\n${result.stderr}`,
     );
   });
 });

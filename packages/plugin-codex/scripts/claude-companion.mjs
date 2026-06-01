@@ -30,6 +30,7 @@ import {
   formatStatus,
   formatResult,
   formatStop,
+  formatBulkStop,
   formatFollowup,
   formatError,
 } from './lib/format.mjs';
@@ -324,6 +325,101 @@ async function cmdResult(flags, positional, json) {
 // ---------- stop ----------
 
 async function cmdStop(flags, positional, json) {
+  // Defense-in-depth: --all-idle is not implemented; reject it explicitly so it
+  // doesn't silently consume a positional token via the generic flag parser.
+  if (flags['all-idle'] !== undefined) {
+    process.stderr.write(
+      formatError(new Error('Unknown stop flag: --all-idle'), 'stop', json) + '\n',
+    );
+    process.exit(2);
+  }
+
+  const bulkAwaitingFollowup = Boolean(flags['all-awaiting-followup']);
+
+  if (bulkAwaitingFollowup) {
+    // Bulk path — no positional argument allowed.
+    if (positional[0] !== undefined) {
+      process.stderr.write(
+        formatError(
+          new Error('stop --all-awaiting-followup takes no positional argument'),
+          'stop',
+          json,
+        ) + '\n',
+      );
+      process.exit(2);
+    }
+
+    const workspace = process.cwd();
+    const showAll = Boolean(flags['all']);
+    const candidates = showAll
+      ? (await listJobs()).jobs
+      : (await listJobsForWorkspace(workspace)).jobs;
+
+    const driver = new ClaudeBackgroundDriver({ cwd: workspace });
+    const adapter = makeClaudeAdapter(driver);
+
+    /** @type {Array<{ jobId: string; shortId: string; status: string }>} */
+    const stopped = [];
+    /** @type {Array<{ jobId: string; status: string; reason: string }>} */
+    const skipped = [];
+    /** @type {Array<{ jobId: string; message: string }>} */
+    const failed = [];
+
+    const sorted = candidates.slice().sort((a, b) => a.jobId.localeCompare(b.jobId));
+
+    for (const candidate of sorted) {
+      // Reconcile to get fresh status, mirroring cmdFollowup pattern.
+      let current;
+      try {
+        const r = await reconcileJob(candidate.jobId, adapter);
+        current = r.job;
+      } catch {
+        current = await readJob(candidate.jobId);
+      }
+
+      if (current.status !== 'awaiting_followup') {
+        skipped.push({
+          jobId: current.jobId,
+          status: current.status,
+          reason: 'not awaiting_followup',
+        });
+        continue;
+      }
+
+      // claude.startedAt was added later; fall back to job.createdAt for records
+      // written before then so old jobs can still be stopped.
+      const sessionHandle = {
+        driverName: current.driver.name,
+        shortId: current.claude.shortId,
+        sessionId: current.claude.sessionId,
+        sessionName: current.claude.sessionName,
+        cwd: current.claude.cwd,
+        startedAt: current.claude.startedAt ?? current.createdAt,
+      };
+
+      try {
+        await driver.stop(sessionHandle);
+        const now = new Date().toISOString();
+        await updateJob(current.jobId, (c) => ({ ...c, status: 'stopped' }));
+        await appendEvent(current.jobId, { type: 'stop.completed', at: now });
+        stopped.push({
+          jobId: current.jobId,
+          shortId: current.claude.shortId,
+          status: 'stopped',
+        });
+      } catch (err) {
+        failed.push({
+          jobId: current.jobId,
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    process.stdout.write(formatBulkStop({ stopped, skipped, failed, showAll }, json) + '\n');
+    process.exit(failed.length > 0 ? 1 : 0);
+  }
+
+  // Single-job path (unchanged).
   const prefix = positional[0];
   if (!prefix) {
     process.stderr.write(
@@ -813,6 +909,7 @@ function printUsage() {
       '  --mcp-config <path>          MCP config file for delegate',
       '  --allow-edit                 Allow edit mode for delegate/followup',
       '  --all                        Search all workspaces (status/result/stop/followup)',
+      '  --all-awaiting-followup      Bulk-stop all awaiting-followup jobs (stop only; combine with --all for every workspace)',
       '  --help                       Show this help',
       '',
     ].join('\n'),

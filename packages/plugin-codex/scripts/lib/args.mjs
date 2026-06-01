@@ -9,7 +9,14 @@
 //   --help              boolean flag
 
 /** @type {Set<string>} */
-const BOOLEAN_FLAGS = new Set(['yes', 'json', 'all', 'allow-edit', 'help']);
+const BOOLEAN_FLAGS = new Set([
+  'yes',
+  'json',
+  'all',
+  'allow-edit',
+  'help',
+  'all-awaiting-followup',
+]);
 
 /** @type {Set<string>} */
 const REPEATABLE_FLAGS = new Set(['add-dir']);

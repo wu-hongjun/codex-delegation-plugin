@@ -21,7 +21,7 @@
     "test:doctor": "npm run build && node --test packages/runtime/test/doctor.test.mjs",
     "test:driver": "npm run build && node --test packages/driver-claude-code/test/*.test.mjs",
     "test:plugin": "npm run build && node --test packages/plugin-codex/test/*.test.mjs",
-    "test:attach": "npm run build && node --test packages/driver-claude-code/test/attach.test.mjs packages/driver-claude-code/test/send.test.mjs"
+    "test:attach": "npm run build && node --test packages/driver-claude-code/test/send.test.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.10.0",

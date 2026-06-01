@@ -334,20 +334,36 @@ describe('package.json declares the test:attach script (plan 0002 T14)', () => {
   });
 });
 
-// ---------- T14-2: test:attach targets the PTY-dependent driver files ----------
+// ---------- T14-2: test:attach targets the PTY-dependent driver file(s) ----------
 
-describe('test:attach targets attach.test.mjs and send.test.mjs (plan 0002 T14)', () => {
-  it('test:attach script body references both attach.test.mjs and send.test.mjs', () => {
+// Note: the PTY-dependent test coverage lives entirely in send.test.mjs
+// (which exercises driver.send() + the attachAndSend internal helper). There
+// is no separate attach.test.mjs file in the repo — driver-claude-code/test/
+// has only: agents-json, logs, probe, pty-probe, send, sidecar, start-session,
+// status, stop, transcript. The initial T14 brief listed both, but the actual
+// PTY-dependent file is just send.test.mjs. Node 22 silently skips missing
+// test paths passed to --test; Node 20 errors. T14's first CI run failed on
+// Node 20 for exactly this reason; the script and this assertion were
+// tightened to match the on-disk reality.
+describe('test:attach targets the PTY-dependent driver test(s) (plan 0002 T14)', () => {
+  it('test:attach script body references send.test.mjs', () => {
     const pkgPath = resolve(REPO_ROOT, 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
     const script = pkg.scripts['test:attach'];
     assert.ok(
-      script.includes('attach.test.mjs'),
-      `test:attach must include attach.test.mjs: got ${script}`,
-    );
-    assert.ok(
       script.includes('send.test.mjs'),
       `test:attach must include send.test.mjs: got ${script}`,
+    );
+  });
+
+  it('test:attach script does not list non-existent test files', () => {
+    const pkgPath = resolve(REPO_ROOT, 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    const script = pkg.scripts['test:attach'];
+    // Guard against drift: only reference files that exist on disk.
+    assert.ok(
+      !script.includes('attach.test.mjs'),
+      `test:attach must not reference attach.test.mjs (file does not exist; Node 20 errors on missing --test paths). Got: ${script}`,
     );
   });
 });

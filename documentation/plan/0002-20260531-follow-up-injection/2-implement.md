@@ -917,7 +917,7 @@ No medium-or-higher findings on the implementation itself. All 10 privacy/securi
 - `--allow-edit` non-bypass locked by T12-7.
 - Delegate regression guarded by T12-8.
 - T8-11/T8-12/T8-13 still pass (verified inside the post-integration run).
-- Remote CI: pending (commit + push imminent).
+- Remote CI on `5c3656e` (run `26760838593`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). Target-workspace ack scoping + `--allow-edit` non-bypass + delegate regression guard + the existing T8 ack tests all exercise cleanly on both Linux and macOS for both supported Node majors.
 
 ## Deviations from the plan
 

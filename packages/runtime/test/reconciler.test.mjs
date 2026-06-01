@@ -1190,6 +1190,192 @@ describe('context-aware status mapping (plan 0002 T7)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// T15a regression: sidecar-evidence-of-completion flips queued/working/etc
+// turn status to completed so idle+queued doesn't trap the job in 'running'.
+// ---------------------------------------------------------------------------
+
+describe('T15a — sidecar-evidence-of-completion (plan 0002)', () => {
+  function fakeAdapterWithSidecar({ status, sidecar } = {}) {
+    return {
+      async status(ref) {
+        return status ?? { value: 'idle', shortId: ref.shortId, sessionId: ref.sessionId };
+      },
+      async readTranscriptEvents(_ref) {
+        return { transcriptPath: null, events: [], warnings: [] };
+      },
+      async readLogs(_ref) {
+        return { text: '' };
+      },
+      async readSidecar(_ref) {
+        return sidecar ?? null;
+      },
+    };
+  }
+
+  const DONE_SIDECAR = {
+    state: 'done',
+    tempo: 'idle',
+    inFlight: { tasks: 0, queued: 0, kinds: [] },
+    output: { result: '3 TODOs found: app.js:1, README.md:2, README.md:3' },
+    raw: {},
+  };
+
+  it('idle driver + queued turn + sidecar done → awaiting_followup, turn flipped to completed', async () => {
+    const job = await createJob(makeJobInput());
+    // Sanity: createJob defaults to status='queued', so turns[0].status='queued'
+    assert.equal(job.status, 'queued');
+    assert.equal(job.turns[0].status, 'queued');
+
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'idle' },
+      sidecar: DONE_SIDECAR,
+    });
+    // Use a job-relative nowFn (1s after createJob) so the TTL is not
+    // accidentally elapsed by the shared NOW='2026-05-30' clock vs real-time
+    // createdAt stamps. (M2's future-timestamp guard would otherwise treat
+    // real-time createdAt > NOW as TTL-elapsed.)
+    const nowFn = () => new Date(Date.parse(job.createdAt) + 1000).toISOString();
+    const result = await reconcileJob(job.jobId, adapter, { now: nowFn });
+
+    assert.equal(
+      result.job.status,
+      'awaiting_followup',
+      'idle + queued + sidecar.state=done should yield awaiting_followup, not running',
+    );
+    assert.equal(
+      result.job.turns[result.job.turns.length - 1].status,
+      'completed',
+      'turn[last].status must be flipped to completed when sidecar shows done',
+    );
+    assert.ok(
+      result.job.turns[result.job.turns.length - 1].endedAt,
+      'turn[last].endedAt must be stamped when status flips to completed',
+    );
+  });
+
+  it('idle driver + working turn + sidecar done → awaiting_followup, turn flipped to completed', async () => {
+    const job = await createJob(makeJobInput());
+    const { updateJob: updateJobFn } = await import('../dist/index.js');
+    await updateJobFn(job.jobId, (rec) => {
+      const turns = rec.turns.map((t, i) =>
+        i === rec.turns.length - 1 ? { ...t, status: 'working' } : t,
+      );
+      return { ...rec, turns };
+    });
+
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'idle' },
+      sidecar: DONE_SIDECAR,
+    });
+    // Use a job-relative nowFn (1s after createJob) so the TTL is not
+    // accidentally elapsed by the shared NOW='2026-05-30' clock vs real-time
+    // createdAt stamps. (M2's future-timestamp guard would otherwise treat
+    // real-time createdAt > NOW as TTL-elapsed.)
+    const nowFn = () => new Date(Date.parse(job.createdAt) + 1000).toISOString();
+    const result = await reconcileJob(job.jobId, adapter, { now: nowFn });
+
+    assert.equal(result.job.status, 'awaiting_followup');
+    assert.equal(result.job.turns[result.job.turns.length - 1].status, 'completed');
+  });
+
+  it('idle driver + queued turn + sidecar WITHOUT output.result → still running (no false completion)', async () => {
+    // Negative case: sidecar partially populated but no result yet.
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'idle' },
+      sidecar: {
+        state: 'done',
+        tempo: 'idle',
+        inFlight: { tasks: 0, queued: 0, kinds: [] },
+        output: {}, // no result
+        raw: {},
+      },
+    });
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(
+      result.job.status,
+      'running',
+      'no output.result in sidecar must NOT trigger completion inference',
+    );
+    assert.equal(
+      result.job.turns[result.job.turns.length - 1].status,
+      'queued',
+      'turn[last].status must stay queued without positive completion evidence',
+    );
+  });
+
+  it('idle driver + queued turn + sidecar empty-string result → still running', async () => {
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'idle' },
+      sidecar: {
+        state: 'done',
+        tempo: 'idle',
+        inFlight: { tasks: 0, queued: 0, kinds: [] },
+        output: { result: '   ' }, // whitespace-only
+        raw: {},
+      },
+    });
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(
+      result.job.status,
+      'running',
+      'whitespace-only sidecar result must not trigger completion inference',
+    );
+  });
+
+  it('idle driver + queued turn + sidecar state=working → still running', async () => {
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'idle' },
+      sidecar: {
+        state: 'working', // not done
+        tempo: 'idle',
+        inFlight: { tasks: 0, queued: 0, kinds: [] },
+        output: { result: 'partial output' },
+        raw: {},
+      },
+    });
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(
+      result.job.status,
+      'running',
+      'sidecar state must be "done" (not "working") to trigger completion inference',
+    );
+  });
+
+  it('idle driver + completed turn (Plan 0002 path) + sidecar done → awaiting_followup (no double-flip)', async () => {
+    // The dispatcher's followup path already sets turn[last].status='completed'.
+    // T15a should not regress that case.
+    const job = await createJob(makeJobInput());
+    const { updateJob: updateJobFn } = await import('../dist/index.js');
+    await updateJobFn(job.jobId, (rec) => {
+      const turns = rec.turns.map((t, i) =>
+        i === rec.turns.length - 1 ? { ...t, status: 'completed', endedAt: job.createdAt } : t,
+      );
+      return { ...rec, status: 'completed', turns };
+    });
+
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'idle' },
+      sidecar: DONE_SIDECAR,
+    });
+    // Use a job-relative nowFn (1s after createJob) so the TTL is not
+    // accidentally elapsed by the shared NOW='2026-05-30' clock vs real-time
+    // createdAt stamps. (M2's future-timestamp guard would otherwise treat
+    // real-time createdAt > NOW as TTL-elapsed.)
+    const nowFn = () => new Date(Date.parse(job.createdAt) + 1000).toISOString();
+    const result = await reconcileJob(job.jobId, adapter, { now: nowFn });
+
+    assert.equal(result.job.status, 'awaiting_followup');
+    assert.equal(result.job.turns[result.job.turns.length - 1].status, 'completed');
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Architectural invariant: static assertion
 // ---------------------------------------------------------------------------
 

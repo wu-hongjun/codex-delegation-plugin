@@ -213,7 +213,27 @@ export function mapStatus(input: StatusMappingInput): JobStatus {
     case 'needs_input':
       return 'needs_input';
     case 'idle': {
-      switch (latestTurnStatus) {
+      // Plan 0002 T15a: when driver is idle AND the sidecar shows the current
+      // turn finished (state='done' + tempo='idle' + output.result populated),
+      // treat any non-terminal turn status (queued/working/starting/injecting)
+      // as 'completed'. The dispatcher path is start-only — cmdDelegate writes
+      // turn[0].status='queued' and never updates it; only the reconciler can
+      // observe completion via the sidecar.
+      const sidecarSaysDone =
+        sidecar != null &&
+        sidecar.state === 'done' &&
+        sidecar.tempo === 'idle' &&
+        typeof sidecar.output?.result === 'string' &&
+        sidecar.output.result.trim().length > 0;
+      const effectiveTurnStatus: TurnStatus =
+        sidecarSaysDone &&
+        (latestTurnStatus === 'queued' ||
+          latestTurnStatus === 'working' ||
+          latestTurnStatus === 'starting' ||
+          latestTurnStatus === 'injecting')
+          ? 'completed'
+          : latestTurnStatus;
+      switch (effectiveTurnStatus) {
         case 'injecting':
         case 'working':
         case 'starting':
@@ -225,7 +245,10 @@ export function mapStatus(input: StatusMappingInput): JobStatus {
         case 'completed':
           return ttlElapsed ? 'completed' : 'awaiting_followup';
         case 'queued':
-          // Defensive: a "queued" turn shouldn't pair with idle driver, treat as mid-work
+          // Defensive: a "queued" turn paired with idle driver and no sidecar
+          // completion evidence means Claude hasn't actually finished yet
+          // (e.g., the session settled to idle before the prompt was processed).
+          // Keep as mid-work to avoid premature completion.
           return 'running';
         default:
           return previousJobStatus;
@@ -521,21 +544,26 @@ export async function reconcileJob(
       last.endedAt = last.endedAt ?? new Date().toISOString();
     }
 
-    // Turn status sync rules (T7):
+    // Turn status sync rules (T7 + T15a):
     // - running: leave turn status alone (don't churn working/injecting/starting/queued)
     // - needs_input: propagate to turn
     // - failed: propagate to turn (T6 already did this)
     // - completed: propagate to turn (T6 already did this)
-    // - awaiting_followup: the latest turn IS completed; the job is reusable → leave turn as-is
+    // - awaiting_followup: the latest turn IS completed by definition; mirror
+    //   that to turn[last].status. T15a fix: pre-T15a, "leave turn as-is" was
+    //   wrong for first-turn jobs whose turn status was queued/working before
+    //   sidecar evidence arrived — the job would stay reusable on disk but
+    //   turns[0].status would remain stale, breaking subsequent reconciles.
     // - stopped / orphaned: preserve whatever status the turn has
     if (nextStatus === 'needs_input') {
       last.status = 'needs_input';
-    } else if (nextStatus === 'completed') {
+    } else if (nextStatus === 'completed' || nextStatus === 'awaiting_followup') {
       last.status = 'completed';
+      last.endedAt = last.endedAt ?? new Date().toISOString();
     } else if (nextStatus === 'failed') {
       last.status = 'failed';
     }
-    // awaiting_followup, running, stopped, orphaned: do not force turn status
+    // running, stopped, orphaned: do not force turn status
 
     syncCompatAliases(patched);
   }

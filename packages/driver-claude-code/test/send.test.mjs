@@ -66,6 +66,10 @@ function buildEnv(mockHome, companionHome, extra = {}) {
     ...extra,
     CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: mockHome,
     CC_PLUGIN_CODEX_HOME: companionHome,
+    // T15a: mock-claude responds immediately so no TUI-warmup wait is needed.
+    // Tests pass attachWarmupMs=0 via this env var so each send() in the
+    // mock suite runs without the 2-second real-TUI default.
+    CC_PLUGIN_CODEX_ATTACH_WARMUP_MS: '0',
     PATH: `${MOCK_CLAUDE_DIR}${delimiter}${process.env.PATH ?? ''}`,
   };
 }

@@ -1,0 +1,520 @@
+# Plan 0002 T15 Live E2E
+Date: 2026-06-01
+Commit: 3e8a1049032678180d8fc10bc7aecbf4262de703
+Node: v25.1.0
+npm: 11.6.2
+Codex: codex-cli 0.135.0
+Claude Code: 2.1.149 (Claude Code)
+OS: Darwin 25.5.0
+Repo: /tmp/cc-plugin-codex-plan0002-e2e-MgCCEY (throwaway)
+CC_PLUGIN_CODEX_HOME: /tmp/cc-plugin-codex-plan0002-e2e-MgCCEY/.cc-plugin-codex-home (isolated)
+Plugin install mode: direct dispatcher (Codex skill path documented below)
+
+which codex: /opt/homebrew/bin/codex
+which claude: /opt/homebrew/bin/claude
+
+Claude auth: loggedIn=true, authMethod=claude.ai, apiProvider=firstParty, subscriptionType=max (email redacted)
+
+==================================================================
+Throwaway fixture contents
+==================================================================
+total 16
+drwx------@   6 hongjunwu  wheel    192  6月  1 11:21 .
+drwxrwxrwt  503 root       wheel  16096  6月  1 11:22 ..
+drwxr-xr-x@   2 hongjunwu  wheel     64  6月  1 11:21 .cc-plugin-codex-home
+drwxr-xr-x@  12 hongjunwu  wheel    384  6月  1 11:21 .git
+-rw-r--r--@   1 hongjunwu  wheel     77  6月  1 11:21 app.js
+-rw-r--r--@   1 hongjunwu  wheel     79  6月  1 11:21 README.md
+--- README.md ---
+# Plan 0002 E2E fixture
+TODO: replace this placeholder
+TODO: add a second task
+--- app.js ---
+// TODO: implement this function
+export function demo() {
+  return 'demo';
+}
+--- git log ---
+197820b initial e2e fixture
+
+==================================================================
+STEP 1 — $claude-setup (via direct dispatcher)
+==================================================================
+
+Note: T15 uses the direct dispatcher path. The Codex skill path
+($claude-setup, etc.) requires an interactive Codex CLI session,
+which cannot be driven non-interactively from this orchestrator.
+Direct dispatcher and the skill share the same script entry point
+(scripts/claude-companion.mjs); the SKILL.md run-line is just a
+thin alias. Codex skill discovery is unit-tested separately by
+packages/plugin-codex/test/skills-manifest.test.mjs.
+
+$ node "$REPO_ROOT/packages/plugin-codex/scripts/claude-companion.mjs" setup
+
+Claude companion setup — warn
+  delegate capability: ok
+  follow-up capability: ok
+
+Shared (delegate + follow-up):
+  ok    node-version                   Node 25.1.0
+  ok    companion-dir-writable         /tmp/cc-plugin-codex-plan0002-e2e-MgCCEY/.cc-plugin-codex-home
+  ok    codex-version                  codex-cli 0.135.0
+  ok    claude-binary                  claude binary is executable
+  ok    claude-version                 2.1.149 (Claude Code)
+  ok    claude-auth                    {
+  "loggedIn": true,
+  "authMethod": "claude.ai",
+  "apiProvider": "firstParty",
+  "email": "<email redacted>",
+  "orgId": "<orgId redacted>",
+  "orgName": "<orgName redacted>",
+  "subscriptionTyp…
+  ok    claude-agents-json             claude agents --json returned 5 session(s)
+  ok    claude-logs                    claude logs --help is available
+  ok    transcript-path                /Users/hongjunwu/.claude/projects
+
+Follow-up only (plan 0002):
+  ok    claude-attach-help             Usage: claude attach <id>
+
+  Open the background session in this terminal. Detach with Ctrl+Z; the session keeps running.
+  ok    claude-bg-no-prompt            claude --bg command shape is recognized by this binary
+  ok    sidecar-jobs-dir               /Users/hongjunwu/.claude/jobs
+  ok    pty-build                      node-pty PTY smoke passed (/bin/sh -c "echo ok").
+
+Informational (does not gate either capability):
+  warn  claude-bg-flag                 --bg not advertised in --help; Claude docs say help may omit flags. Background support will be verified when starting a session.
+  warn  claude-daemon                  daemon status is diagnostic only; not required for plan 0001 runtime path.
+  ok    codex-plugin-trust             Plugin reference found in /Users/hongjunwu/.codex/config.toml.
+
+Generated: 2026-06-01T15:22:34.972Z
+[exit=0]
+
+==================================================================
+STEP 2 — $claude-delegate (real Claude background session)
+==================================================================
+
+$ node ... claude-companion.mjs delegate --yes -- \
+    "Inspect this tiny throwaway repo and report what TODOs exist. Do not edit files."
+
+Claude job started
+Job ID:         job_mpvcydss_eb6c378f
+Status:         running
+Claude session: c47109c4
+Name:           codex:cc-plugin-codex-plan0002-e2e-MgCCEY:mpvcyalc
+Logs:           claude logs c47109c4
+Run:
+  $claude-status
+  $claude-result job_mpvcydss_eb6c378f
+[exit=0]
+
+==================================================================
+STEP 3 — $claude-status (polling for awaiting_followup)
+==================================================================
+
+--- initial status (t+0s, immediately after delegate) ---
+Claude jobs for /private/tmp/cc-plugin-codex-plan0002-e2e-MgCCEY
+
+  job_mpvcydss_eb6c378f             running         c47109c4          codex:cc-plugin-codex-plan0002-e2e-MgCCEY:mpvcyalc
+
+--- status after 30 polls (t+300s) — status=running ---
+Claude jobs for /private/tmp/cc-plugin-codex-plan0002-e2e-MgCCEY
+
+  job_mpvcydss_eb6c378f             running         c47109c4          codex:cc-plugin-codex-plan0002-e2e-MgCCEY:mpvcyalc
+
+
+==================================================================
+BUG OBSERVED — reconciler does not flip turn[last].status from
+queued/working to completed when sidecar.output.result is present
+and driver status is idle.
+==================================================================
+
+Observation after delegate + 30 polls × 10s = 5min wait:
+- claude agents --json: status=idle, kind=background
+- ~/.claude/jobs/c47109c4/state.json: state=done, tempo=idle,
+  inFlight.tasks=0, output.result="3 TODOs found: app.js:1, README.md:2, README.md:3"
+- job on disk: status=running, turns[0].status=queued, turns[0].result populated
+
+Events log:
+  - reconcile.status queued→running at t+0s
+  - reconcile.result at t+38s (result populated)
+  - NO subsequent reconcile.turn.completed event
+
+Root cause hypothesis: the reconciler writes the result to
+turn[last] but does not mirror that into turn[last].status.
+mapStatus then sees idle+queued and falls through to running.
+
+Fixing in T15a before re-running the E2E flow.
+
+
+==================================================================
+T15a FIX APPLIED — reconciler infers turn-completion from sidecar
+==================================================================
+
+Two interlocking bugs in packages/runtime/src/reconciler.ts:
+
+1. mapStatus (line ~215-232): idle + queued → 'running' as a
+   defensive fallback, never consulting sidecar evidence.
+
+2. Turn-status mirror (line ~524-538): only flipped
+   turn[last].status to 'completed' when nextStatus === 'completed',
+   never on 'awaiting_followup' (even though awaiting_followup
+   definitionally means the latest turn is completed).
+
+Together: cmdDelegate writes turn[0].status='queued' and exits.
+Reconciler later sees idle+queued, ignores sidecar.state=done,
+returns 'running'. Mirror doesn't fire. Job stuck forever.
+
+Fix:
+  (a) mapStatus now checks sidecar.state==='done' &&
+      sidecar.tempo==='idle' && sidecar.output.result is a
+      non-empty string. If true, queued/working/starting/injecting
+      are treated as effectively 'completed' for the mapping.
+  (b) Turn-status mirror flips turn[last].status to 'completed'
+      when nextStatus is either 'completed' OR 'awaiting_followup',
+      and stamps endedAt if not already set.
+
+Regression tests: 6 new tests in
+  packages/runtime/test/reconciler.test.mjs describe block
+  'T15a — sidecar-evidence-of-completion (plan 0002)'
+  covering happy path (queued/working) + negative cases
+  (no result, whitespace result, state=working, no-double-flip).
+
+Local test impact: runtime 150→156 (+6 T15a).
+
+
+==================================================================
+RE-RUN AFTER T15a FIX
+==================================================================
+
+Companion home reset. Starting fresh delegate.
+
+$ node ... claude-companion.mjs delegate --yes -- \
+    "Inspect this tiny throwaway repo and report what TODOs exist. Do not edit files."
+
+Claude job started
+Job ID:         job_mpvdidsr_69c26b7b
+Status:         running
+Claude session: 893d96bb
+Name:           codex:cc-plugin-codex-plan0002-e2e-MgCCEY:mpvdiaj8
+Logs:           claude logs 893d96bb
+Run:
+  $claude-status
+  $claude-result job_mpvdidsr_69c26b7b
+[exit=0]
+
+==================================================================
+STEP 3 (re-run) — $claude-status (polling for awaiting_followup)
+==================================================================
+
+--- status after 18 polls (t+180s) — status=running ---
+Claude jobs for /private/tmp/cc-plugin-codex-plan0002-e2e-MgCCEY
+
+  job_mpvdidsr_69c26b7b             running         893d96bb          codex:cc-plugin-codex-plan0002-e2e-MgCCEY:mpvdiaj8
+
+
+==================================================================
+STEP 3 (post-T15a) — status now awaiting_followup ✓
+==================================================================
+
+Claude jobs for /private/tmp/cc-plugin-codex-plan0002-e2e-MgCCEY
+
+  job_mpvdidsr_69c26b7b             awaiting_followup  893d96bb          codex:cc-plugin-codex-plan0002-e2e-MgCCEY:mpvdiaj8
+
+Follow-up available: run $claude-followup job_mpvdidsr_69c26b7b -- "next instruction"
+
+--- sidecar state.json snapshot (post-delegate, pre-followup-1) ---
+{
+  "state": "done",
+  "tempo": "idle",
+  "inFlight": {
+    "tasks": 0,
+    "queued": 0,
+    "kinds": []
+  },
+  "output": {
+    "result": "3 TODOs: app.js:1 (demo function), README.md:2-3 (placeholders)"
+  },
+  "updatedAt": "2026-06-01T15:38:48.482Z"
+}
+
+--- job record (post-delegate, pre-followup-1) ---
+{
+  "schemaVersion": 2,
+  "status": "awaiting_followup",
+  "turnCount": 1,
+  "turns": [
+    {
+      "status": "completed",
+      "hasResult": true,
+      "prompt": "Inspect this tiny throwaway repo and report what TODOs exist. Do not edit files."
+    }
+  ]
+}
+
+==================================================================
+STEP 4 — $claude-followup #1
+==================================================================
+
+$ node ... claude-companion.mjs followup job_mpvdidsr_69c26b7b --yes -- \
+    "Now sort the TODOs by file name and print the total count."
+
+[followup] Error: follow-up prompt did not register within 5000ms
+[exit=1]
+
+==================================================================
+T15a SECOND FIX — attach.ts warmup delay for real Claude TUI
+==================================================================
+
+First T15a fix unblocked the reconciler. Retrying $claude-followup
+then failed with: 'follow-up prompt did not register within 5000ms'.
+
+Direct PTY test confirmed: real Claude's TUI takes ~2-3s to finish
+its startup banner + capability handshake before accepting input.
+Without a warmup the PTY write lands during init and the TUI
+ignores the keystrokes (no submit fires).
+
+Sidecar 'updatedAt' was frozen at the delegate-turn timestamp,
+agents --json status stayed 'idle', timeline.jsonl gained no new
+entry — Claude never received the prompt.
+
+Fix: AttachAndSendOptions gains 'attachWarmupMs?' (default 2000).
+  - Inserts an awaitable delay between pty.spawn('claude attach',
+    ...) and term.write(prompt + '').
+  - Env-var override CC_PLUGIN_CODEX_ATTACH_WARMUP_MS for tests
+    (mock-claude responds instantly; tests set this to 0).
+  - Defensive parse: bad input falls back to the 2000ms default.
+
+Local test impact: send.test.mjs + dispatcher.test.mjs already pass
+with the env var set to 0 (no test-suite slowdown).
+
+==================================================================
+FULL FLOW RE-RUN (companion home reset; new delegate)
+==================================================================
+
+STEP 2 (re-run) — $claude-delegate
+
+Claude job started
+Job ID:         job_mpvdzlb6_6bfff63c
+Status:         running
+Claude session: 0c547051
+Name:           codex:cc-plugin-codex-plan0002-e2e-MgCCEY:mpvdzicq
+Logs:           claude logs 0c547051
+Run:
+  $claude-status
+  $claude-result job_mpvdzlb6_6bfff63c
+[exit=0]
+
+--- post-delegate status snapshot ---
+Claude jobs for /private/tmp/cc-plugin-codex-plan0002-e2e-MgCCEY
+
+  job_mpvdzlb6_6bfff63c             awaiting_followup  0c547051          codex:cc-plugin-codex-plan0002-e2e-MgCCEY:mpvdzicq
+
+Follow-up available: run $claude-followup job_mpvdzlb6_6bfff63c -- "next instruction"
+
+--- post-delegate sidecar snapshot ---
+{
+  "state": "done",
+  "tempo": "idle",
+  "inFlight": {
+    "tasks": 0,
+    "queued": 0,
+    "kinds": []
+  },
+  "output.result": "3 TODOs: README.md:2-3 (placeholder, second task), app.js:1 (implement function)",
+  "updatedAt": "2026-06-01T15:52:07.401Z"
+}
+
+==================================================================
+STEP 4 — $claude-followup #1 (with attach warmup fix)
+==================================================================
+
+$ node ... claude-companion.mjs followup job_mpvdzlb6_6bfff63c --yes -- \
+    "Now sort the TODOs by file name and print the total count."
+
+Claude follow-up sent
+Job ID:         job_mpvdzlb6_6bfff63c
+Turn:           1 (completed)
+Claude session: 0c547051
+Status:         running
+
+Found 3 TODOs in source files (ignoring `.cc-plugin-codex-home/` job metadata): - `README.md:2` — `TODO: replace this placeholder` - `README.md:3` — `TODO: add …
+[exit=0]
+
+--- post-followup-1 sidecar ---
+{
+  "state": "done",
+  "tempo": "active",
+  "inFlight": {
+    "tasks": 0,
+    "queued": 0,
+    "kinds": []
+  },
+  "output.result": null,
+  "updatedAt": "2026-06-01T15:52:34.078Z"
+}
+
+==================================================================
+STEP 5 — $claude-followup #2
+==================================================================
+
+(After followup #1, polled to awaiting_followup at t+5s)
+
+$ node ... claude-companion.mjs followup job_mpvdzlb6_6bfff63c --yes -- \
+    "Finally, confirm whether you modified any files."
+
+Claude follow-up sent
+Job ID:         job_mpvdzlb6_6bfff63c
+Turn:           2 (completed)
+Claude session: 0c547051
+Status:         running
+
+Sorted by file name: 1. `README.md:2` — `TODO: replace this placeholder` 2. `README.md:3` — `TODO: add a second task` 3. `app.js:1` — `// TODO: implement this f…
+[exit=0]
+
+--- post-followup-2 sidecar ---
+{
+  "state": "done",
+  "tempo": "active",
+  "inFlight": {
+    "tasks": 0,
+    "queued": 0,
+    "kinds": []
+  },
+  "output.result": null,
+  "updatedAt": "2026-06-01T15:52:57.243Z"
+}
+
+==================================================================
+STEP 6 — $claude-result
+==================================================================
+
+Job:        job_mpvdzlb6_6bfff63c
+Status:     awaiting_followup
+Transcript: (none)
+Logs:       claude logs 0c547051
+
+No files were modified. I only ran read-only commands (`ls` and `grep`).
+[exit=0]
+
+==================================================================
+STEP 7 — $claude-stop
+==================================================================
+
+Claude job stopped
+Job ID:         job_mpvdzlb6_6bfff63c
+Status:         stopped
+Claude session: 0c547051
+[exit=0]
+
+==================================================================
+STEP 8 — Cleanup verification
+==================================================================
+
+--- claude agents --json (filtered to test session) ---
+(empty above = test session not active; cleanup verified)
+
+--- final job record (turns + status) ---
+{
+  "schemaVersion": 2,
+  "status": "stopped",
+  "turnCount": 3,
+  "turns": [
+    {
+      "status": "completed",
+      "prompt": "Inspect this tiny throwaway repo and report what TODOs exist. Do not edit files.",
+      "finalMessagePreview": "Found 3 TODOs in source files (ignoring `.cc-plugin-codex-home/` job metadata): - `README.md:2` — `TODO: replace this pl"
+    },
+    {
+      "status": "completed",
+      "prompt": "Now sort the TODOs by file name and print the total count.",
+      "finalMessagePreview": "Sorted by file name: 1. `README.md:2` — `TODO: replace this placeholder` 2. `README.md:3` — `TODO: add a second task` 3."
+    },
+    {
+      "status": "completed",
+      "prompt": "Finally, confirm whether you modified any files.",
+      "finalMessagePreview": "No files were modified. I only ran read-only commands (`ls` and `grep`)."
+    }
+  ]
+}
+
+--- events log tail ---
+{"type":"reconcile.status","at":"2026-06-01T15:51:56.209Z","previousStatus":"queued","nextStatus":"running"}
+{"type":"reconcile.status","at":"2026-06-01T15:52:16.783Z","previousStatus":"running","nextStatus":"awaiting_followup"}
+{"type":"reconcile.result","at":"2026-06-01T15:52:16.783Z","finalMessagePath":"/tmp/cc-plugin-codex-plan0002-e2e-MgCCEY/.cc-plugin-codex-home/jobs/job_mpvdzlb6_6bfff63c.result.md"}
+{"type":"turn.requested","at":"2026-06-01T15:52:31.989Z","turnIndex":1}
+{"type":"turn.completed","at":"2026-06-01T15:52:34.708Z","turnIndex":1}
+{"type":"turn.requested","at":"2026-06-01T15:52:55.161Z","turnIndex":2}
+{"type":"turn.completed","at":"2026-06-01T15:52:57.895Z","turnIndex":2}
+{"type":"stop.completed","at":"2026-06-01T15:53:22.887Z"}
+
+--- final sidecar ---
+{
+  "state": "done",
+  "tempo": "idle",
+  "output.result": "no files were modified",
+  "updatedAt": "2026-06-01T15:53:01.741Z"
+}
+
+--- throwaway repo file modifications check ---
+?? .cc-plugin-codex-home/
+?? .omc/
+(empty above = the prompt instruction 'do not edit files' was respected)
+
+==================================================================
+T15 — Final verdict
+==================================================================
+
+Live E2E: PASS
+
+Job: job_mpvdzlb6_6bfff63c  shortId: 0c547051
+Codex 0.135.0  Claude Code 2.1.149  Node 25.1.0  Darwin 25.5.0
+Throwaway repo: /tmp/cc-plugin-codex-plan0002-e2e-MgCCEY
+Isolated companion-home: /tmp/.../.cc-plugin-codex-home
+
+Flow validated:
+  1. setup → ok (delegate + follow-up capability)
+  2. delegate → real Claude session, turn[0] queued, started running
+  3. status (poll) → awaiting_followup at t+20s (T15a fix #1 working)
+  4. followup #1 → PTY-attached, turn[1] completed (T15a fix #2 working)
+  5. followup #2 → turn[2] completed
+  6. result → exit 0, latest turn's finalMessage rendered
+  7. stop → exit 0, stop.completed event written
+  8. cleanup → claude agents --json no longer lists test session
+
+Schema-v2 invariants observed:
+  - schemaVersion: 2
+  - turnCount: 3
+  - All turn statuses = 'completed'
+  - Result tracks turn[last].result.finalMessage
+  - turn.requested/turn.completed events for each followup
+  - stop.completed event
+
+Side-effects vs throwaway repo:
+  - Tracked files (app.js, README.md): UNMODIFIED ('do not edit
+    files' prompt respected by Claude; verified via git status).
+  - Untracked artifact: .cc-plugin-codex-home/ (the isolated
+    companion home for this E2E run — intentional).
+  - Untracked artifact: .omc/ (OMC orchestrator metadata that
+    landed in the cwd because the orchestrator ran commands from
+    E2E_ROOT — not Plan 0002 code; would not appear if a user
+    ran the flow themselves without OMC active).
+
+Bugs discovered and fixed during T15 (T15a remediation):
+  Fix #1 (reconciler): mapStatus + turn-status mirror upgrade to
+    infer turn completion from sidecar evidence, AND wire the
+    sidecar reader into the dispatcher's adapter factory (which
+    was missing entirely — sidecar=null everywhere).
+  Fix #2 (attach.ts): add a 2-second TUI-warmup delay before
+    writing the prompt, so the Claude Code TUI has time to finish
+    its banner + capability handshake. Configurable via opts +
+    env var override (mock-claude tests set it to 0).
+
+Regression test coverage:
+  - 6 new reconciler tests under describe 'T15a —
+    sidecar-evidence-of-completion (plan 0002)' covering happy
+    path (queued/working) + 4 negative cases (no result,
+    whitespace result, sidecar state=working, no-double-flip).
+  - Existing send.test.mjs (25 tests) and dispatcher.test.mjs
+    (336 tests) all still pass with attachWarmupMs=0 in test env.
+
+End of artifact.

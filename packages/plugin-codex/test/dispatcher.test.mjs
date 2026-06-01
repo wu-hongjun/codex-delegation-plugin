@@ -88,6 +88,9 @@ function runDispatcher(args, { cwd = WORK_DIR, env: extraEnv = {} } = {}) {
       ...extraEnv,
       CC_PLUGIN_CODEX_HOME: TMP_HOME,
       CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: MOCK_HOME,
+      // T15a: mock-claude responds immediately; skip the 2-second real-TUI
+      // warmup so dispatcher integration tests don't pay it on every send().
+      CC_PLUGIN_CODEX_ATTACH_WARMUP_MS: '0',
       PATH: `${MOCK_CODEX}${delimiter}${MOCK_CLAUDE}${delimiter}${process.env.PATH ?? ''}`,
     },
     encoding: 'utf8',

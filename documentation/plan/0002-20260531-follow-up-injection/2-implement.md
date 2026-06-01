@@ -1114,6 +1114,107 @@ Test count after fix: 336 plugin (was 335, +1 because T14-2 now has 2 it() block
 
 Lesson logged: when extending `node --test` invocations, always confirm the file list against `ls` — Node 22's silent-skip behavior makes file-name typos invisible until a Node-20 CI leg hits them.
 
+## T15 — Live E2E artifact + T15a remediation
+
+**Started**: 2026-06-01. **Status**: complete (pending CI confirmation).
+
+Final pre-audit task. Live E2E validation against real Claude Code 2.1.149 + Codex 0.135.0 in a throwaway repo. Discovered and fixed two interlocking bugs during the run; the T15a fixes are part of this commit alongside the artifact.
+
+### Live E2E artifact
+
+`documentation/plan/0002-20260531-follow-up-injection/artifacts/e2e-live-20260601.txt` (520 lines) — full transcript of:
+
+- `setup` → both delegate + follow-up capability groups `ok`.
+- `delegate "Inspect this tiny throwaway repo and report what TODOs exist. Do not edit files."` → real Claude background session (shortId `0c547051`).
+- `status` → polled, reached `awaiting_followup` at t+20s (after T15a fix #1).
+- `followup #1 "Now sort the TODOs by file name and print the total count."` → second turn injected via PTY, completed.
+- `followup #2 "Finally, confirm whether you modified any files."` → third turn injected, completed.
+- `result` → latest turn's finalMessage rendered: "No files were modified. I only ran read-only commands (`ls` and `grep`)."
+- `stop` → exit 0, `stop.completed` event recorded.
+- Cleanup verified: `claude agents --json` no longer lists the test session.
+- Throwaway repo tracked files (app.js, README.md) unmodified.
+
+Codex skill path was NOT exercised because the Codex CLI is a TUI and cannot be driven non-interactively from the orchestrator. The direct dispatcher path (`node scripts/claude-companion.mjs ...`) was used; both paths share the same `claude-companion.mjs` entry — the skill is a thin alias. Codex skill discovery is unit-tested separately by `skills-manifest.test.mjs`. This deviation from the brief's preferred path is documented in the artifact header.
+
+Sensitive data redacted from the artifact: the `claude auth status` JSON in the setup probe output contained the user's email + orgId. Both were replaced with `<email redacted>` / `<orgId redacted>` placeholders via `sed` post-capture (0 occurrences remain — verified).
+
+### T15a — remediation #1: reconciler sidecar-evidence inference + adapter wiring
+
+**Discovered**: The first live `delegate` ran successfully (Claude finished its turn in ~15s), but the dispatcher's `status` command polled for 5 minutes with the job stuck at `running`. Two interlocking bugs.
+
+1. **`mapStatus` (`packages/runtime/src/reconciler.ts` line ~215)** — `idle + queued → 'running'` as a defensive fallback. Never consulted sidecar evidence. cmdDelegate writes `turns[0].status = 'queued'` (via `deriveTurnStatusFromJobStatus('queued')` in `createJob`), Claude finishes, sidecar shows `state: 'done', tempo: 'idle', output.result` populated, driver reports `idle`. Reconciler returned `running` regardless. The turn-status mirror (line ~524) then only flipped `turn[last].status` to `'completed'` on `nextStatus === 'completed'`, never on `'awaiting_followup'`. Circular: status stays `running`, turn-status stays `queued`, forever.
+
+2. **`makeClaudeAdapter` (`packages/plugin-codex/scripts/lib/adapter.mjs`)** — the dispatcher's adapter factory did NOT wire `readSidecar`. T4 added the sidecar reader to the driver package, but the adapter factory was never updated to forward the call. So even after fix to mapStatus, the reconciler's `sidecar` parameter was always `null` in the dispatcher path, and the new inference logic could never fire from real `cmdStatus`/`cmdResult` invocations.
+
+**Fix** (in this commit):
+
+- `reconciler.ts` mapStatus: in the `idle` branch, check `sidecar.state === 'done' && sidecar.tempo === 'idle' && sidecar.output?.result is a non-empty string`. If true, treat `queued`/`working`/`starting`/`injecting` turn statuses as effectively `'completed'` for the mapping. Result: `idle + queued + sidecar.done → awaiting_followup` (or `completed` if TTL elapsed).
+- `reconciler.ts` turn-status mirror: flip `turn[last].status` to `'completed'` when `nextStatus` is `'completed'` OR `'awaiting_followup'`, and stamp `endedAt` if not already set.
+- `adapter.mjs`: import `readSidecar` from `@cc-plugin-codex/driver-claude-code` and add a `readSidecar(ref)` method that calls `readSidecar(ref.shortId)` with a try/catch swallowing errors (best-effort, per OQ-B).
+
+**Regression tests** (`packages/runtime/test/reconciler.test.mjs` new describe block "T15a — sidecar-evidence-of-completion (plan 0002)"):
+
+- T15a-1: idle + queued + sidecar done → `awaiting_followup`; turn flipped to `completed`; `endedAt` stamped.
+- T15a-2: idle + working + sidecar done → `awaiting_followup`; turn flipped to `completed`.
+- T15a-3: idle + queued + sidecar without `output.result` → still `running` (no false completion).
+- T15a-4: idle + queued + sidecar empty-string result → still `running`.
+- T15a-5: idle + queued + sidecar `state: 'working'` → still `running` (state must be `'done'`).
+- T15a-6: idle + completed turn (pre-flipped) + sidecar done → `awaiting_followup` (no double-flip regression).
+
+### T15a — remediation #2: attach.ts TUI-warmup delay
+
+**Discovered**: After fix #1, `delegate` + `status` reached `awaiting_followup` correctly, but `followup #1` failed with `[followup] Error: follow-up prompt did not register within 5000ms`. Direct PTY repro confirmed: `pty.spawn('claude', ['attach', shortId])` followed immediately by `term.write(prompt + '\r')` writes to the TUI before it has finished its startup banner + capability handshake (~3 seconds of ANSI mode-toggle output, ~3500 bytes). The keystrokes are received but not interpreted as input — sidecar `updatedAt` and timeline.jsonl stay frozen, agents-json status stays `idle`, the 5s registration deadline fires.
+
+Direct repro (committed prose only — no test fixture):
+```
+After 3000ms warmup, writing prompt + \r ... (bytes received from TUI: 3542)
+SIDECAR UPDATED at 2026-06-01T15:45:59.955Z tempo= active state= done
+```
+vs. write-at-t+0s where sidecar `updatedAt` stayed frozen indefinitely.
+
+**Fix** (in this commit):
+
+- `attach.ts` `AttachAndSendOptions` gains `attachWarmupMs?: number` (default 2000ms).
+- Inserts an `await`able delay between `pty.spawn(...)` and `term.write(input.text + '\r')`. `setTimeout` is `.unref()`-ed.
+- Env-var override `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` (defensive parse: `Number.isFinite && >= 0`; bad input falls back to 2000ms default).
+- `send.test.mjs` `buildEnv` and `dispatcher.test.mjs` `runDispatcher` set the env var to `'0'` so mock-claude tests run instantly (mock responds immediately; no TUI to wait for).
+
+### Files changed
+
+- `packages/runtime/src/reconciler.ts` — mapStatus + turn-status mirror.
+- `packages/runtime/test/reconciler.test.mjs` — 6 new T15a tests.
+- `packages/plugin-codex/scripts/lib/adapter.mjs` — `readSidecar` wired in.
+- `packages/driver-claude-code/src/attach.ts` — `attachWarmupMs` option + delay.
+- `packages/driver-claude-code/test/send.test.mjs` — env var to skip warmup in mock tests.
+- `packages/plugin-codex/test/dispatcher.test.mjs` — env var to skip warmup in mock tests.
+- `documentation/plan/0002-20260531-follow-up-injection/artifacts/e2e-live-20260601.txt` — live E2E artifact (520 lines, email + orgId redacted).
+
+### Test impact
+
+| Lane | Pre-T15 (post-T14) | Post-T15 | Δ |
+|---|---|---|---|
+| test:mock | 58 | 58 | — |
+| test:runtime | 150 | 156 | +6 (T15a regression block) |
+| test:driver | 175 | 175 | — |
+| test:plugin | 336 | 336 | — |
+| **Total** | **719** | **725** | **+6** |
+
+### Acceptance evidence (2026-06-01)
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean.
+- All four lanes green: mock 58 + runtime 156 + driver 175 + plugin 336 = **725 pass / 0 fail**.
+- `npm run test:attach` clean: 25/25.
+- Live E2E artifact: full delegate → status → followup×2 → result → stop flow against real Claude 2.1.149. Three completed turns; no orphan; throwaway repo unmodified.
+- Plan 0001 / Plan 0002 architectural invariants preserved:
+  - `packages/runtime/**` imports no driver package.
+  - `packages/plugin-codex/**` imports no `node-pty` (only `adapter.mjs` got `readSidecar`, not PTY code).
+  - No `claude -p` references introduced.
+  - No bypass flags introduced.
+  - OQ4 forbidden cost-claim tokens absent.
+- Remote CI: pending (commit + push imminent).
+
 ## Deviations from the plan
 
 - **node-pty version pin** (T1) — `^1.1.0` → `1.2.0-beta.13`. Reason: Node 25 ABI incompatibility with `1.1.0`. Maintainer approved.

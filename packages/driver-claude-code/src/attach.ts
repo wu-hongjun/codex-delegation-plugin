@@ -40,6 +40,16 @@ export interface AttachAndSendOptions extends SendOpts {
   promptRegisterTimeoutMs?: number;
   /** Default 500. Internal/driver use; tests may pass a smaller value. */
   pollIntervalMs?: number;
+  /**
+   * Default 2_000 (real Claude TUI). Time to wait between `pty.spawn('claude
+   * attach', ...)` and writing the prompt, so the Claude Code TUI has time to
+   * finish its startup banner + capability handshake and is ready to accept
+   * input. Mock-claude in tests responds immediately so tests typically set
+   * this to 0. Can also be overridden via the
+   * `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` env var (test seam; NOT exposed as a
+   * CLI flag).
+   */
+  attachWarmupMs?: number;
 }
 
 // ---------- constants ----------
@@ -187,6 +197,21 @@ export async function attachAndSend(
   const promptRegTimeoutMs = opts?.promptRegisterTimeoutMs ?? 5_000;
   const turnTimeoutMs = opts?.timeoutMs ?? 600_000;
 
+  // T15a: real Claude's TUI needs ~2s to finish its startup banner +
+  // capability handshake before it will accept input. Without a warmup the
+  // PTY write lands during init and the TUI ignores it (no submit fires).
+  // Default 2000ms. Env override CC_PLUGIN_CODEX_ATTACH_WARMUP_MS keeps tests
+  // fast (mock-claude is instant). Defensive parse: bad input falls back to
+  // the default rather than firing an immediate write that would be lost.
+  const envWarmupRaw = opts?.env?.['CC_PLUGIN_CODEX_ATTACH_WARMUP_MS'];
+  const envWarmupParsed = envWarmupRaw != null ? Number(envWarmupRaw) : NaN;
+  const ATTACH_WARMUP_DEFAULT_MS = 2_000;
+  const attachWarmupMs =
+    opts?.attachWarmupMs ??
+    (Number.isFinite(envWarmupParsed) && envWarmupParsed >= 0
+      ? envWarmupParsed
+      : ATTACH_WARMUP_DEFAULT_MS);
+
   // ── Step 2: Snapshot pre-send sidecar state ───────────────────────────────
   const preSend = await readSidecar(shortId, sidecarOpts);
 
@@ -259,6 +284,15 @@ export async function attachAndSend(
 
     // ── Step 7: Write prompt ──────────────────────────────────────────────────
     checkAbort();
+    // T15a: wait for the Claude TUI to finish its startup banner + capability
+    // handshake. Skip if attachWarmupMs is 0 (tests / mock-claude).
+    if (attachWarmupMs > 0) {
+      await new Promise<void>((res) => {
+        const t = setTimeout(() => res(), attachWarmupMs);
+        t.unref?.();
+      });
+      checkAbort();
+    }
     term.write(input.text + '\r');
 
     // ── Helper: get agents-json status (best-effort, swallows errors) ─────────

@@ -94,6 +94,6 @@ None. C's verdict is ready-to-commit; all three findings are deferred per their 
 
 ### CI
 
-_To be recorded in the follow-up `Plan 0003 T1 log: record CI success` commit._
+CI green on the T1 commit at `9d8018b` per run [`26781937921`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26781937921): `ubuntu-latest / Node 20`, `macos-latest / Node 20`, `ubuntu-latest / Node 22`, `macos-latest / Node 22` — all `success`.
 
 ---

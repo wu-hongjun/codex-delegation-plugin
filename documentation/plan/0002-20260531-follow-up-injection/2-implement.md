@@ -837,7 +837,7 @@ No medium-or-higher findings on the implementation itself. Q1–Q10 all pass.
 - Bulk path correctness verified by T11-1, T11-3 (cross-workspace), and T11-10 (JSON shape).
 - Active-protection invariant verified by T11-4 (`running`), T11-5 (`needs_input`), T11-6 (`completed`), T11-7 (`stopped`).
 - Workspace scoping verified by T11-2 (other-workspace job stays untouched without `--all`).
-- Remote CI: pending (commit + push imminent).
+- Remote CI on `11266cb` (run `26759838590`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). Bulk-stop + active-protection invariant + `--all-idle` rejection + single-job regression guard all exercise cleanly on both Linux and macOS for both supported Node majors.
 
 ## Deviations from the plan
 

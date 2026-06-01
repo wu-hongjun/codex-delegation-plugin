@@ -23,6 +23,7 @@ const SKILL_NAMES = [
   'claude-status',
   'claude-result',
   'claude-stop',
+  'claude-followup',
 ];
 
 /** Subcommand each skill must reference in its body. */
@@ -32,6 +33,7 @@ const SKILL_SUBCOMMANDS = {
   'claude-status': 'status',
   'claude-result': 'result',
   'claude-stop': 'stop',
+  'claude-followup': 'followup',
 };
 
 function skillPath(name) {
@@ -178,11 +180,31 @@ describe('plugin.json.interface.defaultPrompt', () => {
       );
     }
   });
+
+  it('has at least 6 entries (one per skill including claude-followup)', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.length >= 6,
+      `interface.defaultPrompt must have at least 6 entries; got ${dp.length}`,
+    );
+  });
+
+  it('contains a follow-up-flavored sentence for the claude-followup skill', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.some((s) => /follow-?up/i.test(s)),
+      `interface.defaultPrompt must contain a sentence mentioning "follow-up" (for the claude-followup skill); got: ${JSON.stringify(dp)}`,
+    );
+  });
 });
 
 // ---------- Skill directory / file existence ----------
 
-describe('all five skill directories and SKILL.md files exist', () => {
+describe('all six skill directories and SKILL.md files exist', () => {
   for (const name of SKILL_NAMES) {
     it(`skills/${name}/SKILL.md exists`, () => {
       assert.ok(existsSync(skillPath(name)), `SKILL.md not found at ${skillPath(name)}`);
@@ -312,6 +334,24 @@ describe('claude-delegate/SKILL.md does not auto-inject --yes on dispatcher run 
       offendingLines.length,
       0,
       `claude-delegate/SKILL.md auto-injects "--yes" on a dispatcher run line, violating privacy-ack contract:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+// ---------- claude-followup --yes auto-injection guard ----------
+
+describe('claude-followup/SKILL.md does not auto-inject --yes on dispatcher run lines', () => {
+  it('no line containing both "claude-companion.mjs" and "followup" also contains " --yes"', () => {
+    const body = readFileSync(skillPath('claude-followup'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('claude-companion.mjs') && line.includes('followup'))
+      .filter((line) => line.includes(' --yes'));
+
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-followup/SKILL.md auto-injects "--yes" on a dispatcher run line, violating privacy-ack contract:\n${offendingLines.join('\n')}`,
     );
   });
 });

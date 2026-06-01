@@ -610,6 +610,67 @@ Three integration issues required orchestrator-side fixes before B's tests went 
 - Permission-required surfaces a clean message with `claude attach <shortId>` remediation (T10 will replace with the interactive handoff loop).
 - Remote CI on `69845ba` (run `26732705383`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). User-facing followup subcommand + target-workspace ack discipline + status footer all exercise cleanly on both Linux and macOS for both supported Node majors.
 
+## T9 — claude-followup skill + manifest update
+
+**Started**: 2026-06-01. **Status**: complete (pending CI confirmation).
+
+Seventh T-task under the A/B/C subagent pattern. Smaller scope than T5/T6/T7/T8 — purely documentation/manifest:
+- New `packages/plugin-codex/skills/claude-followup/SKILL.md` mirroring the `claude-delegate` shape.
+- `plugin.json` `defaultPrompt` array gains one new entry.
+- `skills-manifest.test.mjs` extended to cover the new skill.
+
+- **Subagent A (executor, sonnet)** — created the SKILL.md with strict-frontmatter-safe `description`; added `Send a follow-up instruction to a Claude job I started earlier.` to `defaultPrompt`.
+- **Subagent B (test-engineer, sonnet)** — added `'claude-followup'` to the `SKILL_NAMES` array (auto-iterating all existing skill loops over 6 skills now), added `'claude-followup' → 'followup'` to `SKILL_SUBCOMMANDS`, added a dedicated `no --yes` regression test mirroring `claude-delegate`, bumped the `defaultPrompt` count assertion to ≥6 with a tolerant `/follow-?up/i` content check, updated the suite-description label from "five" to "six".
+- **Subagent C (code-reviewer, opus)** — independent review against the 10 load-bearing checks (Q1–Q10 in the brief). Verdict: **`ready-for-T10`**. 0 blocker/high/medium; 2 nits (cosmetic only).
+
+### Files changed
+
+- `packages/plugin-codex/skills/claude-followup/SKILL.md` (new) — frontmatter `name: claude-followup` + single-line `description` free of unquoted `: ` and `#`; body mirrors the `claude-delegate` shape with run-line `node "<plugin-root>/scripts/claude-companion.mjs" followup <jobId> -- "<follow-up prompt>"`. Body prose explicitly lists `--all`, `--json`, `--yes`, `--allow-edit` as user-forwardable flags AND explicitly warns "Do NOT inject `--yes` yourself" — defense in depth for the privacy-ack discipline.
+- `packages/plugin-codex/.codex-plugin/plugin.json` — single-line change: appended one entry to `defaultPrompt` array. All other fields byte-identical.
+- `packages/plugin-codex/test/skills-manifest.test.mjs` — additions per Subagent B's report (above).
+
+### Subagent C findings (cosmetic only)
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| N1 | nit | SKILL.md mentions `--yes`/`--allow-edit` as user-forwardable but doesn't enumerate the rejected startup-only flags (`--model`, `--effort`, etc.). T8 dispatcher rejects those at parse time, so the skill prose-as-allowlist isn't needed. | No action; consistent with the "skill forwards, dispatcher enforces" split. |
+| N2 | nit | The flag-mention paragraph uses `(e.g. ...)` parenthetical phrasing rather than a strict enumerated allowlist. | No action; the dispatcher is the source of truth for the accepted set. |
+
+### Plan 0001 / Plan 0002 disciplines preserved
+
+- Strict-frontmatter parseable (Plan 0001 Stage 4 5be9b9d follow-up): YES (Q1 passes; B's strict-parse test covers `claude-followup` via the loop).
+- No `--yes` injection in skill body: YES (Q2 passes; B's dedicated regression test confirms).
+- No `--allow-edit` injection: YES (Q3 passes).
+- Run-line matches T8 contract (`followup <jobId> -- "<prompt>"` with `--` separator): YES (Q4 passes).
+- No OQ4 forbidden cost-claim tokens in SKILL.md or `defaultPrompt`: YES (Q5 passes).
+- `plugin.json` changes minimal (only `defaultPrompt` array changed; all other fields byte-identical): YES (Q6 passes).
+- Test extensions cover the new skill consistently with the other 5: YES (Q7 passes).
+- Scope discipline (no source code under `scripts/` touched, no README, no `hooks.json`, no review/adversarial-review skills): YES (Q8 passes).
+- Plan 0001 compatibility: YES (Q9 passes — 248 prior plugin tests pass alongside 20 new).
+- Architectural invariant preserved: YES (Q10 passes — no `driver-claude-code` / `claude -p` / `node-pty` in runtime/src; SKILL.md body contains no `claude -p` / `node-pty`).
+
+### Test impact
+
+| Lane | Before T9 | After T9 | Δ |
+|---|---|---|---|
+| test:mock | 58 | 58 | — |
+| test:runtime | 150 | 150 | — |
+| test:driver | 175 | 175 | — |
+| test:plugin | 248 | 268 | +20 (loop iteration over 6th skill + 3 explicit assertions for `no --yes`, `defaultPrompt` count ≥6, `defaultPrompt` follow-up content) |
+| **Total** | **631** | **651** | **+20** |
+
+### Acceptance evidence (2026-06-01)
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean.
+- All four lanes green: mock 58 + runtime 150 + driver 175 + plugin 268 = **651 pass / 0 fail**.
+- Plan 0001 architectural invariant still passes.
+- The new SKILL.md exists at `packages/plugin-codex/skills/claude-followup/SKILL.md`; `ls packages/plugin-codex/skills/` shows the six expected directories.
+- `plugin.json` `defaultPrompt` now has 6 entries; the new one mentions follow-up.
+- `npm run test:plugin -- --test-name-pattern claude-followup` passes the per-skill strict-frontmatter, dispatcher-path, no-forbidden-token, and no-`--yes` checks.
+- Remote CI confirmation will be appended once T9 commit lands on `main`.
+
 ## Deviations from the plan
 
 - **node-pty version pin** (T1) — `^1.1.0` → `1.2.0-beta.13`. Reason: Node 25 ABI incompatibility with `1.1.0`. Maintainer approved.

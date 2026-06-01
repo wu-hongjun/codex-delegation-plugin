@@ -16,7 +16,8 @@
       "Delegate a task to Claude Code.",
       "Check my Claude jobs.",
       "Show the result of a Claude job.",
-      "Stop a Claude job."
+      "Stop a Claude job.",
+      "Send a follow-up instruction to a Claude job I started earlier."
     ],
     "brandColor": "#D97706"
   }

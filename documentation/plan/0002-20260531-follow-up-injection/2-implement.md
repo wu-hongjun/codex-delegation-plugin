@@ -1006,6 +1006,97 @@ No content findings. All Q1–Q10 documentation invariants pass.
 - `$claude-review` / hooks / benchmark / marketplace properly qualified as future plans.
 - Remote CI on `5b32b34` (run `26761985150`): conclusion **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`). The new `## Follow-up injection` section, the rewritten Known limitations, and the T13-1..15 + T13-21 static-validation tests all exercise cleanly on both Linux and macOS for both supported Node majors.
 
+## T14 — CI workflow updates for the `test:attach` lane
+
+**Started**: 2026-06-01. **Status**: complete (pending CI confirmation).
+
+Twelfth T-task under the A/B/C subagent pattern. **CI/script organization only**: makes the PTY-dependent attach/send coverage explicit as a named lane and surfaces it as a dedicated step in CI logs. No runtime / driver / dispatcher / README / skill / manifest behavior changes.
+
+Pre-T14 state: `test:driver` ran ALL driver tests via the glob `packages/driver-claude-code/test/*.test.mjs`, so `attach.test.mjs` and `send.test.mjs` were already covered — just not visible as a lane. The PTY smoke step from T1 was already in place.
+
+- **Subagent A (executor, sonnet)** — added one new npm script and one new CI step. `test:attach = "npm run build && node --test packages/driver-claude-code/test/attach.test.mjs packages/driver-claude-code/test/send.test.mjs"` (targets only the two PTY-dependent files). `Test attach lane` step in `ci.yml` runs `npm run test:attach` AFTER the existing `Test` step. Did NOT chain `test:attach` into `npm test` (already covered by `test:driver` glob; chaining would triple-run those files locally). PTY smoke step preserved verbatim — no duplication.
+- **Subagent B (test-engineer, sonnet)** — extended `ci-workflow.test.mjs` with 14 new `it()` blocks under T14-1 through T14-13 (T14-8 / T14-9 are coverage notes for existing tests). New assertions: `test:attach` script exists and targets exactly `attach.test.mjs` + `send.test.mjs`; CI runs `npm run test:attach`; `Test attach lane` step name present and ordered after both `Test` and `PTY smoke (node-pty)`; PTY smoke appears exactly once; CI does NOT install `@anthropic-ai/claude-code` or `@openai/codex`; CI does NOT run `npm run bench` / `npm run e2e` / `npm run test:e2e`; main Test step preserved.
+- **Subagent C (code-reviewer, opus)** — read-only security/scope review against Q1–Q10. Verdict: **`ready-for-T15`** on the implementation. All 10 invariants pass; scope discipline clean. One finding: **F1 (medium) — prettier format failure on the new test file**; orchestrator ran `npx prettier --write packages/plugin-codex/test/ci-workflow.test.mjs`; format clean afterward. C respected the read-only contract.
+
+### Files changed
+
+- `package.json`: one new script line under `scripts`:
+  ```json
+  "test:attach": "npm run build && node --test packages/driver-claude-code/test/attach.test.mjs packages/driver-claude-code/test/send.test.mjs"
+  ```
+  `test` script unchanged.
+- `.github/workflows/ci.yml`: one new step block AFTER the existing `Test` step:
+  ```yaml
+  - name: Test attach lane
+    run: npm run test:attach
+  ```
+  PTY smoke step (T1) preserved verbatim.
+- `packages/plugin-codex/test/ci-workflow.test.mjs`: 12 new describe blocks (T14-1 through T14-13, skipping 8 and 9 which are existing-test coverage notes). 14 new `it()` blocks total. No existing tests modified.
+
+### Orchestrator-applied follow-ups
+
+1. **F1 (medium) — prettier format on `ci-workflow.test.mjs`**: same recurring pattern as T11/T12/T13. Ran `npx prettier --write packages/plugin-codex/test/ci-workflow.test.mjs`; `npm run format` clean afterward.
+
+### Subagent C findings (full list)
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| F1 | medium | `prettier --check` failed on `ci-workflow.test.mjs` (long lines / formatting). | **Fixed in this commit** via `npx prettier --write`. |
+
+No content findings. All Q1–Q10 invariants pass.
+
+### Security/scope invariants verified by Subagent C
+
+| ID | Invariant | Status |
+|---|---|---|
+| Q1 | `test:attach` script body targets only `attach.test.mjs` + `send.test.mjs`; no non-PTY driver files. | pass |
+| Q2 | `npm test` body byte-identical to pre-T14. | pass |
+| Q3 | CI contains `npm run test:attach` AND `- name: Test attach lane`. | pass |
+| Q4 | PTY smoke step appears exactly once (no duplication from T14). | pass |
+| Q5 | Matrix unchanged (`ubuntu-latest + macos-latest × Node 20 + 22`). | pass |
+| Q6 | Permissions block has only `contents: read`. | pass |
+| Q7 | Zero `${{ secrets.` references; no real Claude / Codex install. | pass |
+| Q8 | No `npm run bench` / `npm run e2e` / `npm run test:e2e`. | pass |
+| Q9 | Diff scope: exactly `package.json`, `ci.yml`, `ci-workflow.test.mjs` (+ `2-implement.md` later). | pass |
+| Q10 | Zero changes to runtime / driver src / dispatcher / SKILL / README / plugin.json / 1-plan.md. | pass |
+
+### Decisions
+
+1. **`test:attach` NOT chained into `npm test`** — the attach files are already exercised by `test:driver`'s glob, so chaining would triple-run them. Per the maintainer's brief: *"double-running a small number of tests is acceptable for T14, but document it"*. The current setup double-runs them only in CI (where the `Test` step runs `npm test` and the `Test attach lane` step runs `npm run test:attach`); locally `npm test` runs them once and `npm run test:attach` runs them once if invoked explicitly. Documented here.
+2. **PTY smoke step preserved verbatim** — T1's form (`/bin/sh -c 'echo ok'` instead of `node -e`) is green; T14 does not churn it. The maintainer's brief suggested `node -e` but explicitly said "if already present from T1, keep it".
+3. **Header comment in `ci-workflow.test.mjs`** — left as-is; the maintainer's brief listed this as optional cleanup.
+
+### Scope discipline preserved
+
+- No SKILL.md / plugin.json / README.md / source / driver / runtime / docs (other than `2-implement.md`) changes.
+- No new dependency in `package.json`.
+- No matrix expansion; no Windows; no Node 24; no extra permissions.
+- No secrets, no real Claude / Codex install, no benchmark, no live E2E.
+- `claude -p` continues to be absent from CI.
+
+### Test impact
+
+| Lane | Before T14 | After T14 | Δ |
+|---|---|---|---|
+| test:mock | 58 | 58 | — |
+| test:runtime | 150 | 150 | — |
+| test:driver | 175 | 175 | — |
+| test:plugin | 321 | 335 | +14 (T14-1..T14-7, T14-10..T14-13 — 14 new `it()` cases across 12 describes) |
+| `test:attach` (new lane; subset of test:driver) | n/a | 25 | new lane (overlaps with test:driver) |
+| **Total (npm test)** | **704** | **718** | **+14** |
+
+### Acceptance evidence (2026-06-01)
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean (after orchestrator's `prettier --write` fix-up for F1).
+- All four lanes green: mock 58 + runtime 150 + driver 175 + plugin 335 = **718 pass / 0 fail**.
+- `npm run test:attach` clean: 25/25 pass (`attach.test.mjs` + `send.test.mjs`).
+- `Test attach lane` step appears in CI workflow, after the main `Test` step.
+- PTY smoke step from T1 preserved verbatim; appears exactly once.
+- CI security posture unchanged (no secrets, no real Claude / Codex install, contents-read only).
+- Remote CI: pending (commit + push imminent).
+
 ## Deviations from the plan
 
 - **node-pty version pin** (T1) — `^1.1.0` → `1.2.0-beta.13`. Reason: Node 25 ABI incompatibility with `1.1.0`. Maintainer approved.

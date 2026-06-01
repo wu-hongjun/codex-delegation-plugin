@@ -316,3 +316,177 @@ describe('ci.yml PTY smoke step (plan 0002)', () => {
     );
   });
 });
+
+// ==========================================================================
+// T14: test:attach lane visibility (plan 0002)
+// ==========================================================================
+
+// ---------- T14-1: package.json exports test:attach ----------
+
+describe('package.json declares the test:attach script (plan 0002 T14)', () => {
+  it('root package.json has a "test:attach" entry in scripts', () => {
+    const pkgPath = resolve(REPO_ROOT, 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    assert.ok(
+      pkg.scripts && typeof pkg.scripts['test:attach'] === 'string',
+      'root package.json must declare a "test:attach" npm script',
+    );
+  });
+});
+
+// ---------- T14-2: test:attach targets the PTY-dependent driver files ----------
+
+describe('test:attach targets attach.test.mjs and send.test.mjs (plan 0002 T14)', () => {
+  it('test:attach script body references both attach.test.mjs and send.test.mjs', () => {
+    const pkgPath = resolve(REPO_ROOT, 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    const script = pkg.scripts['test:attach'];
+    assert.ok(
+      script.includes('attach.test.mjs'),
+      `test:attach must include attach.test.mjs: got ${script}`,
+    );
+    assert.ok(
+      script.includes('send.test.mjs'),
+      `test:attach must include send.test.mjs: got ${script}`,
+    );
+  });
+});
+
+// ---------- T14-3: ci.yml runs npm run test:attach ----------
+
+describe('ci.yml runs the test:attach lane (plan 0002 T14)', () => {
+  it('ci.yml contains "npm run test:attach"', () => {
+    const body = readCi();
+    assert.ok(
+      body.includes('npm run test:attach'),
+      'ci.yml must explicitly run "npm run test:attach" as a separate step',
+    );
+  });
+});
+
+// ---------- T14-4: ci.yml has a Test attach lane named step ----------
+
+describe('ci.yml exposes Test attach lane as a named step (plan 0002 T14)', () => {
+  it('ci.yml contains "- name: Test attach lane"', () => {
+    const body = readCi();
+    assert.ok(
+      body.includes('- name: Test attach lane'),
+      'ci.yml must declare a "Test attach lane" step for visibility',
+    );
+  });
+});
+
+// ---------- T14-5: Test attach lane step appears AFTER the main Test step ----------
+
+describe('Test attach lane step ordering (plan 0002 T14)', () => {
+  it('"Test attach lane" appears after "- name: Test" in ci.yml', () => {
+    const body = readCi();
+    const testIdx = body.indexOf('- name: Test\n');
+    const attachIdx = body.indexOf('- name: Test attach lane');
+    assert.ok(testIdx > 0, '"- name: Test" step not found in ci.yml');
+    assert.ok(attachIdx > 0, '"- name: Test attach lane" step not found in ci.yml');
+    assert.ok(
+      attachIdx > testIdx,
+      'Test attach lane must appear AFTER the main Test step (lane visibility, not a replacement)',
+    );
+  });
+});
+
+// ---------- T14-6: Test attach lane step appears AFTER the PTY smoke step ----------
+
+describe('Test attach lane step ordering vs PTY smoke (plan 0002 T14)', () => {
+  it('"Test attach lane" appears after "PTY smoke (node-pty)"', () => {
+    const body = readCi();
+    const ptyIdx = body.indexOf('PTY smoke (node-pty)');
+    const attachIdx = body.indexOf('- name: Test attach lane');
+    assert.ok(ptyIdx > 0, 'PTY smoke step not found');
+    assert.ok(attachIdx > 0, 'Test attach lane step not found');
+    assert.ok(
+      attachIdx > ptyIdx,
+      'Test attach lane must appear after PTY smoke so PTY build is verified before attach tests run',
+    );
+  });
+});
+
+// ---------- T14-7: Exactly one PTY smoke step (no duplication from T14) ----------
+
+describe('ci.yml contains exactly one PTY smoke step (plan 0002 T14)', () => {
+  it('substring "PTY smoke (node-pty)" appears exactly once', () => {
+    const body = readCi();
+    const matches = body.match(/PTY smoke \(node-pty\)/g) ?? [];
+    assert.equal(
+      matches.length,
+      1,
+      `PTY smoke step must appear exactly once in ci.yml; found ${matches.length}`,
+    );
+  });
+});
+
+// ---------- T14-10: No real Claude install command ----------
+
+describe('ci.yml does not install real Claude Code (plan 0002 T14)', () => {
+  it('does not contain "npm install -g @anthropic-ai/claude-code"', () => {
+    const body = readCi();
+    assert.equal(
+      body.includes('npm install -g @anthropic-ai/claude-code'),
+      false,
+      'ci.yml must NOT install the real claude-code binary',
+    );
+  });
+
+  it('does not contain "npm i -g @anthropic-ai/claude-code"', () => {
+    const body = readCi();
+    assert.equal(
+      body.includes('npm i -g @anthropic-ai/claude-code'),
+      false,
+      'ci.yml must NOT install the real claude-code binary (short form)',
+    );
+  });
+});
+
+// ---------- T14-11: No real Codex install command ----------
+
+describe('ci.yml does not install real Codex CLI (plan 0002 T14)', () => {
+  it('does not contain "@openai/codex" install', () => {
+    const body = readCi();
+    // Block any install line that targets the codex package.
+    const installPatterns = [
+      'npm install -g @openai/codex',
+      'npm i -g @openai/codex',
+      'pip install codex-cli',
+      'curl -fsSL https://codex',
+    ];
+    for (const p of installPatterns) {
+      assert.equal(body.includes(p), false, `ci.yml contains forbidden install: "${p}"`);
+    }
+  });
+});
+
+// ---------- T14-12: No benchmark / live E2E in CI ----------
+
+describe('ci.yml does not run benchmarks or live E2E (plan 0002 T14)', () => {
+  it('does not contain "npm run bench"', () => {
+    const body = readCi();
+    assert.equal(body.includes('npm run bench'), false, 'ci.yml must not run benchmarks');
+  });
+
+  it('does not contain "npm run e2e"', () => {
+    const body = readCi();
+    assert.equal(body.includes('npm run e2e'), false, 'ci.yml must not run live E2E');
+  });
+
+  it('does not contain "npm run test:e2e"', () => {
+    const body = readCi();
+    assert.equal(body.includes('npm run test:e2e'), false, 'ci.yml must not run live E2E');
+  });
+});
+
+// ---------- T14-13: npm test step still exists (existing test step preserved) ----------
+
+describe('ci.yml preserves the main Test step (plan 0002 T14)', () => {
+  it('contains both "- name: Test" and "npm test"', () => {
+    const body = readCi();
+    assert.ok(body.includes('- name: Test\n'), 'ci.yml must keep the "- name: Test" step');
+    assert.ok(body.includes('npm test'), 'ci.yml must still run "npm test"');
+  });
+});

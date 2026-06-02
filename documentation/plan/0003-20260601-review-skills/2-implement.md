@@ -964,7 +964,7 @@ None. C's verdict ZERO findings; one LOW non-issue documented.
 
 ### CI
 
-_To be recorded in the follow-up `Plan 0003 T6 log: record CI success` commit._
+CI green on the T6 commit at `e812893` per run [`26796555449`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26796555449): `ubuntu-latest / Node 20`, `macos-latest / Node 20`, `ubuntu-latest / Node 22`, `macos-latest / Node 22` — all `success`. No transient flakes or API-metadata anomalies.
 
 ---
 

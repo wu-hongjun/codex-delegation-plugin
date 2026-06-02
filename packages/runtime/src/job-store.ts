@@ -384,6 +384,7 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
     claude: input.claude,
     prompt: input.prompt, // compat alias = turns[0].prompt
     turns: [turn0],
+    ...(input.reviewOf !== undefined ? { reviewOf: input.reviewOf } : {}),
   };
   await atomicWriteJson(getJobRecordPath(jobId), record);
   return record;

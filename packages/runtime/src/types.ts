@@ -19,6 +19,16 @@ export type JobStatus =
 // can reach all runtime-public types from one place.
 export type { TurnStatus } from './driver.js';
 
+/**
+ * Link from an adversarial-review job to the job whose output it
+ * evaluates. Present only on adversarial-review jobs.
+ */
+export interface ReviewOfContext {
+  jobId: string;
+  /** Which turn was reviewed (default: latest completed non-review turn). */
+  turnIndex?: number;
+}
+
 export interface CodexContext {
   pluginVersion: string;
   cwd: string;
@@ -99,6 +109,11 @@ export interface JobRecord {
   result?: ResultContext;
   errors?: JobError[];
   turns: TurnRecord[]; // NEW; required, len >= 1
+  /**
+   * Optional link to the job this record reviews. Present on
+   * adversarial-review jobs only.
+   */
+  reviewOf?: ReviewOfContext;
 }
 
 export interface CreateJobInput {
@@ -109,6 +124,7 @@ export interface CreateJobInput {
   driver: DriverContext;
   claude: ClaudeSessionContext;
   prompt: PromptContext;
+  reviewOf?: ReviewOfContext;
 }
 
 export type JobStoreWarning =

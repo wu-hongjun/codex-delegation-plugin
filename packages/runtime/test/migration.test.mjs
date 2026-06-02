@@ -710,3 +710,34 @@ describe('awaiting_followup — new JobStatus value', () => {
     assert.equal(raw.status, 'awaiting_followup');
   });
 });
+
+// ---------------------------------------------------------------------------
+// T5 (Plan 0003): v1 migration does not synthesize reviewOf
+// ---------------------------------------------------------------------------
+
+describe('v1→v2 migration — reviewOf is not synthesized', () => {
+  it('migrated record has reviewOf === undefined when v1 file had no reviewOf field', async () => {
+    const jobId = generateJobId();
+    writeV1Record(TMP_HOME, jobId);
+
+    const record = await readJob(jobId);
+    assert.equal(record.schemaVersion, 2, 'migrated record should be schemaVersion 2');
+    assert.equal(
+      record.reviewOf,
+      undefined,
+      'reviewOf should be undefined after v1 migration — the v1 branch does not synthesize it',
+    );
+  });
+
+  it('on-disk file after migration write-back does not contain a reviewOf key', async () => {
+    const jobId = generateJobId();
+    writeV1Record(TMP_HOME, jobId);
+
+    // Trigger migration + write-back
+    await readJob(jobId);
+
+    const raw = JSON.parse(readFileSync(getJobRecordPath(jobId), 'utf8'));
+    assert.equal(raw.schemaVersion, 2, 'on-disk record should be schemaVersion 2 after write-back');
+    assert.ok(!('reviewOf' in raw), 'on-disk migrated record must not contain a reviewOf key');
+  });
+});

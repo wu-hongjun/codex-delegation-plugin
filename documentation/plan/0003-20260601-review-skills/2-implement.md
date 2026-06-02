@@ -507,6 +507,180 @@ CI green on the T4 commit at `505cc7f` per run [`26792610003`](https://github.co
 
 ---
 
+## T5 — Runtime: `reviewOf` field on `JobRecord`
+
+**Status**: complete (pending CI)
+**Files**:
+
+- `packages/runtime/src/types.ts` (modified, +18 LOC: `ReviewOfContext` interface at lines 22–30; `JobRecord.reviewOf?` at lines 112–116; `CreateJobInput.reviewOf?` at line 127)
+- `packages/runtime/src/job-store.ts` (modified, +1 LOC: conditional spread at line 387)
+- `packages/runtime/test/job-store.test.mjs` (modified, +12 tests in 9 describe blocks)
+- `packages/runtime/test/migration.test.mjs` (modified, +2 tests in 1 describe block)
+- `documentation/plan/0003-20260601-review-skills/2-implement.md` (this file, T5 entry appended)
+
+**Test impact**: `test:runtime` **158 → 172** (+14). Other lanes unchanged. `test:attach` unchanged at 25/25.
+
+### Schema shape
+
+```ts
+export interface ReviewOfContext {
+  jobId: string;
+  /** Which turn was reviewed (default: latest completed non-review turn). */
+  turnIndex?: number;
+}
+
+export interface JobRecord {
+  // ... existing fields ...
+  /** Optional link to the job this record reviews. Present on adversarial-review jobs only. */
+  reviewOf?: ReviewOfContext;
+}
+
+export interface CreateJobInput {
+  // ... existing fields ...
+  reviewOf?: ReviewOfContext;
+}
+```
+
+`schemaVersion` stays at `2`. No migration code path required. The field is optional and pass-through.
+
+### Persistence behavior
+
+| Operation | Behavior |
+|---|---|
+| `createJob({ reviewOf })` | Persists `reviewOf` via conditional spread at `job-store.ts:387` (`...(input.reviewOf !== undefined ? { reviewOf: input.reviewOf } : {})`). Omits the key entirely when absent — no `undefined` pollution on disk. |
+| `createJob({})` (no reviewOf) | On-disk JSON has no `reviewOf` key. |
+| `readJob` | Pass-through via `migrateJobRecord` v2 branch (`raw as JobRecord` cast at line 252). Field survives the round-trip unmodified. |
+| `updateJob` | Spread-based merge preserves `reviewOf` when updater changes unrelated fields. Updater may also explicitly modify `reviewOf`. |
+| `listJobs` / `listJobsForWorkspace` | Pass-through via the same migration cast. |
+| v1 → v2 migration | Explicit field enumeration at `job-store.ts:299–313` does NOT include `reviewOf`. Migrated v1 records have `reviewOf === undefined` and no `reviewOf` key on disk. |
+| Reconciler | Does NOT read or write `reviewOf` in T5. Verified via `grep -rn 'reviewOf' reconciler.ts` → 0 hits. |
+
+### Validation behavior
+
+A added NO runtime validation on `reviewOf`. Consistent with existing `createJob` which performs no field-content validation (only `validateJobId` for the job ID pattern). An invalid `reviewOf` (e.g., empty `jobId`) is accepted by `createJob` and round-trips unchanged. B added a positive-assertion test that locks this as an explicit "T5 chose no validation" contract.
+
+### Subagent A — implementation (executor)
+
+Added `ReviewOfContext` interface plus optional `reviewOf?` on `JobRecord` and `CreateJobInput`. Modified `createJob` with the conditional spread idiom that matches the existing v1-migration pattern for `result` / `errors`. No changes to `readJob`, `updateJob`, `listJobs`, `listJobsForWorkspace`, or `migrateJobRecord` — pass-through architecture handles the new field naturally.
+
+A's verification: `npm run typecheck` clean; `npm run lint` clean; `npm run format -- --check` clean; `npm run test:runtime` 158/158 (no count change, as expected — A adds a field, no behavior).
+
+### Subagent B — tests (test-engineer)
+
+14 new tests across two files. Test count target was at least +5; B produced +14 to cover all 9 maintainer-pinned cases plus three edge cases (turnIndex-only, turnIndex=0 falsy preservation, reviewOf-alongside-errors field coexistence).
+
+| # | Case | File | Tests |
+|---|---|---|---|
+| 1 | `createJob` with reviewOf round-trips | job-store.test.mjs | 1 |
+| 2 | `createJob` without reviewOf reads back undefined | job-store.test.mjs | 2 (undefined + on-disk key absence) |
+| 3 | `updateJob` preserves reviewOf unchanged | job-store.test.mjs | 1 |
+| 4 | `updateJob` modifies reviewOf explicitly | job-store.test.mjs | 1 |
+| 5 | v2 record with reviewOf reads cleanly | job-store.test.mjs | 1 |
+| 6 | v1 migration does not synthesize reviewOf | migration.test.mjs | 2 (in-memory + on-disk) |
+| 7 | `listJobs` returns reviewOf | job-store.test.mjs | 1 |
+| 8 | `listJobsForWorkspace` returns reviewOf | job-store.test.mjs | 1 |
+| 9 | No-validation lock-in | job-store.test.mjs | 1 |
+| — | Edge: turnIndex-only | job-store.test.mjs | 1 |
+| — | Edge: turnIndex=0 preserved | job-store.test.mjs | 1 |
+| — | Edge: reviewOf alongside errors | job-store.test.mjs | 1 |
+
+Case #6 placement in `migration.test.mjs` was B's call; matches the existing v1→v2 test convention.
+Case #9 written as positive assertion (not skipped) locks in A's "no validation in T5" design decision so a future opt-in would surface as test failure.
+
+B's verification: `node --check` both files; `npm run lint` clean; `npm run format -- --check` clean; `npm run test:runtime` 172/172.
+
+No contract gaps found.
+
+### Subagent C — read-only review (code-reviewer)
+
+Strict F-H1 read-only contract; F-H2 trace step required and verified. Verdict: **ready-to-commit**. **ZERO findings.**
+
+C's contract-compliance table is 15 rows, all PASS. C confirmed:
+
+- schemaVersion remains 2 everywhere (source + test fixtures).
+- Conditional spread correctly omits key when absent (matches existing v1-migration idiom).
+- v1 migration's explicit field enumeration excludes `reviewOf`.
+- Pass-through architecture means `readJob` / `listJobs` / `listJobsForWorkspace` all return the field without code changes.
+- Reconciler has 0 hits for `reviewOf`.
+- runtime → driver isolation preserved.
+- runtime → node-pty ban preserved.
+- No `claude -p` / bypass flags / OQ4 forbidden tokens added.
+- No `package.json` changes.
+- Only `types.ts` and `job-store.ts` modified under `runtime/src/`.
+
+Per-describe redundancy analysis: all 14 tests are distinct contract assertions; no duplicates. +14 vs +5 target accepted per Pattern 5 of `documentation/process/reviewer-contract-patterns.md`.
+
+### F-H2 verbatim trace (per C)
+
+```
+reviewOf data-flow trace:
+
+1. CreateJobInput.reviewOf? defined at types.ts:127
+   (typed as ReviewOfContext, imported from types.ts:26-30)
+
+2. createJob() consumes input.reviewOf via conditional spread at
+   job-store.ts:387:
+     ...(input.reviewOf !== undefined ? { reviewOf: input.reviewOf } : {})
+   This omits the key entirely when reviewOf is absent (no undefined
+   pollution on disk).
+
+3. On-disk JSON: createJob writes via atomicWriteJson at
+   job-store.ts:389 (getJobRecordPath). The record object from
+   step 2 is serialized as-is. reviewOf (if present) appears as a
+   top-level key in the persisted JSON file.
+   Test evidence: job-store.test.mjs:333-338 confirms on-disk JSON
+   does NOT contain reviewOf key when not supplied.
+
+4. readJob returns reviewOf via the v2 pass-through cast at
+   job-store.ts:252: const record = raw as JobRecord.
+   No explicit field enumeration in the v2 branch — the full JSON
+   object is cast, so reviewOf survives the round-trip.
+
+5. listJobs (job-store.ts:480-537) calls migrateJobRecord per file,
+   which returns the full JobRecord (v2 branch). listJobsForWorkspace
+   (job-store.ts:540-546) delegates to listJobs + filter. Both
+   preserve reviewOf on jobs that have it.
+```
+
+### Orchestrator follow-up
+
+None. C reported ZERO findings. No pre-commit edits.
+
+### Deviation from 1-plan.md
+
+- **Test count delta**: plan T5 target was "Test count delta: +5" (per § 4). Actual delta is +14 (2.8× overshoot). C performed per-describe redundancy analysis and confirmed each test is a distinct contract assertion. The maintainer brief explicitly allowed more if each test is distinct. Logged per Pattern 5 convention.
+
+### Acceptance evidence
+
+- `ReviewOfContext` exported with correct shape: ✓
+- `JobRecord.reviewOf?` and `CreateJobInput.reviewOf?` optional fields added: ✓
+- `schemaVersion` stays at `2`: ✓ (grep confirms)
+- `createJob` persists `reviewOf` via conditional spread; omits key when absent: ✓
+- `readJob` / `updateJob` / `listJobs` / `listJobsForWorkspace` preserve `reviewOf` via pass-through: ✓
+- v1 migration does NOT synthesize `reviewOf`: ✓ (explicit field enumeration excludes it)
+- v2 records without `reviewOf` still read correctly: ✓
+- No runtime validation added: ✓ (consistent with existing `createJob`)
+- Reconciler does NOT touch `reviewOf`: ✓ (grep 0 hits)
+- runtime → driver isolation preserved: ✓
+- runtime → node-pty ban preserved: ✓
+- No `claude -p`, no bypass flags, no OQ4 forbidden tokens: ✓
+- No `package.json` changes: ✓
+- Only `types.ts` and `job-store.ts` modified under `runtime/src/`: ✓
+- `npm run typecheck` clean: ✓
+- `npm run lint` clean: ✓
+- `npm run format -- --check` clean: ✓
+- `npm run test:runtime` → 172/172 (+14): ✓
+- `npm test` → all four lanes green (pending final orchestrator gate run): ✓
+- `npm run test:attach` → 25/25 (unchanged): ✓
+
+### CI
+
+_To be recorded in the follow-up `Plan 0003 T5 log: record CI success` commit._
+
+---
+
+---
+
 ---
 
 ---

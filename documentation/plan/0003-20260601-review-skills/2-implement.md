@@ -1873,6 +1873,8 @@ Plan-discipline notes:
 
 ### CI
 
-CI placeholder — will record run URL + matrix outcome in a follow-up `Plan 0003 T12 log: record CI success` commit per the T12 brief.
+The T12 commit `a6a8a84` initially failed CI on all four matrix legs at the `Check formatting` step (run [`26841950204`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26841950204)). The bracketed-paste regression-test additions in `send.test.mjs` had long lines that exceeded prettier's print width. Local `npm run format` was not re-run after the final test edit, so the issue shipped to CI. Fixed in follow-up commit `b83cfcc` by running `npx prettier --write`; test counts unchanged (driver lane 178/178).
+
+CI green on the format-fix commit at `b83cfcc` per run [`26842040420`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26842040420): `ubuntu-latest / Node 20`, `macos-latest / Node 20`, `ubuntu-latest / Node 22`, `macos-latest / Node 22` — all `success`. T12 + T12a complete.
 
 ---

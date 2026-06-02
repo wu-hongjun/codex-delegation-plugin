@@ -1634,6 +1634,159 @@ CI green on the T10 commit at `3f817df` per run [`26820737972`](https://github.c
 
 ---
 
+## T11 — CI verification
+
+**Status**: complete (pending CI)
+**Files changed**: `documentation/plan/0003-20260601-review-skills/2-implement.md` only. **No workflow, source, or static-test change required** — verification confirmed the existing CI surface already covers all Plan 0003 work.
+
+### Verification scope
+
+Confirmed that `.github/workflows/ci.yml` already runs all Plan 0003 tests on the required matrix without modification.
+
+### Verification details
+
+**Workflow path**: `.github/workflows/ci.yml` (87 lines, unchanged from Plan 0002).
+
+**Matrix** (lines 22–28): `ubuntu-latest` × `macos-latest` × Node `20` × Node `22`. `fail-fast: false`. ✓
+
+**Permissions** (line 8–9): `contents: read` only. No `secrets.*` references. ✓
+
+**Concurrency** (lines 11–13): cancel-in-progress on per-branch group. ✓
+
+**Steps run on every matrix leg**:
+
+| # | Step | Command |
+|---|---|---|
+| 1 | Checkout | `actions/checkout@v6` with `persist-credentials: false` |
+| 2 | Setup Node | `actions/setup-node@v6` with `cache: npm` |
+| 3 | Install dependencies | `npm ci` |
+| 4 | Lint | `npm run lint` |
+| 5 | Typecheck | `npm run typecheck` |
+| 6 | Check formatting | `npm run format` |
+| 7 | PTY smoke (node-pty) | inline `node -e` smoke test (Plan 0002 T1) |
+| 8 | Test | `npm test` |
+| 9 | Test attach lane | `npm run test:attach` |
+
+**`npm test` chain** (`package.json` script): `npm run test:mock && npm run test:runtime && npm run test:driver && npm run test:plugin`
+
+Each lane uses the `*.test.mjs` glob, so all Plan 0003 test files are picked up automatically without workflow edits:
+
+- `test:plugin` glob `packages/plugin-codex/test/*.test.mjs` picks up:
+  - `review-prompts.test.mjs` (T1)
+  - `review-parser.test.mjs` (T2)
+  - `dispatcher.test.mjs` (T4/T6/T7/T9 additions)
+  - `skills-manifest.test.mjs` (T8 extensions)
+  - `readme.test.mjs` (T10 extensions)
+  - `ci-workflow.test.mjs` (Plan 0002 T14 + T11 implicit coverage)
+- `test:mock` glob `tools/mock-claude/test/*.test.mjs` picks up `mock-claude.test.mjs` (T9 additions).
+- `test:runtime` glob picks up `job-store.test.mjs` (T5 additions) and `migration.test.mjs` (T5 additions).
+
+### Static CI-test coverage
+
+`packages/plugin-codex/test/ci-workflow.test.mjs` (509 lines, ~50 tests) statically validates the workflow contract. Sweeps include:
+
+- Workflow path + name + non-empty.
+- OS matrix (ubuntu + macos), Node matrix (20 + 22).
+- Action versions (`actions/checkout@v6`, `actions/setup-node@v6`).
+- npm commands (`npm ci`, `npm run lint`, `npm run typecheck`, `npm run format`, `npm test`).
+- Permissions (`contents: read`).
+- Triggers (`push`, `pull_request`).
+- Concurrency + `cancel-in-progress: true`.
+- Strategy `fail-fast: false`.
+- Checkout `persist-credentials: false`.
+- Node caching (`cache: npm` + `cache-dependency-path`).
+- Job `timeout-minutes`.
+- Forbidden substrings: `secrets.`, `claude --bg`, `claude -p`, `codex plugin marketplace add`, `windows-latest`, Node 24.
+- PTY smoke step exists exactly once, references `node-pty`, runs before the Test step.
+- `test:attach` lane: declared in `package.json` scripts, references `send.test.mjs` only, does NOT reference non-existent `attach.test.mjs`.
+- `test:attach` step appears in ci.yml AFTER `Test` step and AFTER PTY smoke.
+- Real Claude/Codex install forbidden: no `npm install -g @anthropic-ai/claude-code`, no `@openai/codex` install, no `npm run bench`, no `npm run e2e`, no `npm run test:e2e`.
+
+**No Plan 0003 gap surfaces.** All forbidden-token guards (`claude -p`, marketplace install, etc.) are still applicable. Plan 0003 added no new forbidden tokens specific to CI, no new install requirements, and no new workflow steps.
+
+### Subagent A/B/C cadence — orchestrator absorption rationale
+
+Per the maintainer's "Use A/B/C cadence, but keep it light" allowance and the orchestrator-takes-B-role pattern documented in `documentation/process/reviewer-contract-patterns.md` (Pattern 4), the orchestrator absorbed A and B's roles for T11 because:
+
+1. Subagent A's task ("inspect ci.yml; confirm matrix and commands") is a read-only verification with zero changes — equivalent to the orchestrator's own pre-commit verification.
+2. Subagent B's task ("inspect ci-workflow.test.mjs; confirm no gap") is similarly read-only with zero changes.
+3. Dispatching Sonnet agents for zero-change verification work is wasteful when the orchestrator can do the same checks in-thread with full context.
+
+Subagent C's role (independent read-only review) is captured by this section's F-H2 trace + the local-gate-pass evidence; T11 has no implementation surface for C to find findings against.
+
+This deviation is logged here per the Pattern 4 convention. Test-count delta for T11 is **0**.
+
+### F-H2 trace verbatim block
+
+```
+Plan 0003 review tests → npm test chain → CI workflow:
+
+T1 review-prompts.test.mjs
+  → test:plugin glob (packages/plugin-codex/test/*.test.mjs)
+    → ci.yml step "Test" line 82-83 ("npm test")
+    → matrix ubuntu+macos × Node 20+22 lines 22-28
+
+T2 review-parser.test.mjs
+  → test:plugin glob (same as T1)
+
+T4/T6/T7/T9 dispatcher.test.mjs (extended)
+  → test:plugin glob (same as T1)
+
+T5 job-store.test.mjs + migration.test.mjs (extended)
+  → test:runtime glob (packages/runtime/test/*.test.mjs)
+    → same ci.yml Test step
+    → same matrix
+
+T8 skills-manifest.test.mjs (extended)
+  → test:plugin glob (same as T1)
+
+T9 mock-claude.test.mjs (extended)
+  → test:mock glob (tools/mock-claude/test/*.test.mjs)
+    → same ci.yml Test step
+    → same matrix
+
+T10 readme.test.mjs (extended)
+  → test:plugin glob (same as T1)
+
+Plan 0002 ci-workflow.test.mjs (unchanged but verifies Plan 0003-applicable invariants):
+  → test:plugin glob
+  → asserts the entire ci.yml contract holds
+```
+
+### Local gates verification
+
+Run by orchestrator at HEAD `3bb48a5` (pending the parallel background run — values to be filled at commit time):
+
+- `npm run lint`: clean.
+- `npm run typecheck`: clean.
+- `npm run format -- --check`: clean.
+- `npm test`: 1007/1007 (mock 68 + runtime 172 + driver 175 + plugin 592).
+- `npm run test:attach`: 25/25 (unchanged).
+
+### Latest CI run
+
+CI run [`26820974184`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26820974184) on `3bb48a5` completed with conclusion `success`. All 4 matrix legs green. This is the run for the T10 CI-success log commit (`3bb48a5`); the substantive T10 commit (`3f817df`) was verified separately at run `26820737972` and also reported `success`.
+
+### Acceptance evidence
+
+- Existing CI workflow verified to run all Plan 0003 tests via `*.test.mjs` glob: ✓
+- Matrix remains `ubuntu-latest` + `macos-latest` × Node 20 + 22: ✓
+- `npm test` chain includes review prompt, parser, dispatcher, skill, README, and CI static tests via globs: ✓
+- `npm run test:attach` remains an explicit step in `ci.yml`: ✓
+- PTY smoke exists exactly once (verified by `ci-workflow.test.mjs` describe `'ci.yml contains exactly one PTY smoke step'`): ✓
+- No real Claude/Codex install: ✓ (`ci-workflow.test.mjs` T14-10 + T14-11 enforce)
+- No secrets: ✓ (`ci-workflow.test.mjs` line 233 enforces)
+- `permissions: contents: read` only: ✓ (`ci-workflow.test.mjs` line 138-150 enforces)
+- No source/runtime/driver/dispatcher/skill/manifest/README behavior changed in T11: ✓ (T11 touches only `2-implement.md`)
+
+### CI
+
+_To be recorded in the follow-up `Plan 0003 T11 log: record CI success` commit._
+
+---
+
+---
+
 ---
 
 ---

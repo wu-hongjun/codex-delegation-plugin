@@ -18,8 +18,12 @@
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
+
+// Directory containing the mock binary — used to locate fixture files.
+const MOCK_DIR = dirname(fileURLToPath(import.meta.url));
 
 const DEFAULT_HOME = join(tmpdir(), 'cc-plugin-codex-mock-claude');
 const HOME = process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME || DEFAULT_HOME;
@@ -54,6 +58,12 @@ const DEFAULT_CONFIG = Object.freeze({
   // Plan 0002 T3: when true the FIRST submit under each attach transitions through
   // a "waiting" (permission) state before processing the turn.
   permissionStall: false,
+  // Plan 0003 T9: review fixture selection.
+  // Valid values: "structured-review" | "malformed-review" | "adversarial-review".
+  // When unset (null), the mock auto-selects based on the detected prompt type:
+  //   attach path → "structured-review"
+  //   --bg path   → "adversarial-review"
+  reviewFixture: null,
 });
 
 function loadConfig() {
@@ -173,6 +183,91 @@ function buildSidecarBase(config, shortId, sessionId, sessionName, cwd, prompt) 
 
 function formatResponse(config, prompt) {
   return config.attachResponse.replace('${prompt}', prompt);
+}
+
+// ---------- review fixture helpers (Plan 0003 T9) ----------
+
+/**
+ * Load a review fixture file from fixtures/reviews/<name>.txt.
+ * Returns the file contents as a string, or a fallback string on read error.
+ *
+ * @param {string} name - Fixture name without the .txt extension.
+ * @returns {string}
+ */
+function loadReviewFixture(name) {
+  const fixturePath = join(MOCK_DIR, 'fixtures', 'reviews', `${name}.txt`);
+  try {
+    return readFileSync(fixturePath, 'utf8');
+  } catch {
+    return `[mock] Could not load review fixture: ${name}`;
+  }
+}
+
+/**
+ * Detect whether a prompt is a same-session review prompt (attach path).
+ * Matches on the stable substring unique to SAME_SESSION_REVIEW_PROMPT output.
+ *
+ * @param {string} prompt
+ * @returns {boolean}
+ */
+function isReviewPromptAttach(prompt) {
+  return prompt.includes('You are acting as an independent code reviewer');
+}
+
+/**
+ * Detect whether a prompt is an adversarial review prompt (--bg path).
+ * Matches on the data-delimiter line unique to ADVERSARIAL_REVIEW_PROMPT output.
+ *
+ * @param {string} prompt
+ * @returns {boolean}
+ */
+function isReviewPromptBg(prompt) {
+  return prompt.includes('--- BEGIN REVIEWED OUTPUT ---');
+}
+
+/**
+ * Resolve the review fixture name for the attach path.
+ * If config.reviewFixture is set, use it; otherwise default to "structured-review".
+ *
+ * @param {object} config
+ * @returns {string}
+ */
+function resolveAttachReviewFixture(config) {
+  if (config.reviewFixture != null) return config.reviewFixture;
+  return 'structured-review';
+}
+
+/**
+ * Resolve the review fixture name for the --bg path.
+ * If config.reviewFixture is set, use it; otherwise default to "adversarial-review".
+ *
+ * @param {object} config
+ * @returns {string}
+ */
+function resolveBgReviewFixture(config) {
+  if (config.reviewFixture != null) return config.reviewFixture;
+  return 'adversarial-review';
+}
+
+/**
+ * Decide whether to use the review fixture for a given prompt.
+ *
+ * The review fixture path activates when EITHER:
+ *   (a) config.reviewFixture is explicitly set (non-null) — always use fixture, OR
+ *   (b) the prompt matches the review heuristic AND config.attachResponse is still
+ *       the default (i.e. NOT explicitly overridden in the config file). When the
+ *       caller has explicitly set attachResponse, that value takes precedence so
+ *       existing tests that seed structured/malformed content via attachResponse
+ *       continue to work without interference.
+ *
+ * @param {object} config
+ * @param {boolean} isReviewPrompt
+ * @returns {boolean}
+ */
+function shouldUseReviewFixture(config, isReviewPrompt) {
+  if (config.reviewFixture != null) return true;
+  // Only activate auto-detection when attachResponse is still the default value.
+  return isReviewPrompt && config.attachResponse === DEFAULT_CONFIG.attachResponse;
 }
 
 function findSession(state, id) {
@@ -342,7 +437,14 @@ function cmdBg(config, args) {
     });
     appendTimeline(shortId, { at: startedAt, state: 'working', detail: 'starting turn' });
 
-    const response = formatResponse(config, prompt);
+    // Plan 0003 T9: detect review prompts and return the appropriate fixture.
+    let response;
+    if (shouldUseReviewFixture(config, isReviewPromptBg(prompt))) {
+      const fixtureName = resolveBgReviewFixture(config);
+      response = loadReviewFixture(fixtureName);
+    } else {
+      response = formatResponse(config, prompt);
+    }
     writeSidecar(shortId, {
       ...base,
       state: 'done',
@@ -545,7 +647,14 @@ function cmdAttach(config, args) {
     });
     appendTimeline(session.shortId, { at: now, state: 'working', detail: 'starting turn' });
 
-    const response = formatResponse(config, pendingPrompt);
+    // Plan 0003 T9: detect review prompts and return the appropriate fixture.
+    let response;
+    if (shouldUseReviewFixture(config, isReviewPromptAttach(pendingPrompt))) {
+      const fixtureName = resolveAttachReviewFixture(config);
+      response = loadReviewFixture(fixtureName);
+    } else {
+      response = formatResponse(config, pendingPrompt);
+    }
     process.stdout.write(response + '\r\n');
 
     writeSidecar(session.shortId, {

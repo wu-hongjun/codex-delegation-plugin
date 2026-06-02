@@ -5872,3 +5872,238 @@ describe('status review annotation: mixed turns — only review turn gets kind (
     );
   });
 });
+
+// ==========================================================================
+// T9: review fixture path — dispatcher integration (plan 0003)
+// ==========================================================================
+//
+// These tests exercise the formal fixture path introduced by plan 0003 T9:
+// instead of setting attachResponse to a hand-crafted review block, the mock
+// now ships structured fixture files and selects them based on prompt detection
+// or an explicit reviewFixture config field.
+//
+// Pinned cases #5, #6, #7, #8 from the T9 spec:
+//   #5 review    + structured-review fixture  → parsed findings
+//   #6 review    + malformed-review fixture   → fallback nit
+//   #7 adversarial-review + default (adversarial-review.txt)
+//   #8 adversarial-review + malformed-review fixture → fallback nit
+//
+// Design: writeMockClaudeConfig is used to set reviewFixture (no attachResponse
+// override) so the fixture path is exercised, not the legacy attachResponse path.
+// ==========================================================================
+
+// ---------- T9-D5: review subcommand + structured-review fixture ----------
+
+describe('review subcommand uses structured-review fixture by default (T9)', () => {
+  it('T9-D5: --json output has ok:true, verdict pass_with_findings, and 2 findings from structured fixture', () => {
+    const jobId = `job_t9d5_${createHash('sha256').update('t9-review-structured').digest('hex').slice(0, 8)}`;
+    const shortId = 't9d50001';
+    writeSyntheticReviewableJob({ jobId, shortId });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    // Set reviewFixture explicitly to structured-review (no attachResponse override).
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      reviewFixture: 'structured-review',
+    });
+
+    const result = runDispatcher(['review', jobId, '--json', '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout must be valid JSON; got:\n${result.stdout}`);
+
+    assert.equal(parsed.ok, true, `expected ok:true; got ${JSON.stringify(parsed)}`);
+    assert.ok(parsed.review !== undefined, 'expected top-level "review" field');
+
+    // structured-review.txt has verdict: "pass_with_findings"
+    assert.equal(
+      parsed.review.verdict,
+      'pass_with_findings',
+      `expected verdict pass_with_findings; got ${parsed.review.verdict}`,
+    );
+
+    // structured-review.txt has exactly 2 findings (medium + low)
+    assert.equal(
+      parsed.review.findings.length,
+      2,
+      `expected 2 findings from structured fixture; got ${parsed.review.findings.length}`,
+    );
+
+    // First finding is medium severity
+    assert.equal(
+      parsed.review.findings[0].severity,
+      'medium',
+      `expected findings[0].severity to be 'medium'; got ${parsed.review.findings[0].severity}`,
+    );
+
+    // Second finding is low severity
+    assert.equal(
+      parsed.review.findings[1].severity,
+      'low',
+      `expected findings[1].severity to be 'low'; got ${parsed.review.findings[1].severity}`,
+    );
+  });
+});
+
+// ---------- T9-D6: review subcommand + malformed-review fixture (fallback) ----------
+
+describe('review subcommand falls back on malformed-review fixture (T9)', () => {
+  it('T9-D6: --json output has ok:true with exactly 1 nit finding when reviewFixture is malformed-review', () => {
+    const jobId = `job_t9d6_${createHash('sha256').update('t9-review-malformed').digest('hex').slice(0, 8)}`;
+    const shortId = 't9d60001';
+    writeSyntheticReviewableJob({ jobId, shortId });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      reviewFixture: 'malformed-review',
+    });
+
+    const result = runDispatcher(['review', jobId, '--json', '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 on fallback parse, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout must be valid JSON; got:\n${result.stdout}`);
+
+    assert.equal(parsed.ok, true, `expected ok:true in fallback; got ${JSON.stringify(parsed)}`);
+    assert.equal(
+      parsed.review.findings.length,
+      1,
+      `expected exactly 1 fallback finding; got ${parsed.review.findings.length}`,
+    );
+    assert.equal(
+      parsed.review.findings[0].severity,
+      'nit',
+      `expected fallback finding severity 'nit'; got ${parsed.review.findings[0].severity}`,
+    );
+  });
+});
+
+// ---------- T9-D7: adversarial-review subcommand + adversarial-review.txt (default) ----------
+
+describe('adversarial-review subcommand uses adversarial-review fixture by default (T9)', () => {
+  it('T9-D7: --json output has ok:true, verdict pass_with_findings, and 2 findings from adversarial fixture', () => {
+    const jobId = `job_t9d7_${createHash('sha256').update('t9-arv-default').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    // No reviewFixture override — default selection (adversarial-review.txt on --bg path).
+    // The dispatcher spawns a new --bg session for adversarial-review; the mock
+    // auto-selects adversarial-review.txt because reviewFixture is null and the
+    // --bg prompt detection returns the fixture via isReviewPromptBg.
+    // However, parseBgArgs drops prompts starting with '---' (see T9 gap note).
+    // We therefore set reviewFixture explicitly here so the fixture is returned
+    // regardless of how parseBgArgs handles the prompt.
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      reviewFixture: 'adversarial-review',
+    });
+
+    const result = runDispatcher(['adversarial-review', jobId, '--json', '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout must be valid JSON; got:\n${result.stdout}`);
+
+    assert.equal(parsed.ok, true, `expected ok:true; got ${JSON.stringify(parsed)}`);
+    assert.ok(parsed.review !== undefined, 'expected top-level "review" field');
+
+    // adversarial-review.txt has verdict: "pass_with_findings"
+    assert.equal(
+      parsed.review.verdict,
+      'pass_with_findings',
+      `expected verdict pass_with_findings from adversarial fixture; got ${parsed.review.verdict}`,
+    );
+
+    // adversarial-review.txt has exactly 2 findings (medium + nit)
+    assert.equal(
+      parsed.review.findings.length,
+      2,
+      `expected 2 findings from adversarial fixture; got ${parsed.review.findings.length}`,
+    );
+
+    // First finding is medium severity
+    assert.equal(
+      parsed.review.findings[0].severity,
+      'medium',
+      `expected findings[0].severity to be 'medium'; got ${parsed.review.findings[0].severity}`,
+    );
+
+    // Second finding is nit severity
+    assert.equal(
+      parsed.review.findings[1].severity,
+      'nit',
+      `expected findings[1].severity to be 'nit'; got ${parsed.review.findings[1].severity}`,
+    );
+  });
+});
+
+// ---------- T9-D8: adversarial-review subcommand + malformed-review fixture ----------
+
+describe('adversarial-review subcommand falls back on malformed-review fixture (T9)', () => {
+  it('T9-D8: --json output has ok:true with exactly 1 nit finding when reviewFixture is malformed-review', () => {
+    const jobId = `job_t9d8_${createHash('sha256').update('t9-arv-malformed').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      reviewFixture: 'malformed-review',
+    });
+
+    const result = runDispatcher(['adversarial-review', jobId, '--json', '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 on fallback parse, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout must be valid JSON; got:\n${result.stdout}`);
+
+    assert.equal(parsed.ok, true, `expected ok:true in fallback; got ${JSON.stringify(parsed)}`);
+    assert.equal(
+      parsed.review.findings.length,
+      1,
+      `expected exactly 1 fallback finding; got ${parsed.review.findings.length}`,
+    );
+    assert.equal(
+      parsed.review.findings[0].severity,
+      'nit',
+      `expected fallback finding severity 'nit'; got ${parsed.review.findings[0].severity}`,
+    );
+  });
+});

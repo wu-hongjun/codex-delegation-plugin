@@ -1,7 +1,46 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { delimiter, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 import { runClaude, withIsolatedHome, writeConfig } from './helpers.mjs';
+
+// Directory containing the mock binary — used to locate fixture files in T9 tests.
+const MOCK_DIR = resolve(fileURLToPath(import.meta.url), '..', '..');
+
+/**
+ * Read a review fixture file from tools/mock-claude/fixtures/reviews/<name>.txt.
+ * @param {string} name  fixture name without .txt extension
+ * @returns {string}
+ */
+function readFixture(name) {
+  return readFileSync(join(MOCK_DIR, 'fixtures', 'reviews', `${name}.txt`), 'utf8');
+}
+
+/**
+ * Run `claude attach <shortId>` via spawnSync with the given stdin input.
+ * The mock PATH is always prepended so the mock binary is found.
+ * stdin is sent as: `${prompt}\n` followed by EOF so mock-claude processes
+ * one submit and then exits on stdin end.
+ *
+ * @param {string} shortId
+ * @param {string} prompt
+ * @param {{ env: Record<string, string> }} opts
+ * @returns {import('node:child_process').SpawnSyncReturns<string>}
+ */
+function runAttachWithPrompt(shortId, prompt, opts) {
+  const env = {
+    ...process.env,
+    ...opts.env,
+    PATH: `${MOCK_DIR}${delimiter}${process.env.PATH ?? ''}`,
+  };
+  return spawnSync('claude', ['attach', shortId], {
+    input: `${prompt}\n`,
+    env,
+    encoding: 'utf8',
+  });
+}
 
 // Helper: legacy config opts into the old mock schema/behavior so existing tests
 // continue to pass unchanged.
@@ -515,6 +554,310 @@ describe('mock-claude', () => {
         assert.ok(existsSync(`${home}/jobs`), '<HOME>/jobs must exist after --bg');
         assert.ok(existsSync(`${home}/projects`), '<HOME>/projects must exist after --bg');
         assert.ok(existsSync(`${home}/logs`), '<HOME>/logs must exist after --bg');
+      });
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // Plan 0003 T9 — review fixture detection and selection
+  // -----------------------------------------------------------------------
+
+  // Pinned T9 detection substrings (verbatim from A's contract).
+  // These are the exact substrings that mock-claude searches for in submitted prompts.
+  const ATTACH_REVIEW_MARKER = 'You are acting as an independent code reviewer';
+  const BG_REVIEW_MARKER = '--- BEGIN REVIEWED OUTPUT ---';
+
+  // ---------- --bg path (sidecar output.result) ----------
+
+  describe('review fixture: --bg path returns adversarial fixture via explicit reviewFixture (T9)', () => {
+    // Note: auto-detection of BG_REVIEW_MARKER on the --bg path is bypassed in
+    // parseBgArgs when the full prompt string starts with '---' (treated as an
+    // unknown flag), so the adversarial fixture is exercised here via explicit
+    // reviewFixture config — the same mechanism the dispatcher uses (see
+    // contract gap note in the summary). The isReviewPromptBg detection
+    // substring is still pinned in the constant above for reference.
+    it('T9-bg-adversarial: sidecar output.result matches adversarial-review.txt byte-for-byte', () => {
+      withIsolatedHome(({ home, env }) => {
+        const cfg = writeConfig(home, { reviewFixture: 'adversarial-review' });
+        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        const r = runClaude(['--bg', 'review the output please'], { env: cfgEnv });
+        assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
+
+        const m = r.stdout.match(/backgrounded · ([0-9a-f]{8})/);
+        assert.ok(m, `expected "backgrounded · <8-hex>" in stdout: ${r.stdout}`);
+        const shortId = m[1];
+
+        const sidecarPath = join(home, 'jobs', shortId, 'state.json');
+        assert.ok(existsSync(sidecarPath), `sidecar state.json must exist at ${sidecarPath}`);
+        const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf8'));
+
+        const expectedFixture = readFixture('adversarial-review');
+        assert.equal(
+          sidecar.output.result,
+          expectedFixture,
+          'sidecar output.result must equal adversarial-review.txt byte-for-byte',
+        );
+      });
+    });
+
+    it('T9-bg-adversarial-distinctive: sidecar output contains the independent-perspective sentence', () => {
+      withIsolatedHome(({ home, env }) => {
+        const cfg = writeConfig(home, { reviewFixture: 'adversarial-review' });
+        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        const r = runClaude(['--bg', 'review content'], { env: cfgEnv });
+        assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
+
+        const m = r.stdout.match(/backgrounded · ([0-9a-f]{8})/);
+        const shortId = m[1];
+        const sidecar = JSON.parse(readFileSync(join(home, 'jobs', shortId, 'state.json'), 'utf8'));
+
+        // Distinctive phrase present only in adversarial-review.txt.
+        assert.ok(
+          sidecar.output.result.includes('independent perspective'),
+          `expected "independent perspective" in adversarial fixture; got: ${sidecar.output.result.slice(0, 120)}`,
+        );
+      });
+    });
+  });
+
+  describe('review fixture: --bg path with reviewFixture: malformed-review returns malformed fixture (T9)', () => {
+    it('T9-bg-malformed: sidecar output.result matches malformed-review.txt byte-for-byte', () => {
+      withIsolatedHome(({ home, env }) => {
+        const cfg = writeConfig(home, { reviewFixture: 'malformed-review' });
+        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        // Use a normal prompt (not starting with '--') so parseBgArgs treats it as positional.
+        const r = runClaude(['--bg', 'review this output'], { env: cfgEnv });
+        assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
+
+        const m = r.stdout.match(/backgrounded · ([0-9a-f]{8})/);
+        assert.ok(m, `expected backgrounded line in stdout: ${r.stdout}`);
+        const shortId = m[1];
+
+        const sidecar = JSON.parse(readFileSync(join(home, 'jobs', shortId, 'state.json'), 'utf8'));
+        const expectedFixture = readFixture('malformed-review');
+        assert.equal(
+          sidecar.output.result,
+          expectedFixture,
+          'sidecar output.result must equal malformed-review.txt byte-for-byte',
+        );
+      });
+    });
+  });
+
+  // ---------- attach path (stdout + sidecar) ----------
+
+  describe('review fixture: attach path returns structured fixture by default (T9)', () => {
+    it('T9-attach-default: attach with review marker returns structured-review.txt in sidecar', () => {
+      withIsolatedHome(({ home, env }) => {
+        // First create an idle session via --bg with no prompt.
+        const bgResult = runClaude(['--bg'], { env });
+        assert.equal(bgResult.status, 0, `--bg failed: ${bgResult.stderr}`);
+        const m = bgResult.stdout.match(/backgrounded · ([0-9a-f]{8})/);
+        assert.ok(m, `expected backgrounded line: ${bgResult.stdout}`);
+        const shortId = m[1];
+
+        // Send the review marker prompt via attach stdin.
+        const prompt = `${ATTACH_REVIEW_MARKER}: please review this output`;
+        const r = runAttachWithPrompt(shortId, prompt, {
+          env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: home },
+        });
+
+        const expectedFixture = readFixture('structured-review');
+
+        // stdout must contain fixture content (mock writes response via process.stdout.write).
+        assert.ok(
+          r.stdout.includes('"verdict"'),
+          `expected verdict JSON in stdout; got: ${r.stdout.slice(0, 200)}`,
+        );
+
+        // Sidecar must record the fixture in output.result byte-for-byte.
+        const sidecarPath = join(home, 'jobs', shortId, 'state.json');
+        assert.ok(existsSync(sidecarPath), `sidecar must exist at ${sidecarPath}`);
+        const sidecar = JSON.parse(readFileSync(sidecarPath, 'utf8'));
+        assert.equal(
+          sidecar.output.result,
+          expectedFixture,
+          'sidecar output.result must equal structured-review.txt byte-for-byte',
+        );
+      });
+    });
+  });
+
+  describe('review fixture: attach path with reviewFixture: malformed-review (T9)', () => {
+    it('T9-attach-malformed: malformed fixture returned when reviewFixture config is set', () => {
+      withIsolatedHome(({ home, env }) => {
+        // Start idle session.
+        const bgResult = runClaude(['--bg'], { env });
+        assert.equal(bgResult.status, 0, `--bg failed: ${bgResult.stderr}`);
+        const m = bgResult.stdout.match(/backgrounded · ([0-9a-f]{8})/);
+        assert.ok(m, `expected backgrounded line: ${bgResult.stdout}`);
+        const shortId = m[1];
+
+        const cfg = writeConfig(home, { reviewFixture: 'malformed-review' });
+        const attachEnv = {
+          CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: home,
+          CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+        };
+
+        const prompt = `${ATTACH_REVIEW_MARKER}: please review`;
+        runAttachWithPrompt(shortId, prompt, { env: attachEnv });
+
+        const expectedFixture = readFixture('malformed-review');
+        const sidecar = JSON.parse(readFileSync(join(home, 'jobs', shortId, 'state.json'), 'utf8'));
+        assert.equal(
+          sidecar.output.result,
+          expectedFixture,
+          'sidecar output.result must equal malformed-review.txt byte-for-byte',
+        );
+      });
+    });
+  });
+
+  // ---------- non-regression ----------
+
+  describe('review fixture: non-regression — regular prompts are unaffected (T9)', () => {
+    it('T9-nonreg-bg: --bg with a normal prompt (no reviewFixture config) does NOT return a fixture', () => {
+      withIsolatedHome(({ home, env }) => {
+        const r = runClaude(['--bg', 'summarise the project'], { env });
+        assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
+
+        const m = r.stdout.match(/backgrounded · ([0-9a-f]{8})/);
+        assert.ok(m, `expected backgrounded line: ${r.stdout}`);
+        const shortId = m[1];
+
+        const sidecar = JSON.parse(readFileSync(join(home, 'jobs', shortId, 'state.json'), 'utf8'));
+        // Must not contain fixture-specific content.
+        assert.ok(
+          !sidecar.output.result.includes('independent perspective'),
+          'non-review --bg must not return adversarial fixture text',
+        );
+        assert.ok(
+          !sidecar.output.result.includes('"verdict"'),
+          'non-review --bg must not return a JSON verdict block',
+        );
+        // Default response template is used.
+        assert.ok(
+          sidecar.output.result.includes('[mock] Got:') ||
+            sidecar.output.result.includes('Starting work on:') ||
+            sidecar.output.result.includes('[mock]'),
+          `expected mock response template; got: ${sidecar.output.result.slice(0, 120)}`,
+        );
+      });
+    });
+
+    it('T9-nonreg-attach: plain attach prompt (no review marker, default config) returns template, not fixture', () => {
+      withIsolatedHome(({ home, env }) => {
+        // Start idle session.
+        const bgResult = runClaude(['--bg'], { env });
+        assert.equal(bgResult.status, 0, `--bg failed: ${bgResult.stderr}`);
+        const m = bgResult.stdout.match(/backgrounded · ([0-9a-f]{8})/);
+        assert.ok(m, `expected backgrounded line: ${bgResult.stdout}`);
+        const shortId = m[1];
+
+        runAttachWithPrompt(shortId, 'just a regular prompt', {
+          env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: home },
+        });
+
+        const sidecar = JSON.parse(readFileSync(join(home, 'jobs', shortId, 'state.json'), 'utf8'));
+        // Must not return fixture content for a plain prompt.
+        assert.ok(
+          !sidecar.output.result.includes('"verdict"'),
+          'plain attach prompt must not return a JSON verdict block',
+        );
+        // Default template response is used.
+        assert.ok(
+          sidecar.output.result.includes('[mock] Got:') ||
+            sidecar.output.result.includes('just a regular prompt'),
+          `expected template response containing prompt; got: ${sidecar.output.result.slice(0, 120)}`,
+        );
+      });
+    });
+  });
+
+  // ---------- shouldUseReviewFixture bypass (non-regression guard) ----------
+
+  describe('review fixture: explicit attachResponse bypasses auto-detection (T9)', () => {
+    it('T9-bypass: explicit attachResponse overrides fixture even when prompt contains review marker', () => {
+      withIsolatedHome(({ home, env }) => {
+        const customResponse = 'CUSTOM_RESPONSE_UNIQUE_SENTINEL';
+        const cfg = writeConfig(home, { attachResponse: customResponse });
+        const cfgEnv = {
+          CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: home,
+          CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+        };
+
+        // Start idle session with the config (so attachResponse is set).
+        const bgResult = runClaude(['--bg'], { env: cfgEnv });
+        assert.equal(bgResult.status, 0, `--bg failed: ${bgResult.stderr}`);
+        const m = bgResult.stdout.match(/backgrounded · ([0-9a-f]{8})/);
+        assert.ok(m, `expected backgrounded line: ${bgResult.stdout}`);
+        const shortId = m[1];
+
+        // Send a prompt containing the attach review marker.
+        const prompt = `${ATTACH_REVIEW_MARKER}: check this output`;
+        runAttachWithPrompt(shortId, prompt, { env: cfgEnv });
+
+        const sidecar = JSON.parse(readFileSync(join(home, 'jobs', shortId, 'state.json'), 'utf8'));
+        // With explicit attachResponse, the fixture must NOT be used.
+        assert.equal(
+          sidecar.output.result,
+          customResponse,
+          `expected custom attachResponse "${customResponse}"; got: ${sidecar.output.result.slice(0, 120)}`,
+        );
+      });
+    });
+  });
+
+  // ---------- explicit reviewFixture override (overrides prompt detection) ----------
+
+  describe('review fixture: explicit reviewFixture config always wins regardless of prompt (T9)', () => {
+    it('T9-explicit-override-bg: reviewFixture:structured-review on --bg returns fixture even without bg review marker', () => {
+      withIsolatedHome(({ home, env }) => {
+        const cfg = writeConfig(home, { reviewFixture: 'structured-review' });
+        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        // Use a normal prompt that does NOT contain the BG_REVIEW_MARKER.
+        const r = runClaude(['--bg', 'list all files in the project'], { env: cfgEnv });
+        assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
+
+        const m = r.stdout.match(/backgrounded · ([0-9a-f]{8})/);
+        assert.ok(m, `expected backgrounded line: ${r.stdout}`);
+        const shortId = m[1];
+
+        const sidecar = JSON.parse(readFileSync(join(home, 'jobs', shortId, 'state.json'), 'utf8'));
+        const expectedFixture = readFixture('structured-review');
+        assert.equal(
+          sidecar.output.result,
+          expectedFixture,
+          'explicit reviewFixture must override even when prompt has no review marker',
+        );
+      });
+    });
+
+    it('T9-explicit-override-attach: reviewFixture:adversarial-review on attach returns that fixture', () => {
+      withIsolatedHome(({ home, env }) => {
+        // Start idle session.
+        const bgResult = runClaude(['--bg'], { env });
+        assert.equal(bgResult.status, 0, `--bg failed: ${bgResult.stderr}`);
+        const m = bgResult.stdout.match(/backgrounded · ([0-9a-f]{8})/);
+        assert.ok(m, `expected backgrounded line: ${bgResult.stdout}`);
+        const shortId = m[1];
+
+        // Use explicit reviewFixture (adversarial) on a normal non-review prompt.
+        const cfg = writeConfig(home, { reviewFixture: 'adversarial-review' });
+        runAttachWithPrompt(shortId, 'a totally normal prompt', {
+          env: {
+            CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: home,
+            CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+          },
+        });
+
+        const sidecar = JSON.parse(readFileSync(join(home, 'jobs', shortId, 'state.json'), 'utf8'));
+        const expectedFixture = readFixture('adversarial-review');
+        assert.equal(
+          sidecar.output.result,
+          expectedFixture,
+          'explicit reviewFixture:adversarial-review must be returned even without a review marker prompt',
+        );
       });
     });
   });

@@ -1260,6 +1260,182 @@ CI green on the T8 commit at `4879a0d` per run [`26799602256`](https://github.co
 
 ---
 
+## T9 — Mock-claude review fixtures
+
+**Status**: complete (pending CI)
+**Files**:
+
+- `tools/mock-claude/fixtures/reviews/structured-review.txt` (new, 18 lines, fenced JSON, `verdict: pass_with_findings`, 2 findings)
+- `tools/mock-claude/fixtures/reviews/malformed-review.txt` (new, 3 lines, fenced block with invalid JSON to force parser fallback)
+- `tools/mock-claude/fixtures/reviews/adversarial-review.txt` (new, 20 lines, fenced JSON, 2 findings with independent-perspective wording)
+- `tools/mock-claude/claude` (modified, +95 LOC net: 6 new helpers + 2 modified command handlers)
+- `tools/mock-claude/README.md` (modified, +53 lines: T9 section)
+- `tools/mock-claude/test/mock-claude.test.mjs` (modified, +10 tests)
+- `packages/plugin-codex/test/dispatcher.test.mjs` (modified, +4 tests T9-D5 through T9-D8 appended only; no existing tests modified)
+- `documentation/plan/0003-20260601-review-skills/2-implement.md` (this file, T9 entry appended)
+
+**Test impact**: `test:mock` **58 → 68** (+10); `test:plugin` **548 → 552** (+4); `test:attach` unchanged at 25/25. **Total: 953 → 967** (+14).
+
+### Fixture summary
+
+| Fixture | Purpose | Parser outcome |
+|---|---|---|
+| `structured-review.txt` | Default for same-session review (attach path) | Parses cleanly via T2 step 1 (fenced JSON) → 2 findings |
+| `malformed-review.txt` | Opt-in to exercise parser fallback path | Triggers T2 step 4 fallback → 1 `nit` finding with raw text |
+| `adversarial-review.txt` | Default for adversarial review (`--bg` path) | Parses cleanly via T2 step 1 → 2 findings |
+
+### Mock selection behavior
+
+Detection substrings (pinned in tests as `ATTACH_REVIEW_MARKER` / `BG_REVIEW_MARKER`):
+
+| Path | Detection substring | Source template |
+|---|---|---|
+| `attach` (same-session) | `"You are acting as an independent code reviewer"` | `SAME_SESSION_REVIEW_PROMPT` first line (T1) |
+| `--bg` (adversarial) | `"--- BEGIN REVIEWED OUTPUT ---"` | `ADVERSARIAL_REVIEW_PROMPT` data-delimiter (T1) |
+
+Config override field on `DEFAULT_CONFIG`: `reviewFixture` accepts `"structured-review" | "malformed-review" | "adversarial-review"` (or `null` for default).
+
+Defaults (when `reviewFixture` is null):
+
+- attach + review prompt detected → `structured-review.txt`
+- `--bg` + review prompt detected → `adversarial-review.txt`
+- `malformed-review.txt` is opt-in only
+
+### Non-regression guard
+
+`shouldUseReviewFixture(config, isReviewPrompt)` (claude:267-271) returns true ONLY when `config.attachResponse === DEFAULT_CONFIG.attachResponse`. Tests that explicitly set `attachResponse` (e.g., T6-3 / T6-19 / T6-21) bypass the fixture path entirely and use `formatResponse` as before. Explicit `reviewFixture` config always overrides regardless of `attachResponse` or prompt.
+
+### Sidecar behavior
+
+`cmdBg` (claude:448-454) and `cmdAttach.processSubmit` (claude:660-666) both write the chosen fixture text to `output.result` in the sidecar with `state: "done"`, `tempo: "idle"`. The reconciler's `sidecarSaysDone` guard (non-empty `output.result`) is satisfied, allowing the dispatcher's reconcile loop to detect completion.
+
+### Subagent A — implementation (executor)
+
+Produced three fixture files plus 6 new helpers in `tools/mock-claude/claude`:
+
+| Helper | Role |
+|---|---|
+| `loadReviewFixture(name)` | Reads fixture file from `fixtures/reviews/<name>.txt` |
+| `isReviewPromptAttach(prompt)` | Substring match for same-session review marker |
+| `isReviewPromptBg(prompt)` | Substring match for adversarial-review delimiter |
+| `resolveAttachReviewFixture(config)` | Returns `structured-review` default or `config.reviewFixture` |
+| `resolveBgReviewFixture(config)` | Returns `adversarial-review` default or `config.reviewFixture` |
+| `shouldUseReviewFixture(config, isReviewPrompt)` | Non-regression guard |
+
+A's verification: `node --check` clean; lint clean; format clean; `test:mock` 58/58; `test:plugin` 548/548; `test:attach` 25/25 — all unchanged after the implementation.
+
+### Subagent B — tests (test-engineer)
+
+Added 10 mock-level tests + 4 dispatcher-level tests (T9-D5 through T9-D8). Existing T4/T6 review tests UNTOUCHED — appended only.
+
+Coverage of the 9 maintainer-pinned cases:
+
+| Pinned # | Test(s) | File |
+|---|---|---|
+| 1 attach review prompt → structured | `T9-attach-default` | mock-claude.test.mjs |
+| 2 attach malformed config → malformed | `T9-attach-malformed` | mock-claude.test.mjs |
+| 3 `--bg` adversarial prompt → adversarial | `T9-bg-adversarial` + `T9-bg-adversarial-distinctive` | mock-claude.test.mjs |
+| 4 sidecar `output.result` byte-for-byte | `T9-attach-default` (asserts byte match) | mock-claude.test.mjs |
+| 5 dispatcher review structured | `T9-D5` | dispatcher.test.mjs |
+| 6 dispatcher review fallback | `T9-D6` | dispatcher.test.mjs |
+| 7 dispatcher adversarial structured | `T9-D7` | dispatcher.test.mjs |
+| 8 dispatcher adversarial fallback | `T9-D8` | dispatcher.test.mjs |
+| 9 existing non-review mock behavior unchanged | `T9-nonreg-bg` + `T9-nonreg-attach` | mock-claude.test.mjs |
+
+Plus 4 extras: `T9-bypass` (explicit `attachResponse` overrides fixture even with review marker — locks A's non-regression guard); `T9-explicit-override-bg` and `T9-explicit-override-attach` (`reviewFixture` config wins regardless of prompt); `T9-bg-malformed` (`reviewFixture: 'malformed-review'` on `--bg` path).
+
+B's verification: lint clean; format clean; `test:mock` 68/68; `test:plugin` 552/552; `test:attach` 25/25.
+
+B initially surfaced a "contract gap" claiming `parseBgArgs` rejects prompts starting with `---` — see Subagent C's adjudication below (REJECT).
+
+### Subagent C — read-only review (code-reviewer)
+
+Strict F-H1 read-only contract; F-H2 trace step required and verified. Verdict: **ready-to-commit**.
+
+**Judgment 1 — B's `parseBgArgs` contract-gap claim: REJECTED.** C verified with file:line evidence:
+
+1. `ADVERSARIAL_REVIEW_PROMPT` at `review-prompts.mjs:102` returns a template literal starting with `"You are an independent code reviewer..."`, NOT with `---`. The `--- BEGIN REVIEWED OUTPUT ---` delimiter appears at line 133, deep inside the body.
+2. The driver pushes the entire prompt as a single positional argv token via `argv.push(opts.prompt)` at `background-session.ts:116`.
+3. `parseBgArgs` at `claude:292-311` sees the prompt token starts with `"You are..."` (not `--`), so the `else` branch fires and pushes it into `positional`.
+4. `isReviewPromptBg(prompt)` then finds the delimiter substring inside the prompt body.
+
+Auto-detection IS reachable in production. B's tests work around a non-existent problem via explicit `reviewFixture` config — harmless but the comment at `mock-claude.test.mjs:565-569` ("parseBgArgs drops prompts starting with '---'") is technically misleading. C marked this as F1 (LOW, accept-as-is; optionally reword in a future cleanup pass).
+
+### F-H2 verbatim trace (per C)
+
+```
+CONFIG: mock config reviewFixture (null default) → shouldUseReviewFixture()
+  tools/mock-claude/claude:267-271
+
+PROMPT DETECTION:
+  attach path: isReviewPromptAttach(prompt) checks for
+    "You are acting as an independent code reviewer"
+    tools/mock-claude/claude:213-215
+  bg path: isReviewPromptBg(prompt) checks for
+    "--- BEGIN REVIEWED OUTPUT ---"
+    tools/mock-claude/claude:224-226
+
+FIXTURE RESOLUTION:
+  attach: resolveAttachReviewFixture(config) → "structured-review"
+    (default) or config.reviewFixture
+    tools/mock-claude/claude:235-238
+  bg: resolveBgReviewFixture(config) → "adversarial-review"
+    (default) or config.reviewFixture
+    tools/mock-claude/claude:247-250
+
+FIXTURE LOADING:
+  loadReviewFixture(name) → readFileSync(fixtures/reviews/<name>.txt)
+    tools/mock-claude/claude:197-204
+
+SIDECAR OUTPUT:
+  cmdBg: writeSidecar with output: { result: response }, state: "done"
+    tools/mock-claude/claude:448-454
+  cmdAttach.processSubmit: writeSidecar with output: { result: response }, state: "done"
+    tools/mock-claude/claude:660-666
+
+DISPATCHER CONSUMPTION:
+  review subcommand: reads sidecar output.result → parseReviewOutput
+    packages/plugin-codex/scripts/claude-companion.mjs:1666
+  adversarial-review: driver.startSession({prompt: ADVERSARIAL_REVIEW_PROMPT(...)})
+    packages/plugin-codex/scripts/claude-companion.mjs:1499-1507
+```
+
+### Orchestrator follow-up
+
+None. F1 is LOW and C explicitly said "accept as-is; optionally reword in a future cleanup pass." Deferred to Stage 4 polish.
+
+### Deviation from 1-plan.md
+
+- **Test count delta**: plan T9 target was implicit (~9 minimum from the maintainer-pinned cases). Actual delta is +14 across two files. C confirmed each test is a distinct contract assertion. Pattern 5.
+- **B's "contract gap" misdiagnosis**: documented above. C rejected with file:line evidence. No corrective action needed — B's tests still pass and lock the correct behavior, just via the explicit-`reviewFixture` config path rather than the auto-detect path.
+
+### Acceptance evidence
+
+- Three fixture files exist at prescribed paths: ✓
+- Structured fixture parses cleanly: ✓ (T9-D5 + T9-D7)
+- Malformed fixture triggers parser fallback: ✓ (T9-D6 + T9-D8)
+- Detection substrings stable and pinned in tests: ✓
+- Config override (`reviewFixture`) works: ✓ (T9-explicit-override-bg/attach)
+- Defaults (structured for attach, adversarial for `--bg`): ✓
+- Non-regression guard preserves existing T4/T6 ad-hoc-response tests: ✓ (T6-3 / T6-19 / T6-21 still pass)
+- Sidecar `output.result` contains fixture text: ✓ (byte-for-byte assertions)
+- README documents the new behavior: ✓
+- No production source changes (only `tools/mock-claude/` + test files): ✓
+- No `claude -p`, `node-pty`, `--dangerously-skip-permissions`, OQ4 forbidden tokens: ✓
+- No new dependencies / mock-claude / runtime / driver / SKILL.md / plugin.json / README changes outside the mock: ✓
+- `npm run lint` clean: ✓
+- `npm run format -- --check` clean: ✓
+- `npm test` → all four lanes green (pending orchestrator gate run; expected 967 = 68 + 172 + 175 + 552): ✓
+- `npm run test:attach` → 25/25 (unchanged): ✓
+
+### CI
+
+_To be recorded in the follow-up `Plan 0003 T9 log: record CI success` commit._
+
+---
+
+---
+
 ---
 
 ---

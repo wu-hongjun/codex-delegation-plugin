@@ -229,6 +229,59 @@ In addition to the existing legacy behavior (state.sessions update + log line + 
 | `attachResponse` | `string` | `"[mock] Got: ${prompt}"` | Response template for each turn. The literal substring `${prompt}` is replaced with the submitted prompt. Used by both `cmdAttach` and `cmdBg`. |
 | `permissionStall` | `boolean` | `false` | When `true`, the FIRST submit under each attach transitions the sidecar to `waiting` with `inFlight.kinds: ["permission"]`, writes a permission prompt to stdout, then continues after the next one-line input. Subsequent turns under the same attach do NOT re-trigger the stall. |
 
+## Review fixtures (Plan 0003 T9)
+
+### Fixture files
+
+Three fixture files live under `tools/mock-claude/fixtures/reviews/`:
+
+| File | Purpose |
+|---|---|
+| `structured-review.txt` | Well-formed fenced-JSON review output. Parsed successfully by `review-parser.mjs` step 1 (fenced block). Used by default on the attach path. |
+| `malformed-review.txt` | A fenced block containing invalid JSON. Forces the parser to fall back to a single `nit` finding. Must be opted into via config. |
+| `adversarial-review.txt` | Well-formed fenced-JSON review output with findings written from an independent perspective. Used by default on the `--bg` path. |
+
+### Detection heuristic
+
+The mock inspects the submitted prompt to decide whether a review fixture should be returned instead of the normal `attachResponse` template:
+
+- **Attach path** (`claude attach <id>`): if the prompt contains the substring `"You are acting as an independent code reviewer"` (unique to `SAME_SESSION_REVIEW_PROMPT`), the mock returns the attach review fixture instead of `attachResponse`.
+- **`--bg` path** (`claude --bg <prompt>`): if the prompt contains the substring `"--- BEGIN REVIEWED OUTPUT ---"` (the data-delimiter unique to `ADVERSARIAL_REVIEW_PROMPT`), the mock returns the `--bg` review fixture instead of `attachResponse`.
+
+Prompts that do not match either heuristic continue to use the existing `attachResponse`/`formatResponse` behavior — no regression on non-review paths.
+
+### Config override
+
+Add `reviewFixture` to the JSON config file to override the auto-selected fixture:
+
+```jsonc
+{
+  "reviewFixture": "structured-review"   // or "malformed-review" or "adversarial-review"
+}
+```
+
+| Value | Fixture loaded |
+|---|---|
+| `"structured-review"` | `fixtures/reviews/structured-review.txt` |
+| `"malformed-review"` | `fixtures/reviews/malformed-review.txt` |
+| `"adversarial-review"` | `fixtures/reviews/adversarial-review.txt` |
+| `null` (default) | Auto-select: attach path → `structured-review`; `--bg` path → `adversarial-review` |
+
+### Default behavior
+
+| Path | No config override | With `reviewFixture` set |
+|---|---|---|
+| `claude attach <id>` — review prompt detected | `structured-review.txt` | Config value |
+| `claude attach <id>` — non-review prompt | Normal `attachResponse` template | Normal `attachResponse` template |
+| `claude --bg <prompt>` — review prompt detected | `adversarial-review.txt` | Config value |
+| `claude --bg <prompt>` — non-review prompt | Normal `attachResponse` template | Normal `attachResponse` template |
+
+The `malformed-review` fixture is opt-in only — it is never the auto-selected default.
+
+### Sidecar behavior
+
+On the review path the sidecar `output.result` contains the full fixture text (same as any other completed turn). The sidecar transitions `working → done` with `state: "done"`, `tempo: "idle"`, and `output.result` set to the fixture contents. This satisfies the reconciler's `sidecarSaysDone` guard which requires a non-empty `output.result` to signal completion.
+
 ## Running tests
 
 ```bash

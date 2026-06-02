@@ -1630,7 +1630,7 @@ None. F-1 is LOW and C explicitly recommended "defer to Stage 4 polish". No pre-
 
 ### CI
 
-_To be recorded in the follow-up `Plan 0003 T10 log: record CI success` commit._
+CI green on the T10 commit at `3f817df` per run [`26820737972`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26820737972): `ubuntu-latest / Node 20`, `macos-latest / Node 20`, `ubuntu-latest / Node 22`, `macos-latest / Node 22` — all `success`. No transient flakes or API-metadata anomalies.
 
 ---
 

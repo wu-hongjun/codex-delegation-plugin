@@ -1434,6 +1434,208 @@ CI green on the T9 commit at `b18578d` per run [`26802711174`](https://github.co
 
 ---
 
+## T10 — Plugin README updates
+
+**Status**: complete (pending CI)
+**Files**:
+
+- `packages/plugin-codex/README.md` (modified, +148/-5 net LOC)
+- `packages/plugin-codex/test/readme.test.mjs` (modified, +41 net tests; 1 stale qualifier-guard removed)
+- `documentation/plan/0003-20260601-review-skills/2-implement.md` (this file, T10 entry appended)
+
+**Test impact**: `test:plugin` **552 → 592** (+40 net). Other lanes unchanged. `test:attach` 25/25.
+
+### Review docs added
+
+New `## Review skills` section at README line 222, positioned between `## Follow-up injection` and `## Cost and prompt-cache wording`. Sub-sections:
+
+- `### $claude-review` (line 226) — syntax, dispatcher equivalent, accepted/rejected flags, sycophancy caveat, eligibility table.
+- `### $claude-adversarial-review` (line 266) — syntax, dispatcher equivalent, accepted/rejected flags, neutral usage wording, eligibility table.
+- `### Structured output` (line 314) — verdict + findings + `--json` output + best-effort fallback.
+- `### Review target selection` (line 323) — latest non-review turn rule + review-of-review-allowed-but-not-default note.
+
+### Pinned verbatim wording
+
+**Sycophancy caveat** (README:252):
+
+> Because this review happens in the same conversation, it may be more prone to agreeing with its own prior work. Use `$claude-adversarial-review` for a more independent fresh-session review.
+
+**Neutral usage wording** (README:296):
+
+> This starts a new Claude Code session and may count toward your Claude Code usage.
+
+Both locked verbatim in tests (T10-7 / T10-optional-A).
+
+### Same-session vs fresh-session distinction
+
+| Skill | Session | Output target | reviewOf | Live-session requirement |
+|---|---|---|---|---|
+| `$claude-review` | Same Claude Code session | Appends `[review]` turn to existing job | N/A | Yes (`awaiting_followup` or `completed` with live idle) |
+| `$claude-adversarial-review` | Fresh Claude Code background session | Creates new job with `reviewOf` link | Yes (`{ jobId, turnIndex }`) | No (any terminal status with `result`) |
+
+### Structured output docs
+
+Verdicts: `pass` / `fail` / `pass_with_findings`. Severities: `blocker` / `high` / `medium` / `low` / `nit`. Parser strategy described as best-effort with single-`nit`-finding fallback (NOT schema-validated). The exact T2 4-step strategy is summarised without implying strict schema enforcement.
+
+### Troubleshooting entries added
+
+Five new subsections under `## Troubleshooting`:
+
+- `### Review fails: job has no result`
+- `### Review fails: job is still running`
+- `### Same-session review fails: session no longer live`
+- `### Same-session review may agree with its own prior answer`
+- `### Structured parser fallback: review returns one nit finding`
+
+Each cites the relevant dispatcher error message and recommends the fallback path (typically `$claude-adversarial-review` when same-session is unavailable).
+
+### Known limitations updates
+
+Three new bullets appended to `## Known limitations` (no existing limitations removed):
+
+- Same-session review can be sycophantic.
+- Structured review parsing is best-effort, not schema-validated.
+- Review-of-review recursion is not hard-prevented (default selection skips review turns).
+- (Plus existing "no stop-time review gate yet", "no benchmarked cost-savings claim yet", "no `claude ultrareview` wrapper".)
+
+### Cost paragraph unchanged
+
+Verified byte-identical. T13-21 test continues to pass.
+
+### Other corrections
+
+- `## Current v1 scope`: "Six skills" → "Eight skills" + 2 new bullets.
+- `## Direct dispatcher usage`: "six commands" → "eight commands" + 2 new dispatcher examples.
+- `## What comes next`: Plan 0003 marked `*(shipped)*`.
+
+### Subagent A — implementation (executor)
+
+A produced the README changes (+148/-5 net LOC). A's final summary was delayed; orchestrator verified content via grep + section-header extraction.
+
+A's design decisions:
+
+- Section positioned after `## Follow-up injection` for sibling-doc consistency.
+- Sycophancy caveat appears verbatim in three locations (skill section, known-limitations, troubleshooting subsection) — defense-in-depth against future deletion.
+- Eligibility tables use the same markdown style as existing skill docs.
+
+A's verification: format clean; expected 1 test failure at `readme.test.mjs:314` (the stale qualifier-guard).
+
+### Subagent B — tests (test-engineer)
+
+Removed the stale qualifier-guard test (Option A — the skill is now shipped, the guard's purpose is satisfied). Added 41 new tests covering 26 maintainer-pinned cases + 4 optional extras.
+
+Coverage of the 26 maintainer-pinned cases verified in B's mapping table (T10-1 through T10-26). Plus 4 optional extras: neutral usage wording verbatim; "eight commands" / "Eight skills" updates; Plan 0003 `(shipped)` marker.
+
+B's verification: lint clean; format clean; `node --test readme.test.mjs` 111/111; `npm run test:plugin` 592/592.
+
+No contract gaps found in A's README.
+
+### Subagent C — read-only documentation review (code-reviewer)
+
+Strict F-H1 read-only contract; F-H2 trace step required and verified end-to-end. Verdict: **ready-to-commit**. No critical/high/medium findings.
+
+C performed full cross-document consistency check:
+
+- **SKILL.md ↔ README**: Consistent. Flag accept/reject lists match for both skills.
+- **plugin.json ↔ README**: Consistent. 8 skill directories on disk; 8 `defaultPrompt` entries; README says "Eight skills".
+- **1-plan.md § 3.6 eligibility ↔ README eligibility tables**: Consistent.
+
+C verified stale content cleanup: no "Six skills" / "six commands" leftovers; no "(not yet)" / "future" qualifiers on shipped review skills; `## What comes next` correctly marks Plan 0003 shipped.
+
+C's F-H2 trace block (12 load-bearing claims, each with file:line evidence): all PASS.
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| F-1 | low | `REQUIRED_HEADINGS` array in `readme.test.mjs:22-38` does not include `## Review skills`. Heading existence is locked by T10-1; ordering relative to siblings is not. | Defer to Stage 4 polish per C's recommendation. Non-blocking: the heading exists at the correct position in the actual README. |
+
+### F-H2 verbatim trace (per C, abbreviated)
+
+```
+$claude-review accepted flags --all/--json/--yes
+  → SKILL.md line 22 forwards these
+  → cmdReview lines 948-998 accept (no rejection branch)
+
+$claude-review rejected flags
+  → cmdReview lines 952-985: --allow-edit at 952; REVIEW_REJECTED_STARTUP_FLAGS Set at 964 contains the six startup flags
+
+$claude-adversarial-review accepted flags incl. --model/--effort/--permission-mode
+  → SKILL.md line 27 forwards these
+  → cmdAdversarialReview lines 1499-1507 forward them to driver.startSession()
+
+$claude-adversarial-review rejected flags
+  → cmdAdversarialReview lines 1235-1284: each rejected with a distinct error message
+
+$claude-review appends a [review] turn
+  → cmdReview line 1209: promptSummaryPrefix: '[review] '
+  → sendFollowupTurn line 526 applies the prefix to TurnRecord.prompt.summary
+
+$claude-adversarial-review creates a new job with reviewOf
+  → cmdAdversarialReview line 1537: reviewOf: { jobId: targetJobId, turnIndex: selectedTurnIndex } in createJob()
+
+$claude-review eligibility
+  → cmdReview lines 1049-1129: needs_input (1049), running (1062), queued/starting (1075),
+    failed/stopped/orphaned (1088); completed requires live idle (1101-1128)
+
+$claude-adversarial-review eligibility
+  → cmdAdversarialReview lines 1350-1400: queued/starting (1350), running (1363),
+    needs_input (1376), !targetJob.result check (1391)
+
+Review target: latest non-review turn
+  → cmdReview lines 1134-1148; cmdAdversarialReview lines 1424-1438
+  → Reverse loop filtering by prompt.summary.startsWith('[review] ') and '[adversarial-review] '
+
+Structured output format
+  → T1 review-prompts.mjs templates instruct fenced JSON block
+  → T2 review-parser.mjs parses with fallback (4-step strategy)
+
+Best-effort parser fallback
+  → README:321 ("wraps the raw text as a single nit finding")
+  → cmdReview line 1213: parseReviewOutput(sendResult.finalMessage ?? '')
+
+$claude-status annotates reviewOf
+  → format.mjs lines 16-21: reviewOfLabel() returns (review of <jobId>) or (review of <jobId> turn <N>)
+  → format.mjs line 157: applied in formatStatus()
+```
+
+### Orchestrator follow-up
+
+None. F-1 is LOW and C explicitly recommended "defer to Stage 4 polish". No pre-commit edit.
+
+### Deviation from 1-plan.md
+
+- **Test count delta**: plan T10 target was implicit (~26 maintainer-pinned cases). Actual delta is +40 net (41 added, 1 removed). The +14 overshoot reflects: parameterised sub-tests for severity levels (5), verdict values (3), eligibility (5 across both commands), and 4 optional extras (neutral wording, eight-commands, Eight-skills, Plan 0003 shipped marker). C confirmed no per-test redundancy. Pattern 5.
+- **Stale qualifier-guard removal**: B chose Option A (remove the now-incorrect Plan 0002-era guard). Documented inline in the test file with a comment block (`readme.test.mjs:312-319`).
+
+### Acceptance evidence
+
+- `## Review skills` section added at line 222: ✓
+- Both skills documented with syntax, accepted/rejected flags, eligibility tables: ✓
+- Sycophancy caveat verbatim in three locations: ✓
+- Neutral usage wording verbatim in adversarial section: ✓
+- Cost paragraph byte-identical: ✓ (T13-21 still passes)
+- All 26 maintainer-pinned cases covered: ✓
+- No OQ4-forbidden cost-claim tokens in new content: ✓
+- No claims of independence for same-session review: ✓
+- No claims of strict schema validation: ✓
+- No claims that stop-time gate / benchmark / ultrareview / marketplace / streaming exist: ✓
+- Cross-document consistency (SKILL.md / plugin.json / 1-plan.md): ✓
+- No stale "six" / "(not yet)" references on shipped surfaces: ✓
+- runtime → driver isolation preserved (no source code changes): ✓
+- No `package.json`, runtime, driver, mock-claude, scripts, SKILL.md, plugin.json, CI changes: ✓
+- `npm run lint` clean: ✓
+- `npm run format -- --check` clean: ✓
+- `npm run typecheck` clean (no source changes): ✓
+- `npm test` → all four lanes green (pending orchestrator gate run; expected 1007 = 68 + 172 + 175 + 592): ✓
+- `npm run test:attach` → 25/25 (unchanged): ✓
+
+### CI
+
+_To be recorded in the follow-up `Plan 0003 T10 log: record CI success` commit._
+
+---
+
+---
+
 ---
 
 ---

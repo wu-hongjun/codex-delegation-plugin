@@ -308,31 +308,14 @@ describe('README.md contains no forbidden quantitative cost-claim patterns', () 
   }
 });
 
-// ---------- 16. No $claude-review listed as an available skill ----------
-
-describe('README.md does not present $claude-review as currently available', () => {
-  it('every line mentioning "$claude-review" also has a "not"/"future"/"later"/"Plan 0" qualifier', () => {
-    const body = readReadme();
-    const offending = body
-      .split('\n')
-      .filter((l) => l.includes('$claude-review'))
-      .filter((l) => {
-        const lower = l.toLowerCase();
-        return (
-          !lower.includes('not') &&
-          !lower.includes('future') &&
-          !lower.includes('later') &&
-          !lower.includes('plan 0') &&
-          !lower.includes('yet')
-        );
-      });
-    assert.equal(
-      offending.length,
-      0,
-      `Lines mention "$claude-review" without a qualifying word (not/future/later/Plan/yet):\n${offending.join('\n')}`,
-    );
-  });
-});
+// ---------- 16. $claude-review is now a shipped skill (Plan 0003 T10) ----------
+// Option A: removed the stale Plan-0002 guard that required every $claude-review
+// mention to carry a "not/future/later/Plan 0/yet" qualifier. That guard was
+// correct while the skill was unshipped; Plan 0003 has shipped it, so the guard
+// is now wrong. The T10 tests below provide replacement coverage.
+//
+// (The old describe block is intentionally deleted rather than inverted — the
+// T10 assertions that follow assert positive presence of the shipped skill.)
 
 // ---------- 17. No hooks listed as currently available ----------
 
@@ -733,6 +716,559 @@ describe('README.md preserves the cost paragraph verbatim (plan 0002 T13)', () =
     assert.ok(
       body.includes(expected),
       'README.md cost paragraph must be byte-identical to the plan 0001 wording',
+    );
+  });
+});
+
+// ==========================================================================
+// T10: Plugin README updates for Plan 0003 review skills
+// ==========================================================================
+
+// ---------- T10-1. README has ## Review skills section ----------
+
+describe('README.md has ## Review skills section (T10-1)', () => {
+  it('contains "## Review skills"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('## Review skills'),
+      'README.md does not contain "## Review skills" section',
+    );
+  });
+});
+
+// ---------- T10-2. README documents $claude-review ----------
+
+describe('README.md documents $claude-review (T10-2)', () => {
+  it('contains "### $claude-review" heading', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('### $claude-review'),
+      'README.md does not contain "### $claude-review" heading',
+    );
+  });
+});
+
+// ---------- T10-3. README documents $claude-adversarial-review ----------
+
+describe('README.md documents $claude-adversarial-review (T10-3)', () => {
+  it('contains "### $claude-adversarial-review" heading', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('### $claude-adversarial-review'),
+      'README.md does not contain "### $claude-adversarial-review" heading',
+    );
+  });
+});
+
+// ---------- T10-4. README documents direct dispatcher review command ----------
+
+describe('README.md documents direct dispatcher review command (T10-4)', () => {
+  it('contains "claude-companion.mjs review"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('claude-companion.mjs review'),
+      'README.md does not document the direct dispatcher command "claude-companion.mjs review"',
+    );
+  });
+});
+
+// ---------- T10-5. README documents direct dispatcher adversarial-review command ----------
+
+describe('README.md documents direct dispatcher adversarial-review command (T10-5)', () => {
+  it('contains "claude-companion.mjs adversarial-review"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('claude-companion.mjs adversarial-review'),
+      'README.md does not document the direct dispatcher command "claude-companion.mjs adversarial-review"',
+    );
+  });
+});
+
+// ---------- T10-6. README documents same-session vs fresh-session distinction ----------
+
+describe('README.md documents same-session vs fresh-session distinction (T10-6)', () => {
+  it('contains "same" and "fresh" session phrasing within 2000 characters of each other', () => {
+    const body = readReadme();
+    const lower = body.toLowerCase();
+    const findAll = (s, needle) => {
+      const out = [];
+      let i = 0;
+      while ((i = s.indexOf(needle, i)) !== -1) {
+        out.push(i);
+        i += needle.length;
+      }
+      return out;
+    };
+    // Confirm at least one of the required session-distinction phrases exists
+    const hasSameSession =
+      lower.includes('same claude code session') ||
+      lower.includes('same conversation') ||
+      lower.includes('same session');
+    const hasFreshSession =
+      lower.includes('fresh claude code') ||
+      lower.includes('fresh-session') ||
+      lower.includes('fresh session') ||
+      lower.includes('new claude code session');
+    assert.ok(hasSameSession, 'README.md must document same-session behavior for $claude-review');
+    assert.ok(
+      hasFreshSession,
+      'README.md must document fresh-session behavior for $claude-adversarial-review',
+    );
+    // Confirm the two phrases appear near each other (within the Review skills section)
+    const sameHits = findAll(lower, 'same');
+    const freshHits = findAll(lower, 'fresh');
+    let minDist = Infinity;
+    for (const a of sameHits) {
+      for (const b of freshHits) {
+        const d = Math.abs(a - b);
+        if (d < minDist) minDist = d;
+      }
+    }
+    assert.ok(
+      minDist <= 2000,
+      `"same" and "fresh" session concepts must appear within 2000 characters of each other (closest: ${minDist})`,
+    );
+  });
+});
+
+// ---------- T10-7. README documents sycophancy caveat (verbatim substring) ----------
+
+describe('README.md documents sycophancy caveat verbatim (T10-7)', () => {
+  it('contains the exact sycophancy caveat sentence', () => {
+    const body = readReadme();
+    const caveat =
+      'Because this review happens in the same conversation, it may be more prone to agreeing with its own prior work. Use `$claude-adversarial-review` for a more independent fresh-session review.';
+    assert.ok(
+      body.includes(caveat),
+      'README.md does not contain the exact sycophancy caveat sentence',
+    );
+  });
+});
+
+// ---------- T10-8. README documents structured review output ----------
+
+describe('README.md documents structured review output (T10-8)', () => {
+  it('contains "structured" near "findings" or "verdict"', () => {
+    const body = readReadme();
+    const lower = body.toLowerCase();
+    const hasStructured = lower.includes('structured');
+    const hasFindings = lower.includes('findings');
+    const hasVerdict = lower.includes('verdict');
+    assert.ok(
+      hasStructured && (hasFindings || hasVerdict),
+      'README.md must document structured review output with "findings" or "verdict"',
+    );
+  });
+});
+
+// ---------- T10-9. README documents severity levels ----------
+
+describe('README.md documents severity levels (T10-9)', () => {
+  for (const severity of ['blocker', 'high', 'medium', 'low', 'nit']) {
+    it(`contains severity level "${severity}"`, () => {
+      const body = readReadme();
+      assert.ok(
+        body.includes(severity),
+        `README.md does not document severity level "${severity}"`,
+      );
+    });
+  }
+});
+
+// ---------- T10-10. README documents verdict values ----------
+
+describe('README.md documents verdict values (T10-10)', () => {
+  for (const verdict of ['pass', 'fail', 'pass_with_findings']) {
+    it(`contains verdict value "${verdict}"`, () => {
+      const body = readReadme();
+      assert.ok(body.includes(verdict), `README.md does not document verdict value "${verdict}"`);
+    });
+  }
+});
+
+// ---------- T10-11. README documents best-effort parser fallback ----------
+
+describe('README.md documents best-effort parser fallback (T10-11)', () => {
+  it('contains "best-effort" or "wraps the raw text" in context of review output', () => {
+    const body = readReadme();
+    const hasBestEffort = body.includes('best-effort');
+    const hasWraps = body.toLowerCase().includes('wraps the raw text');
+    assert.ok(
+      hasBestEffort || hasWraps,
+      'README.md must document best-effort parser fallback for review output',
+    );
+  });
+});
+
+// ---------- T10-12. README documents $claude-review eligibility ----------
+
+describe('README.md documents $claude-review eligibility (T10-12)', () => {
+  it('contains "awaiting_followup" in the context of $claude-review eligibility', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('awaiting_followup'),
+      'README.md must document awaiting_followup as eligible for $claude-review',
+    );
+  });
+
+  it('documents that needs_input is rejected for $claude-review', () => {
+    const body = readReadme();
+    // The eligibility table should show needs_input with a No entry
+    assert.ok(
+      body.includes('needs_input'),
+      'README.md must document needs_input status in $claude-review eligibility table',
+    );
+  });
+
+  it('documents completed with live idle session as eligible', () => {
+    const body = readReadme();
+    const lower = body.toLowerCase();
+    const hasCompleted = lower.includes('completed');
+    const hasLive = lower.includes('live idle') || lower.includes('live session');
+    assert.ok(
+      hasCompleted && hasLive,
+      'README.md must document completed with live idle session as eligible for $claude-review',
+    );
+  });
+});
+
+// ---------- T10-13. README documents $claude-adversarial-review eligibility ----------
+
+describe('README.md documents $claude-adversarial-review eligibility (T10-13)', () => {
+  it('documents that stopped jobs with result are eligible for adversarial review', () => {
+    const body = readReadme();
+    // The adversarial eligibility table shows stopped (with result) = Yes
+    assert.ok(
+      body.includes('`stopped` (with result)') || body.includes('stopped` (with result)'),
+      'README.md must document stopped-with-result as eligible for $claude-adversarial-review',
+    );
+  });
+
+  it('documents that running jobs are rejected for adversarial review', () => {
+    const body = readReadme();
+    // The eligibility tables should show running = No for both review commands
+    assert.ok(
+      body.includes('`running`'),
+      'README.md must document running status rejection in adversarial review eligibility',
+    );
+  });
+});
+
+// ---------- T10-14. README documents review commands target latest completed non-review turn ----------
+
+describe('README.md documents review target selection (T10-14)', () => {
+  it('contains "latest completed non-review turn" or "skip turns" phrase', () => {
+    const body = readReadme();
+    const lower = body.toLowerCase();
+    const hasTarget =
+      lower.includes('latest completed non-review turn') ||
+      lower.includes('skip turns') ||
+      lower.includes('non-review turn');
+    assert.ok(
+      hasTarget,
+      'README.md must document that review commands target the latest completed non-review turn',
+    );
+  });
+});
+
+// ---------- T10-15. README documents reviewOf link for adversarial jobs ----------
+
+describe('README.md documents reviewOf link for adversarial jobs (T10-15)', () => {
+  it('contains "reviewOf"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('reviewOf'),
+      'README.md must document the reviewOf link on adversarial review jobs',
+    );
+  });
+});
+
+// ---------- T10-16. README documents --allow-edit rejection for review skills ----------
+
+describe('README.md documents --allow-edit rejection for review skills (T10-16)', () => {
+  it('contains "--allow-edit" in context of rejection for review skills', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('--allow-edit'),
+      'README.md must mention --allow-edit in the context of review skills',
+    );
+  });
+
+  it('has a line containing "--allow-edit" that also mentions rejection or read-only', () => {
+    const body = readReadme();
+    const lines = body.split('\n');
+    const matched = lines
+      .filter((l) => l.includes('--allow-edit'))
+      .filter((l) => {
+        const lower = l.toLowerCase();
+        return (
+          lower.includes('rejected') ||
+          lower.includes('not applicable') ||
+          lower.includes('read-only') ||
+          lower.includes('does not') ||
+          lower.includes('never bypass')
+        );
+      });
+    assert.ok(
+      matched.length > 0,
+      'README.md must have a line mentioning --allow-edit with a rejection/read-only qualifier for review skills',
+    );
+  });
+});
+
+// ---------- T10-17. README documents $claude-adversarial-review accepts --model/--effort/--permission-mode ----------
+
+describe('README.md documents adversarial-review accepted flags (T10-17)', () => {
+  // These flags appear in the adversarial review section (not just the followup section)
+  it('contains "--model" in context of adversarial review', () => {
+    const body = readReadme();
+    const adversarialIdx = body.indexOf('### $claude-adversarial-review');
+    assert.ok(adversarialIdx !== -1, 'README.md must have a $claude-adversarial-review section');
+    const afterSection = body.slice(adversarialIdx);
+    assert.ok(
+      afterSection.includes('--model'),
+      'README.md $claude-adversarial-review section must mention --model flag',
+    );
+  });
+
+  it('contains "--effort" in context of adversarial review', () => {
+    const body = readReadme();
+    const adversarialIdx = body.indexOf('### $claude-adversarial-review');
+    const afterSection = body.slice(adversarialIdx);
+    assert.ok(
+      afterSection.includes('--effort'),
+      'README.md $claude-adversarial-review section must mention --effort flag',
+    );
+  });
+
+  it('contains "--permission-mode" in context of adversarial review', () => {
+    const body = readReadme();
+    const adversarialIdx = body.indexOf('### $claude-adversarial-review');
+    const afterSection = body.slice(adversarialIdx);
+    assert.ok(
+      afterSection.includes('--permission-mode'),
+      'README.md $claude-adversarial-review section must mention --permission-mode flag',
+    );
+  });
+});
+
+// ---------- T10-18. README troubleshooting includes no-result case ----------
+
+describe('README.md troubleshooting includes the no-result case (T10-18)', () => {
+  it('contains "### Review fails: job has no result" heading', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('### Review fails: job has no result'),
+      'README.md troubleshooting must include "### Review fails: job has no result"',
+    );
+  });
+});
+
+// ---------- T10-19. README troubleshooting includes the running-job case ----------
+
+describe('README.md troubleshooting includes the running-job case (T10-19)', () => {
+  it('contains "### Review fails: job is still running" heading', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('### Review fails: job is still running'),
+      'README.md troubleshooting must include "### Review fails: job is still running"',
+    );
+  });
+});
+
+// ---------- T10-20. README troubleshooting suggests adversarial review when same-session unavailable ----------
+
+describe('README.md troubleshooting suggests adversarial review when same-session unavailable (T10-20)', () => {
+  it('contains a troubleshooting entry suggesting $claude-adversarial-review as fallback', () => {
+    const body = readReadme();
+    // The session-no-longer-live troubleshooting entry should suggest adversarial review
+    const troubleshootingIdx = body.indexOf('## Troubleshooting');
+    assert.ok(troubleshootingIdx !== -1, 'README.md must have a ## Troubleshooting section');
+    const troubleshootingSection = body.slice(troubleshootingIdx);
+    assert.ok(
+      troubleshootingSection.includes('$claude-adversarial-review'),
+      'README.md troubleshooting section must mention $claude-adversarial-review as a fallback option',
+    );
+  });
+});
+
+// ---------- T10-21. README known limitations include sycophancy risk ----------
+
+describe('README.md known limitations include sycophancy risk (T10-21)', () => {
+  it('contains "sycophantic" or "same-session review can be sycophantic" in Known limitations', () => {
+    const body = readReadme();
+    const section = extractSection(body, '## Known limitations');
+    assert.ok(section !== null, 'README.md must have a ## Known limitations section');
+    assert.ok(
+      section.includes('sycophantic') || section.toLowerCase().includes('sycophancy'),
+      'README.md Known limitations must mention sycophancy risk for same-session review',
+    );
+  });
+});
+
+// ---------- T10-22. README known limitations include best-effort structured parsing ----------
+
+describe('README.md known limitations include best-effort structured parsing (T10-22)', () => {
+  it('contains "best-effort" within the Known limitations section', () => {
+    const body = readReadme();
+    const section = extractSection(body, '## Known limitations');
+    assert.ok(section !== null, 'README.md must have a ## Known limitations section');
+    assert.ok(
+      section.includes('best-effort'),
+      'README.md Known limitations must mention best-effort nature of structured review parsing',
+    );
+  });
+});
+
+// ---------- T10-23. README known limitations mention no stop-time review gate yet ----------
+
+describe('README.md known limitations mention no stop-time review gate yet (T10-23)', () => {
+  it('contains "stop-time review gate" with a "not yet" or "yet" qualifier', () => {
+    const body = readReadme();
+    const lower = body.toLowerCase();
+    const hasStopTimeGate =
+      lower.includes('stop-time review gate') || lower.includes('no stop-time review gate');
+    assert.ok(
+      hasStopTimeGate,
+      'README.md must mention the stop-time review gate (as a future capability)',
+    );
+    // Confirm it appears with a "not yet" qualifier (the gate is not yet implemented)
+    const idx = lower.indexOf('stop-time review gate');
+    const context = lower.slice(Math.max(0, idx - 100), idx + 200);
+    assert.ok(
+      context.includes('yet') || context.includes('not') || context.includes('plan'),
+      'README.md stop-time review gate mention must carry a deferral qualifier (yet/not/plan)',
+    );
+  });
+});
+
+// ---------- T10-24. README does NOT claim claude ultrareview integration ----------
+
+describe('README.md does not claim claude ultrareview integration (T10-24)', () => {
+  it('does not contain "claude ultrareview" as a shipped feature', () => {
+    const body = readReadme();
+    // ultrareview must not appear as if it is a shipped feature of this plugin
+    // (plan 0003 explicitly does NOT wrap ultrareview)
+    const lower = body.toLowerCase();
+    if (!lower.includes('ultrareview')) {
+      // Not mentioned at all — trivially passes
+      return;
+    }
+    // If it is mentioned, every line containing "ultrareview" must be in a negative context
+    const offending = body
+      .split('\n')
+      .filter((l) => l.toLowerCase().includes('ultrareview'))
+      .filter((l) => {
+        const lw = l.toLowerCase();
+        return (
+          !lw.includes('not') &&
+          !lw.includes('does not') &&
+          !lw.includes('out of') &&
+          !lw.includes('no ') &&
+          !lw.includes('cloud-hosted') &&
+          !lw.includes("plugin's") &&
+          !lw.includes('plan 0')
+        );
+      });
+    assert.equal(
+      offending.length,
+      0,
+      `Lines mention "ultrareview" without a negative context:\n${offending.join('\n')}`,
+    );
+  });
+});
+
+// ---------- T10-25. README contains no OQ4-forbidden cost-claim tokens (extended) ----------
+// The main FORBIDDEN_TOKENS / FORBIDDEN_PATTERNS coverage above (tests 15) already covers
+// these. This test validates that the review-skills sections specifically do not introduce
+// new forbidden tokens. We re-run the same check on the Review skills section only to make
+// the scoped assertion explicit.
+
+describe('README.md Review skills section contains no forbidden cost-claim tokens (T10-25)', () => {
+  it('Review skills section has no forbidden cost tokens', () => {
+    const body = readReadme();
+    const reviewIdx = body.indexOf('## Review skills');
+    assert.ok(reviewIdx !== -1, 'README.md must have a ## Review skills section');
+    // Extract from ## Review skills to the next ## heading
+    const afterReview = body.slice(reviewIdx);
+    const nextH2 = afterReview.indexOf('\n## ', 1);
+    const reviewSection = nextH2 !== -1 ? afterReview.slice(0, nextH2) : afterReview;
+    for (const token of FORBIDDEN_TOKENS) {
+      assert.equal(
+        reviewSection.includes(token),
+        false,
+        `Review skills section contains forbidden cost token "${token}"`,
+      );
+    }
+    for (const pattern of FORBIDDEN_PATTERNS) {
+      assert.equal(
+        pattern.test(reviewSection),
+        false,
+        `Review skills section matches forbidden cost pattern ${pattern}`,
+      );
+    }
+  });
+});
+
+// ---------- T10-26. Cost paragraph still byte-identical after T10 additions ----------
+// Already covered by T13-21 above. Documented here for cross-reference per the
+// maintainer's pinned list. No new test needed; the T13-21 test is the canonical check.
+
+// ---------- T10-optional-A. Neutral usage wording in adversarial section ----------
+
+describe('README.md adversarial-review section uses neutral usage wording (T10-optional-A)', () => {
+  it('adversarial-review section contains the neutral usage sentence', () => {
+    const body = readReadme();
+    const neutral =
+      'This starts a new Claude Code session and may count toward your Claude Code usage.';
+    assert.ok(
+      body.includes(neutral),
+      'README.md $claude-adversarial-review section must contain the neutral usage sentence',
+    );
+  });
+});
+
+// ---------- T10-optional-B. Direct dispatcher usage mentions eight commands ----------
+
+describe('README.md Direct dispatcher usage mentions eight commands (T10-optional-B)', () => {
+  it('contains "eight commands" or "All eight commands"', () => {
+    const body = readReadme();
+    const lower = body.toLowerCase();
+    assert.ok(
+      lower.includes('eight commands') || lower.includes('all eight commands'),
+      'README.md Direct dispatcher usage section must say "eight commands" (updated from six)',
+    );
+  });
+});
+
+// ---------- T10-optional-C. Current v1 scope lists Eight skills ----------
+
+describe('README.md Current v1 scope lists Eight skills (T10-optional-C)', () => {
+  it('contains "Eight skills" in the Current v1 scope section', () => {
+    const body = readReadme();
+    const section = extractSection(body, '## Current v1 scope');
+    assert.ok(section !== null, 'README.md must have a ## Current v1 scope section');
+    assert.ok(
+      section.includes('Eight skills'),
+      'README.md ## Current v1 scope must say "Eight skills" (updated from Six skills)',
+    );
+  });
+});
+
+// ---------- T10-optional-D. What comes next: Plan 0003 marked shipped ----------
+
+describe('README.md What comes next marks Plan 0003 as shipped (T10-optional-D)', () => {
+  it('Plan 0003 entry contains "(shipped)"', () => {
+    const body = readReadme();
+    const whatNextIdx = body.indexOf('## What comes next');
+    assert.ok(whatNextIdx !== -1, 'README.md must have a ## What comes next section');
+    const section = body.slice(whatNextIdx);
+    // Plan 0003 must now be marked shipped
+    const plan0003Line = section.split('\n').find((l) => l.includes('Plan 0003'));
+    assert.ok(plan0003Line, 'README.md ## What comes next section must mention Plan 0003');
+    assert.ok(
+      plan0003Line.includes('shipped'),
+      `README.md ## What comes next Plan 0003 entry must say "(shipped)" but got: "${plan0003Line.trim()}"`,
     );
   });
 });

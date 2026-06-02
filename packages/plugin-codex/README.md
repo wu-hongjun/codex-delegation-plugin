@@ -8,7 +8,7 @@ Key design choice: this v1 uses Claude Code background sessions directly and doe
 
 ## Current v1 scope
 
-Six skills are available:
+Eight skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
 - **`$claude-delegate`** — start a new background session for a task
@@ -16,6 +16,8 @@ Six skills are available:
 - **`$claude-result`** — print the final answer and transcript/log paths for a completed job
 - **`$claude-stop`** — terminate a background session explicitly
 - **`$claude-followup`** — send a follow-up instruction to an existing Claude background job (added in plan 0002)
+- **`$claude-review`** — send a structured review prompt into the same Claude Code session (added in plan 0003)
+- **`$claude-adversarial-review`** — run a structured review in a fresh independent session (added in plan 0003)
 
 Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
 
@@ -159,7 +161,7 @@ Optional cleanup. Not required before calling `result`.
 
 ## Direct dispatcher usage
 
-All six commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All eight commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-codex/scripts/claude-companion.mjs setup
@@ -168,6 +170,8 @@ node packages/plugin-codex/scripts/claude-companion.mjs status
 node packages/plugin-codex/scripts/claude-companion.mjs followup <jobId> -- "Next instruction."
 node packages/plugin-codex/scripts/claude-companion.mjs result <jobId>
 node packages/plugin-codex/scripts/claude-companion.mjs stop <jobId>
+node packages/plugin-codex/scripts/claude-companion.mjs review <jobId>
+node packages/plugin-codex/scripts/claude-companion.mjs adversarial-review <jobId>
 ```
 
 All commands support `--json` for machine-readable output. The `--yes` flag on `delegate` and `followup` skips the interactive privacy acknowledgement; `--allow-edit` is a policy/framing flag and does NOT bypass that acknowledgement.
@@ -215,6 +219,111 @@ This state model is Plan 0002-specific and may be refined in a later plan if ric
 
 If Claude asks for permission mid-turn during `$claude-followup`, an interactive terminal prompts for one line and routes it back into the attached Claude session. In non-interactive (non-TTY) mode, the dispatcher fails closed and prints a manual `claude attach <shortId>` instruction — there is no automatic approval and no bypass flag. If the dispatcher times out waiting for a permission answer, the Claude session keeps running and the job remains inspectable with `$claude-status`; you can resume the permission turn manually with `claude attach <shortId>`.
 
+## Review skills
+
+Plan 0003 adds two review skills that request a structured evaluation of a delegated job's output. Both produce a verdict (`pass`, `fail`, or `pass_with_findings`) and a list of severity-rated findings (`blocker`, `high`, `medium`, `low`, `nit`), each with a description and optional file and line reference.
+
+### $claude-review
+
+Send a structured review prompt into the **same** Claude Code session that produced the work.
+
+```
+$claude-review <jobId-or-prefix>
+```
+
+Direct dispatcher equivalent:
+
+```bash
+node packages/plugin-codex/scripts/claude-companion.mjs review <jobId-or-prefix>
+```
+
+Accepted flags:
+
+- `--all` — search across all workspaces (default scope is the current workspace).
+- `--json` — machine-readable structured findings output.
+- `--yes` — record the privacy acknowledgement non-interactively.
+
+Rejected at parse time:
+
+- `--allow-edit` — Reviews are read-only. Error: `"--allow-edit is not applicable to review skills. Reviews are read-only."`
+- `--model`, `--effort`, `--permission-mode` — same-session; inherited from the original session.
+- `--add-dir`, `--mcp-config`, `--name` — startup-only flags that do not apply to an existing session.
+
+This skill appends a `[review]` turn to the existing job. It reviews the **latest completed non-review turn** by default. Because this review happens in the same conversation, it may be more prone to agreeing with its own prior work. Use `$claude-adversarial-review` for a more independent fresh-session review.
+
+#### Session eligibility for `$claude-review`
+
+| Job status | Allowed |
+| --- | --- |
+| `awaiting_followup` | Yes |
+| `completed` (live idle session) | Yes |
+| `completed` (no live session) | No — use `$claude-adversarial-review` instead |
+| `needs_input` | No — resolve the permission request first, then run `$claude-review` |
+| `running` | No — wait for the job to reach `awaiting_followup` |
+| `queued`, `starting` | No — wait for the job to reach `awaiting_followup` |
+| `failed`, `stopped`, `orphaned` | No — use `$claude-adversarial-review` for a fresh-session review of the prior output |
+
+### $claude-adversarial-review
+
+Start a **fresh** Claude Code background session to evaluate the output of a completed job.
+
+```
+$claude-adversarial-review <jobId-or-prefix>
+```
+
+Direct dispatcher equivalent:
+
+```bash
+node packages/plugin-codex/scripts/claude-companion.mjs adversarial-review <jobId-or-prefix>
+```
+
+Accepted flags:
+
+- `--all` — search across all workspaces (default scope is the current workspace).
+- `--json` — machine-readable structured findings output.
+- `--yes` — record the privacy acknowledgement non-interactively.
+- `--model` — model for the fresh review session.
+- `--effort` — effort level for the fresh review session.
+- `--permission-mode` — permission mode override for the fresh review session.
+
+Rejected at parse time:
+
+- `--allow-edit` — Reviews are read-only. Error: `"--allow-edit is not applicable to review skills. Reviews are read-only."`
+- `--add-dir` — the review session runs in the target job's workspace.
+- `--mcp-config` — not accepted by adversarial review.
+- `--name` — session names are generated automatically (`codex:<repo>:review-<jobId-short>`).
+
+This starts a new Claude Code session and may count toward your Claude Code usage. A new job record is created with a `reviewOf` link to the original job. The review session operates in the target job's workspace and is given the original task description and the job's final output as context.
+
+#### Session eligibility for `$claude-adversarial-review`
+
+Adversarial review requires a `result` to be present on the job (something to evaluate). It can review terminal jobs whose original session is no longer live.
+
+| Job status | Allowed |
+| --- | --- |
+| `awaiting_followup` (with result) | Yes |
+| `completed` (with result) | Yes |
+| `stopped` (with result) | Yes |
+| `failed` (with result) | Yes |
+| `orphaned` (with result) | Yes |
+| `running` | No — wait for the job to finish |
+| `queued`, `starting` | No — wait for the job to finish |
+| `needs_input` | No — resolve the permission request first |
+| Any status without a `result` | No — no output to evaluate |
+
+### Structured output
+
+Both review commands produce:
+
+- A `verdict`: `pass`, `fail`, or `pass_with_findings`.
+- A `findings` array, each with `severity` (`blocker`, `high`, `medium`, `low`, `nit`), `description`, optional `recommendation`, optional `file`, and optional `line`.
+
+With `--json`, the output includes `verdict`, `findingsCount`, per-severity counts, and the full `findings` array. Claude is prompted to emit structured JSON. If the output does not match the expected format, the dispatcher wraps the raw text as a single `nit` finding so `--json` still returns a verdict and findings array.
+
+### Review target selection
+
+Review commands choose the latest completed non-review turn by default. They skip turns whose `prompt.summary` starts with `[review]` or `[adversarial-review]`. Reviewing a review is allowed but not the default workflow.
+
 ## Cost and prompt-cache wording
 
 This v1 uses Claude Code background sessions and does not use `claude -p`. It is designed to preserve the architecture needed for future session/cache reuse experiments. Cost savings have not been benchmarked yet. Plan 0004 is reserved for measurement.
@@ -226,8 +335,10 @@ This v1 uses Claude Code background sessions and does not use `claude -p`. It is
 - **PTY is used internally for input injection only** — the plugin does not parse TUI bytes for semantic events. PTY output is drained into a bounded buffer for diagnostics only.
 - **Sidecar reading is best-effort** — the `~/.claude/jobs/<shortId>/state.json` schema is undocumented. The plugin parses it defensively and falls back to `claude agents --json` and `claude logs <shortId>` when sidecar is absent or malformed.
 - **No Claude Code channels yet** — prompt injection via channels is not supported.
-- **No `$claude-review` yet** — review/adversarial-review skills are planned for plan 0003.
-- **No stop-time hook or review gate yet** — plan 0005 will add this.
+- **Same-session review can be sycophantic** — `$claude-review` evaluates work within the same conversation and may be more prone to agreeing with its own prior output. Use `$claude-adversarial-review` for a structurally independent evaluation.
+- **Structured review parsing is best-effort** — both review commands prompt Claude to emit structured JSON findings. If the output does not match the expected format, the raw text is wrapped as a single `nit` finding. No JSON-schema validation library is used.
+- **Review-of-review recursion is not hard-prevented** — default target selection skips review turns, but no hard depth limit is enforced. A future plan may add explicit depth tracking.
+- **No stop-time review gate yet** — plan 0005 will add this.
 - **No benchmarked cost-savings claim** — we measure in plan 0004.
 - **No committed marketplace packaging** — plan 0006 handles distribution polish.
 - **Windows not supported or tested in plan 0001 or plan 0002** — development and testing are on macOS and Linux only.
@@ -328,6 +439,38 @@ CC_PLUGIN_CODEX_ATTACH_WARMUP_MS=4000 $claude-followup <jobId> "your follow-up p
 
 Acceptable values: any non-negative integer (milliseconds). Use `0` only in mock-driven test environments where the PTY responds instantly — setting it to `0` in a real Claude session will cause the follow-up prompt to be dropped.
 
+### Review fails: job has no result
+
+If the job did not produce a result before stopping (e.g., it was cancelled before completing its first turn), `$claude-adversarial-review` exits with:
+
+```
+No reviewable output. The job <status> before producing a result.
+```
+
+Wait for the job to complete and produce a result, or delegate a new job.
+
+### Review fails: job is still running
+
+`$claude-review` and `$claude-adversarial-review` both reject jobs in `running`, `queued`, or `starting` states. Wait for `$claude-status` to show `awaiting_followup` or `completed` before running a review.
+
+### Same-session review fails: session no longer live
+
+`$claude-review` requires a live idle Claude session. If the original session has exited or its TTL has elapsed, the dispatcher exits with:
+
+```
+Job <jobId> is completed and no live idle Claude session was found; use $claude-adversarial-review instead.
+```
+
+Use `$claude-adversarial-review <jobId>` instead. The adversarial variant starts a fresh session and does not require the original session to be alive.
+
+### Same-session review may agree with its own prior answer
+
+`$claude-review` runs within the same conversation as the original work. It may be more prone to agreeing with its own prior output. If you need a more independent evaluation, use `$claude-adversarial-review <jobId>` instead.
+
+### Structured parser fallback: review returns one `nit` finding
+
+If a review returns a single `nit` finding whose description contains raw text, Claude did not follow the structured output format. The raw response is still saved in the review turn result. You can inspect it with `$claude-result <jobId>`. Running `$claude-adversarial-review <jobId>` may produce a better-structured response in a fresh session.
+
 ### `$claude-followup` inside a terminal multiplexer (tmux / GNU screen)
 
 **Symptom**: `$claude-followup` appears to hang or detach unexpectedly when run inside an outer `tmux` or GNU `screen` session.
@@ -389,7 +532,7 @@ Tests use `node:test` (built-in); no external test framework dependency.
 Later plans are reserved for:
 
 - **Plan 0002** *(shipped)* — follow-up injection for Claude background jobs (`$claude-followup`, `awaiting_followup`, PTY-based input transport, sidecar best-effort enrichment).
-- **Plan 0003** — `$claude-review` and `$claude-adversarial-review` skills
+- **Plan 0003** *(shipped)* — `$claude-review` and `$claude-adversarial-review` skills (same-session and fresh-session structured review, severity-rated findings, `reviewOf` job link)
 - **Plan 0004** — benchmark harness and cost-savings measurement
 - **Plan 0005** — stop-time hook and review gate integration
 - **Plan 0006** — marketplace packaging and distribution polish

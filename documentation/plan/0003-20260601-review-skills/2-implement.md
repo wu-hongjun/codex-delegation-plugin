@@ -968,6 +968,150 @@ CI green on the T6 commit at `e812893` per run [`26796555449`](https://github.co
 
 ---
 
+## T7 — `$claude-status` review annotations
+
+**Status**: complete (pending CI)
+**Files**:
+
+- `packages/plugin-codex/scripts/lib/format.mjs` (modified, +51 LOC net: two private helpers `reviewOfLabel` at lines 16–22 and `classifyTurnKind` at lines 32–37; modified `formatStatus` at lines 131–179 to enrich human output and JSON output)
+- `packages/plugin-codex/test/dispatcher.test.mjs` (modified, +509 LOC: 11 new tests T7-1 through T7-11 + `writeSyntheticJobForStatusTest` fixture helper)
+- `documentation/plan/0003-20260601-review-skills/2-implement.md` (this file, T7 entry appended)
+
+**Test impact**: `test:plugin` **491 → 502** (+11). Other lanes unchanged. `test:attach` unchanged at 25/25.
+
+### Human output annotation
+
+Jobs with `reviewOf` get a suffix appended to the `sessionName` column in the human-output table:
+
+| `turnIndex` | Suffix appended to sessionName column |
+|---|---|
+| Present | ` (review of <jobId> turn <N>)` |
+| Absent | ` (review of <jobId>)` |
+
+Implementation: `reviewOfLabel(j.reviewOf)` at `format.mjs:157` returns the suffix string (or `''` when `reviewOf` is undefined), concatenated to the sessionName column at line 162. The `turnIndex !== undefined` guard at line 18 correctly handles `turnIndex: 0` (not falsy-coerced to omission).
+
+Jobs without `reviewOf` render byte-identically to pre-T7 (`reviewOfLabel(undefined)` returns `''`).
+
+### JSON output enrichment
+
+Shape: `{ ok: true, jobs: [...] }`. Each job is spread via `{ ...j, turns: enrichedTurns }` at line 146.
+
+- **`reviewOf`**: passed through unchanged via JobRecord spread. Present when set, OMITTED (not `null`) when absent — relies on `JSON.stringify` natural behavior for spread objects without the key.
+- **`turns[i].kind`**: added only when applicable.
+
+| `prompt.summary` prefix | `kind` value |
+|---|---|
+| `[review] ` | `'review'` |
+| `[adversarial-review] ` | `'adversarial_review'` |
+| anything else | omitted (no `kind` key) |
+
+Implementation: `classifyTurnKind(t)` at lines 32–37 returns the string or `undefined`; when defined, the turn entry is spread via `{ ...t, kind }` at line 141; when undefined, the original turn object is returned unchanged at line 143 (preserves object identity, avoids unnecessary spread overhead).
+
+`prompt.summary` is NOT stripped of the `[review] ` / `[adversarial-review] ` prefix — `classifyTurnKind` reads but does not mutate.
+
+### Subagent A — implementation (executor)
+
+Added two module-private helpers (`reviewOfLabel`, `classifyTurnKind`) at the top of `format.mjs`. Modified `formatStatus`'s human and JSON branches to annotate review jobs and enrich review turns. No changes to `cmdStatus`, no schema changes, no command behavior changes, no new exports, no new dependencies.
+
+Design decisions (per A's summary):
+
+- Human annotation appended to sessionName column directly (no separator column).
+- `turnIndex` included when present; omitted when not.
+- `reviewOf` not wrapped — passed through natural JobRecord serialisation.
+- `kind` field added only when applicable; non-review turns are object-identity-preserved.
+
+A's verification: lint clean; format clean; typecheck clean; `npm run test:plugin` 491/491 unchanged (backwards-compat for non-review jobs confirmed).
+
+### Subagent B — tests (test-engineer)
+
+Added 11 new tests labeled T7-1 through T7-11. Created a new test-fixture helper `writeSyntheticJobForStatusTest` (scoped to `TMP_HOME`, follows the established `writeSyntheticCompletedJob` pattern, conditionally sets `reviewOf` only when provided).
+
+Coverage of the 8 maintainer-pinned cases:
+
+| # | Pinned case | Test ID |
+|---|---|---|
+| 1 | Human: reviewOf with turnIndex | T7-1 |
+| 2 | Human: no reviewOf → no annotation | T7-2 |
+| 3 | JSON: reviewOf present | T7-3 |
+| 4 | JSON: reviewOf absent | T7-4 |
+| 5 | JSON: `[review] ` → `kind:'review'` | T7-5 |
+| 6 | JSON: `[adversarial-review] ` → `kind:'adversarial_review'` | T7-6 |
+| 7 | JSON: plain turn no `kind` | T7-7 |
+| 8 | `turnIndex: 0` not falsy | T7-10 |
+
+Plus 3 extra tests for distinct edge cases (T7-8: turnIndex=5 numeric preservation; T7-9: reviewOf without turnIndex human path; T7-11: mixed turns single-job).
+
+B's verification: lint clean; format clean; `node --test dispatcher.test.mjs` 165/165 (was 154, +11); `npm test` 502/502 across all four lanes; `test:attach` 25/25.
+
+No contract gaps found in A's implementation.
+
+### Subagent C — read-only review (code-reviewer)
+
+Strict F-H1 read-only contract; F-H2 trace step required and verified. Verdict: **ready-to-commit**. **ZERO findings.**
+
+C confirmed:
+
+- All 12 T7 acceptance criteria pass with file:line evidence.
+- Non-review path byte-identical to pre-T7 (verified via `reviewOfLabel(undefined) === ''` analysis).
+- Helpers module-private (no `export` keywords on lines 16 and 32).
+- `formatStatus` signature unchanged (`(jobs, json, workspaceRoot)` at line 132).
+- No new exports (11 exports pre/post: same set).
+- T5's `JobRecord.reviewOf?` consumed unchanged; no schema bump.
+- All security/architectural invariants hold.
+
+C's positive observations:
+
+- `turnIndex !== undefined` guard correctly avoids the `0`-is-falsy trap.
+- Non-review turn returns original object reference (no spread overhead) — good performance awareness.
+- T7-10 tests both human AND JSON paths for `turnIndex: 0` in a single test — thorough.
+- `writeSyntheticJobForStatusTest` is a clean fixture helper (no bleed between tests).
+
+### F-H2 verbatim trace (per C)
+
+- **`reviewOf` → human output**: `JobRecord.reviewOf?` (types.ts:116) → `reviewOfLabel(j.reviewOf)` at `format.mjs:157` → returned string appended to sessionName column at `format.mjs:162`.
+- **`reviewOf` → JSON output**: `JobRecord.reviewOf?` (types.ts:116) → spread via `{ ...j, turns: enrichedTurns }` at `format.mjs:146` → serialised through `JSON.stringify` at `format.mjs:148`. Omitted when absent because spread of an object without `reviewOf` produces no key.
+- **`prompt.summary` prefix → JSON `kind`**: `TurnRecord.prompt.summary` (types.ts:83–84) → `classifyTurnKind(t)` at `format.mjs:139` (pattern-matches `[review] ` at line 34, `[adversarial-review] ` at line 35) → when not `undefined`, spread into turn entry via `{ ...t, kind }` at `format.mjs:141`; when `undefined`, original `t` returned at `format.mjs:143` (no `kind` key).
+- **`prompt.summary` prefix → human output**: NOT consumed in human output (only `reviewOf` is annotated there; `prompt.summary` prefix is JSON-only). Confirmed: human path (lines 156–164) references only `reviewOfLabel(j.reviewOf)`.
+
+### Orchestrator follow-up
+
+None. C reported ZERO findings. No pre-commit edits.
+
+### Deviation from 1-plan.md
+
+- **Test count delta**: plan T7 target was implicit (no specific number; 8 maintainer-pinned cases were the minimum). Actual delta is +11 (1.4× the 8-case floor). C confirmed each test is a distinct contract assertion; the 3 extras (T7-8, T7-9, T7-11) cover distinct edge cases not implied by the 8 pinned cases. Documented per Pattern 5.
+
+### Acceptance evidence
+
+- Human annotation appended to sessionName column when `reviewOf` is present: ✓ (`format.mjs:157, 162`)
+- Human path byte-identical for non-review jobs: ✓ (`reviewOfLabel(undefined) === ''` analysis)
+- JSON includes `reviewOf` when present: ✓ (`format.mjs:146` spread; T7-3)
+- JSON OMITS `reviewOf` when absent (not null): ✓ (T7-4 asserts `'reviewOf' in job === false`)
+- JSON marks `[review] ` turns with `kind:'review'`: ✓ (T7-5)
+- JSON marks `[adversarial-review] ` turns with `kind:'adversarial_review'`: ✓ (T7-6)
+- JSON leaves plain turns WITHOUT `kind` key: ✓ (T7-7)
+- `prompt.summary` prefix preserved (not stripped): ✓ (T7-5/T7-6 assertions)
+- `turnIndex: 0` correctly handled: ✓ (T7-10 covers both paths)
+- Helpers module-private: ✓ (lines 16, 32 — plain `function`, no `export`)
+- `formatStatus` signature unchanged: ✓ (line 132)
+- No `cmdStatus` / `cmdReview` / `cmdAdversarialReview` / dispatcher command changes: ✓ (diff scope: only `format.mjs` + `dispatcher.test.mjs`)
+- No schema bump (T5's `reviewOf?` consumed unchanged): ✓
+- No new dependencies / mock-claude / runtime / driver / CI / SKILL.md / plugin.json / README changes: ✓
+- No `node-pty`, `claude -p`, `--dangerously-skip-permissions`, OQ4-forbidden cost-claim tokens: ✓
+- `npm run lint` clean: ✓
+- `npm run format -- --check` clean: ✓
+- `npm run typecheck` clean: ✓
+- `npm test` → all four lanes green: ✓ (pending final orchestrator gate run; expected 502 plugin / 25 attach)
+- `npm run test:attach` → 25/25 (unchanged): ✓
+
+### CI
+
+_To be recorded in the follow-up `Plan 0003 T7 log: record CI success` commit._
+
+---
+
+---
+
 ---
 
 ---

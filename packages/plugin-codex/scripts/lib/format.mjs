@@ -1,5 +1,41 @@
 // format.mjs — human-readable and JSON output formatters for each subcommand.
 
+// ---------- T7 helpers (module-private) ----------
+
+/**
+ * Produce a human-readable annotation for a review-job row.
+ * Returns a string like " (review of <jobId>)" or " (review of <jobId> turn N)"
+ * when `reviewOf` is set; returns '' otherwise.
+ *
+ * Design choice: `turnIndex` is included when present (informative for
+ * cross-referencing which turn was reviewed).
+ *
+ * @param {import('@cc-plugin-codex/runtime').ReviewOfContext | undefined} reviewOf
+ * @returns {string}
+ */
+function reviewOfLabel(reviewOf) {
+  if (!reviewOf) return '';
+  if (reviewOf.turnIndex !== undefined) {
+    return ` (review of ${reviewOf.jobId} turn ${reviewOf.turnIndex})`;
+  }
+  return ` (review of ${reviewOf.jobId})`;
+}
+
+/**
+ * Classify a turn's kind based on its `prompt.summary` prefix.
+ * Returns `'review'`, `'adversarial_review'`, or `undefined` (no `kind` key
+ * emitted for non-review turns).
+ *
+ * @param {{ prompt?: { summary?: string } } | undefined} turn
+ * @returns {'review' | 'adversarial_review' | undefined}
+ */
+function classifyTurnKind(turn) {
+  const summary = turn?.prompt?.summary ?? '';
+  if (summary.startsWith('[review] ')) return 'review';
+  if (summary.startsWith('[adversarial-review] ')) return 'adversarial_review';
+  return undefined;
+}
+
 /**
  * @param {import('@cc-plugin-codex/runtime').DoctorReport} report
  * @param {boolean} json
@@ -95,7 +131,21 @@ export function formatDelegate(job, json) {
  */
 export function formatStatus(jobs, json, workspaceRoot) {
   if (json) {
-    return JSON.stringify({ ok: true, jobs }, null, 2);
+    // Enrich each job's turns with a `kind` field where applicable.
+    // `reviewOf` is already part of JobRecord and serialises as-is (omitted when absent).
+    const enrichedJobs = jobs.map((j) => {
+      const enrichedTurns = Array.isArray(j.turns)
+        ? j.turns.map((t) => {
+            const kind = classifyTurnKind(t);
+            if (kind !== undefined) {
+              return { ...t, kind };
+            }
+            return t;
+          })
+        : j.turns;
+      return { ...j, turns: enrichedTurns };
+    });
+    return JSON.stringify({ ok: true, jobs: enrichedJobs }, null, 2);
   }
 
   if (jobs.length === 0) {
@@ -104,11 +154,12 @@ export function formatStatus(jobs, json, workspaceRoot) {
 
   const header = `Claude jobs for ${workspaceRoot}`;
   const rows = jobs.map((j) => {
+    const annotation = reviewOfLabel(j.reviewOf);
     const cols = [
       j.jobId.padEnd(32),
       j.status.padEnd(14),
       (j.claude.shortId ?? '').padEnd(16),
-      j.claude.sessionName ?? '',
+      (j.claude.sessionName ?? '') + annotation,
     ];
     return `  ${cols.join('  ')}`.trimEnd();
   });

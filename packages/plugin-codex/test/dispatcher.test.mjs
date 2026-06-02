@@ -5366,3 +5366,509 @@ describe('adversarial-review extra edge cases (T6)', () => {
     );
   });
 });
+
+// ==========================================================================
+// T7 (plan 0003): $claude-status review annotations
+// ==========================================================================
+//
+// Contract under test (implemented by Subagent A in format.mjs):
+//   - Human output: jobs with `reviewOf` have " (review of <jobId>)" or
+//     " (review of <jobId> turn <N>)" appended to the sessionName column.
+//     Jobs WITHOUT `reviewOf` have no such annotation.
+//   - JSON output shape: { ok: true, jobs: [...] }.
+//     Each job is spread as-is with an enriched `turns` field.
+//     `reviewOf` is present when set; entirely absent when not set.
+//     Each turn whose `prompt.summary` starts with `[review] ` gets
+//     kind:'review'; `[adversarial-review] ` gets kind:'adversarial_review';
+//     plain turns get no `kind` key at all.
+//     `prompt.summary` is NOT stripped of its prefix.
+//
+// Helper: writeSyntheticJobWithReviewOf — writes a completed job record that
+//   includes a `reviewOf` field and optionally custom turns[]. Reuses the
+//   structure established by writeSyntheticCompletedJob.
+// ==========================================================================
+
+/**
+ * Write a synthetic job record that optionally includes `reviewOf` and/or
+ * custom turn summaries, suitable for T7 status-annotation tests.
+ *
+ * @param {{
+ *   jobId: string;
+ *   workspaceRoot?: string;
+ *   reviewOf?: { jobId: string; turnIndex?: number };
+ *   turns?: Array<{ summary: string; status?: string }>;
+ * }} opts
+ */
+function writeSyntheticJobForStatusTest({ jobId, workspaceRoot = WORK_DIR, reviewOf, turns } = {}) {
+  const jobsDir = join(TMP_HOME, 'jobs');
+  mkdirSync(jobsDir, { recursive: true });
+
+  const now = new Date().toISOString();
+  const resultPath = join(jobsDir, `${jobId}.result.md`);
+
+  const defaultSummary = 'synthetic task for status test';
+  const defaultPromptCtx = {
+    summary: defaultSummary,
+    sha256: createHash('sha256').update(defaultSummary).digest('hex'),
+    bytesLen: Buffer.byteLength(defaultSummary, 'utf8'),
+  };
+  const resultCtx = {
+    finalMessagePath: resultPath,
+    finalMessagePreview: 'result content',
+  };
+
+  const builtTurns = turns
+    ? turns.map((t) => {
+        const summary = t.summary;
+        return {
+          prompt: {
+            summary,
+            sha256: createHash('sha256').update(summary).digest('hex'),
+            bytesLen: Buffer.byteLength(summary, 'utf8'),
+          },
+          startedAt: now,
+          endedAt: now,
+          status: t.status ?? 'completed',
+          result: resultCtx,
+        };
+      })
+    : [
+        {
+          prompt: defaultPromptCtx,
+          startedAt: now,
+          endedAt: now,
+          status: 'completed',
+          result: resultCtx,
+        },
+      ];
+
+  const record = {
+    jobId,
+    schemaVersion: 2,
+    createdAt: now,
+    updatedAt: now,
+    status: 'completed',
+    codex: {
+      pluginVersion: '0.0.0',
+      cwd: workspaceRoot,
+    },
+    workspace: {
+      root: workspaceRoot,
+    },
+    driver: {
+      name: 'claude-background',
+      version: '0.0.0',
+      capabilitiesSnapshot: {},
+    },
+    claude: {
+      version: '2.1.999-mock',
+      shortId: 'aabbcc',
+      sessionName: `codex:test:${jobId}`,
+      cwd: workspaceRoot,
+      logsCommand: `claude logs aabbcc`,
+    },
+    prompt: defaultPromptCtx,
+    result: resultCtx,
+    turns: builtTurns,
+  };
+
+  if (reviewOf !== undefined) {
+    record.reviewOf = reviewOf;
+  }
+
+  writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify(record, null, 2));
+  writeFileSync(resultPath, 'result content');
+}
+
+// ---------- T7-1: human status annotates a job with reviewOf + turnIndex ----------
+
+describe('status review annotation: human output with reviewOf and turnIndex (plan 0003 T7)', () => {
+  it('T7-1: human status appends " (review of <jobId> turn <N>)" for a job with reviewOf', () => {
+    const parentJobId = 'job_parent_xxx';
+    const jobId = `job_t7h1_${createHash('sha256').update('t7-human-reviewof').digest('hex').slice(0, 8)}`;
+    writeSyntheticJobForStatusTest({
+      jobId,
+      reviewOf: { jobId: parentJobId, turnIndex: 0 },
+    });
+
+    const result = runDispatcher(['status']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    assert.ok(
+      result.stdout.includes(` (review of ${parentJobId} turn 0)`),
+      `expected " (review of ${parentJobId} turn 0)" in stdout; got:\n${result.stdout}`,
+    );
+  });
+});
+
+// ---------- T7-2: human status does NOT annotate a normal job ----------
+
+describe('status review annotation: human output without reviewOf (plan 0003 T7)', () => {
+  it('T7-2: human status does not include "(review of" for a job without reviewOf', () => {
+    const jobId = `job_t7h2_${createHash('sha256').update('t7-human-normal').digest('hex').slice(0, 8)}`;
+    writeSyntheticJobForStatusTest({ jobId });
+
+    const result = runDispatcher(['status']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    assert.ok(
+      !result.stdout.includes(' (review of '),
+      `expected no "(review of" annotation for normal job; got:\n${result.stdout}`,
+    );
+  });
+});
+
+// ---------- T7-3: JSON status includes reviewOf for an adversarial-review job ----------
+
+describe('status review annotation: JSON output includes reviewOf (plan 0003 T7)', () => {
+  it('T7-3: status --json includes reviewOf.jobId and reviewOf.turnIndex for a review job', () => {
+    const parentJobId = 'job_parent_xxx';
+    const jobId = `job_t7j3_${createHash('sha256').update('t7-json-reviewof').digest('hex').slice(0, 8)}`;
+    writeSyntheticJobForStatusTest({
+      jobId,
+      reviewOf: { jobId: parentJobId, turnIndex: 1 },
+    });
+
+    const result = runDispatcher(['status', '--json']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout is not valid JSON: ${result.stdout}`);
+
+    assert.equal(parsed.ok, true, `expected ok:true; got: ${JSON.stringify(parsed)}`);
+    assert.ok(Array.isArray(parsed.jobs), 'expected jobs array in JSON output');
+
+    const found = parsed.jobs.find((j) => j.jobId === jobId);
+    assert.ok(found, `job ${jobId} not found in jobs array`);
+    assert.ok(
+      found.reviewOf !== undefined,
+      `expected reviewOf to be present on the job; got: ${JSON.stringify(found)}`,
+    );
+    assert.equal(
+      found.reviewOf.jobId,
+      parentJobId,
+      `expected reviewOf.jobId === '${parentJobId}'; got: ${found.reviewOf.jobId}`,
+    );
+    assert.equal(
+      found.reviewOf.turnIndex,
+      1,
+      `expected reviewOf.turnIndex === 1; got: ${found.reviewOf.turnIndex}`,
+    );
+  });
+});
+
+// ---------- T7-4: JSON status OMITS reviewOf for normal jobs ----------
+
+describe('status review annotation: JSON output omits reviewOf for normal jobs (plan 0003 T7)', () => {
+  it('T7-4: status --json does NOT include reviewOf key for a job without reviewOf', () => {
+    const jobId = `job_t7j4_${createHash('sha256').update('t7-json-no-reviewof').digest('hex').slice(0, 8)}`;
+    writeSyntheticJobForStatusTest({ jobId });
+
+    const result = runDispatcher(['status', '--json']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout is not valid JSON: ${result.stdout}`);
+
+    const found = parsed.jobs.find((j) => j.jobId === jobId);
+    assert.ok(found, `job ${jobId} not found in jobs array`);
+    assert.equal(
+      'reviewOf' in found,
+      false,
+      `expected reviewOf to be ABSENT on a normal job; got: ${JSON.stringify(found)}`,
+    );
+  });
+});
+
+// ---------- T7-5: JSON status marks [review] turn as kind:'review' ----------
+
+describe('status review annotation: JSON turn kind for [review] prefix (plan 0003 T7)', () => {
+  it('T7-5: status --json marks a turn with "[review] " prefix as kind:"review"', () => {
+    const jobId = `job_t7j5_${createHash('sha256').update('t7-json-turn-review').digest('hex').slice(0, 8)}`;
+    writeSyntheticJobForStatusTest({
+      jobId,
+      turns: [{ summary: '[review] evaluate the prior task output' }],
+    });
+
+    const result = runDispatcher(['status', '--json']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout is not valid JSON: ${result.stdout}`);
+
+    const found = parsed.jobs.find((j) => j.jobId === jobId);
+    assert.ok(found, `job ${jobId} not found in jobs array`);
+    assert.ok(Array.isArray(found.turns) && found.turns.length > 0, 'expected non-empty turns');
+
+    const turn = found.turns[0];
+    assert.equal(
+      turn.kind,
+      'review',
+      `expected turn.kind === 'review'; got: ${JSON.stringify(turn)}`,
+    );
+    assert.ok(
+      turn.prompt.summary.startsWith('[review] '),
+      `expected prompt.summary to start with "[review] " (not stripped); got: ${turn.prompt.summary}`,
+    );
+  });
+});
+
+// ---------- T7-6: JSON status marks [adversarial-review] turn as kind:'adversarial_review' ----------
+
+describe('status review annotation: JSON turn kind for [adversarial-review] prefix (plan 0003 T7)', () => {
+  it('T7-6: status --json marks a turn with "[adversarial-review] " prefix as kind:"adversarial_review"', () => {
+    const jobId = `job_t7j6_${createHash('sha256').update('t7-json-turn-adv-review').digest('hex').slice(0, 8)}`;
+    writeSyntheticJobForStatusTest({
+      jobId,
+      turns: [{ summary: '[adversarial-review] independent evaluation of output' }],
+    });
+
+    const result = runDispatcher(['status', '--json']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout is not valid JSON: ${result.stdout}`);
+
+    const found = parsed.jobs.find((j) => j.jobId === jobId);
+    assert.ok(found, `job ${jobId} not found in jobs array`);
+    assert.ok(Array.isArray(found.turns) && found.turns.length > 0, 'expected non-empty turns');
+
+    const turn = found.turns[0];
+    assert.equal(
+      turn.kind,
+      'adversarial_review',
+      `expected turn.kind === 'adversarial_review'; got: ${JSON.stringify(turn)}`,
+    );
+    assert.ok(
+      turn.prompt.summary.startsWith('[adversarial-review] '),
+      `expected prompt.summary to start with "[adversarial-review] " (not stripped); got: ${turn.prompt.summary}`,
+    );
+  });
+});
+
+// ---------- T7-7: JSON status leaves normal turns unmarked (no kind key) ----------
+
+describe('status review annotation: JSON turn has no kind for plain turns (plan 0003 T7)', () => {
+  it('T7-7: status --json does not add kind key to turns with plain (non-review) summaries', () => {
+    const jobId = `job_t7j7_${createHash('sha256').update('t7-json-turn-plain').digest('hex').slice(0, 8)}`;
+    writeSyntheticJobForStatusTest({
+      jobId,
+      turns: [{ summary: 'inspect this repo and summarize TODOs' }],
+    });
+
+    const result = runDispatcher(['status', '--json']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout is not valid JSON: ${result.stdout}`);
+
+    const found = parsed.jobs.find((j) => j.jobId === jobId);
+    assert.ok(found, `job ${jobId} not found in jobs array`);
+    assert.ok(Array.isArray(found.turns) && found.turns.length > 0, 'expected non-empty turns');
+
+    const turn = found.turns[0];
+    assert.equal(
+      'kind' in turn,
+      false,
+      `expected no 'kind' key on plain turn; got turn: ${JSON.stringify(turn)}`,
+    );
+  });
+});
+
+// ---------- T7-8: reviewOf.turnIndex numeric preservation in JSON ----------
+
+describe('status review annotation: JSON preserves reviewOf.turnIndex as number (plan 0003 T7)', () => {
+  it('T7-8: status --json preserves reviewOf.turnIndex === 5 as exact numeric value', () => {
+    const jobId = `job_t7j8_${createHash('sha256').update('t7-json-turnindex-5').digest('hex').slice(0, 8)}`;
+    writeSyntheticJobForStatusTest({
+      jobId,
+      reviewOf: { jobId: 'job_x', turnIndex: 5 },
+    });
+
+    const result = runDispatcher(['status', '--json']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout is not valid JSON: ${result.stdout}`);
+
+    const found = parsed.jobs.find((j) => j.jobId === jobId);
+    assert.ok(found, `job ${jobId} not found in jobs array`);
+    assert.strictEqual(
+      found.reviewOf.turnIndex,
+      5,
+      `expected reviewOf.turnIndex === 5 (number, not string); got: ${JSON.stringify(found.reviewOf.turnIndex)}`,
+    );
+  });
+});
+
+// ---------- T7-9: reviewOf WITHOUT turnIndex — human output emits annotation without "turn N" ----------
+
+describe('status review annotation: reviewOf without turnIndex omits turn suffix (plan 0003 T7)', () => {
+  it('T7-9: human status emits " (review of <jobId>)" without "turn N" when turnIndex is absent', () => {
+    const parentJobId = 'job_parent_noturn';
+    const jobId = `job_t7h9_${createHash('sha256').update('t7-human-no-turnindex').digest('hex').slice(0, 8)}`;
+    writeSyntheticJobForStatusTest({
+      jobId,
+      reviewOf: { jobId: parentJobId },
+    });
+
+    const result = runDispatcher(['status']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    assert.ok(
+      result.stdout.includes(` (review of ${parentJobId})`),
+      `expected " (review of ${parentJobId})" in stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      !result.stdout.includes(` (review of ${parentJobId} turn`),
+      `expected NO "turn N" suffix when turnIndex absent; got:\n${result.stdout}`,
+    );
+  });
+});
+
+// ---------- T7-10: reviewOf.turnIndex === 0 is not treated as falsy ----------
+
+describe('status review annotation: turnIndex 0 is not treated as falsy (plan 0003 T7)', () => {
+  it('T7-10: human status includes "turn 0" and JSON preserves reviewOf.turnIndex === 0', () => {
+    const parentJobId = 'job_parent_zero';
+    const jobId = `job_t7h10_${createHash('sha256').update('t7-turnindex-zero').digest('hex').slice(0, 8)}`;
+    writeSyntheticJobForStatusTest({
+      jobId,
+      reviewOf: { jobId: parentJobId, turnIndex: 0 },
+    });
+
+    // Human path: must include "turn 0"
+    const humanResult = runDispatcher(['status']);
+    assert.equal(
+      humanResult.status,
+      0,
+      `expected exit 0, got ${humanResult.status}; stderr: ${humanResult.stderr}`,
+    );
+    assert.ok(
+      humanResult.stdout.includes(` (review of ${parentJobId} turn 0)`),
+      `expected " (review of ${parentJobId} turn 0)" in human stdout (turnIndex:0 must not be falsy); got:\n${humanResult.stdout}`,
+    );
+
+    // JSON path: turnIndex must be 0 (number)
+    const jsonResult = runDispatcher(['status', '--json']);
+    assert.equal(
+      jsonResult.status,
+      0,
+      `expected exit 0, got ${jsonResult.status}; stderr: ${jsonResult.stderr}`,
+    );
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(jsonResult.stdout);
+    }, `stdout is not valid JSON: ${jsonResult.stdout}`);
+    const found = parsed.jobs.find((j) => j.jobId === jobId);
+    assert.ok(found, `job ${jobId} not found in jobs array`);
+    assert.strictEqual(
+      found.reviewOf.turnIndex,
+      0,
+      `expected reviewOf.turnIndex === 0 (must not be treated as falsy); got: ${JSON.stringify(found.reviewOf.turnIndex)}`,
+    );
+  });
+});
+
+// ---------- T7-11: mixed turns — only the review turn gets kind ----------
+
+describe('status review annotation: mixed turns — only review turn gets kind (plan 0003 T7)', () => {
+  it('T7-11: status --json marks only the [review] turn; plain turn has no kind key', () => {
+    const jobId = `job_t7j11_${createHash('sha256').update('t7-json-mixed-turns').digest('hex').slice(0, 8)}`;
+    writeSyntheticJobForStatusTest({
+      jobId,
+      turns: [
+        { summary: 'do the original task' },
+        { summary: '[review] evaluate the prior output' },
+      ],
+    });
+
+    const result = runDispatcher(['status', '--json']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout is not valid JSON: ${result.stdout}`);
+
+    const found = parsed.jobs.find((j) => j.jobId === jobId);
+    assert.ok(found, `job ${jobId} not found in jobs array`);
+    assert.ok(
+      Array.isArray(found.turns) && found.turns.length === 2,
+      `expected 2 turns; got ${found.turns?.length}`,
+    );
+
+    const plainTurn = found.turns[0];
+    const reviewTurn = found.turns[1];
+
+    assert.equal(
+      'kind' in plainTurn,
+      false,
+      `expected no 'kind' on plain turn[0]; got: ${JSON.stringify(plainTurn)}`,
+    );
+    assert.equal(
+      reviewTurn.kind,
+      'review',
+      `expected kind:'review' on turn[1]; got: ${JSON.stringify(reviewTurn)}`,
+    );
+  });
+});

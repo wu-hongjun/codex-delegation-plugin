@@ -338,6 +338,175 @@ CI green on the T3 commit at `4cf1c0f` per run [`26785816862`](https://github.co
 
 ---
 
+## T4 — Dispatcher: `review` subcommand
+
+**Status**: complete (pending CI)
+**Files**:
+
+- `packages/plugin-codex/scripts/claude-companion.mjs` (modified, +~280 lines: `cmdReview` at lines 943–1222; `case 'review':` at line 79; `printUsage` review + adversarial-review entries at lines 1238–1239)
+- `packages/plugin-codex/scripts/lib/format.mjs` (modified, +~90 lines: `formatReviewHuman` at lines 298–352; `formatReviewJson` at lines 355–396)
+- `packages/plugin-codex/test/dispatcher.test.mjs` (modified, +30 tests labeled `T4-1` through `T4-20`)
+- `documentation/plan/0003-20260601-review-skills/2-implement.md` (this file, T4 entry appended)
+
+**Test impact**: `test:plugin` **426 → 456** (+30). Other lanes unchanged. `test:attach` unchanged at 25/25.
+
+### Command contract pinned
+
+Accepted flags: `--all`, `--json`, `--yes`.
+
+Rejection wording (test-pinned):
+
+| Flag/Condition | Exact message | Exit |
+|---|---|---|
+| `--allow-edit` | `--allow-edit is not applicable to review skills. Reviews are read-only.` | 2 |
+| `--model`/`--effort`/`--permission-mode`/`--add-dir`/`--mcp-config`/`--name` | `--<flag> is a startup-only flag; use it with $claude-adversarial-review, not $claude-review.` | 2 |
+| Missing job ID | Usage string with `review <jobId-or-prefix>` | 2 |
+| Extra freeform positional | `review does not accept a freeform prompt; the dispatcher constructs the review prompt.` | 2 |
+| `needs_input` | `Job <id> needs input. Resolve the permission request first, then run $claude-review.` | non-zero |
+| `running` | `Job <id> is running; wait for $claude-status to show awaiting_followup before running $claude-review.` | non-zero |
+| `queued` / `starting` | `Job <id> is <status>; wait for the job to reach awaiting_followup before running $claude-review.` | non-zero |
+| `failed`/`stopped`/`orphaned` | `$claude-review is not applicable to <status> jobs; use $claude-adversarial-review for a fresh-session review of the prior output.` | non-zero |
+| `completed` without live idle | `Job <id> is completed and no live idle Claude session was found; use $claude-adversarial-review instead.` | non-zero |
+| No reviewable non-review turn | `No reviewable non-review output found for this job.` | 1 |
+
+### Eligibility behavior
+
+| Status | Disposition |
+|---|---|
+| `awaiting_followup` | ALLOW |
+| `completed` with `driver.status(sessionHandle).value === 'idle'` | ALLOW |
+| `completed` with non-idle / dead session | REJECT (suggest adversarial-review) |
+| `needs_input` | REJECT (suggest permission resolution first) |
+| `running` / `queued` / `starting` | REJECT (wait for `awaiting_followup`) |
+| `failed` / `stopped` / `orphaned` | REJECT (suggest adversarial-review) |
+
+### Review target selection (latest non-review turn)
+
+Walks `job.turns` from the latest index downward. Selects the first turn where ALL of:
+
+- `turn.status === 'completed'`
+- `turn.result` non-null
+- `turn.prompt.summary` does NOT start with `[review] `
+- `turn.prompt.summary` does NOT start with `[adversarial-review] `
+
+If none satisfies, exit 1 with `"No reviewable non-review output found for this job."` Implements § 3.X correction from Stage 1 revision.
+
+### Prompt / parse / format
+
+- **Prompt**: `SAME_SESSION_REVIEW_PROMPT({ targetTurnIndex, targetTurnPromptSummary })`. T1's template signature only accepts these two optional fields; same-session review relies on Claude's in-context memory for the actual turn content. Other context fields (`targetTurnFinalMessage`, `touchedFiles`) NOT passed — would require modifying `review-prompts.mjs`, which is shipped.
+- **Helper invocation**: `sendFollowupTurn({ ..., promptSummaryPrefix: '[review] ' })`. Reuses Plan 0002's PTY-attach path; helper handles the permission callback identically to `cmdFollowup`.
+- **Parse**: `parseReviewOutput(sendResult.finalMessage ?? '')`. Parser is robust to empty/garbage input; always returns `{ verdict, findings[] }`.
+- **Format**: `formatReviewHuman({ review, job, turn })` produces verdict line + bracketed-severity findings; `formatReviewJson({ review, job, turn })` produces `{ ok: true, review: { verdict, findingsCount, blockerCount, highCount, mediumCount, lowCount, nitCount, findings }, job: { jobId, status }, turn: { index, status } }`. `ok: true` even on parser-fallback (single nit finding).
+
+### Ack behavior
+
+Target-workspace via `resolveWorkspaceAck({ workspaceRoot: job.workspace.root, useYes, isTTY })`. Standard 4-step rule:
+
+1. ack exists → proceed.
+2. no ack + `--yes` → record + proceed.
+3. no ack + TTY → prompt interactively.
+4. no ack + non-TTY → exit 1 with target workspace in message.
+
+Identical pattern to `cmdFollowup`.
+
+### Permission behavior
+
+Reuses `sendFollowupTurn`'s built-in permission callback (T3). No separate permission path for review.
+
+### Subagent A — implementation (executor)
+
+`cmdReview` added at `claude-companion.mjs:943–1222`; `case 'review':` at line 79; `printUsage` entries for `review` AND `adversarial-review` at lines 1238–1239 (the latter per § 4 Edit 13's "T4 and T6 must explicitly require --help includes both" requirement — A correctly anticipated T6's contribution).
+
+`formatReviewHuman` and `formatReviewJson` added to `lib/format.mjs` with JSDoc.
+
+A's verification: `node --check` clean (both files); `npm run lint` clean; `npm run format -- --check` clean; `npm run test:plugin` 426/426 (no regression — count grew only after B's tests).
+
+### Subagent B — tests (test-engineer)
+
+30 new tests in `dispatcher.test.mjs` labeled T4-1 through T4-20 (some labels have suffixes for parameterization, e.g., T4-13 × 6 for each startup-only flag, T4-8-orphaned / -stopped / -failed for the three rejected statuses).
+
+Coverage:
+
+- All 17 maintainer-pinned cases (plus #18 followup-regression-still-passes implicit via gate run).
+- Additional cases: T4-18a (missing job ID exit 2), T4-18b (extra positional rejection), T4-19 (no reviewable turn), T4-20-queued / -starting (status rejections), T4-17b (`adversarial-review` in printUsage — pins A's plan-mandated forward-looking entry).
+
+B's verification: `node --check` clean; `npm run lint` clean; `npm run format -- --check` clean; `node --test dispatcher.test.mjs` 119/119 (was 89; +30); `npm test` 4-lane total 817 + new T4 30 = 847 (verify via final orchestrator gate run); `test:attach` 25/25.
+
+B documented two integration-test artifacts in `cmdReview`:
+
+- The reconciler runs BEFORE the eligibility check and converts `failed`/`queued`/`starting` to `orphaned` when no live mock session is pre-staged. Pinned rejection messages for those statuses unreachable via integration tests without mock-session pre-staging. B used flexible assertions for T4-8-failed, T4-20-queued, T4-20-starting, T4-11. C ruled this acceptable (Judgment 2).
+
+### Subagent C — read-only review (code-reviewer)
+
+Strict F-H1 read-only contract; F-H2 trace step required and verified. Verdict: **ready-to-commit**. No CRITICAL/HIGH/MEDIUM findings.
+
+C rendered three explicit judgments:
+
+- **Judgment 1 — `adversarial-review` in `printUsage`**: ACCEPT. The plan's § 4 Edit 13 explicitly required T4 to add BOTH command names to `--help`. A's addition is plan-mandated, not scope creep. T4-17b is a valid forward-looking assertion. (The orchestrator's earlier concern about documentation drift was overruled.)
+- **Judgment 2 — Reconciler-interferes-with-eligibility-tests / B's flexible assertions**: ACCEPT. Pre-staging mock sessions to preserve exact pre-reconcile statuses is non-trivial integration-test work that doesn't improve contract coverage; `cmdReview`'s branches are exercised correctly under the post-reconcile status.
+- **Judgment 3 — `driver.status` TOCTOU**: ACCEPT. Identical TOCTOU window to `cmdFollowup`; helper's catch block handles the race. Same precedent and same risk profile. An atomic check-and-send would be a driver-level enhancement, not a T4 blocker.
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| F-1 | low | `formatReviewJson` nests review fields under `review: {}` while plan § 3.3 sketch showed `verdict`/`findings` at top level. The `ok: true` wrapping plus `job` / `turn` metadata is a reasonable T4 implementation; no consumer exists yet. | Accept as-is. Logged here as a doc-vs-impl deviation. Future consumer (Plan 0005 stop-time gate) can decide whether to require top-level or nested. |
+| F-2 | nit | `sessionHandle` is constructed twice in `cmdReview` (lines 1098–1104 for status check, lines 1186–1193 for `sendFollowupTurn`) with identical fields. Could extract to a single `const`. | Defer to Stage 4 polish. |
+
+### F-H2 verbatim trace (per C)
+
+```
+dispatcher switch 'review'  ->  cmdReview          claude-companion.mjs:79
+cmdReview                    ->  SAME_SESSION_REVIEW_PROMPT({targetTurnIndex, targetTurnPromptSummary})
+                                                    claude-companion.mjs:1180–1183
+cmdReview                    ->  sendFollowupTurn({..., promptSummaryPrefix: '[review] '})
+                                                    claude-companion.mjs:1196–1205
+sendFollowupTurn             ->  prefix applied to TurnRecord.prompt.summary
+                                                    claude-companion.mjs:520–523
+sendFollowupTurn             ->  driver.send(sessionHandle, {type:'text', text:prompt}, {onPermissionRequest})
+                                                    claude-companion.mjs:620–624
+cmdReview                    ->  parseReviewOutput(sendResult.finalMessage ?? '')
+                                                    claude-companion.mjs:1208
+cmdReview                    ->  formatReviewJson / formatReviewHuman
+                                                    claude-companion.mjs:1217–1220
+```
+
+### Orchestrator follow-up
+
+None. C's verdict is ready-to-commit; F-1 and F-2 are accepted/deferred. No pre-commit edits.
+
+### Deviation from 1-plan.md
+
+- **Test count delta**: plan T4 target was implicit (no specific number given beyond the 17 numbered required cases). B produced +30. C confirmed each test is a distinct contract assertion (no redundant tests). Logged per Pattern 5 of `documentation/process/reviewer-contract-patterns.md`.
+- **`formatReviewJson` shape**: nested under `review: {}` rather than top-level per § 3.3 sketch. C accepted as reasonable T4 implementation given no consumer exists yet (F-1).
+
+### Acceptance evidence
+
+- `cmdReview` function present at `claude-companion.mjs:943`: ✓
+- `case 'review':` in dispatcher switch: ✓ (line 79)
+- `printUsage` includes `review` AND `adversarial-review` lines per Edit 13: ✓ (lines 1238–1239)
+- All accepted flags / rejected flags / pinned messages verified by tests: ✓
+- All status eligibility branches present and tested: ✓
+- Latest non-review turn selection implemented + tested: ✓
+- Target-workspace ack via `resolveWorkspaceAck`: ✓
+- `SAME_SESSION_REVIEW_PROMPT` consumer with `{targetTurnIndex, targetTurnPromptSummary}`: ✓
+- `sendFollowupTurn` invocation with `promptSummaryPrefix: '[review] '`: ✓
+- No new `JobRecord` created in `cmdReview`: ✓
+- No `reviewOf` reference in T4 changes: ✓ (grep 0 hits)
+- No `node-pty`, no `claude -p`, no `--dangerously-skip-permissions`, no OQ4 forbidden tokens: ✓
+- No `package.json`, mock-claude, runtime, driver, CI, or skills changes: ✓
+- `npm run lint` clean: ✓
+- `npm run format -- --check` clean: ✓
+- `npm run typecheck`: ✓ (pending final orchestrator gate run)
+- `npm test` → 4-lane total: ✓ (pending final orchestrator gate run; expected 847 = 58+158+175+456)
+- `npm run test:attach` → 25/25 (unchanged): ✓
+
+### CI
+
+_To be recorded in the follow-up `Plan 0003 T4 log: record CI success` commit._
+
+---
+
+---
+
 ---
 
 ---

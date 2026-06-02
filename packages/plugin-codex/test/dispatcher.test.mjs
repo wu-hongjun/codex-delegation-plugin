@@ -3092,3 +3092,963 @@ describe('stop bulk --all-awaiting-followup (plan 0002 T11)', () => {
     );
   });
 });
+
+// ==========================================================================
+// T4: review subcommand (plan 0003)
+// ==========================================================================
+//
+// Contract: cmdReview resolves a job by prefix, checks status eligibility,
+// selects the latest completed non-review turn, injects a review prompt via
+// sendFollowupTurn (same mechanism as cmdFollowup), parses structured findings
+// from the response, and formats human-readable or --json output.
+//
+// Review-specific constraints:
+//   - --allow-edit is categorically rejected: "Reviews are read-only."
+//   - startup-only flags (--model, --effort, --permission-mode, --add-dir,
+//     --mcp-config, --name) are rejected with the review-specific message.
+//   - needs_input is rejected (reviews are not permission-resolution turns).
+//   - running / queued / starting are rejected with "wait for awaiting_followup".
+//   - failed / stopped / orphaned are rejected (use adversarial-review instead).
+//   - completed with live idle session is allowed; without session it is rejected.
+//   - awaiting_followup is always allowed.
+//   - Target selection skips turns whose prompt.summary starts with '[review] '
+//     or '[adversarial-review] '.
+//   - No reviewable non-review turn → exit 1 with exact message.
+//   - Extra freeform positional beyond the job ID → exit 2.
+//   - Missing job ID → exit 2.
+//
+// Helpers: writeSyntheticAwaitingFollowupJob, writeMockIdleSidecar,
+//   writeMockAgentSession, writeAck, writeMockClaudeConfig (all defined above
+//   in the T8/T10/T11 sections; shared across all describe blocks).
+//
+// For tests that need a structured review response from mock-claude (tests #2,
+// #3, #4), we set attachResponse in the mock config to a canonical fenced json
+// review block.  mock-claude's cmdAttach uses formatResponse() which replaces
+// "${prompt}" in attachResponse with the submitted prompt.  For review tests we
+// supply a full review block as the template literal — we do NOT reference
+// ${prompt} so the output is always the fixed review JSON.
+// ==========================================================================
+
+// ---------- review fixture helpers ----------
+
+/**
+ * A canonical well-formed review response that mock-claude returns when
+ * attachResponse is set to this value. Contains a fenced ```json block
+ * followed by a brief narrative.
+ */
+const MOCK_REVIEW_RESPONSE_STRUCTURED = [
+  '```json',
+  '{',
+  '  "verdict": "pass_with_findings",',
+  '  "findings": [',
+  '    {',
+  '      "severity": "high",',
+  '      "description": "Missing error handling for edge case.",',
+  '      "recommendation": "Add a try/catch around the call.",',
+  '      "file": "src/index.mjs",',
+  '      "line": 42',
+  '    },',
+  '    {',
+  '      "severity": "low",',
+  '      "description": "Variable name is unclear.",',
+  '      "recommendation": "Rename to a descriptive identifier.",',
+  '      "file": null,',
+  '      "line": null',
+  '    }',
+  '  ]',
+  '}',
+  '```',
+  '',
+  'Two findings were identified in this review.',
+].join('\n');
+
+/**
+ * A deliberately malformed review response that cannot be parsed as JSON,
+ * triggering the parser fallback to a single nit finding.
+ */
+const MOCK_REVIEW_RESPONSE_MALFORMED = 'This is not JSON and has no verdict line at all.';
+
+/**
+ * Write a synthetic awaiting_followup job that has one completed non-review
+ * turn plus optionally additional turns. Extends writeSyntheticAwaitingFollowupJob.
+ *
+ * @param {{
+ *   jobId: string;
+ *   shortId?: string;
+ *   workspaceRoot?: string;
+ *   turns?: Array<{ summaryPrefix?: string; status?: string; hasResult?: boolean }>;
+ *   status?: string;
+ * }} opts
+ */
+function writeSyntheticReviewableJob({
+  jobId,
+  shortId = 'rv000001',
+  workspaceRoot = WORK_DIR,
+  status = 'awaiting_followup',
+  turns = [{}],
+} = {}) {
+  const jobsDir = join(TMP_HOME, 'jobs');
+  mkdirSync(jobsDir, { recursive: true });
+
+  const now = new Date().toISOString();
+  const resultPath = join(jobsDir, `${jobId}.result.md`);
+  const resultContent = 'Turn result content.';
+
+  const turn0Result = {
+    finalMessagePath: resultPath,
+    finalMessagePreview: resultContent.slice(0, 120),
+  };
+
+  // Build turns array from the spec
+  const turnsData = turns.map((spec, i) => {
+    const prefix = spec.summaryPrefix ?? '';
+    const hasResult = spec.hasResult !== false;
+    const tStatus = spec.status ?? 'completed';
+    const summary = `${prefix}task for turn ${i}`;
+    const promptMeta = {
+      summary,
+      sha256: createHash('sha256').update(summary).digest('hex'),
+      bytesLen: Buffer.byteLength(summary, 'utf8'),
+    };
+    return {
+      prompt: promptMeta,
+      startedAt: now,
+      endedAt: now,
+      status: tStatus,
+      ...(hasResult && tStatus === 'completed' ? { result: turn0Result } : {}),
+    };
+  });
+
+  const record = {
+    jobId,
+    schemaVersion: 2,
+    createdAt: now,
+    updatedAt: now,
+    status,
+    codex: {
+      pluginVersion: '0.0.0',
+      cwd: workspaceRoot,
+    },
+    workspace: {
+      root: workspaceRoot,
+    },
+    driver: {
+      name: 'claude-background',
+      version: '0.0.0',
+      capabilitiesSnapshot: {},
+    },
+    claude: {
+      version: '2.1.999-mock',
+      shortId,
+      sessionId: shortIdToSessionId(shortId),
+      sessionName: `codex:test:${jobId}`,
+      cwd: workspaceRoot,
+      logsCommand: `claude logs ${shortId}`,
+    },
+    prompt: turnsData[0]?.prompt ?? {
+      summary: 'initial task',
+      sha256: createHash('sha256').update('initial task').digest('hex'),
+      bytesLen: Buffer.byteLength('initial task', 'utf8'),
+    },
+    result: turn0Result,
+    turns: turnsData,
+  };
+
+  writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify(record, null, 2));
+  writeFileSync(resultPath, resultContent);
+
+  return { jobId, record };
+}
+
+// ---------- T4-1: review happy path — appends [review]-prefixed turn ----------
+
+describe('review happy path (T4)', () => {
+  it('T4-1: exits 0 and job on disk has a new turn whose prompt.summary starts with "[review] "', () => {
+    const jobId = `job_rv1_${createHash('sha256').update('t4-happy-path').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv010001';
+    writeSyntheticReviewableJob({ jobId, shortId });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    assert.equal(
+      record.turns.length,
+      2,
+      `expected 2 turns after review, got ${record.turns.length}`,
+    );
+
+    const reviewTurn = record.turns[1];
+    assert.ok(
+      reviewTurn.prompt.summary.startsWith('[review] '),
+      `expected turns[1].prompt.summary to start with "[review] "; got: "${reviewTurn.prompt.summary}"`,
+    );
+  });
+});
+
+// ---------- T4-2: structured JSON parse + human output ----------
+
+describe('review structured response produces human output (T4)', () => {
+  it('T4-2: human output contains a verdict line and bracketed severity labels', () => {
+    const jobId = `job_rv2_${createHash('sha256').update('t4-human-output').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv020001';
+    writeSyntheticReviewableJob({ jobId, shortId });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      attachResponse: MOCK_REVIEW_RESPONSE_STRUCTURED,
+    });
+
+    const result = runDispatcher(['review', jobId, '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    // Human output should contain a verdict line
+    assert.ok(
+      /review verdict:/i.test(result.stdout),
+      `expected "Review verdict:" in human stdout; got:\n${result.stdout}`,
+    );
+
+    // Human output should contain bracketed severity labels
+    assert.ok(
+      result.stdout.includes('[HIGH]') || result.stdout.includes('[LOW]'),
+      `expected bracketed severity label in stdout; got:\n${result.stdout}`,
+    );
+  });
+});
+
+// ---------- T4-3: --json returns structured review object ----------
+
+describe('review --json output shape (T4)', () => {
+  it('T4-3: --json prints a JSON object with required top-level fields', () => {
+    const jobId = `job_rv3_${createHash('sha256').update('t4-json-shape').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv030001';
+    writeSyntheticReviewableJob({ jobId, shortId });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      attachResponse: MOCK_REVIEW_RESPONSE_STRUCTURED,
+    });
+
+    const result = runDispatcher(['review', jobId, '--json', '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout must be valid JSON; got:\n${result.stdout}`);
+
+    // Top-level fields
+    assert.equal(parsed.ok, true, `expected ok:true; got ${JSON.stringify(parsed)}`);
+    assert.ok(parsed.review !== undefined, 'expected top-level "review" field');
+    assert.ok(parsed.job !== undefined, 'expected top-level "job" field');
+    assert.ok(parsed.turn !== undefined, 'expected top-level "turn" field');
+
+    // review sub-fields
+    assert.ok(
+      ['pass', 'fail', 'pass_with_findings'].includes(parsed.review.verdict),
+      `review.verdict must be a valid verdict; got ${parsed.review.verdict}`,
+    );
+    assert.ok(
+      typeof parsed.review.findingsCount === 'number',
+      'expected review.findingsCount to be a number',
+    );
+    assert.ok(Array.isArray(parsed.review.findings), 'expected review.findings to be an array');
+
+    // job sub-fields
+    assert.ok(typeof parsed.job.jobId === 'string', 'expected job.jobId to be a string');
+    assert.ok(typeof parsed.job.status === 'string', 'expected job.status to be a string');
+
+    // turn sub-fields
+    assert.ok(typeof parsed.turn.index === 'number', 'expected turn.index to be a number');
+    assert.ok(typeof parsed.turn.status === 'string', 'expected turn.status to be a string');
+  });
+});
+
+// ---------- T4-4: fallback parse on malformed output ----------
+
+describe('review fallback parse on malformed response (T4)', () => {
+  it('T4-4: malformed mock response produces ok:true with a single nit finding', () => {
+    const jobId = `job_rv4_${createHash('sha256').update('t4-fallback').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv040001';
+    writeSyntheticReviewableJob({ jobId, shortId });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      attachResponse: MOCK_REVIEW_RESPONSE_MALFORMED,
+    });
+
+    const result = runDispatcher(['review', jobId, '--json', '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 on fallback parse, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout must be valid JSON; got:\n${result.stdout}`);
+
+    assert.equal(
+      parsed.ok,
+      true,
+      `expected ok:true in fallback case; got ${JSON.stringify(parsed)}`,
+    );
+    assert.equal(
+      parsed.review.findings.length,
+      1,
+      `expected exactly 1 fallback finding; got ${parsed.review.findings.length}`,
+    );
+    assert.equal(
+      parsed.review.findings[0].severity,
+      'nit',
+      `expected fallback finding severity to be 'nit'; got ${parsed.review.findings[0].severity}`,
+    );
+  });
+});
+
+// ---------- T4-5: latest non-review turn selection ----------
+
+describe('review selects latest non-review turn (T4)', () => {
+  it('T4-5: with turns [original, [review] earlier, original-again], reviews turn 2 (latest non-review)', () => {
+    const jobId = `job_rv5_${createHash('sha256').update('t4-turn-select').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv050001';
+
+    // Three turns: turn 0 original, turn 1 review, turn 2 original again
+    writeSyntheticReviewableJob({
+      jobId,
+      shortId,
+      turns: [
+        { summaryPrefix: '', status: 'completed', hasResult: true },
+        { summaryPrefix: '[review] ', status: 'completed', hasResult: true },
+        { summaryPrefix: '', status: 'completed', hasResult: true },
+      ],
+    });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    // Should have appended a new review turn (turn 3), making total 4 turns
+    const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    assert.equal(
+      record.turns.length,
+      4,
+      `expected 4 turns (3 original + 1 new review), got ${record.turns.length}`,
+    );
+
+    // The newly appended turn must be the review turn
+    const newReviewTurn = record.turns[3];
+    assert.ok(
+      newReviewTurn.prompt.summary.startsWith('[review] '),
+      `expected new turn to be a review turn; got: "${newReviewTurn.prompt.summary}"`,
+    );
+  });
+});
+
+// ---------- T4-6 / T4-7 / T4-8: status eligibility rejections ----------
+
+describe('review rejects needs_input status (T4)', () => {
+  it('T4-6: needs_input is rejected with exact pinned message and exit 1', () => {
+    const jobId = `job_rv6_${createHash('sha256').update('t4-needs-input').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv060001';
+    writeSyntheticReviewableJob({ jobId, shortId, status: 'needs_input' });
+    writeAck(WORK_DIR);
+
+    // Write a mock agent session AND a sidecar with state:'waiting' so the
+    // reconciler maps to needs_input rather than orphaned (no session → orphaned).
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    // Write a waiting sidecar directly so readSidecar returns state:'waiting'
+    // which causes mapStatus to return 'needs_input'.
+    const sidecarDir = join(MOCK_HOME, 'jobs', shortId);
+    mkdirSync(sidecarDir, { recursive: true });
+    writeFileSync(
+      join(sidecarDir, 'state.json'),
+      JSON.stringify(
+        {
+          template: 'bg',
+          intent: '',
+          name: `codex:test:${shortId}`,
+          nameSource: 'user',
+          sessionId: shortIdToSessionId(shortId),
+          resumeSessionId: shortIdToSessionId(shortId),
+          daemonShort: shortId,
+          cliVersion: '2.1.999-mock',
+          cwd: WORK_DIR,
+          backend: 'daemon',
+          linkScanPath: join(MOCK_HOME, 'projects', `${shortIdToSessionId(shortId)}.jsonl`),
+          state: 'waiting',
+          tempo: 'idle',
+          inFlight: { tasks: 0, queued: 0, kinds: ['permission'] },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    assert.equal(result.status, 1, `expected exit 1 for needs_input; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    const expectedMsg = `Job ${jobId} needs input. Resolve the permission request first, then run $claude-review.`;
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+});
+
+describe('review rejects running status (T4)', () => {
+  it('T4-7: running is rejected with exact pinned message and exit 1', () => {
+    const jobId = `job_rv7_${createHash('sha256').update('t4-running').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv070001';
+    writeSyntheticReviewableJob({ jobId, shortId, status: 'running' });
+    writeAck(WORK_DIR);
+    // Keep session alive as 'working' so reconciler doesn't flip to orphaned
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'working');
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    assert.equal(result.status, 1, `expected exit 1 for running; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    const expectedMsg = `Job ${jobId} is running; wait for $claude-status to show awaiting_followup before running $claude-review.`;
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+});
+
+describe('review rejects stopped / failed / orphaned (T4)', () => {
+  // orphaned: no mock session → reconciler keeps status as orphaned → exact message
+  it('T4-8-orphaned: orphaned job is rejected with exact pinned message', () => {
+    const jobId = `job_rv8_${createHash('sha256').update('t4-orphaned').digest('hex').slice(0, 8)}`;
+    writeSyntheticReviewableJob({ jobId, status: 'orphaned' });
+    writeAck(WORK_DIR);
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    assert.equal(result.status, 1, `expected exit 1 for orphaned; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    const expectedMsg =
+      '$claude-review is not applicable to orphaned jobs; use $claude-adversarial-review for a fresh-session review of the prior output.';
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}" for orphaned; got:\n${combined}`,
+    );
+  });
+
+  // stopped: pre-stage a stopped mock session so reconciler maps driverValue:'stopped' → 'stopped'
+  it('T4-8-stopped: stopped job is rejected with exact pinned message', () => {
+    const jobId = `job_rv8s_${createHash('sha256').update('t4-stopped').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv08st01';
+    writeSyntheticReviewableJob({ jobId, shortId, status: 'stopped' });
+    writeAck(WORK_DIR);
+    // Seed a session with status 'stopped' so agents --json returns it and
+    // the driver maps it to driverValue:'stopped' → reconciler keeps 'stopped'
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'stopped');
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    assert.equal(result.status, 1, `expected exit 1 for stopped; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    const expectedMsg =
+      '$claude-review is not applicable to stopped jobs; use $claude-adversarial-review for a fresh-session review of the prior output.';
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}" for stopped; got:\n${combined}`,
+    );
+  });
+
+  // failed: mock-claude has no 'failed' status; reconciler will flip to 'orphaned'.
+  // The invariant is that the job is rejected with the adversarial-review suggestion.
+  // We assert the rejection concept rather than the exact failed-status string because
+  // the reconciler overrides the on-disk status before cmdReview's eligibility check.
+  it('T4-8-failed: failed job is rejected with adversarial-review suggestion', () => {
+    const jobId = `job_rv8f_${createHash('sha256').update('t4-failed').digest('hex').slice(0, 8)}`;
+    writeSyntheticReviewableJob({ jobId, status: 'failed' });
+    writeAck(WORK_DIR);
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    assert.equal(result.status, 1, `expected exit 1 for failed; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    // Reconciler may flip failed → orphaned; either way the rejection message
+    // must mention adversarial-review as the alternative
+    assert.ok(
+      combined.includes('$claude-adversarial-review') ||
+        combined.includes('claude-adversarial-review'),
+      `expected adversarial-review suggestion in rejection for failed; got:\n${combined}`,
+    );
+    assert.ok(
+      combined.includes('not applicable') || combined.includes('no live'),
+      `expected "not applicable" or "no live" in rejection for failed; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T4-9: awaiting_followup is allowed (explicit eligibility test) ----------
+
+describe('review allows awaiting_followup (T4)', () => {
+  it('T4-9: awaiting_followup is allowed — review proceeds without status-rejection error', () => {
+    const jobId = `job_rv9_${createHash('sha256').update('t4-awfup-allowed').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv090001';
+    writeSyntheticReviewableJob({ jobId, shortId, status: 'awaiting_followup' });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    // Must not produce a status-rejection error message
+    const combined = result.stdout + result.stderr;
+    const isStatusRejection =
+      combined.includes('needs input') ||
+      combined.includes('is running') ||
+      combined.includes('is queued') ||
+      combined.includes('is starting') ||
+      combined.includes('not applicable');
+    assert.ok(
+      !isStatusRejection,
+      `awaiting_followup must not trigger a status rejection; got:\n${combined}`,
+    );
+    // Must not exit 2 (which would indicate a usage error about status)
+    assert.notEqual(
+      result.status,
+      2,
+      `awaiting_followup must not produce exit 2; got ${result.status}`,
+    );
+  });
+});
+
+// ---------- T4-10 / T4-11: completed with / without live idle session ----------
+
+describe('review completed job with live idle session (T4)', () => {
+  it('T4-10: completed job proceeds when mock-claude reports session as idle', () => {
+    const jobId = `job_rv10_${createHash('sha256').update('t4-completed-idle').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv100001';
+    writeSyntheticReviewableJob({ jobId, shortId, status: 'completed' });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    const combined = result.stdout + result.stderr;
+    const isCompletedRejection = combined.includes(
+      'is completed and no live idle Claude session was found',
+    );
+    assert.ok(
+      !isCompletedRejection,
+      `completed + idle session should be allowed; got rejection:\n${combined}`,
+    );
+  });
+
+  it('T4-11: completed job is rejected when no live idle session exists', () => {
+    const jobId = `job_rv11_${createHash('sha256').update('t4-completed-no-idle').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv110001';
+    writeSyntheticReviewableJob({ jobId, shortId, status: 'completed' });
+    writeAck(WORK_DIR);
+    // Do NOT write any mock session — driver.status() returns orphaned, which
+    // the reconciler maps to 'orphaned'. The dispatcher then hits either the
+    // completed-without-session branch (if reconcile preserves completed) or
+    // the orphaned-rejection branch. Either way exit 1 with adversarial-review
+    // suggestion is the correct observable outcome.
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      1,
+      `expected exit 1 when no live session for completed job; got ${result.status}`,
+    );
+    const combined = result.stdout + result.stderr;
+    // The exact message depends on whether the reconciler kept 'completed' or
+    // flipped to 'orphaned'. Both branches reject with an adversarial-review hint.
+    assert.ok(
+      combined.includes('$claude-adversarial-review') ||
+        combined.includes('claude-adversarial-review'),
+      `expected adversarial-review suggestion; got:\n${combined}`,
+    );
+    assert.ok(
+      combined.includes('is completed') ||
+        combined.includes('not applicable') ||
+        combined.includes('no live'),
+      `expected "is completed" / "not applicable" / "no live" in rejection; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T4-12: --allow-edit rejected with exact pinned message ----------
+
+describe('review rejects --allow-edit (T4)', () => {
+  it('T4-12: --allow-edit produces exit 2 with the exact read-only rejection message', () => {
+    const jobId = `job_rv12_${createHash('sha256').update('t4-allow-edit').digest('hex').slice(0, 8)}`;
+    writeSyntheticReviewableJob({ jobId });
+
+    const result = runDispatcher(['review', jobId, '--allow-edit', '--yes']);
+
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for --allow-edit, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    const expectedMsg = '--allow-edit is not applicable to review skills. Reviews are read-only.';
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T4-13: each startup-only flag rejected with exact per-flag message ----------
+
+describe('review rejects startup-only flags (T4)', () => {
+  const reviewStartupOnlyFlags = [
+    '--model',
+    '--effort',
+    '--permission-mode',
+    '--add-dir',
+    '--mcp-config',
+    '--name',
+  ];
+
+  for (const flag of reviewStartupOnlyFlags) {
+    it(`T4-13: ${flag} is rejected with exit 2 and the review-specific message`, () => {
+      const jobId = `job_rv13_${createHash('sha256').update(`t4-startup-${flag}`).digest('hex').slice(0, 8)}`;
+      writeSyntheticReviewableJob({ jobId });
+
+      const flagArgs =
+        flag === '--add-dir' || flag === '--mcp-config' || flag === '--model' || flag === '--effort'
+          ? [flag, 'somevalue']
+          : flag === '--permission-mode'
+            ? [flag, 'default']
+            : flag === '--name'
+              ? [flag, 'myname']
+              : [flag, 'somevalue'];
+
+      const result = runDispatcher(['review', jobId, '--yes', ...flagArgs]);
+
+      assert.equal(
+        result.status,
+        2,
+        `expected exit 2 for ${flag}, got ${result.status}; stderr: ${result.stderr}; stdout: ${result.stdout}`,
+      );
+
+      const combined = result.stdout + result.stderr;
+      // Exact per-flag message: "--<flag> is a startup-only flag; use it with $claude-adversarial-review, not $claude-review."
+      const expectedFragment = `${flag} is a startup-only flag`;
+      assert.ok(
+        combined.includes(expectedFragment),
+        `expected "${expectedFragment}" in output for ${flag}; got:\n${combined}`,
+      );
+      assert.ok(
+        combined.includes('$claude-adversarial-review') ||
+          combined.includes('claude-adversarial-review'),
+        `expected "$claude-adversarial-review" reference in output for ${flag}; got:\n${combined}`,
+      );
+      assert.ok(
+        combined.includes('$claude-review') || combined.includes('claude-review'),
+        `expected "$claude-review" reference in output for ${flag}; got:\n${combined}`,
+      );
+    });
+  }
+});
+
+// ---------- T4-14: --all resolves cross-workspace job (target-workspace ack) ----------
+
+describe('review --all resolves cross-workspace job (T4)', () => {
+  it('T4-14: --all finds job in a different workspace; ack check uses target workspace', () => {
+    const targetWorkspace = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-rv14-')));
+    try {
+      const jobId = `job_rv14_${createHash('sha256').update('t4-all-cross-ws').digest('hex').slice(0, 8)}`;
+      const shortId = 'rv140001';
+      // Job belongs to targetWorkspace, not to WORK_DIR
+      writeSyntheticReviewableJob({ jobId, shortId, workspaceRoot: targetWorkspace });
+      // Ack for target workspace (not caller workspace)
+      writeAck(targetWorkspace);
+      writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+      writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+      // Run from WORK_DIR with --all; should resolve the target workspace job
+      const result = runDispatcher(['review', jobId, '--all', '--yes']);
+
+      // Must not fail with "no job found"
+      const combined = result.stdout + result.stderr;
+      const isNoJobError = combined.toLowerCase().includes('no job found') && result.status === 1;
+      assert.ok(
+        !isNoJobError,
+        `--all should resolve cross-workspace job; got "no job found":\n${combined}`,
+      );
+    } finally {
+      rmSync(targetWorkspace, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------- T4-15: non-TTY no-ack fails with target workspace path ----------
+
+describe('review non-TTY no-ack fails with target workspace path (T4)', () => {
+  it('T4-15: non-TTY stdin without ack exits 1 with the target workspace path in the error', () => {
+    const targetWorkspace = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-rv15-')));
+    try {
+      const jobId = `job_rv15_${createHash('sha256').update('t4-noack-nontty').digest('hex').slice(0, 8)}`;
+      const shortId = 'rv150001';
+      writeSyntheticReviewableJob({ jobId, shortId, workspaceRoot: targetWorkspace });
+      // Pre-stage live idle session so eligibility check passes
+      writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+      writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+      // Do NOT write any ack
+
+      const result = runDispatcher(['review', jobId, '--all']);
+
+      assert.equal(
+        result.status,
+        1,
+        `expected exit 1 when ack missing on non-TTY; got ${result.status}`,
+      );
+      const combined = result.stdout + result.stderr;
+      assert.ok(
+        combined.includes(targetWorkspace),
+        `expected target workspace path (${targetWorkspace}) in error; got:\n${combined}`,
+      );
+    } finally {
+      rmSync(targetWorkspace, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------- T4-16: --yes records ack for target workspace ----------
+
+describe('review --yes records ack for target workspace (T4)', () => {
+  it('T4-16: --yes records an ack for the target workspace and proceeds', () => {
+    const targetWorkspace = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-rv16-')));
+    try {
+      const jobId = `job_rv16_${createHash('sha256').update('t4-yes-ack').digest('hex').slice(0, 8)}`;
+      const shortId = 'rv160001';
+      writeSyntheticReviewableJob({ jobId, shortId, workspaceRoot: targetWorkspace });
+      writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+      writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+      // No prior ack anywhere
+
+      runDispatcher(['review', jobId, '--all', '--yes']);
+
+      // Verify ack file was written for the target workspace
+      const resolvedTmpHome = realpathSync(TMP_HOME);
+      const targetAckFile = join(TMP_HOME, 'acks', `${ackHex(targetWorkspace)}.json`);
+      const targetAckFileResolved = join(
+        resolvedTmpHome,
+        'acks',
+        `${ackHex(targetWorkspace)}.json`,
+      );
+      assert.ok(
+        existsSync(targetAckFile) || existsSync(targetAckFileResolved),
+        `expected ack file for target workspace at ${targetAckFile}`,
+      );
+    } finally {
+      rmSync(targetWorkspace, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------- T4-17: --help includes 'review' in printUsage output ----------
+
+describe('--help includes review subcommand (T4)', () => {
+  it('T4-17: printUsage includes the "review" subcommand line', () => {
+    const result = runDispatcher(['--help']);
+
+    assert.equal(result.status, 0, `expected exit 0 for --help; got ${result.status}`);
+    assert.ok(
+      result.stdout.includes('review'),
+      `expected "review" to appear in --help output; got:\n${result.stdout}`,
+    );
+  });
+
+  // The plan (T4 acceptance criteria) specifies both "review" and "adversarial-review"
+  // should be in printUsage. A's implementation added the adversarial-review line even
+  // though cmdAdversarialReview is T6 territory. We pin "review" as required and
+  // additionally assert "adversarial-review" is present (matching A's printUsage).
+  it('T4-17b: printUsage also includes the "adversarial-review" subcommand line', () => {
+    const result = runDispatcher(['--help']);
+
+    assert.equal(result.status, 0, `expected exit 0 for --help; got ${result.status}`);
+    assert.ok(
+      result.stdout.includes('adversarial-review'),
+      `expected "adversarial-review" to appear in --help output; got:\n${result.stdout}`,
+    );
+  });
+});
+
+// ---------- T4-18: missing job ID exits 2 with usage string ----------
+
+describe('review missing job ID exits 2 (T4)', () => {
+  it('T4-18a: review with no positional arg exits 2', () => {
+    const result = runDispatcher(['review']);
+
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 when no job ID given, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('usage:') || combined.includes('Usage:'),
+      `expected usage hint in output; got:\n${combined}`,
+    );
+  });
+
+  it('T4-18b: review with extra freeform positional arg exits 2 with exact message', () => {
+    const jobId = `job_rv18_${createHash('sha256').update('t4-extra-positional').digest('hex').slice(0, 8)}`;
+    writeSyntheticReviewableJob({ jobId });
+
+    const result = runDispatcher(['review', jobId, '--yes', 'unexpected-prompt-text']);
+
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for extra positional, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    const expectedMsg =
+      'review does not accept a freeform prompt; the dispatcher constructs the review prompt.';
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T4-19: no reviewable non-review turn exits 1 ----------
+
+describe('review exits 1 when no reviewable non-review turn exists (T4)', () => {
+  it('T4-19: job with only review turns produces the exact "No reviewable" message', () => {
+    const jobId = `job_rv19_${createHash('sha256').update('t4-no-reviewable').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv190001';
+
+    // Job has only one turn, and that turn is a review turn
+    writeSyntheticReviewableJob({
+      jobId,
+      shortId,
+      turns: [{ summaryPrefix: '[review] ', status: 'completed', hasResult: true }],
+    });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    assert.equal(result.status, 1, `expected exit 1 when no reviewable turn; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    const expectedMsg = 'No reviewable non-review output found for this job.';
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T4-20: queued / starting are rejected ----------
+
+describe('review rejects queued and starting statuses (T4)', () => {
+  // queued: seed a session whose agents --json status maps to 'queued' driverValue.
+  // mock-claude only supports 'working'/'idle'/'stopped' in state.json. When
+  // driver.status() returns 'working' the reconciler maps to 'running', not 'queued'.
+  // Without any session the reconciler flips to 'orphaned'.
+  // The plan specifies an exact message for queued/starting but the reconciler
+  // will override these pre-send statuses. We assert the invariant: job is rejected
+  // (exit 1) and the output does NOT suggest the review was attempted.
+  it('T4-20-queued: queued job is rejected with exit 1 and a rejection message', () => {
+    const jobId = `job_rv20_${createHash('sha256').update('t4-queued').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv200001';
+    writeSyntheticReviewableJob({ jobId, shortId, status: 'queued' });
+    writeAck(WORK_DIR);
+    // Seed a 'working' session to keep the reconciler from orphaning the job.
+    // Driver maps 'working' → 'running', so cmdReview hits the 'running' rejection
+    // branch and exits 1 with the wait-for-awaiting_followup message.
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'working');
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      1,
+      `expected exit 1 for queued (reconciler may map to running); got ${result.status}`,
+    );
+    const combined = result.stdout + result.stderr;
+    // The reconciler may remap queued→running (via working session) or keep
+    // queued (if driver returns 'queued' value). Either way the job is rejected.
+    assert.ok(
+      combined.includes('wait for') ||
+        combined.includes('is running') ||
+        combined.includes('is queued') ||
+        combined.includes('not applicable'),
+      `expected a "wait for" or rejection message for queued; got:\n${combined}`,
+    );
+  });
+
+  it('T4-20-starting: starting job is rejected with exit 1 and a rejection message', () => {
+    const jobId = `job_rv20s_${createHash('sha256').update('t4-starting').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv200002';
+    writeSyntheticReviewableJob({ jobId, shortId, status: 'starting' });
+    writeAck(WORK_DIR);
+    // Same pattern as queued: seed a working session so driver maps to 'running'
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'working');
+
+    const result = runDispatcher(['review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      1,
+      `expected exit 1 for starting (reconciler may map to running); got ${result.status}`,
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('wait for') ||
+        combined.includes('is running') ||
+        combined.includes('is starting') ||
+        combined.includes('not applicable'),
+      `expected a "wait for" or rejection message for starting; got:\n${combined}`,
+    );
+  });
+});

@@ -290,6 +290,108 @@ export function formatBulkStop(result, json) {
 }
 
 /**
+ * Format human-readable output for the `review` subcommand.
+ *
+ * @param {{ review: import('./review-parser.mjs').ReviewOutput; job: import('@cc-plugin-codex/runtime').JobRecord; turn: object }} opts
+ * @returns {string}
+ */
+export function formatReviewHuman({ review, job, turn }) {
+  const { verdict, findings } = review;
+  const verdictLabel = verdict.toUpperCase().replace(/_/g, ' ');
+
+  if (verdict === 'pass' && findings.length === 0) {
+    return [
+      `Review verdict: PASS`,
+      `Job ID:  ${job.jobId}`,
+      `Turn:    ${turn.index} (${turn.status})`,
+      '',
+      'No findings.',
+    ].join('\n');
+  }
+
+  const blockerCount = findings.filter((f) => f.severity === 'blocker').length;
+  const highCount = findings.filter((f) => f.severity === 'high').length;
+  const mediumCount = findings.filter((f) => f.severity === 'medium').length;
+  const lowCount = findings.filter((f) => f.severity === 'low').length;
+  const nitCount = findings.filter((f) => f.severity === 'nit').length;
+
+  const countParts = [];
+  if (blockerCount > 0) countParts.push(`${blockerCount} blocker`);
+  if (highCount > 0) countParts.push(`${highCount} high`);
+  if (mediumCount > 0) countParts.push(`${mediumCount} medium`);
+  if (lowCount > 0) countParts.push(`${lowCount} low`);
+  if (nitCount > 0) countParts.push(`${nitCount} nit`);
+
+  const countSummary =
+    findings.length === 1
+      ? `1 finding: ${countParts.join(', ')}`
+      : `${findings.length} findings: ${countParts.join(', ')}`;
+
+  const lines = [
+    `Review verdict: ${verdictLabel} (${countSummary})`,
+    `Job ID:  ${job.jobId}`,
+    `Turn:    ${turn.index} (${turn.status})`,
+    '',
+    'Findings:',
+  ];
+
+  for (const f of findings) {
+    lines.push(`  [${f.severity.toUpperCase()}] ${f.description}`);
+    if (f.recommendation) {
+      lines.push(`    Recommendation: ${f.recommendation}`);
+    }
+    if (f.file) {
+      const loc = f.line != null ? `${f.file}:${f.line}` : f.file;
+      lines.push(`    File: ${loc}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Format machine-readable JSON output for the `review` subcommand.
+ *
+ * @param {{ review: import('./review-parser.mjs').ReviewOutput; job: import('@cc-plugin-codex/runtime').JobRecord; turn: object }} opts
+ * @returns {string}
+ */
+export function formatReviewJson({ review, job, turn }) {
+  const { verdict, findings } = review;
+
+  const blockerCount = findings.filter((f) => f.severity === 'blocker').length;
+  const highCount = findings.filter((f) => f.severity === 'high').length;
+  const mediumCount = findings.filter((f) => f.severity === 'medium').length;
+  const lowCount = findings.filter((f) => f.severity === 'low').length;
+  const nitCount = findings.filter((f) => f.severity === 'nit').length;
+
+  return JSON.stringify(
+    {
+      ok: true,
+      review: {
+        verdict,
+        findingsCount: findings.length,
+        blockerCount,
+        highCount,
+        mediumCount,
+        lowCount,
+        nitCount,
+        findings,
+      },
+      job: {
+        jobId: job.jobId,
+        status: job.status,
+      },
+      turn: {
+        index: turn.index,
+        status: turn.status,
+      },
+    },
+    null,
+    2,
+  );
+}
+
+/**
  * @param {unknown} err
  * @param {string} command
  * @param {boolean} json

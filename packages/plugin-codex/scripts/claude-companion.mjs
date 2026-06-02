@@ -32,11 +32,15 @@ import {
   formatStop,
   formatBulkStop,
   formatFollowup,
+  formatReviewHuman,
+  formatReviewJson,
   formatError,
 } from './lib/format.mjs';
 import { makeClaudeAdapter } from './lib/adapter.mjs';
 import { hasAck, recordAck, resolveWorkspaceAck } from './lib/ack.mjs';
 import { makePromptMeta } from './lib/prompt-meta.mjs';
+import { SAME_SESSION_REVIEW_PROMPT } from './lib/review-prompts.mjs';
+import { parseReviewOutput } from './lib/review-parser.mjs';
 
 // ---------- main ----------
 
@@ -71,6 +75,9 @@ try {
       break;
     case 'followup':
       await cmdFollowup(flags, positional, useJson);
+      break;
+    case 'review':
+      await cmdReview(flags, positional, useJson);
       break;
     default:
       process.stderr.write(
@@ -931,6 +938,289 @@ async function cmdFollowup(flags, positional, json) {
   process.stdout.write(formatFollowup(finalJob, sendResult, newTurnIndex, json) + '\n');
 }
 
+// ---------- review ----------
+
+async function cmdReview(flags, positional, json) {
+  // 1. Parse args: reject startup-only and inapplicable flags at parse time.
+
+  // --allow-edit is categorically rejected for all review skills.
+  if (flags['allow-edit'] !== undefined) {
+    process.stderr.write(
+      formatError(
+        new Error('--allow-edit is not applicable to review skills. Reviews are read-only.'),
+        'review',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  // Startup-only flags rejected with the pinned review-specific message.
+  const REVIEW_REJECTED_STARTUP_FLAGS = new Set([
+    'model',
+    'effort',
+    'permission-mode',
+    'add-dir',
+    'mcp-config',
+    'name',
+  ]);
+  for (const flag of REVIEW_REJECTED_STARTUP_FLAGS) {
+    if (flags[flag] !== undefined) {
+      process.stderr.write(
+        formatError(
+          new Error(
+            `--${flag} is a startup-only flag; use it with $claude-adversarial-review, not $claude-review.`,
+          ),
+          'review',
+          json,
+        ) + '\n',
+      );
+      process.exit(2);
+    }
+  }
+
+  // 2. jobId-or-prefix positional (required).
+  const prefix = positional[0];
+  if (!prefix) {
+    process.stderr.write(
+      formatError(
+        new Error('usage: claude-companion review <jobId-or-prefix> [--all] [--json] [--yes]'),
+        'review',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  // Reject unexpected freeform positional args beyond the job ID.
+  if (positional.length > 1) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          'review does not accept a freeform prompt; the dispatcher constructs the review prompt.',
+        ),
+        'review',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  // 3. Resolve job by prefix.
+  const workspace = process.cwd();
+  const showAll = Boolean(flags['all']);
+  const listed = showAll ? await listJobs() : await listJobsForWorkspace(workspace);
+  const allIds = listed.jobs.map((j) => j.jobId);
+  const resolved = resolveJobIdPrefix(allIds, prefix);
+
+  if ('error' in resolved) {
+    const msg =
+      resolved.error === 'ambiguous'
+        ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
+        : showAll
+          ? `No job found matching "${prefix}"`
+          : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
+    process.stderr.write(formatError(new Error(msg), 'review', json) + '\n');
+    process.exit(1);
+  }
+
+  const jobId = resolved.match;
+
+  // 4. Reconcile to get fresh status.
+  const driver = new ClaudeBackgroundDriver({ cwd: workspace });
+  const adapter = makeClaudeAdapter(driver);
+
+  let job;
+  try {
+    const r = await reconcileJob(jobId, adapter);
+    job = r.job;
+  } catch {
+    job = await readJob(jobId);
+  }
+
+  // 5. Status eligibility check (§ 3.6).
+  const { status } = job;
+
+  if (status === 'needs_input') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Job ${jobId} needs input. Resolve the permission request first, then run $claude-review.`,
+        ),
+        'review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  if (status === 'running') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Job ${jobId} is running; wait for $claude-status to show awaiting_followup before running $claude-review.`,
+        ),
+        'review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  if (status === 'queued' || status === 'starting') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Job ${jobId} is ${status}; wait for the job to reach awaiting_followup before running $claude-review.`,
+        ),
+        'review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  if (status === 'failed' || status === 'stopped' || status === 'orphaned') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `$claude-review is not applicable to ${status} jobs; use $claude-adversarial-review for a fresh-session review of the prior output.`,
+        ),
+        'review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  if (status === 'completed') {
+    // Require a live idle Claude session.
+    const sessionHandleForStatus = {
+      driverName: job.driver.name,
+      shortId: job.claude.shortId,
+      sessionId: job.claude.sessionId,
+      sessionName: job.claude.sessionName,
+      cwd: job.claude.cwd,
+      startedAt: job.claude.startedAt ?? job.createdAt,
+    };
+    let driverStatus;
+    try {
+      driverStatus = await driver.status(sessionHandleForStatus);
+    } catch {
+      driverStatus = null;
+    }
+    if (!driverStatus || driverStatus.value !== 'idle') {
+      process.stderr.write(
+        formatError(
+          new Error(
+            `Job ${jobId} is completed and no live idle Claude session was found; use $claude-adversarial-review instead.`,
+          ),
+          'review',
+          json,
+        ) + '\n',
+      );
+      process.exit(1);
+    }
+  }
+
+  // At this point status is awaiting_followup or completed-with-idle-session.
+
+  // 6. Review target selection (§ 3.X): latest completed non-review turn with a result.
+  let targetTurn = null;
+  let targetTurnIndex = -1;
+  for (let i = job.turns.length - 1; i >= 0; i--) {
+    const t = job.turns[i];
+    if (
+      t.status === 'completed' &&
+      t.result != null &&
+      !t.prompt.summary.startsWith('[review] ') &&
+      !t.prompt.summary.startsWith('[adversarial-review] ')
+    ) {
+      targetTurn = t;
+      targetTurnIndex = i;
+      break;
+    }
+  }
+
+  if (targetTurn === null) {
+    process.stderr.write(
+      formatError(
+        new Error('No reviewable non-review output found for this job.'),
+        'review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  // 7. Privacy ack — target workspace, 4-step rule.
+  const ackResult = resolveWorkspaceAck({
+    workspaceRoot: job.workspace.root,
+    useYes: Boolean(flags['yes']),
+    isTTY: process.stdin.isTTY === true,
+  });
+  if (ackResult.verdict === 'rejected') {
+    const msg = [
+      'Privacy acknowledgement required for target workspace.',
+      '',
+      `This command will inject a review prompt into job ${jobId}.`,
+      "Claude Code's existing session has access to files in:",
+      '',
+      `Target workspace: ${ackResult.workspaceRoot}`,
+      '',
+      'Re-run with --yes to acknowledge and proceed.',
+    ].join('\n');
+    process.stderr.write(formatError(new Error(msg), 'review', json) + '\n');
+    process.exit(1);
+  }
+
+  // 8. Build review prompt.
+  // SAME_SESSION_REVIEW_PROMPT accepts { targetTurnIndex?, targetTurnPromptSummary? }.
+  // Same-session review relies on Claude's in-context memory; no content injection needed.
+  const prompt = SAME_SESSION_REVIEW_PROMPT({
+    targetTurnIndex,
+    targetTurnPromptSummary: targetTurn.prompt.summary,
+  });
+
+  // 9. Reconstitute session handle.
+  const sessionHandle = {
+    driverName: job.driver.name,
+    shortId: job.claude.shortId,
+    sessionId: job.claude.sessionId,
+    sessionName: job.claude.sessionName,
+    cwd: job.claude.cwd,
+    startedAt: job.claude.startedAt ?? job.createdAt,
+  };
+
+  // 10. Call shared helper to send the review turn.
+  const { finalJob, sendResult, newTurnIndex } = await sendFollowupTurn({
+    jobId,
+    prompt,
+    driver,
+    adapter,
+    json,
+    sessionHandle,
+    job,
+    promptSummaryPrefix: '[review] ',
+  });
+
+  // 11. Parse structured findings.
+  const review = parseReviewOutput(sendResult.finalMessage ?? '');
+
+  // 12. Format and print.
+  const reviewTurn = finalJob.turns[newTurnIndex];
+  const turnMeta = {
+    index: newTurnIndex,
+    status: reviewTurn?.status ?? 'completed',
+  };
+
+  if (json) {
+    process.stdout.write(formatReviewJson({ review, job: finalJob, turn: turnMeta }) + '\n');
+  } else {
+    process.stdout.write(formatReviewHuman({ review, job: finalJob, turn: turnMeta }) + '\n');
+  }
+}
+
 // ---------- usage ----------
 
 function printUsage() {
@@ -945,6 +1235,8 @@ function printUsage() {
       '  result <jobId> [--all]                    Show final result of a completed job',
       '  stop <jobId> [--all]                      Stop a running job',
       '  followup <jobId> [flags] -- <prompt>      Send a follow-up prompt to an existing job',
+      '  review <jobId-or-prefix>                  Run a same-session structured review against the latest non-review turn',
+      '  adversarial-review <jobId-or-prefix>      Run a fresh-session independent review against the latest non-review turn',
       '',
       'Flags:',
       '  --json                       Machine-readable JSON output',

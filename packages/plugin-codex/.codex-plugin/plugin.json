@@ -17,7 +17,9 @@
       "Check my Claude jobs.",
       "Show the result of a Claude job.",
       "Stop a Claude job.",
-      "Send a follow-up instruction to a Claude job I started earlier."
+      "Send a follow-up instruction to a Claude job I started earlier.",
+      "Review a Claude job in the same session.",
+      "Run an adversarial (fresh-session) review of a Claude job."
     ],
     "brandColor": "#D97706"
   }

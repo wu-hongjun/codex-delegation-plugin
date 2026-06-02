@@ -24,6 +24,8 @@ const SKILL_NAMES = [
   'claude-result',
   'claude-stop',
   'claude-followup',
+  'claude-review',
+  'claude-adversarial-review',
 ];
 
 /** Subcommand each skill must reference in its body. */
@@ -34,6 +36,8 @@ const SKILL_SUBCOMMANDS = {
   'claude-result': 'result',
   'claude-stop': 'stop',
   'claude-followup': 'followup',
+  'claude-review': 'review',
+  'claude-adversarial-review': 'adversarial-review',
 };
 
 function skillPath(name) {
@@ -204,7 +208,7 @@ describe('plugin.json.interface.defaultPrompt', () => {
 
 // ---------- Skill directory / file existence ----------
 
-describe('all six skill directories and SKILL.md files exist', () => {
+describe('all skill directories and SKILL.md files exist', () => {
   for (const name of SKILL_NAMES) {
     it(`skills/${name}/SKILL.md exists`, () => {
       assert.ok(existsSync(skillPath(name)), `SKILL.md not found at ${skillPath(name)}`);
@@ -412,26 +416,18 @@ describe('no hooks.json at package root', () => {
   });
 });
 
-describe('no out-of-scope skill directories exist', () => {
-  it('skills/ does not contain "claude-review"', () => {
-    const skillsDir = join(PLUGIN_ROOT, 'skills');
-    if (!existsSync(skillsDir)) return; // skills dir missing is caught by earlier tests
-    const entries = readdirSync(skillsDir);
-    assert.equal(
-      entries.includes('claude-review'),
-      false,
-      'Out-of-scope skill "claude-review" must not exist under skills/',
+describe('review skill directories exist (T8 additions)', () => {
+  it('skills/claude-review/ directory exists', () => {
+    assert.ok(
+      existsSync(join(PLUGIN_ROOT, 'skills', 'claude-review')),
+      'skills/claude-review/ directory must exist',
     );
   });
 
-  it('skills/ does not contain "claude-adversarial-review"', () => {
-    const skillsDir = join(PLUGIN_ROOT, 'skills');
-    if (!existsSync(skillsDir)) return;
-    const entries = readdirSync(skillsDir);
-    assert.equal(
-      entries.includes('claude-adversarial-review'),
-      false,
-      'Out-of-scope skill "claude-adversarial-review" must not exist under skills/',
+  it('skills/claude-adversarial-review/ directory exists', () => {
+    assert.ok(
+      existsSync(join(PLUGIN_ROOT, 'skills', 'claude-adversarial-review')),
+      'skills/claude-adversarial-review/ directory must exist',
     );
   });
 });
@@ -475,4 +471,175 @@ describe('plugin.json contains no forbidden tokens at any depth', () => {
       );
     });
   }
+});
+
+// ---------- T8: review skills — per-skill guards ----------
+
+const APPROVED_USAGE_NOTICE =
+  'This skill sends an additional prompt through Claude Code and may count toward your Claude Code usage.';
+
+describe('claude-review/SKILL.md: approved usage notice is present verbatim', () => {
+  it('contains the exact approved usage notice', () => {
+    const body = readFileSync(skillPath('claude-review'), 'utf8');
+    assert.ok(
+      body.includes(APPROVED_USAGE_NOTICE),
+      `claude-review/SKILL.md is missing the exact approved usage notice: "${APPROVED_USAGE_NOTICE}"`,
+    );
+  });
+});
+
+describe('claude-adversarial-review/SKILL.md: approved usage notice is present verbatim', () => {
+  it('contains the exact approved usage notice', () => {
+    const body = readFileSync(skillPath('claude-adversarial-review'), 'utf8');
+    assert.ok(
+      body.includes(APPROVED_USAGE_NOTICE),
+      `claude-adversarial-review/SKILL.md is missing the exact approved usage notice: "${APPROVED_USAGE_NOTICE}"`,
+    );
+  });
+});
+
+describe('neither review skill contains "incurs API usage"', () => {
+  for (const name of ['claude-review', 'claude-adversarial-review']) {
+    it(`${name}: does not contain "incurs API usage"`, () => {
+      const body = readFileSync(skillPath(name), 'utf8');
+      assert.equal(
+        body.includes('incurs API usage'),
+        false,
+        `${name}/SKILL.md contains forbidden phrase "incurs API usage"`,
+      );
+    });
+  }
+});
+
+describe('claude-review/SKILL.md: --yes auto-injection guard', () => {
+  it('no dispatcher run line for "review" subcommand contains " --yes"', () => {
+    const body = readFileSync(skillPath('claude-review'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('claude-companion.mjs') && line.includes(' review'))
+      .filter((line) => line.includes(' --yes'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-review/SKILL.md auto-injects "--yes" on a dispatcher run line:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('claude-adversarial-review/SKILL.md: --yes auto-injection guard', () => {
+  it('no dispatcher run line for "adversarial-review" subcommand contains " --yes"', () => {
+    const body = readFileSync(skillPath('claude-adversarial-review'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter(
+        (line) => line.includes('claude-companion.mjs') && line.includes('adversarial-review'),
+      )
+      .filter((line) => line.includes(' --yes'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-adversarial-review/SKILL.md auto-injects "--yes" on a dispatcher run line:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('claude-adversarial-review/SKILL.md: no empty-prompt sequence on run line', () => {
+  it('dispatcher run line does not contain "-- \\"\\""  or bare "--" at end of line', () => {
+    const body = readFileSync(skillPath('claude-adversarial-review'), 'utf8');
+    // Check each line that invokes the dispatcher
+    const runLines = body
+      .split('\n')
+      .filter(
+        (line) => line.includes('claude-companion.mjs') && line.includes('adversarial-review'),
+      );
+    for (const line of runLines) {
+      // Must not end with bare "--" (optionally followed by whitespace)
+      assert.equal(
+        /--\s*$/.test(line),
+        false,
+        `claude-adversarial-review/SKILL.md: dispatcher run line ends with bare "--": ${line}`,
+      );
+      // Must not contain '-- ""' (empty-prompt sequence)
+      assert.equal(
+        line.includes('-- ""'),
+        false,
+        `claude-adversarial-review/SKILL.md: dispatcher run line contains empty-prompt sequence '-- ""': ${line}`,
+      );
+      // Must not contain "-- ''" (single-quoted variant)
+      assert.equal(
+        line.includes("-- ''"),
+        false,
+        `claude-adversarial-review/SKILL.md: dispatcher run line contains empty-prompt sequence "-- ''": ${line}`,
+      );
+    }
+  });
+});
+
+describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () => {
+  it('includes "Review a Claude job in the same session."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('Review a Claude job in the same session.'),
+      `interface.defaultPrompt must contain "Review a Claude job in the same session."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+
+  it('includes "Run an adversarial (fresh-session) review of a Claude job."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('Run an adversarial (fresh-session) review of a Claude job.'),
+      `interface.defaultPrompt must contain "Run an adversarial (fresh-session) review of a Claude job."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+
+  it('still contains the original 4 pre-T8 entries', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    const originals = [
+      'Set up Claude Companion.',
+      'Delegate a task to Claude Code.',
+      'Check my Claude jobs.',
+      'Show the result of a Claude job.',
+    ];
+    for (const entry of originals) {
+      assert.ok(
+        dp.includes(entry),
+        `interface.defaultPrompt is missing original entry "${entry}"; got: ${JSON.stringify(dp)}`,
+      );
+    }
+  });
+
+  it('has at least 8 entries after T8 additions', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.length >= 8,
+      `interface.defaultPrompt must have at least 8 entries after T8; got ${dp.length}`,
+    );
+  });
+});
+
+describe('no unexpected review-adjacent skill directories exist', () => {
+  it('skills/ does not contain any review-adjacent dir beyond claude-review and claude-adversarial-review', () => {
+    const skillsDir = join(PLUGIN_ROOT, 'skills');
+    if (!existsSync(skillsDir)) return;
+    const entries = readdirSync(skillsDir);
+    const unexpected = entries.filter((e) => {
+      // Allow the two sanctioned review skills
+      if (e === 'claude-review' || e === 'claude-adversarial-review') return false;
+      // Flag anything else that looks review-adjacent
+      return /review|critic/i.test(e);
+    });
+    assert.equal(
+      unexpected.length,
+      0,
+      `Unexpected review-adjacent skill directories found: ${unexpected.join(', ')}`,
+    );
+  });
 });

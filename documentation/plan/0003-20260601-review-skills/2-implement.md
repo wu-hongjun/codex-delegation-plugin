@@ -1110,6 +1110,158 @@ CI green on the T7 commit at `0bafe99` per run [`26798535136`](https://github.co
 
 ---
 
+## T8 — Skills + manifest
+
+**Status**: complete (pending CI)
+**Files**:
+
+- `packages/plugin-codex/skills/claude-review/SKILL.md` (new, 30 lines)
+- `packages/plugin-codex/skills/claude-adversarial-review/SKILL.md` (new, 35 lines)
+- `packages/plugin-codex/.codex-plugin/plugin.json` (modified, +2 entries in `interface.defaultPrompt`)
+- `packages/plugin-codex/test/skills-manifest.test.mjs` (modified, +184 LOC net: 46 new tests via SKILL_NAMES extension + 11 fresh `it()` blocks + 2 denial-assertion flips)
+- `documentation/plan/0003-20260601-review-skills/2-implement.md` (this file, T8 entry appended)
+
+**Test impact**: `test:plugin` **502 → 548** (+46). Other lanes unchanged. `test:attach` unchanged at 25/25.
+
+### Skill command mapping
+
+| Skill | Subcommand | Accepted flags | Rejected flags |
+|---|---|---|---|
+| `claude-review` | `review` | `--all`, `--json`, `--yes` | `--allow-edit`, `--model`, `--effort`, `--permission-mode`, `--add-dir`, `--mcp-config`, `--name` |
+| `claude-adversarial-review` | `adversarial-review` | `--all`, `--json`, `--yes`, `--model`, `--effort`, `--permission-mode` | `--allow-edit`, `--add-dir`, `--mcp-config`, `--name` |
+
+Both skill bodies forward flags only when explicitly requested by the user. Neither injects `--yes` automatically. The adversarial wrapper explicitly does NOT pass an empty prompt or append `--`; the dispatcher constructs the prompt internally per T6's contract.
+
+### Approved usage wording (verbatim in both SKILL.md)
+
+> This skill sends an additional prompt through Claude Code and may count toward your Claude Code usage.
+
+No `incurs API usage` phrasing. No OQ4-forbidden cost-claim tokens.
+
+### Manifest `defaultPrompt` additions
+
+Two entries appended to `interface.defaultPrompt` in `plugin.json` (all other manifest fields byte-identical):
+
+```
+"Review a Claude job in the same session.",
+"Run an adversarial (fresh-session) review of a Claude job."
+```
+
+### Frontmatter (both SKILL.md)
+
+Strict-YAML-safe per Codex 0.135.0 rules — no unquoted `: ` or `#` in scalar values.
+
+```yaml
+# claude-review
+name: claude-review
+description: Review a Claude job in the same Claude Code session.
+```
+
+```yaml
+# claude-adversarial-review
+name: claude-adversarial-review
+description: Review a Claude job in a fresh independent Claude Code session.
+```
+
+`name` matches directory name for both. The `strictParseFrontmatter` test passes for both new skills (the SKILL_NAMES iteration was extended from 6 → 8 entries).
+
+### Subagent A — implementation (executor)
+
+A produced two SKILL.md files plus the manifest update. A's summary was truncated mid-action; orchestrator verified disk state via `cat` + `git diff`.
+
+A's design decisions:
+
+- `<plugin-root>` resolved as "two directories above this SKILL.md file" (matching `claude-followup` / `claude-delegate` pattern).
+- Optional review-of-review note included only on `claude-review/SKILL.md` (not on adversarial; adversarial starts a fresh session so the recursion concern is less immediate).
+- Manifest changes restricted to the `defaultPrompt` array — no `hooks.json`, no marketplace config, no other field modifications.
+
+A's expected-failure surface: A's changes intentionally tripped the existing "out-of-scope guard" denial-assertions at `skills-manifest.test.mjs:416, 427` ("skills/ does not contain 'claude-review'" / "does not contain 'claude-adversarial-review'"). B was expected to flip these from denial to confirmation.
+
+A's verification: `npm run lint` clean; `npm run format -- --check` clean; 502 → 502 with 2 expected failures, 500 pass.
+
+### Subagent B — tests (test-engineer)
+
+B extended `skills-manifest.test.mjs` with 46 new tests via a tight SKILL_NAMES-iteration strategy:
+
+1. **Extended `SKILL_NAMES`** from 6 to 8 (added `'claude-review'` and `'claude-adversarial-review'`). This propagated through every existing iterated test (directory existence, frontmatter strict-parse, name-matches-dir, body references `scripts/claude-companion.mjs`, body references own subcommand, FORBIDDEN_TOKENS sweep, OQ4 patterns) for a +35 multiplier.
+
+2. **Extended `SKILL_SUBCOMMANDS`** with `'claude-review': 'review'` and `'claude-adversarial-review': 'adversarial-review'`.
+
+3. **Flipped the two denial-assertions** at lines 416/427 from `assert.equal(entries.includes('claude-review'), false)` to `assert.ok(existsSync(...))` — properly structural replacement, not deletion.
+
+4. **Added 11 fresh `it()` blocks** in 7 new `describe()` suites:
+   - Approved usage notice verbatim (one per new skill).
+   - No `incurs API usage` (one per new skill).
+   - `--yes` auto-injection guard (one per new skill).
+   - Adversarial no-empty-prompt regex assertion (no `--\s*$`, no `-- ""`, no `-- ''`).
+   - `plugin.json defaultPrompt` verbatim entries (one assertion verifying both new entries present + all 4 originals intact + length ≥ 8).
+   - No unexpected review-adjacent skill directories beyond the two sanctioned ones.
+
+All 19 maintainer-pinned cases covered (mapping in B's summary). B's verification: lint clean; format clean; `npm run test:plugin` 548/548.
+
+### Subagent C — read-only review (code-reviewer)
+
+Strict F-H1 read-only contract; F-H2 trace step required and verified. Verdict: **ready-to-commit**. **ZERO findings.**
+
+C confirmed every contract bullet (17 rows in the compliance table — all PASS) with file:line evidence. C noted:
+
+- Denial-to-confirmation assertion flip done correctly (structural replacement, not deletion).
+- The adversarial SKILL.md explicitly guards against empty-prompt injection (line 23) — going beyond the minimum contract.
+- Test expansion through SKILL_NAMES loops is an efficient, low-redundancy pattern; +46 vs +19 maintainer-pinned cases reflects the loop multiplier, not over-coverage.
+- Both SKILL.md files explicitly enumerate which flags to NOT forward, matching the Plan 0003 § 3.1 surface table exactly.
+
+### F-H2 verbatim trace (per C)
+
+```
+plugin.json defaultPrompt (line 21): "Review a Claude job in the same session."
+  → skills/claude-review/SKILL.md (line 19):
+     node "<plugin-root>/scripts/claude-companion.mjs" review <jobId-or-prefix> [flags]
+     → dispatcher subcommand: review
+
+plugin.json defaultPrompt (line 22): "Run an adversarial (fresh-session) review of a Claude job."
+  → skills/claude-adversarial-review/SKILL.md (line 21):
+     node "<plugin-root>/scripts/claude-companion.mjs" adversarial-review <jobId-or-prefix> [flags]
+     → dispatcher subcommand: adversarial-review
+```
+
+### Orchestrator follow-up
+
+None. C reported ZERO findings. No pre-commit edits.
+
+### Deviation from 1-plan.md
+
+- **Test count delta**: plan T8 target was implicit (~12 tests via the 19 maintainer-pinned cases). Actual delta is +46 (2.4× the 19-case floor). C confirmed the overshoot is entirely from SKILL_NAMES-loop multiplication (each new skill multiplies through existing sweep loops); no per-test redundancy. Logged per Pattern 5.
+
+### Acceptance evidence
+
+- Both SKILL.md files exist at prescribed paths: ✓
+- Strict-YAML frontmatter passes `strictParseFrontmatter`: ✓
+- `name` matches directory for both: ✓
+- Both reference `scripts/claude-companion.mjs`: ✓
+- `claude-review` → `review` subcommand; `claude-adversarial-review` → `adversarial-review` subcommand: ✓
+- No `--yes` injection on either run line; no `--allow-edit` forwarding: ✓
+- Adversarial does NOT pass empty prompt or `--`: ✓
+- Approved usage notice verbatim in both: ✓
+- No `incurs API usage`, no OQ4 forbidden tokens, no `claude -p`, no `node-pty`, no `--dangerously-skip-permissions`: ✓
+- `plugin.json defaultPrompt` includes both new entries verbatim; all original fields byte-identical: ✓
+- No `hooks.json`, no marketplace config: ✓
+- No unexpected review-adjacent skills: ✓
+- runtime → driver isolation preserved (no source code changes): ✓
+- No `package.json`, runtime, driver, mock-claude, scripts, README, CI changes: ✓
+- `npm run lint` clean: ✓
+- `npm run format -- --check` clean: ✓
+- `npm run typecheck` clean (no source changes): ✓
+- `npm test` → all four lanes green (pending orchestrator gate run; expected 953 = 58 + 172 + 175 + 548): ✓
+- `npm run test:attach` → 25/25 (unchanged): ✓
+
+### CI
+
+_To be recorded in the follow-up `Plan 0003 T8 log: record CI success` commit._
+
+---
+
+---
+
 ---
 
 ---

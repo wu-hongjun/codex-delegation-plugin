@@ -1430,7 +1430,7 @@ None. F1 is LOW and C explicitly said "accept as-is; optionally reword in a futu
 
 ### CI
 
-_To be recorded in the follow-up `Plan 0003 T9 log: record CI success` commit._
+CI green on the T9 commit at `b18578d` per run [`26802711174`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26802711174): `ubuntu-latest / Node 20`, `macos-latest / Node 20`, `ubuntu-latest / Node 22`, `macos-latest / Node 22` — all `success`. No transient flakes or API-metadata anomalies.
 
 ---
 

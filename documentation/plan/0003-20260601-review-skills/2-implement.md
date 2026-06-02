@@ -1781,7 +1781,7 @@ CI run [`26820974184`](https://github.com/wu-hongjun/cc-plugin-codex/actions/run
 
 ### CI
 
-_To be recorded in the follow-up `Plan 0003 T11 log: record CI success` commit._
+CI green on the T11 commit at `70877f7` per run [`26831759907`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26831759907): `ubuntu-latest / Node 20`, `macos-latest / Node 20`, `ubuntu-latest / Node 22`, `macos-latest / Node 22` — all `success`. No transient flakes or API-metadata anomalies. (Docs-only commit; CI ran on the matrix and confirmed the verification was self-consistent.)
 
 ---
 

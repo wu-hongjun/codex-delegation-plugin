@@ -194,23 +194,48 @@ export async function attachAndSend(
   const { shortId } = session;
   const sidecarOpts: ReadSidecarOptions = { env: opts?.env };
   const pollMs = opts?.pollIntervalMs ?? 500;
-  const promptRegTimeoutMs = opts?.promptRegisterTimeoutMs ?? 5_000;
   const turnTimeoutMs = opts?.timeoutMs ?? 600_000;
 
-  // T15a: real Claude's TUI needs ~2s to finish its startup banner +
-  // capability handshake before it will accept input. Without a warmup the
-  // PTY write lands during init and the TUI ignores it (no submit fires).
-  // Default 2000ms. Env override CC_PLUGIN_CODEX_ATTACH_WARMUP_MS keeps tests
-  // fast (mock-claude is instant). Defensive parse: bad input falls back to
-  // the default rather than firing an immediate write that would be lost.
-  const envWarmupRaw = opts?.env?.['CC_PLUGIN_CODEX_ATTACH_WARMUP_MS'];
+  // T15a / T12a: real Claude's TUI needs several seconds to finish its
+  // startup banner + capability handshake before it will accept input.
+  // Without a warmup the PTY write lands during init and the TUI ignores
+  // it (no submit fires). Plan 0002 tuned the default for Claude 2.1.149
+  // (2000ms was sufficient). Plan 0003 T12 live evidence with Claude
+  // 2.1.150 showed 5000ms still too short and 8000ms reliably succeeds —
+  // bumped the default to 8000ms. Tests inject 0ms via the env var to keep
+  // mock-claude runs fast. Defensive parse: bad input falls back to the
+  // default rather than firing an immediate write that would be lost.
+  //
+  // Plan 0003 T12a: fall back to `process.env` when `opts.env` is absent so
+  // the env var is reachable from the production dispatcher path (it
+  // constructs the driver without an `env` option). Tests still inject an
+  // explicit `opts.env` to override; that path is unchanged.
+  const envSource = opts?.env ?? process.env;
+  const envWarmupRaw = envSource['CC_PLUGIN_CODEX_ATTACH_WARMUP_MS'];
   const envWarmupParsed = envWarmupRaw != null ? Number(envWarmupRaw) : NaN;
-  const ATTACH_WARMUP_DEFAULT_MS = 2_000;
+  const ATTACH_WARMUP_DEFAULT_MS = 8_000;
   const attachWarmupMs =
     opts?.attachWarmupMs ??
     (Number.isFinite(envWarmupParsed) && envWarmupParsed >= 0
       ? envWarmupParsed
       : ATTACH_WARMUP_DEFAULT_MS);
+
+  // Plan 0003 T12a: env-var override for the prompt-register polling
+  // timeout. The real Plan 0003 T12 issue turned out to be that Claude
+  // 2.1.150 needs CRLF (not bare CR) to submit; once the line terminator is
+  // correct, the sidecar tempo flips to active well within the historic
+  // 5_000ms window. Keep the env-var override as a defensive operator knob
+  // for any future TUI version that becomes slower again. Same env-var
+  // pattern as the warmup knob (test seam + production fallback via
+  // process.env, defensive parse on bad input).
+  const envPromptRegRaw = envSource['CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS'];
+  const envPromptRegParsed = envPromptRegRaw != null ? Number(envPromptRegRaw) : NaN;
+  const PROMPT_REGISTER_DEFAULT_MS = 5_000;
+  const promptRegTimeoutMs =
+    opts?.promptRegisterTimeoutMs ??
+    (Number.isFinite(envPromptRegParsed) && envPromptRegParsed > 0
+      ? envPromptRegParsed
+      : PROMPT_REGISTER_DEFAULT_MS);
 
   // ── Step 2: Snapshot pre-send sidecar state ───────────────────────────────
   const preSend = await readSidecar(shortId, sidecarOpts);
@@ -293,7 +318,18 @@ export async function attachAndSend(
       });
       checkAbort();
     }
-    term.write(input.text + '\r');
+    // Plan 0003 T12a: wrap the prompt in bracketed-paste markers
+    // (`\x1b[200~ … \x1b[201~`) then submit with a CR. Claude Code 2.1.149
+    // accepted a bare CR after raw text as Enter; 2.1.150 ignores raw text
+    // submits for prompts longer than a few dozen bytes (the TUI's
+    // bracketed-paste detection swallows the buffer without submitting).
+    // Live T12 probe evidence: short prompts ("What is 2+2?\\r\\n") submit
+    // within ~1 s; a 1574-byte review prompt with the same encoding never
+    // submits — the sidecar shows zero tempo movement over 15+ s. Wrapping
+    // the same long prompt in bracketed-paste markers and ending with CR
+    // submits within ~2 s. Use the wrap unconditionally so short prompts
+    // and long prompts go through the same code path.
+    term.write('\x1b[200~' + input.text + '\x1b[201~\r');
 
     // ── Helper: get agents-json status (best-effort, swallows errors) ─────────
     async function getAgentsStatus(): Promise<string | undefined> {
@@ -376,7 +412,10 @@ export async function attachAndSend(
         });
       }
 
-      term.write(answer + '\r');
+      // T12a: bracketed-paste wrap + CR, mirrored from the prompt-write
+      // site above so short and long permission answers go through the
+      // same submit-encoding path.
+      term.write('\x1b[200~' + answer + '\x1b[201~\r');
       // Give a moment for the permission answer to land before re-checking
       await sleep(pollMs);
     }

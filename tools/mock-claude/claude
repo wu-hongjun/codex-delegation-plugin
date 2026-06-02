@@ -674,6 +674,13 @@ function cmdAttach(config, args) {
     firstTurn = false;
   }
 
+  // Plan 0003 T12a: real Claude TUI input encoding for long prompts is
+  // bracketed-paste-wrapped:  ESC[200~ <content> ESC[201~ CR. The driver
+  // uses this wrap for ALL prompts now (short and long). Strip the markers
+  // before processing so the mock continues to see the raw content.
+  function stripBracketedPaste(s) {
+    return s.replace(/\[200~/g, '').replace(/\[201~/g, '');
+  }
   process.stdin.on('data', (chunk) => {
     for (let i = 0; i < chunk.length; i++) {
       const byte = typeof chunk[i] === 'number' ? chunk[i] : chunk.charCodeAt(i);
@@ -681,10 +688,17 @@ function cmdAttach(config, args) {
         // Ctrl+Z: detach immediately, no sidecar mutation
         process.exit(0);
       } else if (byte === 0x0d || byte === 0x0a) {
-        // Enter (\r or \n): submit
-        const submitted = buf;
+        // Enter (\r or \n): submit. Plan 0003 T12a: skip empty submits so
+        // CRLF terminators (or stray LF after bracketed-paste close) don't
+        // fire a second (empty) submit that clobbers the response. PTY
+        // line discipline (icrnl) may convert CR to LF before this handler
+        // sees it, so we cannot reliably detect "LF immediately after CR"
+        // from raw bytes — the simpler rule "an empty submit is a no-op"
+        // handles all cases (CRLF, CR, LF, LF+LF) without lookback.
+        const cleaned = stripBracketedPaste(buf);
         buf = '';
-        processSubmit(submitted);
+        if (cleaned.length === 0) continue;
+        processSubmit(cleaned);
       } else {
         buf += String.fromCharCode(byte);
       }

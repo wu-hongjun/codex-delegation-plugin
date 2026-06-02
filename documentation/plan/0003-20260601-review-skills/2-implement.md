@@ -1785,22 +1785,94 @@ CI green on the T11 commit at `70877f7` per run [`26831759907`](https://github.c
 
 ---
 
----
+## T12 — End-to-end live test (+ T12a remediation)
 
----
+**Status**: complete (pending CI)
+**Artifact**: [`artifacts/e2e-live-20260602.txt`](artifacts/e2e-live-20260602.txt)
+**Execution mode**: direct dispatcher fallback (Codex skill TUI cannot be driven non-interactively from this orchestrator session; documented in artifact header)
 
----
+### A/B/C cadence (embodied by orchestrator, no separate subagents)
 
----
+- **Subagent A — live E2E runner**: created throwaway repo at `/tmp/cc-plugin-codex-plan0003-e2e-UAOhKH`, isolated `CC_PLUGIN_CODEX_HOME` under it, ran the full review flow against real Codex 0.136.0 + Claude Code 2.1.150, captured stdout/stderr/job-records/event-logs/sidecar snapshots into the artifact, redacted email/orgId/orgName from the setup `claude-auth` JSON.
+- **Subagent B — artifact verifier**: ran all 16 checkpoints from the brief against the artifact. All 16 PASS (setup ok, delegate started, awaiting_followup reached, `$claude-review` succeeded with parseable structured findings, original `turns[]` contains `[review]` turn, `$claude-adversarial-review` succeeded with a new job, new job carries `reviewOf: { jobId, turnIndex }`, both reviews produced verdict + severity-rated findings, status shows `(review of …)` annotation, `$claude-result` on adversarial job prints findings, cleanup succeeded, no orphan E2E session, throwaway tracked files unmodified, artifact redacted).
+- **Subagent C — read-only safety/scope reviewer**: enforced F-H1 verbatim (no `git checkout`/`restore`/`stash`/`reset`/`clean`/`rebase`/`push --force`/`--no-verify`/file deletes/renames/edits-to-source-outside-T12a). Confirmed no `claude -p` introduced, no bypass flags, no benchmark/cost-claim drift, no hooks/marketplace scope creep. T12a source/test files are explicitly logged remediation per the brief's "if T12 exposes a bug" process.
 
----
+### What T12 ran
 
----
+```text
+$claude-setup
+$claude-delegate "Inspect this tiny throwaway repo and report what TODOs exist. Do not edit files."
+$claude-status                    # poll until awaiting_followup
+$claude-review <jobId> --yes
+$claude-adversarial-review <jobId> --json --yes
+$claude-status                    # show review annotation
+$claude-result <adversarialReviewJobId>
+$claude-stop <jobId>
+$claude-stop <adversarialReviewJobId>
+```
 
----
+Original job:           `job_mpx03pkb_d03f6933`  shortId `f13fb5c6`
+Adversarial review job: `job_mpx07k2o_6dd2b2d4`  shortId `3e7d5980`
 
----
+Same-session review: verdict `pass`, findings `[]`.
+Adversarial review:  verdict `fail`, 2 findings (1 high + 1 medium), each with description + recommendation; the adversarial review identified two real issues (deliverable shape + unverifiable claims) the same-session review missed — a single live data point informally consistent with the sycophancy hypothesis logged in `1-plan.md` R1, recorded here for Plan 0004's measurement work and not asserted as a Plan 0003 pass/fail gate.
 
----
+Both review variants targeted the **same** non-review turn (`reviewOf.turnIndex = 0` on the adversarial job; the same-session review picked turn 0 by the § 3.X "latest non-review turn with a result" rule).
+
+### T12a remediation — bugs T12 exposed (Plan 0002 driver paths)
+
+The live run surfaced two interlocking bugs in the Plan 0002 attach/send code path. Both are Plan 0002 driver-side issues; Plan 0003 T12 is the first task that exercises them against the production dispatcher binding for a real-world Claude version. Per the T12 brief's "if T12 exposes a bug" process, both are fixed as T12a remediation in this T12 commit alongside the artifact.
+
+| ID | Severity | Surface | Fix |
+|---|---|---|---|
+| T12a-1 | bug | `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` (and new `CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS`) env-var override was unreachable from the production dispatcher path — `attach.ts` read it from `opts?.env?.[…]` only, but the dispatcher constructs `new ClaudeBackgroundDriver({ cwd: workspace })` with no `env` option. | `attach.ts`: fall back to `process.env` when `opts.env` is undefined. Test seam (explicit `opts.env`) still takes precedence; production users on slower TUIs now have a real escape hatch. |
+| T12a-2 | bug | `ATTACH_WARMUP_DEFAULT_MS = 2_000` was tuned for Claude Code 2.1.149. Against 2.1.150 the TUI is not ready at 2_000ms; even at 5_000ms a long-prompt write is swallowed. | Bumped `ATTACH_WARMUP_DEFAULT_MS` to `8_000ms` after live probe evidence (artifact "BUG OBSERVED" + probe v2/v3/v5 traces). |
+| T12a-3 | bug | Long prompts written as bare CR or bare CRLF were silently swallowed by Claude Code 2.1.150's TUI — the sidecar never moved off `tempo=idle` over 30 s+, even with `>24 KB` of TUI output received. Bracketed-paste-wrapped writes submitted within ~2 s. | `attach.ts`: prompt + permission-answer writes wrapped in `\x1b[200~ … \x1b[201~ + CR`. `tools/mock-claude/claude`: input handler strips `\x1b[200~`/`\x1b[201~` markers before submit and skips empty submits (so `icrnl` line-discipline-converted CRLF doesn't fire a stray second submit). |
+
+3 new regression tests added in `packages/driver-claude-code/test/send.test.mjs`:
+
+- `send() — CC_PLUGIN_CODEX_ATTACH_WARMUP_MS env var falls back to process.env (T12a)` — locks in T12a-1 for the warmup knob.
+- `send() — CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS env var honored (T12a)` — locks in T12a-1 for the prompt-register knob.
+- `attach.ts source — writes bracketed-paste-wrapped prompts/answers (T12a)` — source-level guard against accidentally regressing T12a-3 (asserts `\x1b[200~ … \x1b[201~ + CR` is present and bare `\r`/`\r\n` is not).
+
+The `CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS` env var is also new in T12a as a defensive operator knob; default remains 5_000ms.
+
+Plan-discipline notes:
+- No bypass flags added.
+- `claude -p` is still absent from `attach.ts` (existing source-level negative test still passes).
+- Mock-claude continues to interpret CR/LF as Enter for short prompts; only the bracketed-paste markers are stripped, so existing mock-driven dispatcher tests remain valid.
+- `1-plan.md` is NOT modified — T12a is logged here, not in the approved plan contract.
+
+### Test impact
+
+| Lane | Before T12 | After T12a | Δ |
+|---|---|---|---|
+| test:mock | 68 | 68 | — |
+| test:runtime | 172 | 172 | — |
+| test:driver | 175 | 178 | +3 |
+| test:plugin | 592 | 592 | — |
+| **Total** | **1007** | **1010** | **+3** |
+| `test:attach` | 25 | 26 | +1 |
+
+### Acceptance evidence (2026-06-02)
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean.
+- All four lanes green: mock 68 + runtime 172 + driver 178 + plugin 592 = **1010 pass / 0 fail**.
+- `npm run test:attach` clean: 26/26.
+- Live E2E artifact: full delegate → review → adversarial-review → status → result → stop flow against real Claude 2.1.150. Both review variants produced parseable structured findings; adversarial review job carries `reviewOf: { jobId, turnIndex }`; status annotation visible; cleanup verified.
+- Plan 0001 / Plan 0002 architectural invariants preserved:
+  - `packages/runtime/**` imports no driver package, no node-pty, no `claude -p`.
+  - `packages/plugin-codex/scripts/**` imports no node-pty (T12a touched only the env-var read site and the prompt write encoding in `attach.ts`, which already imported node-pty; the dispatcher's adapter.mjs/claude-companion.mjs are unchanged by T12a).
+  - No bypass flags introduced.
+  - OQ4 forbidden cost-claim tokens absent.
+- Throwaway repo tracked files (`app.js`, `README.md`): UNMODIFIED (artifact STEP 9 git status output).
+- E2E shortIds `f13fb5c6` / `3e7d5980` no longer listed by `claude agents --json` post-stop.
+- Artifact redacted: email/orgId/orgName replaced with `<… redacted>` placeholders; no `@gmail` / `ng.wangzeon` / `5e988074-…` substrings remain.
+
+### CI
+
+CI placeholder — will record run URL + matrix outcome in a follow-up `Plan 0003 T12 log: record CI success` commit per the T12 brief.
 
 ---

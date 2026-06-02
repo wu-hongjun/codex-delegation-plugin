@@ -816,6 +816,33 @@ describe('send() — AbortSignal abort', () => {
 // 17. No `claude -p` in attach.ts source
 // =============================================================================
 
+describe('attach.ts source — writes bracketed-paste-wrapped prompts/answers (T12a)', () => {
+  it('attach.ts uses ESC[200~ … ESC[201~ + CR to submit, not bare CR/CRLF', () => {
+    assert.ok(existsSync(ATTACH_SRC), `attach.ts must exist at ${ATTACH_SRC}`);
+    const src = readFileSync(ATTACH_SRC, 'utf8');
+    // Plan 0003 T12 live evidence: Claude Code 2.1.150 swallows long raw
+    // prompts and never submits them. Wrapping the prompt in bracketed
+    // paste markers (\\x1b[200~ … \\x1b[201~) and ending with \\r submits
+    // within ~2 s, for both short and long prompts.
+    // The driver must use the wrap for the prompt write AND the
+    // permission-answer write. Match the literal source-fragment shapes:
+    assert.ok(
+      src.includes("'\\x1b[200~' + input.text + '\\x1b[201~\\r'"),
+      'attach.ts must wrap the prompt write in ESC[200~ … ESC[201~ + CR',
+    );
+    assert.ok(
+      src.includes("'\\x1b[200~' + answer + '\\x1b[201~\\r'"),
+      'attach.ts must wrap the permission-answer write in ESC[200~ … ESC[201~ + CR',
+    );
+    // Negative guard: no bare-CR or bare-CRLF prompt writes remain.
+    assert.equal(
+      src.includes("input.text + '\\r')") || src.includes("input.text + '\\r\\n')"),
+      false,
+      'attach.ts must not write input.text with a bare CR or CRLF (must use bracketed-paste wrap)',
+    );
+  });
+});
+
 describe('attach.ts source — no claude -p or claude --print', () => {
   it('packages/driver-claude-code/src/attach.ts does not contain "claude -p" or "claude --print"', () => {
     assert.ok(existsSync(ATTACH_SRC), `attach.ts must exist at ${ATTACH_SRC}`);
@@ -882,6 +909,138 @@ describe('send() — no semantic dependence on PTY TUI text', () => {
         expectedResult,
         `sidecar output.result must equal the configured attachResponse with \${prompt} substituted`,
       );
+    },
+  );
+});
+
+// =============================================================================
+// 19. T12a — CC_PLUGIN_CODEX_ATTACH_WARMUP_MS env var reachable via process.env
+//
+// Plan 0002 advertised CC_PLUGIN_CODEX_ATTACH_WARMUP_MS as a tuning knob in the
+// attach.ts comments, but the production dispatcher constructs the driver as
+// `new ClaudeBackgroundDriver({ cwd: workspace })` with no `env` option. Before
+// T12a, attach.ts read the warmup override from `opts?.env?.[…]`, which was
+// undefined on that path — the env var was unreachable from production. The
+// fix falls back to `process.env` when `opts.env` is absent. This regression
+// guard locks the fallback in place.
+// =============================================================================
+
+describe('send() — CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS env var honored (T12a)', () => {
+  it(
+    'driver constructed without env option honors CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS=1 from process.env (forces fast timeout)',
+    { timeout: 15000 },
+    async () => {
+      const prevPath = process.env.PATH;
+      const prevWarmup = process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS;
+      const prevPromptReg = process.env.CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS;
+
+      process.env.PATH = `${MOCK_CLAUDE_DIR}${delimiter}${process.env.PATH ?? ''}`;
+      process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS = '0';
+      // Force a near-immediate prompt-register timeout. With mock-claude
+      // responding very quickly, this asserts the env-var-read path is wired
+      // through to the production dispatcher path. If the env var were
+      // unread, the default 30_000ms timeout would let the send complete
+      // before this 15s test timeout fires.
+      process.env.CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS = '1';
+
+      try {
+        // Use a slow-mock so promptRegister has a chance to fire before
+        // mock-claude can update the sidecar. attachResponse echoes the
+        // prompt verbatim; the sidecar transition takes one PTY round-trip.
+        // With prompt-register-timeout=1ms and warmup=0, the deadline fires
+        // before any sidecar update can land.
+        const cfg = writeMockConfig(MOCK_HOME, {
+          // Add a small artificial delay via the mock's attachResponse hook
+          // is not directly supported, but the natural PTY round-trip is
+          // usually >>1ms anyway.
+          attachResponse: 'slow mock response',
+        });
+        const env = buildEnv(MOCK_HOME, COMPANION_HOME, {
+          CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+        });
+        const shortId = startIdleSession(env);
+        const handle = makeHandle(shortId);
+
+        // Construct driver WITHOUT env (production dispatcher pattern).
+        // The env-var read path must reach process.env.
+        const drv = new ClaudeBackgroundDriver({ cwd: COMPANION_HOME });
+
+        // Expect rejection due to 1ms prompt-register timeout.
+        await assert.rejects(
+          drv.send(
+            handle,
+            { type: 'text', text: 'should-timeout' },
+            { pollIntervalMs: 50, timeoutMs: 10000 },
+          ),
+          (err) => {
+            return (
+              err.name === 'DriverError' &&
+              /did not register within 1ms/.test(err.message)
+            );
+          },
+        );
+      } finally {
+        if (prevPath === undefined) delete process.env.PATH;
+        else process.env.PATH = prevPath;
+        if (prevWarmup === undefined) delete process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS;
+        else process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS = prevWarmup;
+        if (prevPromptReg === undefined)
+          delete process.env.CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS;
+        else process.env.CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS = prevPromptReg;
+      }
+    },
+  );
+});
+
+describe('send() — CC_PLUGIN_CODEX_ATTACH_WARMUP_MS env var falls back to process.env (T12a)', () => {
+  it(
+    'driver constructed without env option still honors CC_PLUGIN_CODEX_ATTACH_WARMUP_MS from process.env',
+    { timeout: 20000 },
+    async () => {
+      // Capture prior process.env values so we can restore.
+      const prevPath = process.env.PATH;
+      const prevWarmup = process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS;
+
+      // Temporarily mutate process.env to (a) put mock-claude first on PATH,
+      // (b) point the mock home where beforeEach already put it, and
+      // (c) set the warmup env var.
+      process.env.PATH = `${MOCK_CLAUDE_DIR}${delimiter}${process.env.PATH ?? ''}`;
+      process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS = '0';
+
+      try {
+        // Start an idle mock session using process.env (no buildEnv override).
+        const shortId = startIdleSession(process.env);
+        const handle = makeHandle(shortId);
+
+        // Construct the driver WITHOUT `env` — mirrors the production
+        // dispatcher path (`new ClaudeBackgroundDriver({ cwd })`).
+        const drv = new ClaudeBackgroundDriver({ cwd: COMPANION_HOME });
+
+        const started = Date.now();
+        const turn = await drv.send(
+          handle,
+          { type: 'text', text: 'warmup-fallback-test' },
+          { pollIntervalMs: 50, timeoutMs: 15000 },
+        );
+        const elapsed = Date.now() - started;
+
+        assert.equal(turn.status, 'completed', 'send() must complete successfully');
+
+        // If the env-var fallback DIDN'T work, attachAndSend would use the
+        // 2000ms default warmup. With the fallback applied (T12a), warmup
+        // becomes 0ms and the whole send() against mock-claude completes
+        // well inside ~1s. Use a 1500ms ceiling to absorb CI variance.
+        assert.ok(
+          elapsed < 1500,
+          `send() took ${elapsed}ms — expected <1500ms when process.env warmup=0 fallback applies; ` +
+            `>=2000ms strongly implies the env-var override was not reached and the default warmup ran`,
+        );
+      } finally {
+        if (prevPath === undefined) delete process.env.PATH;
+        else process.env.PATH = prevPath;
+        if (prevWarmup === undefined) delete process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS;
+        else process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS = prevWarmup;
+      }
     },
   );
 });

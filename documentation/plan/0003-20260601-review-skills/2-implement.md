@@ -1106,7 +1106,7 @@ None. C reported ZERO findings. No pre-commit edits.
 
 ### CI
 
-_To be recorded in the follow-up `Plan 0003 T7 log: record CI success` commit._
+CI green on the T7 commit at `0bafe99` per run [`26798535136`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26798535136): `ubuntu-latest / Node 20`, `macos-latest / Node 20`, `ubuntu-latest / Node 22`, `macos-latest / Node 22` — all `success`. No transient flakes or API-metadata anomalies.
 
 ---
 

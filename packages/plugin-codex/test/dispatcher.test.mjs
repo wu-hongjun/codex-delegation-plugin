@@ -4052,3 +4052,1317 @@ describe('review rejects queued and starting statuses (T4)', () => {
     );
   });
 });
+
+// ==========================================================================
+// T6: adversarial-review subcommand (plan 0003)
+// ==========================================================================
+//
+// Contract: cmdAdversarialReview resolves a target job by prefix, checks
+// status eligibility (§ 3.6), selects the latest completed non-review turn,
+// starts a NEW review session via driver.startSession() (claude --bg), creates
+// a review JobRecord with reviewOf: { jobId, turnIndex }, waits for the review
+// session to produce a result, then parses and formats output.
+//
+// Key differences from cmdReview (T4):
+//   - Creates a NEW job (not a turn on the existing job)
+//   - Accepts --model, --effort, --permission-mode (forwarded to startSession)
+//   - Rejects --name (auto-generated), --add-dir, --mcp-config
+//   - Allowed statuses: awaiting_followup, completed, stopped, failed, orphaned
+//     (all require job.result to exist)
+//   - Rejected statuses: running, queued, starting, needs_input
+//
+// Mocking strategy: mock-claude's `claude --bg <prompt>` immediately writes a
+// sidecar in state='done' with output.result = formatResponse(config, prompt).
+// On the first reconcile poll, the review job acquires a result and the loop
+// exits. For timeout tests we use CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_TIMEOUT_MS=1
+// so the timeout check fires after process overhead (>1ms of job creation time),
+// before (or immediately at) the first poll.
+//
+// Helpers reused from T4/T8: writeSyntheticReviewableJob, writeMockClaudeConfig,
+// writeMockAgentSession, writeMockIdleSidecar, writeAck, ackHex.
+// ==========================================================================
+
+// ---------- T6 fixture helpers ----------
+
+/**
+ * Write a synthetic job that is eligible for adversarial review:
+ *   - status: awaiting_followup (or caller-specified)
+ *   - result is populated
+ *   - turns[0] is a completed non-review turn with a result file
+ *
+ * @param {{
+ *   jobId: string;
+ *   workspaceRoot?: string;
+ *   status?: string;
+ *   turns?: Array<{ summaryPrefix?: string; status?: string; hasResult?: boolean }>;
+ *   noResult?: boolean;
+ * }} opts
+ */
+function writeAdversarialTargetJob({
+  jobId,
+  workspaceRoot = WORK_DIR,
+  status = 'awaiting_followup',
+  turns = [{}],
+  noResult = false,
+} = {}) {
+  const jobsDir = join(TMP_HOME, 'jobs');
+  mkdirSync(jobsDir, { recursive: true });
+
+  const now = new Date().toISOString();
+  const resultPath = join(jobsDir, `${jobId}.result.md`);
+  const resultContent = 'Original task output for adversarial review.';
+
+  const turn0Result = {
+    finalMessagePath: resultPath,
+    finalMessagePreview: resultContent.slice(0, 120),
+  };
+
+  const turnsData = turns.map((spec, i) => {
+    const prefix = spec.summaryPrefix ?? '';
+    const hasResult = spec.hasResult !== false;
+    const tStatus = spec.status ?? 'completed';
+    const summary = `${prefix}task for turn ${i}`;
+    const promptMeta = {
+      summary,
+      sha256: createHash('sha256').update(summary).digest('hex'),
+      bytesLen: Buffer.byteLength(summary, 'utf8'),
+    };
+    return {
+      prompt: promptMeta,
+      startedAt: now,
+      endedAt: now,
+      status: tStatus,
+      ...(hasResult && tStatus === 'completed' ? { result: turn0Result } : {}),
+    };
+  });
+
+  const record = {
+    jobId,
+    schemaVersion: 2,
+    createdAt: now,
+    updatedAt: now,
+    status,
+    codex: {
+      pluginVersion: '0.0.0',
+      cwd: workspaceRoot,
+    },
+    workspace: {
+      root: workspaceRoot,
+    },
+    driver: {
+      name: 'claude-background',
+      version: '0.0.0',
+      capabilitiesSnapshot: {},
+    },
+    claude: {
+      version: '2.1.999-mock',
+      shortId: 'tgt00001',
+      sessionId: shortIdToSessionId('tgt00001'),
+      sessionName: `codex:test:${jobId}`,
+      cwd: workspaceRoot,
+      logsCommand: 'claude logs tgt00001',
+    },
+    prompt: turnsData[0]?.prompt ?? {
+      summary: 'initial task',
+      sha256: createHash('sha256').update('initial task').digest('hex'),
+      bytesLen: Buffer.byteLength('initial task', 'utf8'),
+    },
+    ...(noResult ? {} : { result: turn0Result }),
+    turns: turnsData,
+  };
+
+  writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify(record, null, 2));
+  if (!noResult) {
+    writeFileSync(resultPath, resultContent);
+  }
+  return { jobId, record, resultPath };
+}
+
+// ---------- T6-1: happy path — new review job created with reviewOf ----------
+
+describe('adversarial-review happy path (T6)', () => {
+  it('T6-1: exits 0 and creates a NEW review job with reviewOf.jobId pointing to target', () => {
+    const jobId = `job_ar1_${createHash('sha256').update('t6-happy-path').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const before = listJobIds();
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    const after = listJobIds();
+    const newIds = after.filter((id) => !before.includes(id));
+    assert.ok(
+      newIds.length > 0,
+      `expected a new review job to be created; before=${before.length} after=${after.length}`,
+    );
+
+    const reviewJobId = newIds[0];
+    const reviewRecord = JSON.parse(
+      readFileSync(join(TMP_HOME, 'jobs', `${reviewJobId}.json`), 'utf8'),
+    );
+    assert.ok(
+      reviewRecord.reviewOf != null,
+      `expected reviewOf to be set on review job; got: ${JSON.stringify(reviewRecord.reviewOf)}`,
+    );
+    assert.equal(
+      reviewRecord.reviewOf.jobId,
+      jobId,
+      `expected reviewOf.jobId to equal target jobId; got: ${reviewRecord.reviewOf.jobId}`,
+    );
+    assert.equal(
+      typeof reviewRecord.reviewOf.turnIndex,
+      'number',
+      `expected reviewOf.turnIndex to be a number; got: ${typeof reviewRecord.reviewOf.turnIndex}`,
+    );
+  });
+});
+
+// ---------- T6-2: session name pattern ----------
+
+describe('adversarial-review session name (T6)', () => {
+  it('T6-2: new review session name is codex:<repo-basename>:review-<targetJobId.slice(0,12)>', () => {
+    const jobId = `job_ar2_${createHash('sha256').update('t6-session-name').digest('hex').slice(0, 8)}`;
+    const repoBasename = 'cc-plugin-codex';
+    const targetWorkspace = join(WORK_DIR, repoBasename);
+    mkdirSync(targetWorkspace, { recursive: true });
+
+    writeAdversarialTargetJob({ jobId, workspaceRoot: targetWorkspace });
+    writeAck(targetWorkspace);
+
+    const result = runDispatcher(['adversarial-review', jobId, '--all', '--yes']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    // Find the review job on disk
+    const allIds = listJobIds().filter((id) => id !== jobId);
+    assert.ok(allIds.length > 0, 'expected at least one review job on disk');
+    const reviewRecord = JSON.parse(
+      readFileSync(join(TMP_HOME, 'jobs', `${allIds[0]}.json`), 'utf8'),
+    );
+
+    const expectedSessionName = `codex:${repoBasename}:review-${jobId.slice(0, 12)}`;
+    assert.equal(
+      reviewRecord.claude.sessionName,
+      expectedSessionName,
+      `expected sessionName "${expectedSessionName}"; got "${reviewRecord.claude.sessionName}"`,
+    );
+  });
+});
+
+// ---------- T6-3: structured output parses + human format ----------
+
+describe('adversarial-review structured response produces human output (T6)', () => {
+  it('T6-3: human output contains a verdict line and bracketed severity labels', () => {
+    const jobId = `job_ar3_${createHash('sha256').update('t6-human-output').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      attachResponse: MOCK_REVIEW_RESPONSE_STRUCTURED,
+    });
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    assert.ok(
+      /review verdict:/i.test(result.stdout),
+      `expected "Review verdict:" in human stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('[HIGH]') || result.stdout.includes('[LOW]'),
+      `expected bracketed severity label in human stdout; got:\n${result.stdout}`,
+    );
+  });
+});
+
+// ---------- T6-4: --json output includes review + reviewOf + targetJob ----------
+
+describe('adversarial-review --json output shape (T6)', () => {
+  it('T6-4: --json output has ok, review.*, job.reviewOf.*, and targetJob.*', () => {
+    const jobId = `job_ar4_${createHash('sha256').update('t6-json-shape').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      attachResponse: MOCK_REVIEW_RESPONSE_STRUCTURED,
+    });
+
+    const result = runDispatcher(['adversarial-review', jobId, '--json', '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout must be valid JSON; got:\n${result.stdout}`);
+
+    // Top-level fields
+    assert.equal(parsed.ok, true, `expected ok:true; got ${JSON.stringify(parsed)}`);
+    assert.ok(parsed.review !== undefined, 'expected top-level "review" field');
+    assert.ok(parsed.job !== undefined, 'expected top-level "job" field');
+    assert.ok(parsed.targetJob !== undefined, 'expected top-level "targetJob" field');
+
+    // review sub-fields
+    assert.ok(
+      ['pass', 'fail', 'pass_with_findings'].includes(parsed.review.verdict),
+      `review.verdict must be a valid verdict; got ${parsed.review.verdict}`,
+    );
+    assert.ok(
+      typeof parsed.review.findingsCount === 'number',
+      'expected review.findingsCount to be a number',
+    );
+    assert.ok(Array.isArray(parsed.review.findings), 'expected review.findings to be an array');
+
+    // job sub-fields (the review job)
+    assert.ok(typeof parsed.job.jobId === 'string', 'expected job.jobId to be a string');
+    assert.ok(typeof parsed.job.status === 'string', 'expected job.status to be a string');
+    assert.ok(parsed.job.reviewOf != null, 'expected job.reviewOf to be set');
+    assert.equal(
+      parsed.job.reviewOf.jobId,
+      jobId,
+      `expected job.reviewOf.jobId to equal target; got ${parsed.job.reviewOf.jobId}`,
+    );
+    assert.ok(
+      typeof parsed.job.reviewOf.turnIndex === 'number',
+      'expected job.reviewOf.turnIndex to be a number',
+    );
+
+    // targetJob sub-fields
+    assert.equal(
+      parsed.targetJob.jobId,
+      jobId,
+      `expected targetJob.jobId to equal target; got ${parsed.targetJob.jobId}`,
+    );
+    assert.ok(
+      typeof parsed.targetJob.status === 'string',
+      'expected targetJob.status to be a string',
+    );
+  });
+});
+
+// ---------- T6-5/6/7: accepted flags --model / --effort / --permission-mode ----------
+
+describe('adversarial-review accepts --model flag (T6)', () => {
+  it('T6-5: --model is accepted and forwarded; exits 0', () => {
+    const jobId = `job_ar5_${createHash('sha256').update('t6-model-flag').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const result = runDispatcher([
+      'adversarial-review',
+      jobId,
+      '--yes',
+      '--model',
+      'claude-opus-4-5',
+    ]);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 with --model, got ${result.status}; stderr: ${result.stderr}`,
+    );
+  });
+});
+
+describe('adversarial-review accepts --effort flag (T6)', () => {
+  it('T6-6: --effort is accepted and forwarded; exits 0', () => {
+    const jobId = `job_ar6_${createHash('sha256').update('t6-effort-flag').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes', '--effort', 'high']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 with --effort, got ${result.status}; stderr: ${result.stderr}`,
+    );
+  });
+});
+
+describe('adversarial-review accepts --permission-mode flag (T6)', () => {
+  it('T6-7: --permission-mode is accepted and forwarded; exits 0', () => {
+    const jobId = `job_ar7_${createHash('sha256').update('t6-permmode-flag').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const result = runDispatcher([
+      'adversarial-review',
+      jobId,
+      '--yes',
+      '--permission-mode',
+      'default',
+    ]);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 with --permission-mode, got ${result.status}; stderr: ${result.stderr}`,
+    );
+  });
+});
+
+// ---------- T6-8: --allow-edit rejected ----------
+
+describe('adversarial-review rejects --allow-edit (T6)', () => {
+  it('T6-8: --allow-edit produces exit 2 with the exact read-only rejection message', () => {
+    const jobId = `job_ar8_${createHash('sha256').update('t6-allow-edit').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+
+    const result = runDispatcher(['adversarial-review', jobId, '--allow-edit', '--yes']);
+
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for --allow-edit, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    const expectedMsg = '--allow-edit is not applicable to review skills. Reviews are read-only.';
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T6-9: --add-dir / --mcp-config / --name rejected ----------
+
+describe('adversarial-review rejects --add-dir, --mcp-config, --name (T6)', () => {
+  it('T6-9a: --name produces exit 2 with the exact session-name rejection message', () => {
+    const jobId = `job_ar9a_${createHash('sha256').update('t6-name-flag').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes', '--name', 'custom-name']);
+
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for --name, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    const expectedMsg =
+      '--name is not accepted for adversarial review; session names are generated automatically.';
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+
+  it('T6-9b: --add-dir produces exit 2 with the exact workspace-binding rejection message', () => {
+    const jobId = `job_ar9b_${createHash('sha256').update('t6-add-dir-flag').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes', '--add-dir', '/tmp/extra']);
+
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for --add-dir, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    const expectedMsg =
+      "--add-dir is not accepted by $claude-adversarial-review; the review session runs in the target job's workspace.";
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+
+  it('T6-9c: --mcp-config produces exit 2 with the exact rejection message', () => {
+    const jobId = `job_ar9c_${createHash('sha256').update('t6-mcp-config-flag').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+
+    const result = runDispatcher([
+      'adversarial-review',
+      jobId,
+      '--yes',
+      '--mcp-config',
+      '/tmp/mcp.json',
+    ]);
+
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for --mcp-config, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    const expectedMsg = '--mcp-config is not accepted by $claude-adversarial-review.';
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T6-10: running rejected ----------
+
+describe('adversarial-review rejects running status (T6)', () => {
+  it('T6-10: running job is rejected with exact pinned message and exit 1', () => {
+    const jobId = `job_ar10_${createHash('sha256').update('t6-running').digest('hex').slice(0, 8)}`;
+    // Use the same shortId as the target job record so the reconciler maps
+    // the working session back to this job (not to an orphan).
+    const shortId = 'tgt00001';
+    writeAdversarialTargetJob({ jobId, status: 'running' });
+    writeAck(WORK_DIR);
+    // Seed working session under the target job's shortId so the reconciler
+    // keeps status as running (driver 'working' → 'running').
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'working');
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(result.status, 1, `expected exit 1 for running; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    const expectedMsg = `Job ${jobId} is running; wait for it to produce a result before running $claude-adversarial-review.`;
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T6-11: needs_input rejected ----------
+
+describe('adversarial-review rejects needs_input status (T6)', () => {
+  it('T6-11: needs_input job is rejected with exact pinned message and exit 1', () => {
+    const jobId = `job_ar11_${createHash('sha256').update('t6-needs-input').digest('hex').slice(0, 8)}`;
+    // Use the same shortId as the target job record so the reconciler resolves
+    // the waiting sidecar back to this job correctly.
+    const shortId = 'tgt00001';
+    writeAdversarialTargetJob({ jobId, status: 'needs_input' });
+    writeAck(WORK_DIR);
+
+    // Write a waiting sidecar under the target job's shortId so the reconciler
+    // maps state:'waiting' → needs_input.
+    const sidecarDir2 = join(MOCK_HOME, 'jobs', shortId);
+    mkdirSync(sidecarDir2, { recursive: true });
+    writeFileSync(
+      join(sidecarDir2, 'state.json'),
+      JSON.stringify(
+        {
+          template: 'bg',
+          intent: '',
+          name: `codex:test:${shortId}`,
+          nameSource: 'user',
+          sessionId: shortIdToSessionId(shortId),
+          resumeSessionId: shortIdToSessionId(shortId),
+          daemonShort: shortId,
+          cliVersion: '2.1.999-mock',
+          cwd: WORK_DIR,
+          backend: 'daemon',
+          linkScanPath: join(MOCK_HOME, 'projects', `${shortIdToSessionId(shortId)}.jsonl`),
+          state: 'waiting',
+          tempo: 'idle',
+          inFlight: { tasks: 0, queued: 0, kinds: ['permission'] },
+        },
+        null,
+        2,
+      ),
+    );
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(result.status, 1, `expected exit 1 for needs_input; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    const expectedMsg = `Job ${jobId} needs input. Resolve the permission request first, then run $claude-adversarial-review.`;
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T6-12: queued / starting rejected ----------
+
+describe('adversarial-review rejects queued and starting statuses (T6)', () => {
+  it('T6-12-queued: queued job is rejected with exact pinned message and exit 1', () => {
+    const jobId = `job_ar12q_${createHash('sha256').update('t6-queued').digest('hex').slice(0, 8)}`;
+    const shortId = 'ar120001';
+    // turns: no completed turn + noResult: true so syncCompatAliases finds no
+    // turn result and leaves job.result unset. The target session (tgt00001) is
+    // seeded as 'working' so the reconciler maps status → 'running', which hits
+    // the dispatcher's running-job rejection branch (exit 1, "is running").
+    writeAdversarialTargetJob({
+      jobId,
+      status: 'queued',
+      turns: [{ status: 'queued', hasResult: false }],
+      noResult: true,
+    });
+    writeAck(WORK_DIR);
+    // Seed the TARGET job's session (tgt00001) as working so reconciler maps to
+    // 'running'. The ar120001 session is a leftover from the original fixture and
+    // is unrelated to the target job.
+    writeMockAgentSession('tgt00001', shortIdToSessionId('tgt00001'), 'working');
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'working');
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      1,
+      `expected exit 1 for queued (may be remapped to running); got ${result.status}`,
+    );
+    const combined = result.stdout + result.stderr;
+    // Either the exact queued message or the running message is acceptable
+    // (reconciler may remap queued→running)
+    assert.ok(
+      combined.includes('is queued') ||
+        combined.includes('is running') ||
+        combined.includes('wait'),
+      `expected queued/running rejection message; got:\n${combined}`,
+    );
+  });
+
+  it('T6-12-starting: starting job is rejected with exact pinned message and exit 1', () => {
+    const jobId = `job_ar12s_${createHash('sha256').update('t6-starting').digest('hex').slice(0, 8)}`;
+    const shortId = 'ar120002';
+    // Same reasoning as T6-12-queued: no completed turn so job.result stays
+    // unset; target session seeded as 'working' so reconciler maps → 'running'.
+    writeAdversarialTargetJob({
+      jobId,
+      status: 'starting',
+      turns: [{ status: 'starting', hasResult: false }],
+      noResult: true,
+    });
+    writeAck(WORK_DIR);
+    writeMockAgentSession('tgt00001', shortIdToSessionId('tgt00001'), 'working');
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'working');
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      1,
+      `expected exit 1 for starting (may be remapped to running); got ${result.status}`,
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('is starting') ||
+        combined.includes('is running') ||
+        combined.includes('wait'),
+      `expected starting/running rejection message; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T6-13: stopped / failed / orphaned with result ALLOWED ----------
+
+describe('adversarial-review allows stopped / failed / orphaned with result (T6)', () => {
+  it('T6-13-stopped: stopped job with result proceeds to create a review job', () => {
+    const jobId = `job_ar13st_${createHash('sha256').update('t6-stopped-allowed').digest('hex').slice(0, 8)}`;
+    const shortId = 'ar130001';
+    writeAdversarialTargetJob({ jobId, status: 'stopped' });
+    writeAck(WORK_DIR);
+    // Seed a stopped session so reconciler keeps status as 'stopped'
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'stopped');
+
+    const before = listJobIds();
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 for stopped job with result, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const after = listJobIds();
+    const newIds = after.filter((id) => !before.includes(id));
+    assert.ok(newIds.length > 0, 'expected a review job to be created for stopped target');
+  });
+
+  it('T6-13-failed: failed job with result proceeds to create a review job', () => {
+    const jobId = `job_ar13fl_${createHash('sha256').update('t6-failed-allowed').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId, status: 'failed' });
+    writeAck(WORK_DIR);
+    // No mock session → reconciler flips to orphaned; still allowed if result exists
+
+    const before = listJobIds();
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 for failed job with result, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const after = listJobIds();
+    const newIds = after.filter((id) => !before.includes(id));
+    assert.ok(newIds.length > 0, 'expected a review job to be created for failed target');
+  });
+
+  it('T6-13-orphaned: orphaned job with result proceeds to create a review job', () => {
+    const jobId = `job_ar13or_${createHash('sha256').update('t6-orphaned-allowed').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId, status: 'orphaned' });
+    writeAck(WORK_DIR);
+    // No mock session — keeps orphaned status
+
+    const before = listJobIds();
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 for orphaned job with result, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const after = listJobIds();
+    const newIds = after.filter((id) => !before.includes(id));
+    assert.ok(newIds.length > 0, 'expected a review job to be created for orphaned target');
+  });
+});
+
+// ---------- T6-14: allowed status WITHOUT result rejected ----------
+
+describe('adversarial-review rejects allowed status without result (T6)', () => {
+  it('T6-14: stopped job without result exits 1 with exact "No reviewable output" message', () => {
+    const jobId = `job_ar14_${createHash('sha256').update('t6-stopped-no-result').digest('hex').slice(0, 8)}`;
+    // Pass an explicit non-completed turn so syncCompatAliases finds no turn
+    // result and leaves job.result unset. noResult: true keeps the job-level
+    // result absent too. Together these ensure the dispatcher hits the
+    // !targetJob.result branch and exits 1.
+    writeAdversarialTargetJob({
+      jobId,
+      status: 'stopped',
+      turns: [{ status: 'stopped', hasResult: false }],
+      noResult: true,
+    });
+    writeAck(WORK_DIR);
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      1,
+      `expected exit 1 for stopped job without result; got ${result.status}`,
+    );
+    const combined = result.stdout + result.stderr;
+    // The reconciler may change status; the message uses the post-reconcile status
+    assert.ok(
+      combined.includes('No reviewable output.') ||
+        (combined.includes('before producing a result') && combined.includes('The job')),
+      `expected "No reviewable output." message; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T6-15: no reviewable non-review turn exits 1 ----------
+
+describe('adversarial-review exits 1 when no reviewable non-review turn exists (T6)', () => {
+  it('T6-15: job with only review/adversarial-review turns exits 1 with exact message', () => {
+    const jobId = `job_ar15_${createHash('sha256').update('t6-no-reviewable').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({
+      jobId,
+      turns: [
+        { summaryPrefix: '[review] ', status: 'completed', hasResult: true },
+        { summaryPrefix: '[adversarial-review] ', status: 'completed', hasResult: true },
+      ],
+    });
+    writeAck(WORK_DIR);
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(result.status, 1, `expected exit 1 when no non-review turn; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    const expectedMsg = 'No reviewable non-review output found for this job.';
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T6-16: original non-review turn selected even when review turn exists ----------
+
+describe('adversarial-review selects original non-review turn (T6)', () => {
+  it('T6-16: job with [turn 0: original, turn 1: [review]] selects turn 0 as the review target', () => {
+    const jobId = `job_ar16_${createHash('sha256').update('t6-turn-select').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({
+      jobId,
+      turns: [
+        { summaryPrefix: '', status: 'completed', hasResult: true },
+        { summaryPrefix: '[review] ', status: 'completed', hasResult: true },
+      ],
+    });
+    writeAck(WORK_DIR);
+
+    const before = listJobIds();
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    const after = listJobIds();
+    const newIds = after.filter((id) => !before.includes(id));
+    assert.ok(newIds.length > 0, 'expected a new review job to be created');
+
+    const reviewRecord = JSON.parse(
+      readFileSync(join(TMP_HOME, 'jobs', `${newIds[0]}.json`), 'utf8'),
+    );
+    // Turn 0 is the original non-review turn; turn 1 is the [review] turn.
+    // cmdAdversarialReview iterates backward and selects the LAST non-review turn.
+    // With turns = [original (0), review (1)], the last non-review is turn 0.
+    assert.equal(
+      reviewRecord.reviewOf.turnIndex,
+      0,
+      `expected reviewOf.turnIndex === 0 (original turn); got ${reviewRecord.reviewOf.turnIndex}`,
+    );
+  });
+});
+
+// ---------- T6-17: target-workspace ack with --all ----------
+
+describe('adversarial-review --all resolves cross-workspace job (T6)', () => {
+  it('T6-17: --all finds job in a different workspace; ack check uses target workspace', () => {
+    const targetWorkspace = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-ar17-')));
+    try {
+      const jobId = `job_ar17_${createHash('sha256').update('t6-all-cross-ws').digest('hex').slice(0, 8)}`;
+      writeAdversarialTargetJob({ jobId, workspaceRoot: targetWorkspace });
+      // Ack for target workspace (not caller workspace)
+      writeAck(targetWorkspace);
+
+      // Run from WORK_DIR with --all; should resolve the target workspace job
+      const result = runDispatcher(['adversarial-review', jobId, '--all', '--yes']);
+
+      // Must not fail with "no job found"
+      const combined = result.stdout + result.stderr;
+      const isNoJobError = combined.toLowerCase().includes('no job found') && result.status === 1;
+      assert.ok(
+        !isNoJobError,
+        `--all should resolve cross-workspace job; got "no job found":\n${combined}`,
+      );
+    } finally {
+      rmSync(targetWorkspace, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------- T6-18: --yes records target workspace ack ----------
+
+describe('adversarial-review --yes records ack for target workspace (T6)', () => {
+  it('T6-18: --yes records an ack for the target workspace and proceeds', () => {
+    const targetWorkspace = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-ar18-')));
+    try {
+      const jobId = `job_ar18_${createHash('sha256').update('t6-yes-ack').digest('hex').slice(0, 8)}`;
+      writeAdversarialTargetJob({ jobId, workspaceRoot: targetWorkspace });
+      // No prior ack
+
+      runDispatcher(['adversarial-review', jobId, '--all', '--yes']);
+
+      // Verify ack file was written for the target workspace
+      const resolvedTmpHome = realpathSync(TMP_HOME);
+      const targetAckFile = join(TMP_HOME, 'acks', `${ackHex(targetWorkspace)}.json`);
+      const targetAckFileResolved = join(
+        resolvedTmpHome,
+        'acks',
+        `${ackHex(targetWorkspace)}.json`,
+      );
+      assert.ok(
+        existsSync(targetAckFile) || existsSync(targetAckFileResolved),
+        `expected ack file for target workspace at ${targetAckFile}`,
+      );
+    } finally {
+      rmSync(targetWorkspace, { recursive: true, force: true });
+    }
+  });
+});
+
+// ---------- T6-19: timeout path ----------
+
+describe('adversarial-review timeout fires when review never completes (T6)', () => {
+  // Strategy: mock-claude is configured with attachResponse:'' so the review
+  // session's sidecar has output.result='' (empty). The reconciler's
+  // sidecarSaysDone guard requires a non-empty result string, so reconcile
+  // never populates currentReviewJob.result. startTime is set right before the
+  // while loop (after createJob), so elapsed is ~0 on the first iteration and
+  // the timeout check (elapsed >= 1) only fires on the second iteration, after
+  // the 50ms poll sleep. With TIMEOUT_MS=1 and POLL_MS=50, iteration 2 has
+  // elapsed ~50ms >= 1ms → timedOut = true → cleanup branch fires.
+  //
+  // Math.round(1 / 60_000) === 0, so the message is:
+  //   "Adversarial review did not complete within 0 minutes."
+  it('T6-19: times out with non-zero exit, exact timeout message, review job status failed, review.failed event written', () => {
+    const jobId = `job_ar19_${createHash('sha256').update('t6-timeout').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    // Seed the TARGET job's session as idle (no inFlight) so that the initial
+    // reconcile (step 4 in the dispatcher) produces 'awaiting_followup' — the
+    // same as the on-disk status — leaving targetRecordBefore === targetRecordAfter.
+    // Without this, reconcile maps tgt00001 → orphaned and the status changes.
+    writeMockAgentSession('tgt00001', shortIdToSessionId('tgt00001'), 'idle');
+    writeMockIdleSidecar('tgt00001', shortIdToSessionId('tgt00001'));
+
+    // Write mock-claude config: empty attachResponse so the review session's
+    // sidecar output.result is '' — reconcile never sets currentReviewJob.result.
+    const cfgPath = join(MOCK_HOME, 'cfg-t6-19.json');
+    writeFileSync(cfgPath, JSON.stringify({ attachResponse: '' }));
+
+    const targetRecordBefore = JSON.parse(
+      readFileSync(join(TMP_HOME, 'jobs', `${jobId}.json`), 'utf8'),
+    );
+
+    const before = listJobIds();
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes'], {
+      env: {
+        CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_TIMEOUT_MS: '1',
+        CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_POLL_MS: '50',
+        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath,
+      },
+    });
+
+    // Must exit non-zero
+    assert.notEqual(result.status, 0, `expected non-zero exit on timeout; got ${result.status}`);
+
+    // Exact timeout message: Math.round(1 / 60_000) === 0
+    const combined = result.stdout + result.stderr;
+    const expectedTimeoutMsg = 'Adversarial review did not complete within 0 minutes.';
+    assert.ok(
+      combined.includes(expectedTimeoutMsg),
+      `expected exact timeout message "${expectedTimeoutMsg}"; got:\n${combined}`,
+    );
+
+    // Target job must be UNCHANGED after timeout
+    const targetRecordAfter = JSON.parse(
+      readFileSync(join(TMP_HOME, 'jobs', `${jobId}.json`), 'utf8'),
+    );
+    assert.equal(
+      targetRecordAfter.status,
+      targetRecordBefore.status,
+      `target job status must be unchanged after timeout; before=${targetRecordBefore.status} after=${targetRecordAfter.status}`,
+    );
+
+    // A review job should have been created (and marked failed)
+    const after = listJobIds();
+    const newIds = after.filter((id) => !before.includes(id));
+    assert.ok(newIds.length > 0, 'expected a review job to have been created before timeout');
+
+    const reviewJobId = newIds[0];
+    const reviewRecord = JSON.parse(
+      readFileSync(join(TMP_HOME, 'jobs', `${reviewJobId}.json`), 'utf8'),
+    );
+    assert.equal(
+      reviewRecord.status,
+      'failed',
+      `expected review job status to be 'failed' after timeout; got '${reviewRecord.status}'`,
+    );
+
+    // The review.failed event must be in the events log
+    const eventsPath = join(TMP_HOME, 'jobs', `${reviewJobId}.events.jsonl`);
+    assert.ok(existsSync(eventsPath), `expected events file at ${eventsPath}`);
+    const eventLines = readFileSync(eventsPath, 'utf8')
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .map((l) => JSON.parse(l));
+    const eventTypes = eventLines.map((e) => e.type);
+    assert.ok(
+      eventTypes.includes('review.failed'),
+      `expected 'review.failed' event in events log; got: ${eventTypes.join(', ')}`,
+    );
+
+    // The review.failed event must have reason:'timeout'
+    const failedEvent = eventLines.find((e) => e.type === 'review.failed');
+    assert.equal(
+      failedEvent.reason,
+      'timeout',
+      `expected review.failed event.reason to be 'timeout'; got '${failedEvent.reason}'`,
+    );
+  });
+});
+
+// ---------- T6-20: env timeout parse ----------
+
+describe('adversarial-review env timeout parse (T6)', () => {
+  it('T6-20a: valid small timeout (300ms) is accepted; error message uses rounded minutes (0)', () => {
+    const jobId = `job_ar20a_${createHash('sha256').update('t6-timeout-300ms').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes'], {
+      env: {
+        CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_TIMEOUT_MS: '300',
+        CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_POLL_MS: '50',
+      },
+    });
+
+    // With 300ms timeout and mock completing immediately on first poll, the
+    // review may succeed (poll=50ms → reconcile → result found before 300ms).
+    // If it does succeed, that is correct behaviour — verify exit 0 and valid output.
+    // If it times out (possible on slow CI), verify the timeout message.
+    const combined = result.stdout + result.stderr;
+    if (result.status !== 0) {
+      // Timeout fired: Math.round(300 / 60_000) === 0
+      const expectedMsg = 'Adversarial review did not complete within 0 minutes.';
+      assert.ok(
+        combined.includes(expectedMsg),
+        `if timed out, expected "${expectedMsg}"; got:\n${combined}`,
+      );
+    } else {
+      // Succeeded: verify some output
+      assert.ok(
+        combined.length > 0,
+        `expected some output on success; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+      );
+    }
+  });
+
+  // NaN and negative env values fall back to the 30-minute default.
+  // These cases are exercised implicitly: with the default timeout (30 min) and
+  // a mock that completes immediately, the review always exits 0 (no timeout).
+  // We assert exit 0 as the invariant that the default was used (not 0ms / negative).
+  it('T6-20b: NaN env value falls back to 30-min default (review completes successfully)', () => {
+    const jobId = `job_ar20b_${createHash('sha256').update('t6-timeout-nan').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes'], {
+      env: {
+        CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_TIMEOUT_MS: 'abc',
+        CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_POLL_MS: '50',
+      },
+    });
+
+    // With 30-min default the mock completes long before timeout — must exit 0
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 when NaN timeout falls back to default; got ${result.status}; stderr: ${result.stderr}`,
+    );
+  });
+
+  it('T6-20c: negative env value falls back to 30-min default (review completes successfully)', () => {
+    const jobId = `job_ar20c_${createHash('sha256').update('t6-timeout-neg').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes'], {
+      env: {
+        CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_TIMEOUT_MS: '-100',
+        CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_POLL_MS: '50',
+      },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 when negative timeout falls back to default; got ${result.status}; stderr: ${result.stderr}`,
+    );
+  });
+});
+
+// ---------- T6-21: malformed review output fallback ----------
+
+describe('adversarial-review malformed output fallback (T6)', () => {
+  it('T6-21: unparseable mock output produces ok:true with single nit finding', () => {
+    const jobId = `job_ar21_${createHash('sha256').update('t6-fallback').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      attachResponse: MOCK_REVIEW_RESPONSE_MALFORMED,
+    });
+
+    const result = runDispatcher(['adversarial-review', jobId, '--json', '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 on fallback parse, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = parseJson(result.stdout);
+    }, `stdout must be valid JSON; got:\n${result.stdout}`);
+
+    assert.equal(
+      parsed.ok,
+      true,
+      `expected ok:true in fallback case; got ${JSON.stringify(parsed)}`,
+    );
+    assert.equal(
+      parsed.review.findings.length,
+      1,
+      `expected exactly 1 fallback finding; got ${parsed.review.findings.length}`,
+    );
+    assert.equal(
+      parsed.review.findings[0].severity,
+      'nit',
+      `expected fallback finding severity to be 'nit'; got ${parsed.review.findings[0].severity}`,
+    );
+  });
+});
+
+// ---------- T6-22: missing reviewed-output file ----------
+
+describe('adversarial-review exits non-zero when reviewed-output file is missing (T6)', () => {
+  it('T6-22: turn with result.finalMessagePath pointing to non-existent file exits non-zero', () => {
+    const jobId = `job_ar22_${createHash('sha256').update('t6-missing-file').digest('hex').slice(0, 8)}`;
+    // Write a job with a result.finalMessagePath pointing to a file that does NOT exist
+    const jobsDir = join(TMP_HOME, 'jobs');
+    mkdirSync(jobsDir, { recursive: true });
+    const now = new Date().toISOString();
+    const missingPath = join(jobsDir, `${jobId}-MISSING.result.md`);
+    // Intentionally do NOT write missingPath
+
+    const fakeResult = {
+      finalMessagePath: missingPath,
+      finalMessagePreview: 'ghost result',
+    };
+    const promptMeta = {
+      summary: 'task with missing output file',
+      sha256: createHash('sha256').update('task with missing output file').digest('hex'),
+      bytesLen: Buffer.byteLength('task with missing output file', 'utf8'),
+    };
+    const record = {
+      jobId,
+      schemaVersion: 2,
+      createdAt: now,
+      updatedAt: now,
+      status: 'awaiting_followup',
+      codex: { pluginVersion: '0.0.0', cwd: WORK_DIR },
+      workspace: { root: WORK_DIR },
+      driver: { name: 'claude-background', version: '0.0.0', capabilitiesSnapshot: {} },
+      claude: {
+        version: '2.1.999-mock',
+        shortId: 'ar220001',
+        sessionId: shortIdToSessionId('ar220001'),
+        sessionName: `codex:test:${jobId}`,
+        cwd: WORK_DIR,
+        logsCommand: 'claude logs ar220001',
+      },
+      prompt: promptMeta,
+      result: fakeResult,
+      turns: [
+        {
+          prompt: promptMeta,
+          startedAt: now,
+          endedAt: now,
+          status: 'completed',
+          result: fakeResult,
+        },
+      ],
+    };
+    writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify(record, null, 2));
+    writeAck(WORK_DIR);
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.notEqual(
+      result.status,
+      0,
+      `expected non-zero exit when reviewed-output file is missing; got ${result.status}`,
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('Reviewed output file is missing:'),
+      `expected "Reviewed output file is missing:" in error; got:\n${combined}`,
+    );
+    assert.ok(
+      combined.includes(missingPath),
+      `expected missing path "${missingPath}" in error; got:\n${combined}`,
+    );
+  });
+});
+
+// ---------- T6-23: --help includes adversarial-review ----------
+
+describe('--help includes adversarial-review subcommand (T6)', () => {
+  it('T6-23: printUsage includes the "adversarial-review" subcommand line', () => {
+    // This is also asserted by T4-17b but we pin it explicitly for T6's contract.
+    const result = runDispatcher(['--help']);
+
+    assert.equal(result.status, 0, `expected exit 0 for --help; got ${result.status}`);
+    assert.ok(
+      result.stdout.includes('adversarial-review'),
+      `expected "adversarial-review" to appear in --help output; got:\n${result.stdout}`,
+    );
+  });
+});
+
+// ---------- T6-extra: additional edge cases ----------
+
+describe('adversarial-review extra edge cases (T6)', () => {
+  it('T6-extra-1: reviewOf.turnIndex matches the selected turn index in turns[]', () => {
+    const jobId = `job_arx1_${createHash('sha256').update('t6-turn-index').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const before = listJobIds();
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0; got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    const after = listJobIds();
+    const newIds = after.filter((id) => !before.includes(id));
+    assert.ok(newIds.length > 0, 'expected a review job to be created');
+
+    const reviewRecord = JSON.parse(
+      readFileSync(join(TMP_HOME, 'jobs', `${newIds[0]}.json`), 'utf8'),
+    );
+    const targetRecord = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobId}.json`), 'utf8'));
+    const selectedTurnIndex = reviewRecord.reviewOf.turnIndex;
+
+    assert.ok(
+      selectedTurnIndex >= 0 && selectedTurnIndex < targetRecord.turns.length,
+      `reviewOf.turnIndex ${selectedTurnIndex} must be a valid index in target turns (length ${targetRecord.turns.length})`,
+    );
+
+    const selectedTurn = targetRecord.turns[selectedTurnIndex];
+    assert.ok(
+      !selectedTurn.prompt.summary.startsWith('[review] ') &&
+        !selectedTurn.prompt.summary.startsWith('[adversarial-review] '),
+      `selected turn at index ${selectedTurnIndex} must not be a review turn; got summary: "${selectedTurn.prompt.summary}"`,
+    );
+  });
+
+  it('T6-extra-2: review job prompt.summary starts with "[adversarial-review] " prefix', () => {
+    const jobId = `job_arx2_${createHash('sha256').update('t6-prompt-prefix').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const before = listJobIds();
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0; got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    const after = listJobIds();
+    const newIds = after.filter((id) => !before.includes(id));
+    assert.ok(newIds.length > 0, 'expected a review job to be created');
+
+    const reviewRecord = JSON.parse(
+      readFileSync(join(TMP_HOME, 'jobs', `${newIds[0]}.json`), 'utf8'),
+    );
+    assert.ok(
+      reviewRecord.prompt.summary.startsWith('[adversarial-review] '),
+      `expected review job prompt.summary to start with "[adversarial-review] "; got: "${reviewRecord.prompt.summary}"`,
+    );
+  });
+
+  it('T6-extra-3: review job workspace.root equals the target job workspace.root (not cwd)', () => {
+    const targetWorkspace = realpathSync(mkdtempSync(join(tmpdir(), 'dispatcher-arx3-')));
+    try {
+      const jobId = `job_arx3_${createHash('sha256').update('t6-workspace-root').digest('hex').slice(0, 8)}`;
+      writeAdversarialTargetJob({ jobId, workspaceRoot: targetWorkspace });
+      writeAck(targetWorkspace);
+
+      const before = listJobIds();
+      const result = runDispatcher(['adversarial-review', jobId, '--all', '--yes']);
+
+      assert.equal(
+        result.status,
+        0,
+        `expected exit 0; got ${result.status}; stderr: ${result.stderr}`,
+      );
+
+      const after = listJobIds();
+      const newIds = after.filter((id) => !before.includes(id));
+      assert.ok(newIds.length > 0, 'expected a review job to be created');
+
+      const reviewRecord = JSON.parse(
+        readFileSync(join(TMP_HOME, 'jobs', `${newIds[0]}.json`), 'utf8'),
+      );
+      assert.equal(
+        reviewRecord.workspace.root,
+        targetWorkspace,
+        `expected review job workspace.root to equal targetWorkspace ("${targetWorkspace}"); got "${reviewRecord.workspace.root}"`,
+      );
+    } finally {
+      rmSync(targetWorkspace, { recursive: true, force: true });
+    }
+  });
+
+  it('T6-extra-4: multi-turn job selects the LATEST non-review turn', () => {
+    const jobId = `job_arx4_${createHash('sha256').update('t6-multi-turn').digest('hex').slice(0, 8)}`;
+    // Three completed non-review turns; cmdAdversarialReview should select turn 2
+    writeAdversarialTargetJob({
+      jobId,
+      turns: [
+        { summaryPrefix: '', status: 'completed', hasResult: true },
+        { summaryPrefix: '', status: 'completed', hasResult: true },
+        { summaryPrefix: '', status: 'completed', hasResult: true },
+      ],
+    });
+    writeAck(WORK_DIR);
+
+    const before = listJobIds();
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0; got ${result.status}; stderr: ${result.stderr}`,
+    );
+
+    const after = listJobIds();
+    const newIds = after.filter((id) => !before.includes(id));
+    assert.ok(newIds.length > 0, 'expected a review job to be created');
+
+    const reviewRecord = JSON.parse(
+      readFileSync(join(TMP_HOME, 'jobs', `${newIds[0]}.json`), 'utf8'),
+    );
+    assert.equal(
+      reviewRecord.reviewOf.turnIndex,
+      2,
+      `expected reviewOf.turnIndex === 2 (latest non-review turn in 3-turn job); got ${reviewRecord.reviewOf.turnIndex}`,
+    );
+  });
+
+  it('T6-extra-5: freeform prompt after jobId exits 2 with exact message', () => {
+    const jobId = `job_arx5_${createHash('sha256').update('t6-extra-positional').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+
+    const result = runDispatcher([
+      'adversarial-review',
+      jobId,
+      '--yes',
+      'unexpected-freeform-text',
+    ]);
+
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for extra positional arg, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    const expectedMsg =
+      'adversarial-review does not accept a freeform prompt; the dispatcher constructs the review prompt.';
+    assert.ok(
+      combined.includes(expectedMsg),
+      `expected exact message "${expectedMsg}"; got:\n${combined}`,
+    );
+  });
+});

@@ -6,6 +6,7 @@
 
 import { createInterface } from 'node:readline/promises';
 import { readFile } from 'node:fs/promises';
+import { basename } from 'node:path';
 
 import {
   runDoctor,
@@ -34,12 +35,13 @@ import {
   formatFollowup,
   formatReviewHuman,
   formatReviewJson,
+  formatAdversarialReviewJson,
   formatError,
 } from './lib/format.mjs';
 import { makeClaudeAdapter } from './lib/adapter.mjs';
 import { hasAck, recordAck, resolveWorkspaceAck } from './lib/ack.mjs';
 import { makePromptMeta } from './lib/prompt-meta.mjs';
-import { SAME_SESSION_REVIEW_PROMPT } from './lib/review-prompts.mjs';
+import { SAME_SESSION_REVIEW_PROMPT, ADVERSARIAL_REVIEW_PROMPT } from './lib/review-prompts.mjs';
 import { parseReviewOutput } from './lib/review-parser.mjs';
 
 // ---------- main ----------
@@ -78,6 +80,9 @@ try {
       break;
     case 'review':
       await cmdReview(flags, positional, useJson);
+      break;
+    case 'adversarial-review':
+      await cmdAdversarialReview(flags, positional, useJson);
       break;
     default:
       process.stderr.write(
@@ -1218,6 +1223,465 @@ async function cmdReview(flags, positional, json) {
     process.stdout.write(formatReviewJson({ review, job: finalJob, turn: turnMeta }) + '\n');
   } else {
     process.stdout.write(formatReviewHuman({ review, job: finalJob, turn: turnMeta }) + '\n');
+  }
+}
+
+// ---------- adversarial-review ----------
+
+async function cmdAdversarialReview(flags, positional, json) {
+  // 1. Parse args: reject inapplicable flags at parse time.
+
+  // --allow-edit is categorically rejected for all review skills.
+  if (flags['allow-edit'] !== undefined) {
+    process.stderr.write(
+      formatError(
+        new Error('--allow-edit is not applicable to review skills. Reviews are read-only.'),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  // --name is not accepted; session names are auto-generated.
+  if (flags['name'] !== undefined) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          '--name is not accepted for adversarial review; session names are generated automatically.',
+        ),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  // --add-dir is not accepted; the review runs in the target job's workspace.
+  if (flags['add-dir'] !== undefined) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          "--add-dir is not accepted by $claude-adversarial-review; the review session runs in the target job's workspace.",
+        ),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  // --mcp-config is not accepted.
+  if (flags['mcp-config'] !== undefined) {
+    process.stderr.write(
+      formatError(
+        new Error('--mcp-config is not accepted by $claude-adversarial-review.'),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  // 2. jobId-or-prefix positional (required).
+  const prefix = positional[0];
+  if (!prefix) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          'usage: claude-companion adversarial-review <jobId-or-prefix> [--all] [--json] [--yes] [--model <model>] [--effort <effort>] [--permission-mode <mode>]',
+        ),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  // Reject unexpected freeform positional args beyond the job ID.
+  if (positional.length > 1) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          'adversarial-review does not accept a freeform prompt; the dispatcher constructs the review prompt.',
+        ),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  // 3. Resolve job by prefix.
+  const workspace = process.cwd();
+  const showAll = Boolean(flags['all']);
+  const listed = showAll ? await listJobs() : await listJobsForWorkspace(workspace);
+  const allIds = listed.jobs.map((j) => j.jobId);
+  const resolved = resolveJobIdPrefix(allIds, prefix);
+
+  if ('error' in resolved) {
+    const msg =
+      resolved.error === 'ambiguous'
+        ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
+        : showAll
+          ? `No job found matching "${prefix}"`
+          : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
+    process.stderr.write(formatError(new Error(msg), 'adversarial-review', json) + '\n');
+    process.exit(1);
+  }
+
+  const targetJobId = resolved.match;
+
+  // 4. Reconcile to get fresh status of the target job.
+  const driver = new ClaudeBackgroundDriver({ cwd: workspace });
+  const adapter = makeClaudeAdapter(driver);
+
+  let targetJob;
+  try {
+    const r = await reconcileJob(targetJobId, adapter);
+    targetJob = r.job;
+  } catch {
+    targetJob = await readJob(targetJobId);
+  }
+
+  // 5. Status eligibility check (§ 3.6).
+  const { status } = targetJob;
+
+  if (status === 'queued' || status === 'starting') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Job ${targetJobId} is ${status}; wait for the job to produce a result before running $claude-adversarial-review.`,
+        ),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  if (status === 'running') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Job ${targetJobId} is running; wait for it to produce a result before running $claude-adversarial-review.`,
+        ),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  if (status === 'needs_input') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Job ${targetJobId} needs input. Resolve the permission request first, then run $claude-adversarial-review.`,
+        ),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  // At this point status is awaiting_followup, completed, stopped, failed, or orphaned.
+  // These statuses are allowed IF job.result exists.
+  if (!targetJob.result) {
+    process.stderr.write(
+      formatError(
+        new Error(`No reviewable output. The job ${status} before producing a result.`),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  // 6. Privacy ack — target workspace, 4-step rule.
+  const ackResult = resolveWorkspaceAck({
+    workspaceRoot: targetJob.workspace.root,
+    useYes: Boolean(flags['yes']),
+    isTTY: process.stdin.isTTY === true,
+  });
+  if (ackResult.verdict === 'rejected') {
+    const msg = [
+      'Privacy acknowledgement required for target workspace.',
+      '',
+      `This command will start an adversarial review session for job ${targetJobId}.`,
+      'The review session will have access to files in:',
+      '',
+      `Target workspace: ${ackResult.workspaceRoot}`,
+      '',
+      'Re-run with --yes to acknowledge and proceed.',
+    ].join('\n');
+    process.stderr.write(formatError(new Error(msg), 'adversarial-review', json) + '\n');
+    process.exit(1);
+  }
+
+  // 7. Review target selection (§ 3.X): latest completed non-review turn with a result.
+  let targetTurn = null;
+  let selectedTurnIndex = -1;
+  for (let i = targetJob.turns.length - 1; i >= 0; i--) {
+    const t = targetJob.turns[i];
+    if (
+      t.status === 'completed' &&
+      t.result != null &&
+      !t.prompt.summary.startsWith('[review] ') &&
+      !t.prompt.summary.startsWith('[adversarial-review] ')
+    ) {
+      targetTurn = t;
+      selectedTurnIndex = i;
+      break;
+    }
+  }
+
+  if (targetTurn === null) {
+    process.stderr.write(
+      formatError(
+        new Error('No reviewable non-review output found for this job.'),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  // 8. Read the selected turn's content for prompt injection.
+  const originalTaskSummary = targetTurn.prompt.summary;
+
+  // Read finalMessage from the turn's result.finalMessagePath.
+  const finalMessagePath = targetTurn.result?.finalMessagePath;
+  if (!finalMessagePath) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Reviewed output file is missing: (no path). Cannot construct adversarial review prompt.`,
+        ),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  let finalMessage;
+  try {
+    finalMessage = await readFile(finalMessagePath, 'utf8');
+  } catch {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Reviewed output file is missing: ${finalMessagePath}. Cannot construct adversarial review prompt.`,
+        ),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  const touchedFiles = targetJob.result?.touchedFiles;
+
+  // 9. Construct adversarial prompt via ADVERSARIAL_REVIEW_PROMPT.
+  const adversarialPrompt = ADVERSARIAL_REVIEW_PROMPT({
+    originalTask: originalTaskSummary,
+    finalMessage,
+    touchedFiles,
+  });
+
+  // 10. Start the review session via driver.startSession.
+  const repoBasename = basename(targetJob.workspace.root);
+  const targetJobIdShort = targetJobId.slice(0, 12);
+  const reviewSessionName = `codex:${repoBasename}:review-${targetJobIdShort}`;
+
+  const reviewHandle = await driver.startSession({
+    cwd: targetJob.workspace.root,
+    prompt: adversarialPrompt,
+    name: reviewSessionName,
+    model: typeof flags['model'] === 'string' ? flags['model'] : undefined,
+    effort: typeof flags['effort'] === 'string' ? flags['effort'] : undefined,
+    permissionMode:
+      typeof flags['permission-mode'] === 'string' ? flags['permission-mode'] : undefined,
+  });
+
+  // 11. Create the review JobRecord via createJob.
+  const promptMeta = makePromptMeta(adversarialPrompt);
+  const prefixedSummary = `[adversarial-review] ${promptMeta.summary}`;
+
+  const caps = await driver.probe();
+
+  const reviewJob = await createJob({
+    codex: {
+      cwd: targetJob.workspace.root,
+      pluginVersion: '0.0.0',
+    },
+    workspace: {
+      root: targetJob.workspace.root,
+    },
+    driver: {
+      name: 'claude-background',
+      version: DRIVER_VERSION,
+      capabilitiesSnapshot: caps,
+    },
+    claude: {
+      version: caps.claudeVersion ?? 'unknown',
+      shortId: reviewHandle.shortId,
+      sessionName: reviewHandle.sessionName,
+      cwd: reviewHandle.cwd,
+      startedAt: reviewHandle.startedAt,
+      logsCommand: `claude logs ${reviewHandle.shortId}`,
+    },
+    prompt: { summary: prefixedSummary, sha256: promptMeta.sha256, bytesLen: promptMeta.bytesLen },
+    reviewOf: { jobId: targetJobId, turnIndex: selectedTurnIndex },
+  });
+
+  // 12. Build review session handle for stop calls.
+  const reviewSessionHandle = {
+    driverName: reviewJob.driver.name,
+    shortId: reviewHandle.shortId,
+    sessionId: reviewHandle.sessionId,
+    sessionName: reviewHandle.sessionName,
+    cwd: reviewHandle.cwd,
+    startedAt: reviewHandle.startedAt,
+  };
+
+  // 13. Reconcile loop with DD-1 timeout.
+  //
+  // Default timeout: 30 minutes (1_800_000 ms).
+  // Env-var override: CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_TIMEOUT_MS.
+  // Defensive parse: parseInt; NaN or <= 0 → use default.
+  //
+  // Poll interval default: 2000 ms. Override via CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_POLL_MS
+  // (TEST SEAM ONLY — not user-facing).
+  const ADVERSARIAL_REVIEW_TIMEOUT_DEFAULT_MS = 1_800_000;
+  const rawTimeoutEnv = process.env.CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_TIMEOUT_MS;
+  const parsedTimeoutEnv = rawTimeoutEnv ? parseInt(rawTimeoutEnv, 10) : NaN;
+  const ADVERSARIAL_REVIEW_TIMEOUT_MS =
+    !Number.isNaN(parsedTimeoutEnv) && parsedTimeoutEnv > 0
+      ? parsedTimeoutEnv
+      : ADVERSARIAL_REVIEW_TIMEOUT_DEFAULT_MS;
+
+  const ADVERSARIAL_REVIEW_POLL_DEFAULT_MS = 2000;
+  const rawPollEnv = process.env.CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_POLL_MS;
+  const parsedPollEnv = rawPollEnv ? parseInt(rawPollEnv, 10) : NaN;
+  const ADVERSARIAL_REVIEW_POLL_MS =
+    !Number.isNaN(parsedPollEnv) && parsedPollEnv > 0
+      ? parsedPollEnv
+      : ADVERSARIAL_REVIEW_POLL_DEFAULT_MS;
+
+  const reviewAdapter = makeClaudeAdapter(driver, {
+    startedAt: reviewHandle.startedAt,
+  });
+
+  const startTime = Date.now();
+  let currentReviewJob = reviewJob;
+  let timedOut = false;
+
+  while (true) {
+    // Check timeout first.
+    const elapsed = Date.now() - startTime;
+    if (elapsed >= ADVERSARIAL_REVIEW_TIMEOUT_MS) {
+      timedOut = true;
+      break;
+    }
+
+    // Poll: wait then reconcile.
+    await new Promise((resolve) => setTimeout(resolve, ADVERSARIAL_REVIEW_POLL_MS));
+
+    try {
+      const r = await reconcileJob(reviewJob.jobId, reviewAdapter);
+      currentReviewJob = r.job;
+    } catch {
+      // Non-fatal; retry on next iteration.
+    }
+
+    // Success path: review job has a result.
+    if (currentReviewJob.result) {
+      break;
+    }
+
+    // Failure path: review job is in a terminal non-result status.
+    if (
+      currentReviewJob.status === 'failed' ||
+      currentReviewJob.status === 'stopped' ||
+      currentReviewJob.status === 'orphaned'
+    ) {
+      // Exit non-zero with the review job's status.
+      process.stderr.write(
+        formatError(
+          new Error(
+            `Adversarial review session ended with status: ${currentReviewJob.status}. No findings were produced.`,
+          ),
+          'adversarial-review',
+          json,
+        ) + '\n',
+      );
+      process.exit(1);
+    }
+  }
+
+  // Timeout cleanup branch (per DD-1 + R16).
+  if (timedOut) {
+    // Best-effort: stop the review session (errors ignored).
+    await driver.stop(reviewSessionHandle).catch(() => {});
+
+    // Mark the review job failed.
+    await updateJob(reviewJob.jobId, (current) => ({ ...current, status: 'failed' }));
+
+    // Append review.failed event.
+    const now = new Date().toISOString();
+    await appendEvent(reviewJob.jobId, {
+      type: 'review.failed',
+      at: now,
+      reason: 'timeout',
+      timeoutMs: ADVERSARIAL_REVIEW_TIMEOUT_MS,
+    });
+
+    // Leave target job UNCHANGED.
+
+    const timeoutMinutes = Math.round(ADVERSARIAL_REVIEW_TIMEOUT_MS / 60_000);
+    process.stderr.write(
+      formatError(
+        new Error(`Adversarial review did not complete within ${timeoutMinutes} minutes.`),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  // 14. Parse + format results.
+  // Read the final message from the review job's result.finalMessagePath.
+  let reviewFinalMessage = '';
+  if (currentReviewJob.result?.finalMessagePath) {
+    try {
+      reviewFinalMessage = await readFile(currentReviewJob.result.finalMessagePath, 'utf8');
+    } catch {
+      reviewFinalMessage = '';
+    }
+  }
+
+  const review = parseReviewOutput(reviewFinalMessage);
+
+  if (json) {
+    process.stdout.write(
+      formatAdversarialReviewJson({
+        review,
+        job: currentReviewJob,
+        targetJob,
+      }) + '\n',
+    );
+  } else {
+    // Human format: reuse formatReviewHuman with a synthetic turn shape.
+    const turnMeta = {
+      index: 0,
+      status: currentReviewJob.status,
+    };
+    process.stdout.write(
+      formatReviewHuman({ review, job: currentReviewJob, turn: turnMeta }) + '\n',
+    );
   }
 }
 

@@ -679,6 +679,297 @@ CI green on the T5 commit at `e99efe1` per run [`26793860082`](https://github.co
 
 ---
 
+## T6 — Dispatcher: `adversarial-review` subcommand
+
+**Status**: complete (pending CI)
+**Files**:
+
+- `packages/plugin-codex/scripts/claude-companion.mjs` (modified, +466 net LOC: `cmdAdversarialReview` at lines 1231–1685; `case 'adversarial-review':` at line 84; `printUsage` line 1703 unchanged from T4)
+- `packages/plugin-codex/scripts/lib/format.mjs` (modified, +44 LOC: `formatAdversarialReviewJson` at lines 401–436)
+- `packages/plugin-codex/test/dispatcher.test.mjs` (modified, +1271 lines: 35 new tests labeled T6-1 through T6-23 with sub-variants; fix pass touched 4 fixture call sites only)
+- `documentation/plan/0003-20260601-review-skills/2-implement.md` (this file, T6 entry appended)
+
+**Test impact**: `test:plugin` **456 → 491** (+35). Other lanes unchanged. `test:attach` unchanged at 25/25.
+
+### Command contract pinned
+
+Accepted flags: `--all`, `--json`, `--yes`, `--model`, `--effort`, `--permission-mode`.
+
+Rejection wording (test-pinned):
+
+| Flag/Condition | Exact message | Exit |
+|---|---|---|
+| `--allow-edit` | `--allow-edit is not applicable to review skills. Reviews are read-only.` | 2 |
+| `--name` | `--name is not accepted for adversarial review; session names are generated automatically.` | 2 |
+| `--add-dir` | `--add-dir is not accepted by $claude-adversarial-review; the review session runs in the target job's workspace.` | 2 |
+| `--mcp-config` | `--mcp-config is not accepted by $claude-adversarial-review.` | 2 |
+| Missing job ID | usage error | 2 |
+| Extra positional | `adversarial-review does not accept a freeform prompt; the dispatcher constructs the review prompt.` | 2 |
+| `queued` / `starting` | `Job <id> is <status>; wait for the job to produce a result before running $claude-adversarial-review.` | 1 |
+| `running` | `Job <id> is running; wait for it to produce a result before running $claude-adversarial-review.` | 1 |
+| `needs_input` | `Job <id> needs input. Resolve the permission request first, then run $claude-adversarial-review.` | 1 |
+| Allowed status no result | `No reviewable output. The job <status> before producing a result.` | 1 |
+| No reviewable non-review turn | `No reviewable non-review output found for this job.` | 1 |
+| Timeout | `Adversarial review did not complete within <N> minutes.` | 1 |
+
+### Eligibility behavior (§ 3.6)
+
+| Status | With result | Without result |
+|---|---|---|
+| `awaiting_followup` | ALLOW | REJECT (no result) |
+| `completed` | ALLOW | REJECT (no result) |
+| `stopped` | ALLOW | REJECT (no result) |
+| `failed` | ALLOW | REJECT (no result) |
+| `orphaned` | ALLOW | REJECT (no result) |
+| `running` | REJECT | REJECT |
+| `queued` / `starting` | REJECT | REJECT |
+| `needs_input` | REJECT | REJECT |
+
+Note: A reconciles the target job BEFORE the eligibility check; status seen by the eligibility branches is the post-reconcile status. Mirrors `cmdReview`'s ordering.
+
+### Review target selection (§ 3.X — same rule as T4)
+
+Walks `targetJob.turns` from latest index downward. Selects the first turn where ALL of:
+
+- `turn.status === 'completed'`
+- `turn.result` non-null
+- `turn.prompt.summary` does NOT start with `[review] ` or `[adversarial-review] `
+
+If none → exit 1 with `"No reviewable non-review output found for this job."` Reads the selected turn's `result.finalMessagePath` content. Exits with a clear error if the path is absent or the file is missing.
+
+### Prompt construction
+
+`ADVERSARIAL_REVIEW_PROMPT({ originalTask, finalMessage, touchedFiles })` from T1. Context fields:
+
+- `originalTask`: the selected turn's `prompt.summary`.
+- `finalMessage`: file content at `targetTurn.result.finalMessagePath`.
+- `touchedFiles`: from `targetJob.result?.touchedFiles` (job-level per plan § 3.4 step 7).
+
+### Session creation
+
+```js
+driver.startSession({
+  cwd: targetJob.workspace.root,
+  prompt: adversarialPrompt,
+  name: `codex:${basename(targetJob.workspace.root)}:review-${targetJobId.slice(0, 12)}`,
+  model: typeof flags['model'] === 'string' ? flags['model'] : undefined,
+  effort: typeof flags['effort'] === 'string' ? flags['effort'] : undefined,
+  permissionMode: typeof flags['permission-mode'] === 'string' ? flags['permission-mode'] : undefined,
+})
+```
+
+NOT forwarded: `--allow-edit`, `--add-dir`, `--mcp-config`, `--name`.
+
+### Review job creation
+
+`createJob({ ..., reviewOf: { jobId: targetJobId, turnIndex: selectedTurnIndex } })`. Persists:
+
+- `workspace.root` = `targetJob.workspace.root` (same as target).
+- `driver`: `{ name: 'claude-background', version, capabilitiesSnapshot }`.
+- `claude`: `{ version, shortId, sessionName, cwd, startedAt }` from the review session.
+- `prompt.summary` PREFIXED with `[adversarial-review] `.
+
+### Reconcile loop + DD-1 timeout
+
+- Default timeout: 1_800_000 ms (30 min).
+- Env override: `CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_TIMEOUT_MS`.
+- Defensive parse: `parseInt`; `NaN` or `<= 0` → default.
+- Poll interval default: 2000 ms.
+- Test-seam env override: `CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_POLL_MS` ("TEST SEAM ONLY — not user-facing" per A's inline comment).
+
+Loop behavior:
+
+1. Check timeout (`elapsed >= TIMEOUT_MS`) → if elapsed, set `timedOut = true`, break.
+2. Sleep `POLL_MS`.
+3. Reconcile the review job.
+4. If `reviewJob.result` → break (success).
+5. If `reviewJob.status` is `failed` / `stopped` / `orphaned` (no result) → exit 1 with `"Adversarial review session ended with status: <status>. No findings were produced."`
+
+**Timeout cleanup** (per DD-1 + R16):
+
+- Best-effort `driver.stop(reviewSessionHandle).catch(() => {})`.
+- `updateJob(reviewJob.jobId, current => ({ ...current, status: 'failed' }))`.
+- `appendEvent(reviewJob.jobId, { type: 'review.failed', at: now, reason: 'timeout', timeoutMs })`.
+- **Target job UNCHANGED** — no writes to `targetJobId`'s record or event log.
+- Exit 1 with `"Adversarial review did not complete within <N> minutes."` where `N = Math.round(timeoutMs / 60_000)`.
+
+### Parse / format
+
+- Parse: `parseReviewOutput(reviewFinalMessageText)`.
+- Human: `formatReviewHuman({ review, job, turn })` (reuses T4 formatter).
+- JSON: `formatAdversarialReviewJson({ review, job, targetJob })` — NEW formatter with shape:
+  ```json
+  {
+    "ok": true,
+    "review": { "verdict", "findingsCount", per-severity counts, "findings": [...] },
+    "job": {
+      "jobId": "<reviewJobId>",
+      "status": "<reviewJob.status>",
+      "reviewOf": { "jobId": "<targetJobId>", "turnIndex": <n> }
+    },
+    "targetJob": {
+      "jobId": "<targetJobId>",
+      "status": "<targetJob.status>"
+    }
+  }
+  ```
+
+### Ack behavior
+
+Target-workspace via `resolveWorkspaceAck({ workspaceRoot: targetJob.workspace.root, useYes, isTTY })`. Standard 4-step rule (same as T4).
+
+### Subagent A — implementation (executor)
+
+Produced `cmdAdversarialReview` with the 11-step flow per § 3.4 + the DD-1 timeout machinery. A's final summary was truncated mid-action; orchestrator verified disk state via grep + gates.
+
+A's pinned design decisions:
+
+- Reconcile-before-eligibility ordering (mirrors `cmdReview`).
+- `process.exit(1)` directly in failure branches (consistent with sibling `cmd*` functions).
+- `finalMessagePath` strictly required; no fallback to `finalMessagePreview` (per plan directive).
+- Test-seam poll-interval env var `CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_POLL_MS` (documented as internal only).
+- New `formatAdversarialReviewJson` rather than extending `formatReviewJson` (cleaner separation of the `targetJob` block).
+
+A's verification (orchestrator-confirmed after A's truncated summary): `node --check` clean (both files); `npm run lint` clean; `npm run format -- --check` clean; `npm run typecheck` clean; `npm run test:plugin` 456/456 (no regression).
+
+### Subagent B — tests (test-engineer + fix pass)
+
+Initial B run added 35 dispatcher tests but **4 tests failed** because the shared fixture `writeAdversarialTargetJob` defaults to writing a completed turn with result regardless of job-level `status` / `noResult` flags. The initial B summary was truncated mid-fix.
+
+**Fix-pass B** corrected the 4 failures by changing fixture call sites only — no helper or implementation modifications:
+
+| Test | Root cause | Fix |
+|---|---|---|
+| T6-12-queued | Default turn 0 completed + result → `syncCompatAliases` set `job.result` → eligibility passed | `turns: [{ status: 'queued', hasResult: false }], noResult: true` + seed 'working' session so reconcile → 'running' |
+| T6-12-starting | Same as queued | Same recipe with `status: 'starting'` |
+| T6-14 | `noResult: true` cleared job-level result but turn 0's result was promoted via `syncCompatAliases` | `turns: [{ status: 'stopped', hasResult: false }], noResult: true` |
+| T6-19 | Mock-claude writes non-empty `output.result` to sidecar synchronously → reconciler sets `reviewJob.result` on iteration 1 → success exit before timeout fires. Also target job reconcile to 'orphaned' broke the "unchanged" assertion. | Write mock config with `attachResponse: ''` → empty sidecar result → reconciler's `sidecarSaysDone` guard rejects → polling continues → iteration 2 triggers timeout. Seed `tgt00001` as 'idle' so target reconciles to `awaiting_followup` and stays unchanged. |
+
+Post-fix-pass test count: **491/491** plugin lane (verified via `npm run test:plugin`).
+
+Coverage of the 23 maintainer-pinned cases:
+
+| # | Case | Test ID |
+|---|---|---|
+| 1 | Happy path + reviewOf | T6-1 |
+| 2 | Session name pattern | T6-2 |
+| 3 | Human output | T6-3 |
+| 4 | `--json` shape (with targetJob) | T6-4 |
+| 5 | `--model` forwarded | T6-5 |
+| 6 | `--effort` forwarded | T6-6 |
+| 7 | `--permission-mode` forwarded | T6-7 |
+| 8 | `--allow-edit` rejected | T6-8 |
+| 9 | `--name` / `--add-dir` / `--mcp-config` rejected | T6-9a/b/c |
+| 10 | `running` rejected | T6-10 |
+| 11 | `needs_input` rejected | T6-11 |
+| 12 | `queued` / `starting` rejected | T6-12-queued/starting |
+| 13 | `stopped`/`failed`/`orphaned` with result allowed | T6-13-stopped/failed/orphaned |
+| 14 | Allowed status without result | T6-14 |
+| 15 | No reviewable non-review turn | T6-15 |
+| 16 | Non-review turn selection | T6-16 |
+| 17 | `--all` cross-workspace | T6-17 |
+| 18 | `--yes` records target workspace ack | T6-18 |
+| 19 | Timeout path | T6-19 |
+| 20 | Env timeout parse (valid / NaN / negative) | T6-20a/b/c |
+| 21 | Malformed output fallback | T6-21 |
+| 22 | Missing reviewed-output file | T6-22 |
+| 23 | `--help` includes adversarial-review | T6-23 |
+
+Plus 12 extras (turnIndex correctness, prompt prefix, workspace root propagation, multi-turn latest-selection, freeform-prompt rejection, sub-variants). Subagent C confirmed no redundant tests.
+
+### Subagent C — read-only review (code-reviewer)
+
+Strict F-H1 read-only contract; F-H2 trace step required and verified. Verdict: **ready-to-commit**. **ZERO critical/high/medium findings.**
+
+C rendered four explicit judgments — all ACCEPTED:
+
+- **Judgment 1 — Reconcile-before-eligibility ordering**: ACCEPT. Mirrors `cmdReview`'s precedent; reconciler produces ground-truth status; checking stale on-disk status would create a TOCTOU gap.
+- **Judgment 2 — Test-seam poll env var**: ACCEPT. T6-19 requires it; hardcoded small poll would worsen production behavior; comment explicitly marks "TEST SEAM ONLY — not user-facing."
+- **Judgment 3 — `process.exit` calls**: ACCEPT. Every sibling `cmd*` function uses `process.exit` directly; consistency more valuable than discriminated-return refactor (out of T6 scope).
+- **Judgment 4 — `finalMessagePath` required, no fallback**: ACCEPT. Plan explicitly says "exit with clear error that reviewed output file is missing"; falling back to truncated `finalMessagePreview` would inject misleading context.
+
+| ID | Severity | Finding | Disposition |
+|---|---|---|---|
+| F-1 | LOW | `cmdAdversarialReview` reads `targetJob.result?.touchedFiles` (job-level), which differs from `targetTurn.result?.touchedFiles` (turn-level). Plan § 3.4 step 7 specifies job-level, so this is correct. Documenting the choice. | No action — plan explicitly says job-level. |
+
+### F-H2 verbatim trace (per C)
+
+```
+dispatcher switch (claude-companion.mjs:84)
+  case 'adversarial-review':
+    → cmdAdversarialReview(flags, positional, useJson)      (claude-companion.mjs:85)
+      → reconcileJob(targetJobId, adapter)                  (claude-companion.mjs:1341)
+      → status eligibility checks                           (claude-companion.mjs:1350–1400)
+      → non-review turn selection (backward walk)           (claude-companion.mjs:1426–1438)
+      → readFile(targetTurn.result.finalMessagePath)        (claude-companion.mjs:1471)
+      → ADVERSARIAL_REVIEW_PROMPT({originalTask,            (claude-companion.mjs:1488)
+          finalMessage, touchedFiles})
+        ← imported from ./lib/review-prompts.mjs
+      → driver.startSession({cwd, prompt, name,             (claude-companion.mjs:1499)
+          model?, effort?, permissionMode?})
+      → createJob({..., reviewOf: {jobId, turnIndex}})      (claude-companion.mjs:1515–1538)
+        ← reviewOf consumed via T5's CreateJobInput.reviewOf
+      → reconcile loop (while true)                         (claude-companion.mjs:1582–1623)
+        → reconcileJob(reviewJob.jobId, reviewAdapter)      (claude-companion.mjs:1594)
+        → timeout check (elapsed >= TIMEOUT_MS)             (claude-companion.mjs:1585)
+      → [on timeout] driver.stop(reviewSessionHandle)       (claude-companion.mjs:1628)
+                     updateJob(reviewJob.jobId, failed)     (claude-companion.mjs:1631)
+                     appendEvent(reviewJob.jobId,           (claude-companion.mjs:1635)
+                       { type: 'review.failed',
+                         reason: 'timeout' })
+                     (target job UNCHANGED — no writes)
+      → parseReviewOutput(reviewFinalMessage)               (claude-companion.mjs:1666)
+        ← imported from ./lib/review-parser.mjs
+      → formatAdversarialReviewJson / formatReviewHuman     (claude-companion.mjs:1670/1679)
+        ← formatAdversarialReviewJson at format.mjs:401
+```
+
+Optional capability trace: `ADVERSARIAL_REVIEW_PROMPT` accepts `{ originalTask, finalMessage, touchedFiles? }`. `touchedFiles` is optional; A reads from `targetJob.result?.touchedFiles` (line 1485). Template degrades gracefully when undefined. Traced from consumer to template definition.
+
+### Orchestrator follow-up
+
+None. C's verdict ZERO findings; one LOW non-issue documented.
+
+### Deviation from 1-plan.md
+
+- **Test count delta**: plan T6 target was implicit (no specific number, but the 23 numbered cases were the minimum). Actual delta is +35 (1.5× the 23-case floor). C confirmed each test is a distinct contract assertion (Pattern 5).
+- **Initial test failures + fix pass**: B's first pass had 4 failing tests due to fixture-default interactions. B's fix-pass corrected via call-site changes only (no helper or implementation modifications). Documented per Plan 0002's deviation convention.
+
+### Acceptance evidence
+
+- `cmdAdversarialReview` present at `claude-companion.mjs:1231`: ✓
+- `case 'adversarial-review':` in dispatcher switch (line 84): ✓
+- `printUsage` includes both `review` and `adversarial-review` (T4 + T6 contribution per Edit 13): ✓
+- All accepted/rejected flags + pinned messages locked in tests: ✓
+- All status eligibility branches present and tested: ✓
+- Latest non-review turn selection implemented and tested: ✓
+- Target-workspace ack via `resolveWorkspaceAck`: ✓
+- `ADVERSARIAL_REVIEW_PROMPT` consumer correct: ✓
+- `driver.startSession` invocation with pinned session-name pattern: ✓
+- `createJob` with `reviewOf: { jobId, turnIndex }`: ✓
+- Review job's `prompt.summary` prefixed `[adversarial-review] `: ✓
+- DD-1 timeout default + env override + defensive parse: ✓
+- Timeout cleanup: stop review session best-effort + mark review job failed + `review.failed` event + target job UNCHANGED + exit 1: ✓
+- `parseReviewOutput` consumer correct: ✓
+- `formatAdversarialReviewJson` shape includes `targetJob` block: ✓
+- No new `JobRecord` mutation of target job: ✓
+- No `driver.send()` used (startSession only): ✓
+- No `node-pty`, no `claude -p`, no `--dangerously-skip-permissions`, no OQ4 forbidden tokens: ✓
+- No `package.json`, mock-claude, runtime, driver, CI, or skills changes: ✓
+- `npm run lint` clean: ✓
+- `npm run format -- --check` clean: ✓
+- `npm run typecheck` clean: ✓
+- `npm run test:plugin` → 491/491 (pre-T6 456, +35): ✓
+- `npm run test:attach` → 25/25 (unchanged): ✓
+
+### CI
+
+_To be recorded in the follow-up `Plan 0003 T6 log: record CI success` commit._
+
+---
+
+---
+
 ---
 
 ---

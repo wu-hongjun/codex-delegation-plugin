@@ -392,6 +392,50 @@ export function formatReviewJson({ review, job, turn }) {
 }
 
 /**
+ * Format machine-readable JSON output for the `adversarial-review` subcommand.
+ * Includes the nested `reviewOf` field and a `targetJob` block.
+ *
+ * @param {{ review: import('./review-parser.mjs').ReviewOutput; job: import('@cc-plugin-codex/runtime').JobRecord; targetJob: import('@cc-plugin-codex/runtime').JobRecord }} opts
+ * @returns {string}
+ */
+export function formatAdversarialReviewJson({ review, job, targetJob }) {
+  const { verdict, findings } = review;
+
+  const blockerCount = findings.filter((f) => f.severity === 'blocker').length;
+  const highCount = findings.filter((f) => f.severity === 'high').length;
+  const mediumCount = findings.filter((f) => f.severity === 'medium').length;
+  const lowCount = findings.filter((f) => f.severity === 'low').length;
+  const nitCount = findings.filter((f) => f.severity === 'nit').length;
+
+  return JSON.stringify(
+    {
+      ok: true,
+      review: {
+        verdict,
+        findingsCount: findings.length,
+        blockerCount,
+        highCount,
+        mediumCount,
+        lowCount,
+        nitCount,
+        findings,
+      },
+      job: {
+        jobId: job.jobId,
+        status: job.status,
+        reviewOf: job.reviewOf ?? null,
+      },
+      targetJob: {
+        jobId: targetJob.jobId,
+        status: targetJob.status,
+      },
+    },
+    null,
+    2,
+  );
+}
+
+/**
  * @param {unknown} err
  * @param {string} command
  * @param {boolean} json

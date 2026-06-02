@@ -501,7 +501,9 @@ None. C's verdict is ready-to-commit; F-1 and F-2 are accepted/deferred. No pre-
 
 ### CI
 
-_To be recorded in the follow-up `Plan 0003 T4 log: record CI success` commit._
+CI green on the T4 commit at `505cc7f` per run [`26792610003`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26792610003): `ubuntu-latest / Node 20`, `macos-latest / Node 20`, `ubuntu-latest / Node 22`, `macos-latest / Node 22` — all `success`.
+
+**API-metadata note**: the run-level conclusion settled to `success` immediately after the four matrix legs completed, but the GitHub Actions API briefly reported `macos-latest / Node 22` job-level `status: in_progress` despite all 13 of that job's steps (including `Complete job` #21) being individually `completed`/`success`. Stale job-level metadata; the step-level evidence and run-level `conclusion: success` are authoritative. No rerun needed.
 
 ---
 

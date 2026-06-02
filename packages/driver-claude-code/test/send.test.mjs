@@ -973,10 +973,7 @@ describe('send() — CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS env var honored 
             { pollIntervalMs: 50, timeoutMs: 10000 },
           ),
           (err) => {
-            return (
-              err.name === 'DriverError' &&
-              /did not register within 1ms/.test(err.message)
-            );
+            return err.name === 'DriverError' && /did not register within 1ms/.test(err.message);
           },
         );
       } finally {

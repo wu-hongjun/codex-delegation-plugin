@@ -1,0 +1,24 @@
+# Plan 0004 — Benchmark harness and cost measurement
+
+**Status**: `planning`
+**Started**: 2026-06-03
+**Stage 1 approved**: 2026-06-03
+**Last updated**: 2026-06-03
+
+## Stages
+
+| Stage | File | Status |
+| --- | --- | --- |
+| 1 — Plan | `1-plan.md` | **approved 2026-06-03** — all 10 OQs (A–J) resolved; 12 tasks (T1–T12) with acceptance criteria; 9 risks (R1–R9); awaiting Stage 2 kickoff |
+| 2 — Implement | `2-implement.md` | not started |
+| 3 — Audit | `3-audit.md` | not started |
+| 4 — Polish | `4-polish.md` | not started |
+| 5 — Report | `5-report.md` | not started |
+
+## Summary
+
+Plan 0004 builds a benchmark harness for cc-plugin-codex that measures cost, latency, and verdict characteristics of the plugin's delegation and review flows against a fixed task corpus. The harness instruments `$claude-delegate`, `$claude-followup`, `$claude-review`, and `$claude-adversarial-review` against real Claude Code and produces machine-readable results suitable for comparison.
+
+Plan 0001's cost paragraph (byte-locked in README) reserves cost-savings measurement for Plan 0004. Plan 0003's report flags the `$claude-review` and `$claude-adversarial-review` flows as comparable in Plan 0004.
+
+Plan 0004's scope spans the **2026-06-15 Anthropic Agent SDK credit cutover**. The harness should be capable of running before and after the cutover to record observed bucketing of `claude --bg` usage (interactive vs Agent SDK credit) without inferring a claim from policy text alone.

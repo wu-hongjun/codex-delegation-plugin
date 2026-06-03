@@ -412,3 +412,133 @@ None. The manifest shape Plan 0006 § 3.1 specified as final-T3 was already the 
 ### Status
 
 **T3 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3 of Stage 2 done; T4 (packaged-file manifest + packaging procedure) paused awaiting maintainer go-ahead.
+
+---
+
+## T4 — Packaged-file manifest + packaging procedure
+
+**Status**: complete pending CI
+**Date**: 2026-06-03
+**Codex version tested**: `codex-cli 0.136.0`
+**Empirical smoke artifact**: [`artifacts/t4-packaging-manifest-20260603.txt`](artifacts/t4-packaging-manifest-20260603.txt)
+
+### Deliverables
+
+T4 codifies the source → marketplace packaging procedure that T2/T3 performed manually.
+
+**New files**:
+
+- `marketplace/MANIFEST.md` — human-readable packaged-file manifest listing the 18 derived files and the 2 marketplace-owned files; references the packaging script.
+- `tools/package-marketplace.mjs` — packaging script with three modes (`--check`, `--write`, `--help`); `node:*` built-ins only.
+
+**Modified**:
+
+- `packages/plugin-codex/test/marketplace-layout.test.mjs` — +10 new tests for the T4 contract (13 → **23**).
+
+### Final packaged-file manifest
+
+The plugin tree under `marketplace/plugins/claude-companion/` contains exactly:
+
+| Kind | Count | Source |
+|---|---|---|
+| Derived (copied from `packages/plugin-codex/<rel>`) | 18 | source plugin |
+| Marketplace-owned (independent of source) | 1 | `README.md` (T2 placeholder; T12 will replace) |
+
+Plus marketplace-root metadata at `marketplace/.agents/plugins/marketplace.json` (also marketplace-owned).
+
+Derived allowlist (18 files):
+
+- `.codex-plugin/plugin.json`
+- `scripts/claude-companion.mjs` (executable bit set to `0o755`)
+- `scripts/lib/{ack, adapter, args, format, prompt-meta, review-parser, review-prompts, review-result-source}.mjs` (8)
+- `skills/{claude-setup, claude-delegate, claude-status, claude-result, claude-stop, claude-followup, claude-review, claude-adversarial-review}/SKILL.md` (8)
+
+### README handling (Option A — recorded explicitly)
+
+`marketplace/plugins/claude-companion/README.md` is marketplace-owned, NOT derived from source. The script never reads or writes it. The current placeholder (T2) will be replaced by T12. Rationale: the source `packages/plugin-codex/README.md` (551 lines, full v1 plugin docs) is end-user-facing for the source repo, not for the marketplace distribution. Copying it verbatim would clobber the T2 placeholder and confuse marketplace consumers.
+
+### `--check` and `--write` semantics
+
+**`--check`** (default if no flag):
+
+1. Verifies source + marketplace files exist for each allowlist entry.
+2. Verifies `readFileSync` returns equal bytes for source ↔ marketplace pairs.
+3. Verifies marketplace-owned files (README.md, marketplace.json) exist (no source comparison).
+4. Verifies no extra files appear under `marketplace/plugins/claude-companion/` outside the allowlist + marketplace-owned set.
+5. Verifies `scripts/claude-companion.mjs` mode has the user-executable bit.
+6. Verifies `marketplace/.agents/plugins/marketplace.json` parses as JSON with `name: "cc-plugin-codex-local"`.
+
+Exit 0 on success; non-zero with `ISSUE:` messages on drift.
+
+**`--write`**:
+
+1. Creates required directories (`mkdirSync({ recursive: true })`).
+2. For each allowlisted derived file: `writeFileSync(dst, readFileSync(src))`.
+3. Always `chmodSync(dst, 0o755)` on `scripts/claude-companion.mjs` after copy (source mode is 644 but the marketplace copy must be executable).
+4. Skips marketplace-owned files (`README.md`, `marketplace.json`).
+5. WARNS about extras but does NOT delete them (avoids accidental data loss).
+6. Idempotent: running `--write` against a fresh tree, then `--check`, exits 0 with no working-tree mutation.
+
+### Empirical verification
+
+- `node tools/package-marketplace.mjs --check` → exit 0; output: `check: OK — 18 derived files match source, 1 marketplace-owned files present, no unexpected files.`
+- `node tools/package-marketplace.mjs --write` → no working-tree mutation (idempotent on current HEAD).
+- `node tools/package-marketplace.mjs --help` → exit 0, usage text including all three flags + the full allowlist.
+- `codex plugin marketplace add /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace` → exit 0, `Added marketplace cc-plugin-codex-local from <path>`.
+- `codex plugin marketplace remove cc-plugin-codex-local` → exit 0.
+- Pre-existing stale `cc-plugin-codex-local-smoke` entry preserved per maintainer brief; no residual Codex state from T4.
+
+### Test changes
+
+Subagent B extended `marketplace-layout.test.mjs` with a new `describe('marketplace packaging procedure (Plan 0006 T4)', ...)` block containing the 10 T4 acceptance assertions:
+
+| # | Assertion |
+|---|---|
+| T4-1 | `marketplace/MANIFEST.md` exists, non-empty |
+| T4-2 | MANIFEST list covers every derived file under `marketplace/plugins/claude-companion/` |
+| T4-3 | Reverse: every file in the marketplace tree is in the MANIFEST list (or marketplace-owned README) |
+| T4-4 | All 18 derived files byte-identical between source and marketplace |
+| T4-5 | `--check` exits 0 on the current tree |
+| T4-6 | `--check` exits non-zero when marketplace drifts (verified via try/finally byte-flip + restore on a real derived file) |
+| T4-7 | `scripts/claude-companion.mjs` has user-executable bit |
+| T4-8 | No extras under `marketplace/plugins/claude-companion/` |
+| T4-9 | No OQ4 forbidden cost-claim tokens in `MANIFEST.md` |
+| T4-10 | `tools/package-marketplace.mjs` does not contain forbidden path literals (`tools/bench/`, `documentation/plan/`, `references/`, `node_modules/`, `.github/`) |
+
+Plugin lane: 648 → 658 (+10). All pass.
+
+### A/B/C findings
+
+- **Subagent A**: created MANIFEST.md + packaging script. Option A README handling chosen and recorded. `--check` exit 0; `--write` idempotent.
+- **Subagent B**: extended marketplace-layout.test.mjs with 10 new T4 assertions including drift detection via try/finally byte-flip restore. All 23 tests pass.
+- **Subagent C**: APPROVE on all 13 review checks. Allowlist correct, script safe (no shell spawn, no third-party deps, no writes outside allowlist), MANIFEST.md complete, byte-identity confirmed via F-H2 trace on 3 sample files, scope clean, no cost-claim/marketing tokens.
+
+### Deviation from 1-plan.md
+
+None. The packaging procedure shape Plan 0006 § T4 proposed is what A/B implemented. Option A for README was explicitly approved by the brief ("if the script doesn't support root override, fall back to..." — option chosen + documented).
+
+### Local gate evidence (commit pending)
+
+- `npm run lint` — clean
+- `npm run typecheck` — clean
+- `npx prettier --check .` — pending
+- `npm test` — pending (expected mock 68 + runtime 172 + driver 178 + plugin **658** = 1076; +10 from T4)
+- `npm run test:attach` — unchanged from Plan 0004 T10 (28/28)
+- `npm run test:bench` — unchanged from Plan 0004 T10 (258/258)
+
+### Implications for later tasks
+
+| Task | Implication from T4 |
+|---|---|
+| T5 (exclusion list + enforcement) | T4's `--check` already verifies "no extras"; T5 owns the formal exclusion-list document. The T5 doc can reference T4's allowlist as the inverse. |
+| T6 (install procedure) | Install procedure can now reference `node tools/package-marketplace.mjs --write` as the prepare-marketplace step (or note that the committed tree IS already in sync). |
+| T7 (upgrade) | Upgrade procedure: pull repo, run `--write` (if any drift), then `codex plugin remove + codex plugin add`. T7 documents this. |
+| T8 (uninstall) | Unchanged from T1 finding. |
+| T9 (smoke) | T9 should include `node tools/package-marketplace.mjs --check` as a pre-smoke gate. |
+| T10 (version bump) | T10 documents the version-bump procedure: edit source plugin.json, run `--write`, run gates, commit. |
+| T11 (RELEASING.md) | T11 references `tools/package-marketplace.mjs --check` as a release-checklist step. |
+
+### CI evidence (pending)
+
+- Commit: pending — `Plan 0006 T4: define packaged-file manifest and packaging procedure`
+- CI run: pending

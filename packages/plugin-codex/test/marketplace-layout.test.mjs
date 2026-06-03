@@ -8,9 +8,10 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
 
 // ---------- path constants ----------
 
@@ -375,5 +376,319 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
         `marketplace README.md contains forbidden cost-claim token "${token}"`,
       );
     }
+  });
+});
+
+// ==========================================================================
+// Plan 0006 T4 — marketplace packaging procedure tests
+// ==========================================================================
+
+// ---------- T4 path constants ----------
+
+const MANIFEST_MD = resolve(MARKETPLACE_ROOT, 'MANIFEST.md');
+const PACKAGE_SCRIPT = resolve(REPO_ROOT, 'tools', 'package-marketplace.mjs');
+
+// Authoritative allowlist of the 18 derived files (relative to marketplace plugin root).
+const DERIVED_FILES_ALLOWLIST = [
+  '.codex-plugin/plugin.json',
+  'scripts/claude-companion.mjs',
+  'scripts/lib/ack.mjs',
+  'scripts/lib/adapter.mjs',
+  'scripts/lib/args.mjs',
+  'scripts/lib/format.mjs',
+  'scripts/lib/prompt-meta.mjs',
+  'scripts/lib/review-parser.mjs',
+  'scripts/lib/review-prompts.mjs',
+  'scripts/lib/review-result-source.mjs',
+  'skills/claude-setup/SKILL.md',
+  'skills/claude-delegate/SKILL.md',
+  'skills/claude-status/SKILL.md',
+  'skills/claude-result/SKILL.md',
+  'skills/claude-stop/SKILL.md',
+  'skills/claude-followup/SKILL.md',
+  'skills/claude-review/SKILL.md',
+  'skills/claude-adversarial-review/SKILL.md',
+];
+
+// Marketplace-owned files (present in plugin root but NOT derived from source).
+const MARKETPLACE_OWNED = new Set(['README.md']);
+
+/**
+ * Parse MANIFEST.md and return the set of relative paths listed under
+ * "Plugin-tree files". A bullet line counts if it contains a backtick-wrapped
+ * token that looks like a relative file path (contains a '.' or '/').
+ */
+function readManifestList(manifestPath) {
+  const content = readFileSync(manifestPath, 'utf8');
+  const listed = new Set();
+  for (const line of content.split('\n')) {
+    // Match any backtick-wrapped token that contains '/' or starts with '.'
+    const matches = [...line.matchAll(/`([^`]+)`/g)];
+    for (const m of matches) {
+      const token = m[1];
+      if ((token.includes('/') || token.startsWith('.')) && !token.startsWith('node ')) {
+        listed.add(token);
+      }
+    }
+  }
+  return listed;
+}
+
+/**
+ * Recursively collect relative (forward-slash) paths of all files under dir.
+ */
+function collectRelFiles(dir, base = dir, results = []) {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      collectRelFiles(full, base, results);
+    } else if (entry.isFile()) {
+      results.push(
+        resolve(full)
+          .slice(resolve(base).length + 1)
+          .replace(/\\/g, '/'),
+      );
+    }
+  }
+  return results;
+}
+
+describe('marketplace packaging procedure (Plan 0006 T4)', () => {
+  // ========================================================================
+  // T4-1: MANIFEST.md exists and is non-empty
+  // ========================================================================
+
+  it('marketplace/MANIFEST.md exists and is non-empty', () => {
+    assert.ok(existsSync(MANIFEST_MD), `MANIFEST.md not found at ${MANIFEST_MD}`);
+    const content = readFileSync(MANIFEST_MD, 'utf8');
+    assert.ok(content.length > 0, 'MANIFEST.md is empty');
+  });
+
+  // ========================================================================
+  // T4-2: MANIFEST.md lists every derived file in the marketplace tree
+  // ========================================================================
+
+  it('MANIFEST.md lists every derived file under marketplace/plugins/claude-companion/', () => {
+    assert.ok(existsSync(MANIFEST_MD), `MANIFEST.md not found at ${MANIFEST_MD}`);
+    assert.ok(
+      existsSync(MARKETPLACE_PLUGIN_ROOT),
+      `marketplace plugin root not found at ${MARKETPLACE_PLUGIN_ROOT}`,
+    );
+
+    const listed = readManifestList(MANIFEST_MD);
+    const actualFiles = collectRelFiles(MARKETPLACE_PLUGIN_ROOT);
+
+    // Every actual file that is NOT marketplace-owned must appear in the manifest list.
+    const missing = [];
+    for (const rel of actualFiles) {
+      if (!MARKETPLACE_OWNED.has(rel) && !listed.has(rel)) {
+        missing.push(rel);
+      }
+    }
+    assert.deepEqual(
+      missing,
+      [],
+      `MANIFEST.md is missing entries for these marketplace files: ${JSON.stringify(missing)}`,
+    );
+  });
+
+  // ========================================================================
+  // T4-3: No file under marketplace/plugins/claude-companion/ is outside
+  //        the MANIFEST.md list (reverse direction)
+  // ========================================================================
+
+  it('marketplace/plugins/claude-companion/ contains no file outside the MANIFEST.md list (reverse check)', () => {
+    assert.ok(existsSync(MANIFEST_MD), `MANIFEST.md not found at ${MANIFEST_MD}`);
+    assert.ok(
+      existsSync(MARKETPLACE_PLUGIN_ROOT),
+      `marketplace plugin root not found at ${MARKETPLACE_PLUGIN_ROOT}`,
+    );
+
+    const listed = readManifestList(MANIFEST_MD);
+    const actualFiles = collectRelFiles(MARKETPLACE_PLUGIN_ROOT);
+
+    const unlisted = [];
+    for (const rel of actualFiles) {
+      if (!MARKETPLACE_OWNED.has(rel) && !listed.has(rel)) {
+        unlisted.push(rel);
+      }
+    }
+    assert.deepEqual(
+      unlisted,
+      [],
+      `Files present in marketplace tree but not in MANIFEST.md (and not marketplace-owned): ${JSON.stringify(unlisted)}`,
+    );
+  });
+
+  // ========================================================================
+  // T4-4: Source <-> marketplace byte-identity for all 18 derived files
+  // ========================================================================
+
+  it('all 18 derived files are byte-identical between source and marketplace', () => {
+    for (const rel of DERIVED_FILES_ALLOWLIST) {
+      const srcPath = resolve(SOURCE_PLUGIN_ROOT, rel);
+      const dstPath = resolve(MARKETPLACE_PLUGIN_ROOT, rel);
+
+      assert.ok(existsSync(srcPath), `source file missing: packages/plugin-codex/${rel}`);
+      assert.ok(
+        existsSync(dstPath),
+        `marketplace file missing: marketplace/plugins/claude-companion/${rel}`,
+      );
+
+      const srcBytes = readFileSync(srcPath);
+      const dstBytes = readFileSync(dstPath);
+      assert.equal(
+        srcBytes.equals(dstBytes),
+        true,
+        `byte mismatch between source and marketplace for: ${rel}`,
+      );
+    }
+  });
+
+  // ========================================================================
+  // T4-5: `node tools/package-marketplace.mjs --check` exits 0
+  // ========================================================================
+
+  it('`node tools/package-marketplace.mjs --check` exits 0 on the current tree', () => {
+    assert.ok(existsSync(PACKAGE_SCRIPT), `packaging script not found at ${PACKAGE_SCRIPT}`);
+
+    const result = spawnSync('node', [PACKAGE_SCRIPT, '--check'], { encoding: 'utf8' });
+    assert.equal(
+      result.status,
+      0,
+      `--check exited ${result.status}; stdout: ${result.stdout}; stderr: ${result.stderr}`,
+    );
+  });
+
+  // ========================================================================
+  // T4-6: `--check` detects drift (file-content-restore approach)
+  //
+  // Strategy: overwrite one derived file's first byte in the marketplace copy,
+  // run --check, assert non-zero exit, then restore via try/finally.
+  // This is safe as long as the restore executes — the try/finally guarantees it.
+  // ========================================================================
+
+  it('`node tools/package-marketplace.mjs --check` exits non-zero when marketplace drifts from source', () => {
+    assert.ok(existsSync(PACKAGE_SCRIPT), `packaging script not found at ${PACKAGE_SCRIPT}`);
+
+    // Pick the simplest derived file to mutate (plugin.json — always present).
+    const targetRel = '.codex-plugin/plugin.json';
+    const targetPath = resolve(MARKETPLACE_PLUGIN_ROOT, targetRel);
+    assert.ok(existsSync(targetPath), `drift-test target not found: ${targetPath}`);
+
+    const originalBytes = readFileSync(targetPath);
+
+    // Introduce a single-byte mutation: flip the first byte.
+    const mutated = Buffer.from(originalBytes);
+    mutated[0] = mutated[0] === 0x78 ? 0x79 : 0x78; // 'x' <-> 'y' (both printable, won't break Buffer)
+
+    try {
+      writeFileSync(targetPath, mutated);
+
+      const result = spawnSync('node', [PACKAGE_SCRIPT, '--check'], { encoding: 'utf8' });
+      assert.notEqual(
+        result.status,
+        0,
+        `--check should have exited non-zero after introducing drift, but exited 0; stdout: ${result.stdout}; stderr: ${result.stderr}`,
+      );
+    } finally {
+      // RESTORE: always write back original bytes, even if assertions above fail.
+      writeFileSync(targetPath, originalBytes);
+    }
+  });
+
+  // ========================================================================
+  // T4-7: scripts/claude-companion.mjs in marketplace has executable bit
+  //        (already covered by T2 Check 6 — verify it still passes)
+  // ========================================================================
+
+  it('marketplace/plugins/claude-companion/scripts/claude-companion.mjs still has user-executable bit (T2 guard)', () => {
+    assert.ok(
+      existsSync(MARKETPLACE_ENTRY_SCRIPT),
+      `claude-companion.mjs not found at ${MARKETPLACE_ENTRY_SCRIPT}`,
+    );
+    const stat = statSync(MARKETPLACE_ENTRY_SCRIPT);
+    assert.ok(
+      (stat.mode & 0o100) !== 0,
+      `claude-companion.mjs must have the user-executable bit set; mode = ${stat.mode.toString(8)}`,
+    );
+  });
+
+  // ========================================================================
+  // T4-8: No extra files under marketplace/plugins/claude-companion/
+  //        (T2 Check 8 guard — MANIFEST.md lives at marketplace/MANIFEST.md,
+  //         not inside plugins/claude-companion/, so the walker is unaffected)
+  // ========================================================================
+
+  it('no extra files appear under marketplace/plugins/claude-companion/ beyond the allowlist + README.md', () => {
+    assert.ok(
+      existsSync(MARKETPLACE_PLUGIN_ROOT),
+      `marketplace plugin root not found at ${MARKETPLACE_PLUGIN_ROOT}`,
+    );
+
+    const allExpected = new Set([...DERIVED_FILES_ALLOWLIST, ...MARKETPLACE_OWNED]);
+    const actualFiles = collectRelFiles(MARKETPLACE_PLUGIN_ROOT);
+    const extras = actualFiles.filter((f) => !allExpected.has(f));
+
+    assert.deepEqual(
+      extras,
+      [],
+      `unexpected files found under marketplace/plugins/claude-companion/: ${JSON.stringify(extras)}`,
+    );
+  });
+
+  // ========================================================================
+  // T4-9: marketplace/MANIFEST.md contains no OQ4 forbidden cost-claim tokens
+  // ========================================================================
+
+  it('marketplace/MANIFEST.md contains no OQ4 forbidden cost-claim tokens', () => {
+    assert.ok(existsSync(MANIFEST_MD), `MANIFEST.md not found at ${MANIFEST_MD}`);
+    const content = readFileSync(MANIFEST_MD, 'utf8');
+    for (const token of FORBIDDEN_COST_TOKENS) {
+      assert.equal(
+        content.includes(token),
+        false,
+        `marketplace/MANIFEST.md contains forbidden cost-claim token "${token}"`,
+      );
+    }
+  });
+
+  // ========================================================================
+  // T4-10: tools/package-marketplace.mjs does not reference forbidden source
+  //         directories in its allowlist or copy logic
+  // ========================================================================
+
+  it('tools/package-marketplace.mjs does not contain forbidden path literals in allowlist/copy logic', () => {
+    assert.ok(existsSync(PACKAGE_SCRIPT), `packaging script not found at ${PACKAGE_SCRIPT}`);
+
+    const FORBIDDEN_PATH_LITERALS = [
+      'tools/bench',
+      'documentation/plan',
+      'references/',
+      'node_modules/',
+      '.github/',
+    ];
+
+    const scriptSource = readFileSync(PACKAGE_SCRIPT, 'utf8');
+
+    // Strip comment lines before scanning to avoid false positives in docstrings/help text.
+    const nonCommentLines = scriptSource
+      .split('\n')
+      .filter((line) => !line.trimStart().startsWith('*') && !line.trimStart().startsWith('//'))
+      .join('\n');
+
+    const hits = [];
+    for (const literal of FORBIDDEN_PATH_LITERALS) {
+      if (nonCommentLines.includes(literal)) {
+        hits.push(literal);
+      }
+    }
+
+    assert.deepEqual(
+      hits,
+      [],
+      `tools/package-marketplace.mjs non-comment source contains forbidden path literal(s): ${JSON.stringify(hits)}`,
+    );
   });
 });

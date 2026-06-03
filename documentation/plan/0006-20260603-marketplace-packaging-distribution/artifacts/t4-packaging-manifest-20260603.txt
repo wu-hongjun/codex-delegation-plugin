@@ -1,0 +1,114 @@
+# Plan 0006 T4 — packaging script + empirical Codex smoke
+# Date: 2026-06-03T20:34:27Z
+# Codex version: codex-cli 0.136.0
+# HEAD (pre-commit): 61e5f0e5b5aaef3b656b85a8467d48f92df9c0a2
+
+===========================================
+# node tools/package-marketplace.mjs --check
+===========================================
+check: OK — 18 derived files match source, 1 marketplace-owned files present, no unexpected files.
+
+# exit code: 0
+
+===========================================
+# node tools/package-marketplace.mjs --help
+===========================================
+
+tools/package-marketplace.mjs — sync claude-companion plugin into marketplace tree
+
+USAGE
+  node tools/package-marketplace.mjs [--check | --write | --help]
+
+FLAGS
+  --check   (default) Verify the marketplace tree matches the source.
+            Exits 0 if clean; exits 1 with ISSUE messages on any problem.
+  --write   Copy derived files from packages/plugin-codex/ into
+            marketplace/plugins/claude-companion/.
+            Marketplace-owned files (README.md) are never touched.
+            Prints a summary: "Wrote N derived files, skipped M marketplace-owned files."
+  --help    Print this message and exit 0.
+
+EXAMPLES
+  node tools/package-marketplace.mjs --check
+  node tools/package-marketplace.mjs --write
+  node tools/package-marketplace.mjs --write && node tools/package-marketplace.mjs --check
+
+SOURCE
+  packages/plugin-codex/
+
+DESTINATION
+  marketplace/plugins/claude-companion/
+
+DERIVED FILES (18)
+  .codex-plugin/plugin.json
+  scripts/claude-companion.mjs
+  scripts/lib/ack.mjs
+  scripts/lib/adapter.mjs
+  scripts/lib/args.mjs
+  scripts/lib/format.mjs
+  scripts/lib/prompt-meta.mjs
+  scripts/lib/review-parser.mjs
+  scripts/lib/review-prompts.mjs
+  scripts/lib/review-result-source.mjs
+  skills/claude-setup/SKILL.md
+  skills/claude-delegate/SKILL.md
+  skills/claude-status/SKILL.md
+  skills/claude-result/SKILL.md
+  skills/claude-stop/SKILL.md
+  skills/claude-followup/SKILL.md
+  skills/claude-review/SKILL.md
+  skills/claude-adversarial-review/SKILL.md
+
+MARKETPLACE-OWNED FILES (not copied from source)
+  README.md
+
+
+# exit code: 0
+
+===========================================
+# find marketplace/plugins/claude-companion -type f | sort
+===========================================
+marketplace/plugins/claude-companion/.codex-plugin/plugin.json
+marketplace/plugins/claude-companion/README.md
+marketplace/plugins/claude-companion/scripts/claude-companion.mjs
+marketplace/plugins/claude-companion/scripts/lib/ack.mjs
+marketplace/plugins/claude-companion/scripts/lib/adapter.mjs
+marketplace/plugins/claude-companion/scripts/lib/args.mjs
+marketplace/plugins/claude-companion/scripts/lib/format.mjs
+marketplace/plugins/claude-companion/scripts/lib/prompt-meta.mjs
+marketplace/plugins/claude-companion/scripts/lib/review-parser.mjs
+marketplace/plugins/claude-companion/scripts/lib/review-prompts.mjs
+marketplace/plugins/claude-companion/scripts/lib/review-result-source.mjs
+marketplace/plugins/claude-companion/skills/claude-adversarial-review/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-delegate/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-followup/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-result/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-review/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-setup/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-status/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-stop/SKILL.md
+
+===========================================
+# codex plugin marketplace add /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+===========================================
+Added marketplace `cc-plugin-codex-local` from /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace.
+Installed marketplace root: /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+
+# exit code: 0
+
+===========================================
+# codex plugin marketplace remove cc-plugin-codex-local
+===========================================
+Removed marketplace `cc-plugin-codex-local`.
+
+# exit code: 0
+
+===========================================
+# read-only: stale entry preserved?
+===========================================
+73:[plugins."claude-companion@cc-plugin-codex-local-smoke"]
+74-enabled = true
+--
+119:[marketplaces.cc-plugin-codex-local-smoke]
+120-last_updated = "2026-05-31T03:14:06Z"
+

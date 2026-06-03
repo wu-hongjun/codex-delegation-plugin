@@ -667,3 +667,128 @@ None. The exclusion-list shape Plan 0006 § 3.3 specified matches what A/B imple
 ### Status
 
 **T5 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3, T4, T5 of Stage 2 done; T6 (user install procedure) paused awaiting maintainer go-ahead.
+
+---
+
+## T6 — User install procedure
+
+**Status**: complete pending CI
+**Date**: 2026-06-03
+**Codex version tested**: `codex-cli 0.136.0`
+**Empirical artifact**: [`artifacts/t6-install-procedure-20260603.txt`](artifacts/t6-install-procedure-20260603.txt)
+
+### Deliverables
+
+T6 documents and verifies the end-to-end user install procedure for the committed marketplace layout.
+
+**New / modified files**:
+
+- `marketplace/plugins/claude-companion/README.md` (M) — replaced the T2/T4 placeholder with a focused user-facing install doc. Sections: Requirements, Install, Verify, Uninstall, Troubleshooting, Upgrade (forward-pointer to T7).
+- `documentation/RELEASING.md` (NEW) — minimal Plan 0006 release-checklist stub with the install/uninstall sections and a pointer to `tools/package-marketplace.mjs --check` (T4) as the packaging-verification gate. T7-T11 will expand.
+- `packages/plugin-codex/test/marketplace-readme.test.mjs` (NEW) — 13 static-validation tests for the install-doc contract.
+
+### Install commands (verbatim per T1 capture)
+
+```bash
+codex plugin marketplace add "<repo-root>/marketplace"
+codex plugin add "claude-companion@cc-plugin-codex-local"
+```
+
+Verify with `codex plugin list`, then inside a Codex session run `$claude-setup`.
+
+Uninstall:
+
+```bash
+codex plugin remove "claude-companion@cc-plugin-codex-local"
+codex plugin marketplace remove "cc-plugin-codex-local"
+```
+
+### Empirical install smoke (isolated CODEX_HOME)
+
+Captured at `artifacts/t6-install-procedure-20260603.txt`. Sequence (Codex 0.136.0):
+
+1. `pwd` → repo root.
+2. `node tools/package-marketplace.mjs --check` → exit 0 (`18 derived files match source, 1 marketplace-owned files present, no unexpected files`).
+3. **All `codex` commands ran with `CODEX_HOME=/private/tmp/t6-codex-home-LeZU`** (a `mktemp -d` directory) so the real `~/.codex` was never mutated.
+4. `codex plugin marketplace add <repo>/marketplace` → exit 0; `Added marketplace cc-plugin-codex-local from <path>`.
+5. `codex plugin marketplace list` → exit 0; output `cc-plugin-codex-local <repo>/marketplace`.
+6. `codex plugin add claude-companion@cc-plugin-codex-local` → exit 0; `Added plugin claude-companion from marketplace cc-plugin-codex-local. Installed plugin root: <tmp>/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0`.
+7. `codex plugin list` → exit 0; shows `claude-companion@cc-plugin-codex-local | installed, enabled | 0.2.0`.
+8. `codex plugin remove claude-companion@cc-plugin-codex-local` → exit 0.
+9. `codex plugin marketplace remove cc-plugin-codex-local` → exit 0.
+10. Temp `CODEX_HOME` cleaned up via `trap rm -rf` at script exit.
+
+**Stale-entry handling**: the pre-existing `cc-plugin-codex-local-smoke` entry in REAL `~/.codex/config.toml` (lines 73-74, 119-120 from T1 investigation) was NOT touched. The artifact's post-smoke check confirms it remains in place. The README's troubleshooting section gives generic guidance for stale-marketplace-entry errors without naming this specific entry.
+
+### Tests added (13 T6 assertions)
+
+Subagent B created `packages/plugin-codex/test/marketplace-readme.test.mjs` with one `describe('marketplace install procedure docs (Plan 0006 T6)', ...)` block:
+
+| # | Assertion |
+|---|---|
+| T6-1 | README exists and is non-empty |
+| T6-2 | README contains verbatim `codex plugin marketplace add "<repo-root>/marketplace"` |
+| T6-3 | README contains verbatim `codex plugin add "claude-companion@cc-plugin-codex-local"` |
+| T6-4 | README contains verify command `codex plugin list` |
+| T6-5 | README mentions `$claude-setup` |
+| T6-6 | README does not contain `rsync -a --delete` (the old Plan 0001 install primary path) |
+| T6-7 | README contains no OQ4 forbidden cost-claim tokens |
+| T6-8 | README contains no Plan 0004 benchmark/cutover vocabulary |
+| T6-9 | RELEASING.md exists and contains both verbatim install commands |
+| T6-10 | RELEASING.md contains no OQ4 forbidden cost-claim tokens |
+| T6-11 | README contains both uninstall commands |
+| T6-12 | README contains marketplace name `cc-plugin-codex-local` |
+| T6-13 | RELEASING.md references `tools/package-marketplace.mjs --check` |
+
+Plugin lane: 668 → 681 (+13 T6 tests). All 46 marketplace-* tests pass (33 from T2/T4/T5 + 13 from T6).
+
+### A/B/C findings
+
+- **Subagent A** (executor): wrote the full README install doc + RELEASING.md stub. No OQ4 tokens, no marketing claims, no benchmark vocabulary. Exact install commands match T1.
+- **Empirical smoke** (orchestrator-driven): full install/list/remove cycle exit 0 end-to-end in isolated `CODEX_HOME`. Stale entry preserved.
+- **Subagent B** (test-engineer): created a new dedicated test file `marketplace-readme.test.mjs` (cleaner split than extending the layout file). 13 tests; all pass.
+- **Subagent C** (code-reviewer): APPROVE on all 13 review checks. F-H2 trace clean for 3 sample commands (T1 capture → README → RELEASING.md → empirical artifact). Stale-entry handling correct. No source/runtime/driver/bench drift.
+
+### Deviation from 1-plan.md
+
+None. The brief's recommended approach was matched: isolated `CODEX_HOME` for the smoke (Codex 0.136.0 supports `CODEX_HOME` env var; documented obliquely in `codex --help` under `--profile`'s `$CODEX_HOME/<name>.config.toml` reference). Subagent B picked Option (b) — new dedicated `marketplace-readme.test.mjs` — which is acceptable per the brief.
+
+### Local gate evidence
+
+- `node tools/package-marketplace.mjs --check` — exit 0 (no changes to marketplace tree)
+- `npm run lint` — clean
+- `npm run typecheck` — clean
+- `npx prettier --check .` — pending
+- `npm test` — pending (expected mock 68 + runtime 172 + driver 178 + plugin **681** = 1099; +13 from T6)
+- `npm run test:attach` — unchanged from Plan 0004 T10 (28/28)
+- `npm run test:bench` — unchanged from Plan 0004 T10 (258/258)
+
+### Safety + scope confirmation
+
+- 1 tracked file modified: `marketplace/plugins/claude-companion/README.md`.
+- 3 new files: `documentation/RELEASING.md`, `packages/plugin-codex/test/marketplace-readme.test.mjs`, `artifacts/t6-install-procedure-20260603.txt`.
+- `packages/plugin-codex/README.md` cost paragraph UNTOUCHED (Plan 0004 T12 + Plan 0006 T12 own this).
+- `packages/plugin-codex/scripts/**`, `skills/**`, `.codex-plugin/plugin.json` untouched.
+- `packages/runtime/**`, `packages/driver-claude-code/**`, `tools/bench/**`, `.github/**` untouched.
+- `marketplace/MANIFEST.md`, `marketplace/EXCLUSIONS.md`, `marketplace/.agents/plugins/marketplace.json` untouched.
+- `marketplace/plugins/claude-companion/.codex-plugin/plugin.json`, `scripts/`, `skills/` untouched (the script's `--check` still passes).
+- No hook or stop-gate code. Plan 0005 stays `deferred`.
+- `git rev-parse plan-0004-pre-cutover` → `7d9b5f1...`; tag preserved.
+- 0 OQ4 forbidden cost-claim tokens; 0 marketing/superlative tokens; 0 Plan 0004 benchmark vocabulary (grep verified across all T6 surface files).
+- Real `~/.codex/config.toml` unchanged by T6 (verified via post-smoke grep).
+- Pre-existing stale `cc-plugin-codex-local-smoke` entry preserved per the maintainer's standing brief.
+
+### Implications for later tasks
+
+| Task | Implication from T6 |
+|---|---|
+| T7 (upgrade) | Use the same `codex plugin remove + codex plugin add` shapes the README's "Upgrade" section foreshadows. T1 confirmed no `codex plugin upgrade` exists in 0.136.0. |
+| T8 (uninstall) | Already covered by T6 (README has the uninstall section). T8 may extend RELEASING.md's uninstall section. |
+| T9 (smoke test) | T9 codifies the smoke procedure T6 ran ad-hoc. The `CODEX_HOME=<tmp>` isolation pattern is the recommended smoke harness. |
+| T11 (release checklist) | T6's RELEASING.md stub is the seed. T7-T10 sections plug into it. |
+| T12 (docs split) | Once T12 finalizes the marketplace README, the install commands stay verbatim; only surrounding prose changes. |
+
+### CI evidence (pending)
+
+- Commit: pending — `Plan 0006 T6: document marketplace install procedure`
+- CI run: pending

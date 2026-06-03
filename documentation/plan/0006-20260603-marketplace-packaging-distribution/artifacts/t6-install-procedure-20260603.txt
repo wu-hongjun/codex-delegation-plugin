@@ -1,0 +1,87 @@
+# Plan 0006 T6 — empirical install procedure smoke (isolated CODEX_HOME)
+# Date: 2026-06-03T21:54:07Z
+# Codex version: codex-cli 0.136.0
+# HEAD: e94de0fced17b490ce8622902153e1497f646b65
+# Repo: /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+# Marketplace path: /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+# Isolated CODEX_HOME: /tmp/t6-codex-home-LeZU (temp dir; auto-cleaned at end of script)
+# Stale 'cc-plugin-codex-local-smoke' entry in real ~/.codex preserved (out of T6 scope).
+
+===========================================
+# pwd
+===========================================
+/Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+# exit code: 0
+
+===========================================
+# node tools/package-marketplace.mjs --check
+===========================================
+check: OK — 18 derived files match source, 1 marketplace-owned files present, no unexpected files.
+
+# exit code: 0
+
+=== from here on: CODEX_HOME=/tmp/t6-codex-home-LeZU ===
+
+===========================================
+# codex plugin marketplace add /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+===========================================
+Added marketplace `cc-plugin-codex-local` from /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace.
+Installed marketplace root: /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+
+# exit code: 0
+
+===========================================
+# codex plugin marketplace list
+===========================================
+MARKETPLACE            ROOT
+cc-plugin-codex-local  /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+
+# exit code: 0
+
+===========================================
+# codex plugin add claude-companion@cc-plugin-codex-local
+===========================================
+Added plugin `claude-companion` from marketplace `cc-plugin-codex-local`.
+Installed plugin root: /private/tmp/t6-codex-home-LeZU/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0
+
+# exit code: 0
+
+===========================================
+# codex plugin list
+===========================================
+Marketplace `cc-plugin-codex-local`
+/Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace/.agents/plugins/marketplace.json
+
+PLUGIN                                  STATUS              VERSION  PATH                                                                                  
+claude-companion@cc-plugin-codex-local  installed, enabled  0.2.0    /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace/plugins/claude-companion
+
+# exit code: 0
+
+===========================================
+# codex plugin remove claude-companion@cc-plugin-codex-local
+===========================================
+Removed plugin `claude-companion` from marketplace `cc-plugin-codex-local`.
+
+# exit code: 0
+
+===========================================
+# codex plugin marketplace remove cc-plugin-codex-local
+===========================================
+Removed marketplace `cc-plugin-codex-local`.
+
+# exit code: 0
+
+===========================================
+# real ~/.codex/config.toml stale-entry preservation check
+===========================================
+73:[plugins."claude-companion@cc-plugin-codex-local-smoke"]
+74-enabled = true
+--
+119:[marketplaces.cc-plugin-codex-local-smoke]
+120-last_updated = "2026-05-31T03:14:06Z"
+
+===========================================
+# real ~/.codex/config.toml grep for cc-plugin-codex-local (should not include T6 additions)
+===========================================
+

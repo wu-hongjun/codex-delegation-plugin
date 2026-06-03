@@ -1950,6 +1950,8 @@ The fix relies on a deterministic 8-second pre-reconcile wait tuned against the 
 
 ### CI (T12b)
 
-CI placeholder — will record run URL + matrix outcome in a follow-up `Plan 0003 T12b log: record CI success` commit.
+The T12b commit `ed53079` initially failed CI on all four matrix legs at the `Check formatting` step (run [`26857652006`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26857652006)). The new helper test file and the mock-claude `sidecarSummaryOnSubmit` insertion had long lines that exceeded prettier's print width. Same root cause as T12 → T12-format-fix; fixed in follow-up commit `b6675bc` via `npx prettier --write`. Plugin tests still 601/601.
+
+CI green on the format-fix commit at `b6675bc` per run [`26857774621`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26857774621): `ubuntu-latest / Node 20`, `macos-latest / Node 20`, `ubuntu-latest / Node 22`, `macos-latest / Node 22` — all `success`. T12 + T12a + T12b complete.
 
 ---

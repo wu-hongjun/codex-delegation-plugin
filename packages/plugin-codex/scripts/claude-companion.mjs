@@ -43,6 +43,7 @@ import { hasAck, recordAck, resolveWorkspaceAck } from './lib/ack.mjs';
 import { makePromptMeta } from './lib/prompt-meta.mjs';
 import { SAME_SESSION_REVIEW_PROMPT, ADVERSARIAL_REVIEW_PROMPT } from './lib/review-prompts.mjs';
 import { parseReviewOutput } from './lib/review-parser.mjs';
+import { readTurnFinalMessageOrFallback } from './lib/review-result-source.mjs';
 
 // ---------- main ----------
 
@@ -1209,20 +1210,65 @@ async function cmdReview(flags, positional, json) {
     promptSummaryPrefix: '[review] ',
   });
 
-  // 11. Parse structured findings.
-  const review = parseReviewOutput(sendResult.finalMessage ?? '');
+  // 11. Plan 0003 T12b: parse structured findings from the *reconciled* review
+  // turn's full result file, not from sendResult.finalMessage. The driver's
+  // sendResult.finalMessage is sourced from sidecar `output.result`, which on
+  // Claude Code 2.1.150 ends up as a short SUMMARY string ("review verdict:
+  // pass — all TODOs found, no omissions") rather than the full assistant
+  // message containing the fenced JSON block. The reconciler (transcript /
+  // sidecar / logs path) populates `<jobId>.result.md` and mirrors it onto
+  // `turn.result.finalMessagePath` — reading that file gives us the
+  // structured JSON parseReviewOutput needs. Fall back to
+  // sendResult.finalMessage only if the reconciled result file is missing
+  // or empty (e.g., when sidecar emits the summary but logs/transcript are
+  // not yet flushed). See lib/review-result-source.mjs for the resolver.
+  // T12b: Claude Code 2.1.150 can take 3-5 s after the turn-complete state
+  // flips to flush its final assistant message to the transcript file. The
+  // reconcile inside sendFollowupTurn may race with that flush; this second
+  // reconcile gives the transcript path a chance to land the structured
+  // output before we read it. Bounded by a brief deterministic sleep so
+  // mock-claude tests (which respond instantly) don't slow down.
+  let reviewJobForParse = finalJob;
+  // Brief pre-reconcile wait so Claude has a moment to flush. The wait is
+  // bypassed entirely under the test seam CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS
+  // (set to 0 by the mock-driven test env).
+  const reviewWaitRaw = process.env.CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS;
+  const reviewWaitParsed = reviewWaitRaw != null ? Number(reviewWaitRaw) : NaN;
+  const REVIEW_RECONCILE_DELAY_MS = Number.isFinite(reviewWaitParsed)
+    ? Math.max(0, reviewWaitParsed)
+    : 8_000;
+  if (REVIEW_RECONCILE_DELAY_MS > 0) {
+    await new Promise((res) => setTimeout(() => res(undefined), REVIEW_RECONCILE_DELAY_MS));
+  }
+  try {
+    const r2 = await reconcileJob(jobId, adapter);
+    reviewJobForParse = r2.job;
+  } catch {
+    // Non-fatal: keep finalJob from sendFollowupTurn.
+  }
+  const reviewTurnAfter = reviewJobForParse.turns[newTurnIndex];
+  const reviewTextSource = await readTurnFinalMessageOrFallback(
+    reviewTurnAfter,
+    sendResult.finalMessage,
+  );
+
+  const review = parseReviewOutput(reviewTextSource);
 
   // 12. Format and print.
-  const reviewTurn = finalJob.turns[newTurnIndex];
+  const reviewTurn = reviewJobForParse.turns[newTurnIndex];
   const turnMeta = {
     index: newTurnIndex,
     status: reviewTurn?.status ?? 'completed',
   };
 
   if (json) {
-    process.stdout.write(formatReviewJson({ review, job: finalJob, turn: turnMeta }) + '\n');
+    process.stdout.write(
+      formatReviewJson({ review, job: reviewJobForParse, turn: turnMeta }) + '\n',
+    );
   } else {
-    process.stdout.write(formatReviewHuman({ review, job: finalJob, turn: turnMeta }) + '\n');
+    process.stdout.write(
+      formatReviewHuman({ review, job: reviewJobForParse, turn: turnMeta }) + '\n',
+    );
   }
 }
 

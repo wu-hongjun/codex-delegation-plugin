@@ -91,6 +91,11 @@ function runDispatcher(args, { cwd = WORK_DIR, env: extraEnv = {} } = {}) {
       // T15a: mock-claude responds immediately; skip the 2-second real-TUI
       // warmup so dispatcher integration tests don't pay it on every send().
       CC_PLUGIN_CODEX_ATTACH_WARMUP_MS: '0',
+      // T12b: cmdReview waits briefly after sendFollowupTurn so Claude
+      // 2.1.150 has time to flush its final assistant message to the
+      // transcript. Mock-claude flushes synchronously, so disable the
+      // wait under the test seam.
+      CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS: '0',
       PATH: `${MOCK_CODEX}${delimiter}${MOCK_CLAUDE}${delimiter}${process.env.PATH ?? ''}`,
     },
     encoding: 'utf8',
@@ -6104,6 +6109,162 @@ describe('adversarial-review subcommand falls back on malformed-review fixture (
       parsed.review.findings[0].severity,
       'nit',
       `expected fallback finding severity 'nit'; got ${parsed.review.findings[0].severity}`,
+    );
+  });
+});
+
+// =============================================================================
+// T12b — parse from reconciled result file, not from sidecar summary
+//
+// Plan 0003 T12b regression coverage. Real Claude Code 2.1.150 sets the
+// per-job sidecar's `output.result` to a short SUMMARY string while the full
+// assistant message (containing the fenced ```json block) only appears in the
+// transcript / logs. Before T12b, $claude-review parsed `sendResult.finalMessage`
+// (sourced from the sidecar summary) and triggered the fallback `nit` finding
+// even when Claude had emitted proper structured review JSON. After T12b,
+// cmdReview reads the reconciler's `<jobId>.result.md` file content (full
+// text) and falls back to sendResult.finalMessage only when the file is
+// missing or empty.
+//
+// The mock-claude `sidecarSummaryOnSubmit` config option lets these tests
+// reproduce the production split: sidecar gets a summary, the transcript gets
+// the full assistant message (which the reconciler writes to result.md via
+// the transcript-events path).
+// =============================================================================
+
+describe('review parses reconciled result file, not sidecar summary (T12b)', () => {
+  it('T12b-D1: human output shows real verdict + bracketed severity labels when sidecar carries only a summary', () => {
+    const jobId = `job_rv12b_${createHash('sha256')
+      .update('t12b-human')
+      .digest('hex')
+      .slice(0, 8)}`;
+    const shortId = 't12bd001';
+    writeSyntheticReviewableJob({ jobId, shortId });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      reviewFixture: 'structured-review',
+      sidecarSummaryOnSubmit: 'review verdict: pass_with_findings — 2 issues',
+    });
+
+    const result = runDispatcher(['review', jobId, '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    assert.ok(
+      /review verdict:.*pass.with.findings/i.test(result.stdout),
+      `expected "Review verdict: PASS WITH FINDINGS" in human stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('[MEDIUM]') || result.stdout.includes('[LOW]'),
+      `expected bracketed MEDIUM/LOW labels from structured fixture; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      !/^.*\[NIT\].*Review output was empty/m.test(result.stdout),
+      'must NOT print the empty-output nit fallback when the result file has full JSON',
+    );
+  });
+
+  it('T12b-D2: --json output exposes parsed verdict + findings array from the result file', () => {
+    const jobId = `job_rv12bj_${createHash('sha256')
+      .update('t12b-json')
+      .digest('hex')
+      .slice(0, 8)}`;
+    const shortId = 't12bd002';
+    writeSyntheticReviewableJob({ jobId, shortId });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      reviewFixture: 'structured-review',
+      sidecarSummaryOnSubmit: 'review verdict: pass_with_findings — 2 issues',
+    });
+
+    const result = runDispatcher(['review', jobId, '--json', '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.ok, true);
+    assert.equal(
+      parsed.review.verdict,
+      'pass_with_findings',
+      `expected verdict pass_with_findings from structured fixture; got ${parsed.review.verdict}`,
+    );
+    assert.equal(
+      parsed.review.findings.length,
+      2,
+      `expected 2 parsed findings from the result file; got ${parsed.review.findings.length} — ${JSON.stringify(parsed.review)}`,
+    );
+    assert.equal(parsed.review.findings[0].severity, 'medium');
+    assert.equal(parsed.review.findings[1].severity, 'low');
+    for (const f of parsed.review.findings) {
+      assert.notEqual(
+        f.description,
+        'Review output was empty.',
+        'must not contain the empty-output nit fallback when result file has full JSON',
+      );
+    }
+  });
+
+  it('T12b-D3: turn.result.finalMessagePath written and points to a file containing the full structured JSON', () => {
+    const jobId = `job_rv12bf_${createHash('sha256')
+      .update('t12b-file')
+      .digest('hex')
+      .slice(0, 8)}`;
+    const shortId = 't12bd003';
+    writeSyntheticReviewableJob({ jobId, shortId });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      reviewFixture: 'structured-review',
+      sidecarSummaryOnSubmit: 'review verdict: pass_with_findings — 2 issues',
+    });
+
+    const result = runDispatcher(['review', jobId, '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    assert.equal(record.turns.length, 2);
+    const reviewTurn = record.turns[1];
+    const finalMessagePath = reviewTurn.result?.finalMessagePath;
+    assert.ok(
+      typeof finalMessagePath === 'string' && finalMessagePath.length > 0,
+      `expected turn.result.finalMessagePath to be a non-empty string; got: ${JSON.stringify(reviewTurn.result)}`,
+    );
+    const fileText = readFileSync(finalMessagePath, 'utf8');
+    assert.ok(
+      fileText.includes('```json'),
+      `expected reconciled result file to contain a fenced JSON block; got:\n${fileText.slice(0, 200)}`,
+    );
+    assert.ok(
+      fileText.includes('"verdict": "pass_with_findings"'),
+      `expected reconciled result file to contain the parsed verdict; got:\n${fileText.slice(0, 200)}`,
+    );
+    assert.notEqual(
+      fileText.trim(),
+      'review verdict: pass_with_findings — 2 issues',
+      'result.md must not be the sidecar summary; it must be the full transcript-derived text',
     );
   });
 });

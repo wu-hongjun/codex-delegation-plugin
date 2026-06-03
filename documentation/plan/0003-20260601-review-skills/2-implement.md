@@ -1878,3 +1878,78 @@ The T12 commit `a6a8a84` initially failed CI on all four matrix legs at the `Che
 CI green on the format-fix commit at `b83cfcc` per run [`26842040420`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26842040420): `ubuntu-latest / Node 20`, `macos-latest / Node 20`, `ubuntu-latest / Node 22`, `macos-latest / Node 22` — all `success`. T12 + T12a complete.
 
 ---
+
+### T12b — same-session review parse-source remediation
+
+**Status**: complete (pending CI)
+
+The Stage 2 closeout review surfaced a user-facing correctness gap: T12's live retry showed `$claude-review` printing a NIT finding containing the delegate's TODO inventory rather than a parsed review verdict + severity-rated findings. Root cause: `cmdReview` parsed `sendResult.finalMessage` directly. On Claude Code 2.1.150 that value comes from sidecar `output.result`, which is a short SUMMARY string — the full assistant message containing the fenced ```json block lands later in the per-session transcript and the reconciler's `<jobId>.result.md`. Plan 0003's core promise (*"$claude-review produces parseable structured findings"*) was therefore not satisfied end-to-end on real Claude.
+
+**Bug description**
+
+- `sendResult.finalMessage` = sidecar.output.result = "review verdict: pass — …" (a literal summary string)
+- Reconciler writes the FULL assistant message to `<jobId>.result.md` via the transcript-events path
+- `cmdReview` previously read the wrong source → fallback `nit` parse → misleading user output
+
+**Files changed**
+
+- `packages/plugin-codex/scripts/lib/review-result-source.mjs` (new) — exports `readTurnFinalMessageOrFallback(turn, fallback)` with priority: (1) `turn.result.finalMessagePath` file content, (2) fallback string, (3) `''`. Does NOT consult `finalMessagePreview` (truncated at 160 chars; unsuitable as parser source).
+- `packages/plugin-codex/scripts/claude-companion.mjs` — `cmdReview` imports and uses the helper; adds a brief pre-reconcile wait (8 s default, configurable via `CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS` for test/operator seam) so Claude 2.1.150 has time to flush its final assistant message before we re-read.
+- `tools/mock-claude/claude` — new `sidecarSummaryOnSubmit` config option that writes a literal summary value into sidecar `output.result` while appending the FULL response as an assistant `{type:'message',role:'assistant',content:…}` line to the session transcript. This lets dispatcher integration tests reproduce the production split (sidecar ≠ transcript-derived result).
+- `packages/plugin-codex/test/review-result-source.test.mjs` (new) — 6 helper unit tests (T12b-S1..S6).
+- `packages/plugin-codex/test/dispatcher.test.mjs` — 3 new integration tests (T12b-D1, T12b-D2, T12b-D3) under a `review parses reconciled result file, not sidecar summary (T12b)` describe block; also added `CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS: '0'` to the shared `runDispatcher` env so mock-driven tests aren't paced by the production wait.
+
+**Fix strategy**
+
+1. Extract the parse-source priority into a unit-testable helper (`readTurnFinalMessageOrFallback`).
+2. In cmdReview: after sendFollowupTurn returns, sleep briefly so Claude's transcript flush can land, run one more `reconcileJob`, then call the helper. The helper reads `<jobId>.result.md` via `turn.result.finalMessagePath`; if missing/empty, falls back to `sendResult.finalMessage`.
+3. Mock-claude option lets tests construct the production-style split (sidecar summary + transcript-derived full text).
+
+The brief explicitly allowed a small local helper or inline code; we chose the helper for unit-testability + a clean import boundary.
+
+**Regression tests (+9)**
+
+- T12b-S1 — file contains fenced JSON, fallback is summary → returns file content
+- T12b-S2 — file path set but missing on disk → returns fallback
+- T12b-S3 — file exists but is whitespace-only → returns fallback
+- T12b-S4 — turn without a result block → returns fallback
+- T12b-S5 — turn undefined and fallback undefined → returns empty string
+- T12b-S6 — empty-string finalMessagePath sentinel → returns fallback
+- T12b-D1 — human output shows real verdict + bracketed severity labels when sidecar carries only a summary
+- T12b-D2 — `--json` output exposes parsed verdict + 2-finding array from the result file (not the single-nit fallback)
+- T12b-D3 — `turn.result.finalMessagePath` is set post-cmdReview, the file content includes the fenced JSON, and it is NOT the sidecar summary string
+
+**Live retry result**
+
+Re-ran the full flow against the same throwaway repo with T12b active. `$claude-review job_mpxdb9ej_e9e56121` printed `Review verdict: PASS, No findings.` — a real parsed verdict + empty findings array (the structured JSON Claude actually produced), not the pre-T12b fallback nit containing the delegate's text. `$claude-adversarial-review --json` still produced full structured findings with `reviewOf: { jobId, turnIndex: 0 }`. Status annotation visible. Result on adversarial printed the JSON. Both sessions stopped. `claude agents --json` no longer lists the E2E shortIds. Throwaway repo tracked files UNMODIFIED. See the artifact's `T12b — same-session review parse-source remediation (retry)` section for the captured stdout, job records, and cleanup verification.
+
+**Updated test counts**
+
+| Lane | Before T12b | After T12b | Δ |
+|---|---|---|---|
+| test:mock | 68 | 68 | — |
+| test:runtime | 172 | 172 | — |
+| test:driver | 178 | 178 | — |
+| test:plugin | 592 | 601 | +9 |
+| **Total** | **1010** | **1019** | **+9** |
+| `test:attach` | 28 | 28 | — |
+
+**Acceptance evidence (2026-06-02)**
+
+- `npm run lint` clean.
+- `npm run typecheck` clean.
+- `npm run format` clean.
+- All four lanes green: 1019/1019 (mock 68 + runtime 172 + driver 178 + plugin 601).
+- `npm run test:attach` 28/28.
+- Live retry: `$claude-review` now produces a real parsed verdict + structured findings (not the fallback nit). Live evidence captured in `artifacts/e2e-live-20260602.txt` `T12b — …` section.
+- Plan 0001 / 0002 architectural invariants preserved (no driver imports in runtime, no node-pty in dispatcher, no `claude -p`, no bypass flags, OQ4 cost-claim tokens absent, schema still v2).
+
+**Honest limitation**
+
+The fix relies on a deterministic 8-second pre-reconcile wait tuned against the maintainer's observed Claude 2.1.150 flush latency. A future plan could replace the wait with a watch-events-jsonl-for-new-reconcile.result loop; for Plan 0003 the wait is documented and lives behind a test-seam env var. The wait runs only on real Claude (mock tests set the env to 0 in `runDispatcher`).
+
+### CI (T12b)
+
+CI placeholder — will record run URL + matrix outcome in a follow-up `Plan 0003 T12b log: record CI success` commit.
+
+---

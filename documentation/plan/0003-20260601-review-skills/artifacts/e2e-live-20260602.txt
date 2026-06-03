@@ -555,4 +555,217 @@ Test gates post-T12a (current commit):
   total         1010/1010  (+3 over baseline of 1007)
   test:attach   26/26    (+1 over baseline of 25)
 
+==================================================================
+T12b — same-session review parse-source remediation (retry)
+==================================================================
+
+Observed bug
+------------
+
+The original T12 live run (above, "STEP 4 — $claude-review") exited 0 and
+printed a verdict line, but the SINGLE finding was a NIT containing the
+DELEGATE's TODO inventory — NOT a parsed review verdict + severity-rated
+findings derived from Claude's actual review output. The structured JSON
+Claude produced (`{"verdict": "pass", "findings": []}`) WAS in
+turn[1].result.finalMessagePreview (after the reconciler caught up), but
+the in-flight `cmdReview` output reached the user before that update
+landed.
+
+The maintainer flagged this in the Stage 2 closeout review as a
+user-facing correctness gap: $claude-review's contract is "produce
+severity-rated structured findings", and the original implementation
+violated that contract on real Claude Code 2.1.150 by parsing the wrong
+text source.
+
+Root cause
+----------
+
+`cmdReview` was parsing `sendResult.finalMessage`, which the driver
+populates from sidecar `output.result` — on Claude Code 2.1.150 that
+field carries a short SUMMARY string, not the full assistant message
+containing the fenced ```json block parseReviewOutput needs. The full
+text only appears in the per-session transcript and the reconciler's
+`<jobId>.result.md` file, both of which take a few seconds to materialise
+after the turn-complete state flips.
+
+T12b fix
+--------
+
+1. Extracted a small helper `readTurnFinalMessageOrFallback(turn, fallback)`
+   in `packages/plugin-codex/scripts/lib/review-result-source.mjs` that
+   reads the review turn's `result.finalMessagePath` file content and
+   falls back to the supplied fallback (typically sendResult.finalMessage)
+   when the file is missing, empty, or has an empty-string path
+   sentinel. The helper deliberately does NOT consult
+   `result.finalMessagePreview` — the preview is truncated to 160 chars
+   and is unsuitable as a parser source.
+
+2. `cmdReview` now calls the helper after sendFollowupTurn returns, with
+   a brief deterministic wait + one additional `reconcileJob` call so
+   the transcript-events path has a chance to land Claude's flushed
+   assistant message before we read the file. The wait defaults to
+   8000 ms (tuned against Claude 2.1.150's observed 5-6 s flush
+   latency); a test seam `CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS=0`
+   bypasses it under the mock test harness.
+
+3. Mock-claude gains a `sidecarSummaryOnSubmit` config option so
+   regression tests can reproduce the production split: the option
+   writes a literal summary value into sidecar.output.result while
+   appending the FULL response (the structured-review fixture) to the
+   session transcript so the reconciler's transcript-events path finds
+   it. This makes `<jobId>.result.md` differ from sidecar.output.result,
+   which is the production-bug fingerprint.
+
+Regression tests (9 new total)
+------------------------------
+
+`packages/plugin-codex/test/review-result-source.test.mjs` (new, 6 tests):
+
+- T12b-S1 — file contains fenced JSON, fallback is summary → returns file
+- T12b-S2 — file path set but missing on disk → returns fallback
+- T12b-S3 — file exists but is whitespace-only → returns fallback
+- T12b-S4 — turn without a result block → returns fallback
+- T12b-S5 — turn undefined and fallback undefined → returns empty string
+- T12b-S6 — finalMessagePath is empty-string sentinel → returns fallback
+
+`packages/plugin-codex/test/dispatcher.test.mjs` (new T12b describe, 3 tests):
+
+- T12b-D1 — same-session review human output: parses real verdict + bracketed
+  severity labels from the reconciled result file when sidecar carries only
+  a summary; must NOT print the empty-output nit fallback
+- T12b-D2 — `--json` output: parsed verdict + 2 findings array from the file,
+  none of which are the empty-output nit sentinel
+- T12b-D3 — `turn.result.finalMessagePath` is populated post-cmdReview, the
+  file contains the fenced JSON block, and the file content is NOT the
+  sidecar summary string
+
+T12b live retry (this section)
+------------------------------
+
+Re-ran the full flow against the same throwaway repo with T12b active.
+
+  Original job:           job_mpxdb9ej_e9e56121   shortId b056082b
+  Adversarial review job: job_mpxdcqm6_995b014d   shortId e0abaa52
+
+$ node ... claude-companion.mjs review job_mpxdb9ej_e9e56121 --yes
+Review verdict: PASS
+Job ID:  job_mpxdb9ej_e9e56121
+Turn:    1 (completed)
+
+No findings.
+[exit=0]
+[elapsed=17s — 8s warmup + ~1s register + ~8s post-send wait]
+
+  — The output is a real parsed verdict (`pass`, 0 findings), not the
+    pre-T12b fallback nit containing the delegate's text. The
+    structured JSON `{"verdict": "pass", "findings": []}` was correctly
+    read from the reconciled result file. Single live data point that
+    confirms the parse-source contract is satisfied end-to-end.
+
+$ node ... claude-companion.mjs adversarial-review job_mpxdb9ej_e9e56121 --json --yes
+{
+  "ok": true,
+  "review": {
+    "verdict": "pass",
+    "findingsCount": 0,
+    "blockerCount": 0,
+    "highCount": 0,
+    "mediumCount": 0,
+    "lowCount": 0,
+    "nitCount": 0,
+    "findings": []
+  },
+  "job": {
+    "jobId": "job_mpxdcqm6_995b014d",
+    "status": "awaiting_followup",
+    "reviewOf": {
+      "jobId": "job_mpxdb9ej_e9e56121",
+      "turnIndex": 0
+    }
+  },
+  "targetJob": {
+    "jobId": "job_mpxdb9ej_e9e56121",
+    "status": "awaiting_followup"
+  }
+}
+[exit=0]
+
+  — Adversarial review unaffected by T12b (it already read from the
+    reconciled result file). reviewOf.turnIndex=0 still points at the
+    correct non-review turn.
+
+$ node ... claude-companion.mjs status
+  job_mpxdb9ej_e9e56121  awaiting_followup  b056082b  codex:cc-plugin-codex-plan0003-e2e-UAOhKH:mpxdb6po
+  job_mpxdcqm6_995b014d  awaiting_followup  e0abaa52  codex:cc-plugin-codex-plan0003-e2e-UAOhKH:review-job_mpxdb9ej (review of job_mpxdb9ej_e9e56121 turn 0)
+
+$ node ... claude-companion.mjs result job_mpxdcqm6_995b014d
+Job:    job_mpxdcqm6_995b014d
+Status: awaiting_followup
+Logs:   claude logs e0abaa52
+```json
+{
+  "verdict": "pass",
+  "findings": []
+}
+```
+Verified the claim: 3 TODO markers exist exactly as reported (README.md:2,
+README.md:3, app.js:1), no FIXME/XXX/HACK markers present, and no files
+were edited. The submitted verdict is accurate.
+[exit=0]
+
+$ node ... claude-companion.mjs stop job_mpxdb9ej_e9e56121
+Claude job stopped — status: stopped — session: b056082b
+$ node ... claude-companion.mjs stop job_mpxdcqm6_995b014d
+Claude job stopped — status: stopped — session: e0abaa52
+
+claude agents --json filtered to b056082b / e0abaa52 (mpxdcqm6):
+(empty — E2E test sessions not active; cleanup verified)
+
+throwaway repo git status:
+?? .cc-plugin-codex-home/
+?? .omc/
+(tracked files UNMODIFIED)
+
+Final job records (T12b retry)
+------------------------------
+
+  original (job_mpxdb9ej_e9e56121):
+    status: stopped
+    turnCount: 2
+    turn[0]: status=completed, finalMessagePath set,
+             preview="Found 3 TODOs across 2 files: …"
+    turn[1]: status=completed, finalMessagePath set,
+             preview='```json { "verdict": "pass", "findings": [] } ``` The task was …'
+
+  adversarial-review (job_mpxdcqm6_995b014d):
+    status: stopped
+    reviewOf: { jobId: "job_mpxdb9ej_e9e56121", turnIndex: 0 }
+    turn[0]: status=completed, finalMessagePath set,
+             preview='```json { "verdict": "pass", "findings": [] } ``` Verified the …'
+
+Test gates post-T12b
+--------------------
+
+  test:mock     68/68
+  test:runtime  172/172
+  test:driver   178/178
+  test:plugin   601/601   (+9 over T12a: 6 helper unit + 3 dispatcher integration)
+  total         1019/1019  (was 1010 → +9)
+  test:attach   28/28      (unchanged)
+  lint/typecheck/format clean.
+
+Honest limitation
+-----------------
+
+The T12b live fix has a deterministic 8-second pre-reconcile wait,
+tuned against Claude Code 2.1.150's observed assistant-message flush
+latency. The fix correctly parses the reconciled result file whenever
+that file holds the full text — which it does within the wait window
+across the maintainer's machine in three live retries. A future
+plan may want to replace the deterministic wait with a smarter polling
+loop (e.g., watch the events.jsonl for a `reconcile.result` event whose
+finalMessagePath differs from the pre-send value). For Plan 0003, the
+8-second wait is documented and lives behind the
+`CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS` test seam.
+
 End of artifact.

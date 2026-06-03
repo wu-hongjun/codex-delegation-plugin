@@ -657,13 +657,44 @@ function cmdAttach(config, args) {
     }
     process.stdout.write(response + '\r\n');
 
+    // Plan 0003 T12b: optional sidecar-summary override. When config has
+    // `sidecarSummaryOnSubmit` set, that value is written to
+    // sidecar.output.result instead of the full PTY `response`. This mimics
+    // real Claude Code 2.1.150 behavior where the sidecar carries a short
+    // summary while the full assistant message lands in the transcript.
+    // When the override is in play we also append a `{type:'message',
+    // role:'assistant',content:<response>}` line to the transcript so the
+    // reconciler's transcript-events path can still recover the full text.
+    const sidecarResultValue =
+      typeof config.sidecarSummaryOnSubmit === 'string'
+        ? config.sidecarSummaryOnSubmit
+        : response;
     writeSidecar(session.shortId, {
       ...base,
       state: 'done',
       tempo: 'idle',
       inFlight: { tasks: 0, queued: 0, kinds: [] },
-      output: { result: response },
+      output: { result: sidecarResultValue },
     });
+    if (typeof config.sidecarSummaryOnSubmit === 'string' && session.transcriptPath) {
+      try {
+        // Ensure parent dir exists (synthetic-test setup may have written
+        // session.transcriptPath into state.json without pre-creating the
+        // projects/ subdir).
+        mkdirSync(join(session.transcriptPath, '..'), { recursive: true });
+        appendFileSync(
+          session.transcriptPath,
+          JSON.stringify({
+            type: 'message',
+            role: 'assistant',
+            content: response,
+            at: now,
+          }) + '\n',
+        );
+      } catch {
+        // best-effort; not a hard failure for the mock
+      }
+    }
     appendTimeline(session.shortId, {
       at: now,
       state: 'done',

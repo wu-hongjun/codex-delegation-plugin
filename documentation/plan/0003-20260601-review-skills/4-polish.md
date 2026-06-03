@@ -1,9 +1,9 @@
 # Plan 0003 Stage 4 — Polish
 
-**Status**: complete pending CI
+**Status**: complete
 **Audit input**: `3-audit.md` (commit `696929a`, verdict `ready-for-polish`, 4 findings)
-**Polish commit**: pending
-**CI run**: pending
+**Polish commit**: `86cb729` (substance) + `189f7a2` (format follow-up)
+**CI run**: `26860365049` — success (ubuntu-latest + macos-latest × Node 20 + 22)
 
 ---
 
@@ -45,8 +45,24 @@ None. F1/N1/N2/N3 all resolved in this Stage 4 pass.
 
 ## Gate evidence
 
-Local gates: pending Stage 4 run, to be recorded in the next commit.
-CI: pending.
+Local gates at HEAD (`189f7a2`):
+
+- `npm run lint` — clean
+- `npm run typecheck` — clean
+- `npm run format` (`prettier --check .`) — clean
+- `npm test` — exit 0 across the chain `test:mock && test:runtime && test:driver && test:plugin`; counts: mock 68 + runtime 172 + driver 178 + plugin 623 = **1041 total** (was 1019 at Stage 2; net +22 from polish tests)
+- `npm run test:attach` — 28/28
+
+CI run `26860365049` at `189f7a2`: **success** across all four matrix legs (`ubuntu-latest` + `macos-latest` × Node `20` + `22`).
+
+## Commit timeline
+
+| Commit | Subject | Purpose |
+|---|---|---|
+| `86cb729` | Plan 0003 Stage 4: polish audit findings | Substance — F1/N1/N2/N3 + tests + Stage 4 docs |
+| `189f7a2` | Plan 0003 Stage 4: format dispatcher.test.mjs + readme.test.mjs after polish edits | Format-only follow-up; local format gate masked prettier exit via redirect chain, CI caught it |
+
+The format follow-up touched only the two test files (28 insertions / 29 deletions, no logic change). test:plugin 623/623 unchanged before and after.
 
 ## Stage 4 contract checklist
 
@@ -54,9 +70,9 @@ CI: pending.
 - [x] N1 fixed (reviewOf omitted instead of null)
 - [x] N2 fixed (help text refreshed)
 - [x] N3 fixed with restrained operator-note wording
-- [ ] Tests added/adjusted (Subagent B)
-- [ ] Gates green locally
-- [ ] CI green
+- [x] Tests added/adjusted (Subagent B: +22 net; T10-24 tightened to 4 positive tests, T10-27 added 7 env-var tests, N1-1 added 3 formatter tests, N2-1 added 9 usage-block tests)
+- [x] Gates green locally (lint/typecheck/format clean; npm test 1041/1041; test:attach 28/28)
+- [x] CI green (run `26860365049` at `189f7a2`)
 - [x] No O1-O4 work performed in code
 - [x] No runtime/driver/mock/skill/manifest changes
 - [x] No new cost-claim wording

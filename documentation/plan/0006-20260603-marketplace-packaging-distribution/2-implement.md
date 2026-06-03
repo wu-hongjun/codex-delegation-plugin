@@ -657,7 +657,13 @@ None. The exclusion-list shape Plan 0006 § 3.3 specified matches what A/B imple
 - `git rev-parse plan-0004-pre-cutover` → `7d9b5f1…`; tag preserved.
 - 0 OQ4 forbidden cost-claim tokens introduced (grep verified across all T5 surface files).
 
-### CI evidence (pending)
+### CI evidence
 
-- Commit: pending — `Plan 0006 T5: define marketplace exclusion list`
-- CI run: pending
+- Commit: `f7d790d` ("Plan 0006 T5: define marketplace exclusion list")
+- CI run: `26914562993`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+- Plugin lane post-T5: 668/668 (up from 658; +10 exclusion-enforcement tests).
+
+### Status
+
+**T5 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3, T4, T5 of Stage 2 done; T6 (user install procedure) paused awaiting maintainer go-ahead.

@@ -538,7 +538,17 @@ None. The packaging procedure shape Plan 0006 § T4 proposed is what A/B impleme
 | T10 (version bump) | T10 documents the version-bump procedure: edit source plugin.json, run `--write`, run gates, commit. |
 | T11 (RELEASING.md) | T11 references `tools/package-marketplace.mjs --check` as a release-checklist step. |
 
-### CI evidence (pending)
+### CI evidence
 
-- Commit: pending — `Plan 0006 T4: define packaged-file manifest and packaging procedure`
-- CI run: pending
+- Commit: `2bcff2e` ("Plan 0006 T4: define packaged-file manifest and packaging procedure")
+- CI run: `26911821860`
+- Initial conclusion: cancelled — `ubuntu-latest / Node 22` leg was cancelled by GitHub Actions infrastructure; the other 3 legs succeeded. Transient flake, no plan content involved.
+- Reran the cancelled leg via `gh run rerun 26911821860 --failed`.
+- Final conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+- Plugin lane post-T4: 658/658 (up from 648; +10 packaging tests).
+
+Note: a similar single-leg cancellation hit the Plan 0006 T2-log commit (`4507cde`, run `26909357751`) earlier in this session. Same pattern: transient infrastructure cancellation on one leg; rerun succeeded. Tracked as a CI infrastructure observation; not a code issue.
+
+### Status
+
+**T4 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3, T4 of Stage 2 done; T5 (formal exclusion list + defense-in-depth) paused awaiting maintainer go-ahead.

@@ -402,7 +402,13 @@ None. The manifest shape Plan 0006 § 3.1 specified as final-T3 was already the 
 | T10 (version bump procedure) | T3 demonstrates the version-bump procedure: edit source, `cp` to marketplace, run gates, commit. T10 documents this in the release checklist. |
 | T11 (release checklist) | Add version bump as a checklist step. |
 
-### CI evidence (pending)
+### CI evidence
 
-- Commit: pending — `Plan 0006 T3: finalize plugin manifest shape`
-- CI run: pending
+- Commit: `2e8ec62` ("Plan 0006 T3: finalize plugin manifest shape")
+- CI run: `26910057761`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+- Plugin lane post-T3: 648/648 (up from 633; +15 manifest-final tests).
+
+### Status
+
+**T3 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3 of Stage 2 done; T4 (packaged-file manifest + packaging procedure) paused awaiting maintainer go-ahead.

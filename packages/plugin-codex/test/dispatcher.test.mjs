@@ -50,6 +50,7 @@ const REPO_ROOT = resolve(here, '..', '..', '..', '..');
 const SCRIPT = join(REPO_ROOT, 'packages', 'plugin-codex', 'scripts', 'claude-companion.mjs');
 const MOCK_CLAUDE = join(REPO_ROOT, 'tools', 'mock-claude');
 const MOCK_CODEX = join(REPO_ROOT, 'tools', 'mock-codex');
+const FORMAT_LIB = join(REPO_ROOT, 'packages', 'plugin-codex', 'scripts', 'lib', 'format.mjs');
 
 // ---------- per-test temp dirs ----------
 
@@ -6265,6 +6266,173 @@ describe('review parses reconciled result file, not sidecar summary (T12b)', () 
       fileText.trim(),
       'review verdict: pass_with_findings — 2 issues',
       'result.md must not be the sidecar summary; it must be the full transcript-derived text',
+    );
+  });
+});
+
+// ---------- Stage 4 N1. formatAdversarialReviewJson omits reviewOf when absent ----------
+
+/** @type {{ formatAdversarialReviewJson: (opts: { review: object; job: object; targetJob: object }) => string }} */
+const { formatAdversarialReviewJson } = await import(FORMAT_LIB);
+
+describe('formatAdversarialReviewJson omits reviewOf when absent (Stage 4 N1)', () => {
+  const minimalReview = { verdict: 'pass', findings: [] };
+  const minimalJob = { jobId: 'job_x', status: 'completed' };
+  const minimalTargetJob = { jobId: 'job_y', status: 'completed' };
+
+  it('N1-1a: parsed JSON has NO reviewOf key on job when job.reviewOf is undefined', () => {
+    const raw = formatAdversarialReviewJson({
+      review: minimalReview,
+      job: { ...minimalJob },
+      targetJob: minimalTargetJob,
+    });
+    const parsed = JSON.parse(raw);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(parsed.job, 'reviewOf'),
+      false,
+      'parsed.job must not have a reviewOf key when job.reviewOf is undefined',
+    );
+  });
+
+  it('N1-1b: parsed JSON HAS reviewOf set to the exact object when job.reviewOf is provided', () => {
+    const reviewOf = { jobId: 'job_origin', turnIndex: 1 };
+    const raw = formatAdversarialReviewJson({
+      review: minimalReview,
+      job: { ...minimalJob, reviewOf },
+      targetJob: minimalTargetJob,
+    });
+    const parsed = JSON.parse(raw);
+    assert.equal(
+      Object.prototype.hasOwnProperty.call(parsed.job, 'reviewOf'),
+      true,
+      'parsed.job must have a reviewOf key when job.reviewOf is provided',
+    );
+    assert.deepEqual(
+      parsed.job.reviewOf,
+      reviewOf,
+      'parsed.job.reviewOf must equal the original reviewOf object',
+    );
+  });
+
+  it('N1-1c: formatter never emits reviewOf: null for any input', () => {
+    // Without reviewOf
+    const raw1 = formatAdversarialReviewJson({
+      review: minimalReview,
+      job: { ...minimalJob },
+      targetJob: minimalTargetJob,
+    });
+    const parsed1 = JSON.parse(raw1);
+    assert.notEqual(
+      parsed1.job.reviewOf,
+      null,
+      'parsed.job.reviewOf must not be null when reviewOf is absent (key should be omitted)',
+    );
+
+    // With reviewOf — should be the object, not null
+    const raw2 = formatAdversarialReviewJson({
+      review: minimalReview,
+      job: { ...minimalJob, reviewOf: { jobId: 'job_z', turnIndex: 0 } },
+      targetJob: minimalTargetJob,
+    });
+    const parsed2 = JSON.parse(raw2);
+    assert.notEqual(
+      parsed2.job.reviewOf,
+      null,
+      'parsed.job.reviewOf must not be null when reviewOf is a real object',
+    );
+  });
+});
+
+// ---------- Stage 4 N2. printUsage reflects review/adversarial-review accepted flags ----------
+
+describe('printUsage reflects review/adversarial-review accepted flags (Stage 4 N2)', () => {
+  it('N2-1a: --help output includes verbatim review subcommand line', () => {
+    const result = runDispatcher(['--help']);
+    assert.ok(
+      result.stdout.includes('  review <jobId-or-prefix> [--all] [--json] [--yes]'),
+      `--help must include "  review <jobId-or-prefix> [--all] [--json] [--yes]"\nActual stdout:\n${result.stdout}`,
+    );
+  });
+
+  it('N2-1b: --help output includes verbatim adversarial-review subcommand line', () => {
+    const result = runDispatcher(['--help']);
+    assert.ok(
+      result.stdout.includes(
+        '  adversarial-review <jobId-or-prefix> [--all] [--json] [--yes] [--model <model>] [--effort <effort>] [--permission-mode <mode>]',
+      ),
+      `--help must include the full adversarial-review usage line\nActual stdout:\n${result.stdout}`,
+    );
+  });
+
+  it('N2-1c: --help describes --model as applying to adversarial-review', () => {
+    const result = runDispatcher(['--help']);
+    assert.ok(
+      result.stdout.includes('(delegate, adversarial-review)') &&
+        result.stdout.includes('--model'),
+      `--help --model flag description must include "(delegate, adversarial-review)"\nActual stdout:\n${result.stdout}`,
+    );
+  });
+
+  it('N2-1d: --help describes --effort as applying to adversarial-review', () => {
+    const result = runDispatcher(['--help']);
+    const effortLine = result.stdout
+      .split('\n')
+      .find((l) => l.includes('--effort'));
+    assert.ok(
+      effortLine && effortLine.includes('adversarial-review'),
+      `--help --effort flag description must include "adversarial-review"\nLine: ${effortLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,
+    );
+  });
+
+  it('N2-1e: --help describes --permission-mode as applying to adversarial-review', () => {
+    const result = runDispatcher(['--help']);
+    const pmLine = result.stdout
+      .split('\n')
+      .find((l) => l.includes('--permission-mode'));
+    assert.ok(
+      pmLine && pmLine.includes('adversarial-review'),
+      `--help --permission-mode flag description must include "adversarial-review"\nLine: ${pmLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,
+    );
+  });
+
+  it('N2-1f: --help describes --allow-edit with "rejected by review and adversarial-review"', () => {
+    const result = runDispatcher(['--help']);
+    assert.ok(
+      result.stdout.includes('rejected by review and adversarial-review'),
+      `--help --allow-edit description must say "rejected by review and adversarial-review"\nActual stdout:\n${result.stdout}`,
+    );
+  });
+
+  it('N2-1g: --help describes --all with applicability including review/adversarial-review', () => {
+    const result = runDispatcher(['--help']);
+    const allLine = result.stdout
+      .split('\n')
+      .find((l) => /^\s+--all\s/.test(l));
+    assert.ok(
+      allLine && allLine.includes('review'),
+      `--help --all flag description must mention "review"\nLine: ${allLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,
+    );
+  });
+
+  it('N2-1h: --help describes --json with applicability including review/adversarial-review', () => {
+    const result = runDispatcher(['--help']);
+    const jsonLine = result.stdout
+      .split('\n')
+      .find((l) => /^\s+--json\s/.test(l));
+    assert.ok(
+      jsonLine && jsonLine.includes('review'),
+      `--help --json flag description must mention "review"\nLine: ${jsonLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,
+    );
+  });
+
+  it('N2-1i: --help describes --yes with applicability including review/adversarial-review', () => {
+    const result = runDispatcher(['--help']);
+    const yesLine = result.stdout
+      .split('\n')
+      .find((l) => /^\s+--yes\s/.test(l));
+    assert.ok(
+      yesLine && yesLine.includes('review'),
+      `--help --yes flag description must mention "review"\nLine: ${yesLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,
     );
   });
 });

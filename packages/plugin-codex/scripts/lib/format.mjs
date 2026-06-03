@@ -474,7 +474,7 @@ export function formatAdversarialReviewJson({ review, job, targetJob }) {
       job: {
         jobId: job.jobId,
         status: job.status,
-        reviewOf: job.reviewOf ?? null,
+        ...(job.reviewOf !== undefined ? { reviewOf: job.reviewOf } : {}),
       },
       targetJob: {
         jobId: targetJob.jobId,

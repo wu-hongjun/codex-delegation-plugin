@@ -1142,39 +1142,71 @@ describe('README.md known limitations mention no stop-time review gate yet (T10-
   });
 });
 
-// ---------- T10-24. README does NOT claim claude ultrareview integration ----------
+// ---------- T10-24. README documents claude ultrareview distinction (tightened) ----------
 
-describe('README.md does not claim claude ultrareview integration (T10-24)', () => {
-  it('does not contain "claude ultrareview" as a shipped feature', () => {
+describe('README.md documents claude ultrareview distinction (T10-24 — tightened)', () => {
+  it('T10-24a: README mentions "claude ultrareview" literally', () => {
     const body = readReadme();
-    // ultrareview must not appear as if it is a shipped feature of this plugin
-    // (plan 0003 explicitly does NOT wrap ultrareview)
-    const lower = body.toLowerCase();
-    if (!lower.includes('ultrareview')) {
-      // Not mentioned at all — trivially passes
-      return;
-    }
-    // If it is mentioned, every line containing "ultrareview" must be in a negative context
-    const offending = body
-      .split('\n')
-      .filter((l) => l.toLowerCase().includes('ultrareview'))
-      .filter((l) => {
-        const lw = l.toLowerCase();
-        return (
-          !lw.includes('not') &&
-          !lw.includes('does not') &&
-          !lw.includes('out of') &&
-          !lw.includes('no ') &&
-          !lw.includes('cloud-hosted') &&
-          !lw.includes("plugin's") &&
-          !lw.includes('plan 0')
-        );
-      });
-    assert.equal(
-      offending.length,
-      0,
-      `Lines mention "ultrareview" without a negative context:\n${offending.join('\n')}`,
+    assert.ok(
+      body.includes('claude ultrareview'),
+      'README.md must mention "claude ultrareview" literally (fenced or unfenced) so the distinction is explicit',
     );
+  });
+
+  it('T10-24b: README states the plugin does not wrap claude ultrareview', () => {
+    const body = readReadme();
+    // At least one line that mentions ultrareview must also carry a negation token
+    const ultraLines = body
+      .split('\n')
+      .filter((l) => l.toLowerCase().includes('ultrareview'));
+    assert.ok(
+      ultraLines.length > 0,
+      'README.md must mention ultrareview at least once',
+    );
+    const negationTokens = ['not', 'does not', 'no ', 'never', 'without', 'separate'];
+    const hasNegatedLine = ultraLines.some((l) => {
+      const lw = l.toLowerCase();
+      return negationTokens.some((tok) => lw.includes(tok));
+    });
+    assert.ok(
+      hasNegatedLine,
+      `README.md must have at least one ultrareview line with a negation (not/does not/no/separate). Lines found:\n${ultraLines.join('\n')}`,
+    );
+  });
+
+  it('T10-24c: README contains the verbatim Review skills intro sentence distinguishing local-session vs ultrareview', () => {
+    const body = readReadme();
+    const sentence =
+      "They do not wrap Anthropic's `claude ultrareview` command, which is a separate Claude Code review surface.";
+    assert.ok(
+      body.includes(sentence),
+      'README.md ## Review skills intro must contain the verbatim ultrareview-distinction sentence',
+    );
+  });
+
+  it('T10-24d: README contains no positive integration claim for ultrareview', () => {
+    const body = readReadme();
+    // Positive integration phrases that must NOT appear on a line without a negation
+    const positivePatterns = [
+      'uses ultrareview',
+      'wraps ultrareview',
+      'via ultrareview',
+      'integrates ultrareview',
+    ];
+    for (const phrase of positivePatterns) {
+      const offending = body
+        .split('\n')
+        .filter((l) => l.toLowerCase().includes(phrase.toLowerCase()))
+        .filter((l) => {
+          const lw = l.toLowerCase();
+          return !lw.includes('not') && !lw.includes('does not') && !lw.includes('no ');
+        });
+      assert.equal(
+        offending.length,
+        0,
+        `README.md must not claim "${phrase}" without negation. Offending lines:\n${offending.join('\n')}`,
+      );
+    }
   });
 });
 
@@ -1270,5 +1302,108 @@ describe('README.md What comes next marks Plan 0003 as shipped (T10-optional-D)'
       plan0003Line.includes('shipped'),
       `README.md ## What comes next Plan 0003 entry must say "(shipped)" but got: "${plan0003Line.trim()}"`,
     );
+  });
+});
+
+// ---------- T10-27. README documents operator escape hatches ----------
+
+describe('README.md documents operator escape hatches (T10-27)', () => {
+  /** Extract text from "### Tuning operator escape hatches" to the next ### heading or end of file. */
+  function extractTuningSubsection(body) {
+    const heading = '### Tuning operator escape hatches';
+    const idx = body.indexOf(heading);
+    if (idx === -1) return null;
+    const after = body.slice(idx + heading.length);
+    // Find the next ### heading
+    const nextH3 = after.indexOf('\n###');
+    return nextH3 !== -1 ? after.slice(0, nextH3) : after;
+  }
+
+  it('T10-27a: README contains the "### Tuning operator escape hatches" heading exactly', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('### Tuning operator escape hatches'),
+      'README.md must contain the heading "### Tuning operator escape hatches" exactly',
+    );
+  });
+
+  it('T10-27b: README mentions CC_PLUGIN_CODEX_ATTACH_WARMUP_MS in fenced-backtick form', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('`CC_PLUGIN_CODEX_ATTACH_WARMUP_MS`'),
+      'README.md must mention `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` in fenced-backtick form',
+    );
+    // Must appear in the Tuning subsection specifically
+    const section = extractTuningSubsection(body);
+    assert.ok(section !== null, 'README.md must have the Tuning operator escape hatches subsection');
+    assert.ok(
+      section.includes('`CC_PLUGIN_CODEX_ATTACH_WARMUP_MS`'),
+      'The Tuning subsection must mention `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS`',
+    );
+  });
+
+  it('T10-27c: README mentions CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS in fenced-backtick form', () => {
+    const body = readReadme();
+    const section = extractTuningSubsection(body);
+    assert.ok(section !== null, 'README.md must have the Tuning operator escape hatches subsection');
+    assert.ok(
+      section.includes('`CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS`'),
+      'The Tuning subsection must mention `CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS` in fenced-backtick form',
+    );
+  });
+
+  it('T10-27d: README mentions CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS in fenced-backtick form', () => {
+    const body = readReadme();
+    const section = extractTuningSubsection(body);
+    assert.ok(section !== null, 'README.md must have the Tuning operator escape hatches subsection');
+    assert.ok(
+      section.includes('`CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS`'),
+      'The Tuning subsection must mention `CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS` in fenced-backtick form',
+    );
+  });
+
+  it('T10-27e: README characterizes the env vars as "operator escape hatches"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('operator escape hatches'),
+      'README.md must contain the phrase "operator escape hatches"',
+    );
+  });
+
+  it('T10-27f: The Tuning subsection does not expose env vars as CLI flags', () => {
+    const body = readReadme();
+    const section = extractTuningSubsection(body);
+    assert.ok(section !== null, 'README.md must have the Tuning operator escape hatches subsection');
+    // Must not contain a CLI-flag form of the env vars
+    assert.equal(
+      section.includes('--CC_PLUGIN_CODEX_'),
+      false,
+      'The Tuning subsection must not expose env vars as --CC_PLUGIN_CODEX_ CLI flags',
+    );
+    assert.equal(
+      section.includes('--cc-plugin-codex-'),
+      false,
+      'The Tuning subsection must not expose env vars as --cc-plugin-codex- CLI flags',
+    );
+  });
+
+  it('T10-27g: The Tuning subsection contains no OQ4-forbidden cost-claim tokens', () => {
+    const body = readReadme();
+    const section = extractTuningSubsection(body);
+    assert.ok(section !== null, 'README.md must have the Tuning operator escape hatches subsection');
+    for (const token of FORBIDDEN_TOKENS) {
+      assert.equal(
+        section.includes(token),
+        false,
+        `Tuning subsection contains forbidden cost token "${token}"`,
+      );
+    }
+    for (const pattern of FORBIDDEN_PATTERNS) {
+      assert.equal(
+        pattern.test(section),
+        false,
+        `Tuning subsection matches forbidden cost pattern ${pattern}`,
+      );
+    }
   });
 });

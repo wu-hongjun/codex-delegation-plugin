@@ -223,6 +223,8 @@ If Claude asks for permission mid-turn during `$claude-followup`, an interactive
 
 Plan 0003 adds two review skills that request a structured evaluation of a delegated job's output. Both produce a verdict (`pass`, `fail`, or `pass_with_findings`) and a list of severity-rated findings (`blocker`, `high`, `medium`, `low`, `nit`), each with a description and optional file and line reference.
 
+These review skills are local cc-plugin-codex flows: `$claude-review` uses the existing Claude Code session, and `$claude-adversarial-review` starts a fresh Claude Code background session. They do not wrap Anthropic's `claude ultrareview` command, which is a separate Claude Code review surface.
+
 ### $claude-review
 
 Send a structured review prompt into the **same** Claude Code session that produced the work.
@@ -343,6 +345,7 @@ This v1 uses Claude Code background sessions and does not use `claude -p`. It is
 - **No committed marketplace packaging** — plan 0006 handles distribution polish.
 - **Windows not supported or tested in plan 0001 or plan 0002** — development and testing are on macOS and Linux only.
 - **Real Claude agents --json schema differs from mock** — plan 0001 supports the 2.1.149-style row format with derived short IDs (shortId is the first 8 hex characters of the UUID, stripped of dashes). The reconciler uses this derivation for matching.
+- **No `claude ultrareview` wrapper** — the plugin review skills are local-session and fresh-session review flows; Anthropic's `claude ultrareview` remains a separate Claude Code review surface and is not wrapped by this plugin.
 
 ## Troubleshooting
 
@@ -438,6 +441,16 @@ CC_PLUGIN_CODEX_ATTACH_WARMUP_MS=4000 $claude-followup <jobId> "your follow-up p
 ```
 
 Acceptable values: any non-negative integer (milliseconds). Use `0` only in mock-driven test environments where the PTY responds instantly — setting it to `0` in a real Claude session will cause the follow-up prompt to be dropped.
+
+### Tuning operator escape hatches
+
+The plugin uses PTY attach for follow-up and same-session review input. Most users should not need tuning. If a local Claude Code version is slow to accept pasted input or to flush an assistant message after a turn completes, the following environment variables can help operators diagnose timing issues:
+
+- `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` — wait before writing to `claude attach`. Default is tuned for current Claude Code versions.
+- `CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS` — deadline for a follow-up or same-session review prompt to register on the attached Claude session.
+- `CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS` — wait before `$claude-review` reads the reconciled review result file.
+
+These are operator escape hatches, not normal workflow flags. Prefer the defaults unless you are debugging a local Claude Code timing issue.
 
 ### Review fails: job has no result
 

@@ -289,7 +289,13 @@ None. The Plan 0006 § 3.1 manifest shape was accepted on first attempt. T1's fl
 - `git rev-parse plan-0004-pre-cutover` → `7d9b5f1...`; tag preserved.
 - Pre-existing stale `cc-plugin-codex-local-smoke` Codex entry preserved per the brief.
 
-### CI evidence (pending)
+### CI evidence
 
-- Commit: pending — `Plan 0006 T2: commit local marketplace layout`
-- CI run: pending
+- Commit: `dc40a3a` ("Plan 0006 T2: commit local marketplace layout")
+- CI run: `26909059631`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+- Plugin lane post-T2: 633/633 (up from 623; +10 marketplace-layout tests).
+
+### Status
+
+**T2 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1 and T2 of Stage 2 done; T3 paused awaiting maintainer go-ahead.

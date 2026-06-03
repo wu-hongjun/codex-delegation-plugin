@@ -788,7 +788,13 @@ None. The brief's recommended approach was matched: isolated `CODEX_HOME` for th
 | T11 (release checklist) | T6's RELEASING.md stub is the seed. T7-T10 sections plug into it. |
 | T12 (docs split) | Once T12 finalizes the marketplace README, the install commands stay verbatim; only surrounding prose changes. |
 
-### CI evidence (pending)
+### CI evidence
 
-- Commit: pending — `Plan 0006 T6: document marketplace install procedure`
-- CI run: pending
+- Commit: `172b0d7` ("Plan 0006 T6: document marketplace install procedure")
+- CI run: `26915810722`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+- Plugin lane post-T6: 681/681 (up from 668; +13 install-doc tests).
+
+### Status
+
+**T6 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3, T4, T5, T6 of Stage 2 done; T7 (upgrade procedure) paused awaiting maintainer go-ahead.

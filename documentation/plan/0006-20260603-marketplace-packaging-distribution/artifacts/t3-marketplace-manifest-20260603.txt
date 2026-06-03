@@ -1,0 +1,36 @@
+# Plan 0006 T3 — empirical marketplace acceptance smoke for v0.2.0 manifest
+# Date: 2026-06-03T20:00:13Z
+# Codex version: codex-cli 0.136.0
+# HEAD (pre-commit): 4507cdee68bd4843948f4c4aef0f46f9e2c1211c
+# Source manifest version: version:0.2.0
+# Marketplace manifest version: version:0.2.0
+# Byte-identical (cmp): yes
+
+===========================================
+# codex plugin marketplace add /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+===========================================
+Added marketplace `cc-plugin-codex-local` from /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace.
+Installed marketplace root: /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+
+# exit code: 0
+
+===========================================
+# codex plugin marketplace remove cc-plugin-codex-local
+===========================================
+Removed marketplace `cc-plugin-codex-local`.
+
+# exit code: 0
+
+===========================================
+# read-only: stale cc-plugin-codex-local-smoke preserved?
+===========================================
+73:[plugins."claude-companion@cc-plugin-codex-local-smoke"]
+74-enabled = true
+75-
+76-[plugins."documents@openai-primary-runtime"]
+--
+119:[marketplaces.cc-plugin-codex-local-smoke]
+120-last_updated = "2026-05-31T03:14:06Z"
+121-source_type = "local"
+122-source = "/private/tmp/cc-plugin-codex-marketplace-15INUy"
+

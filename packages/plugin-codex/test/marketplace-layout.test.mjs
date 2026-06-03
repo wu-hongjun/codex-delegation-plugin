@@ -121,7 +121,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   });
 
   // ========================================================================
-  // Check 2: marketplace plugin.json exists
+  // Check 2: marketplace plugin.json exists and is valid JSON
   // ========================================================================
 
   it('marketplace/plugins/claude-companion/.codex-plugin/plugin.json exists', () => {
@@ -129,6 +129,55 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
       existsSync(MARKETPLACE_PLUGIN_JSON),
       `marketplace plugin.json not found at ${MARKETPLACE_PLUGIN_JSON}`,
     );
+  });
+
+  it('marketplace plugin.json is valid JSON (readFileSync + JSON.parse does not throw)', () => {
+    assert.ok(
+      existsSync(MARKETPLACE_PLUGIN_JSON),
+      `marketplace plugin.json not found at ${MARKETPLACE_PLUGIN_JSON}`,
+    );
+    assert.doesNotThrow(
+      () => JSON.parse(readFileSync(MARKETPLACE_PLUGIN_JSON, 'utf8')),
+      `marketplace plugin.json is not valid JSON`,
+    );
+  });
+
+  // ========================================================================
+  // Check 2b: marketplace plugin.json version is exactly "0.2.0"
+  // ========================================================================
+
+  it('marketplace plugin.json version is exactly "0.2.0"', () => {
+    const parsed = JSON.parse(readFileSync(MARKETPLACE_PLUGIN_JSON, 'utf8'));
+    assert.equal(
+      parsed.version,
+      '0.2.0',
+      `marketplace plugin.json version must be "0.2.0"; got "${parsed.version}"`,
+    );
+  });
+
+  // ========================================================================
+  // Check 2c: marketplace plugin.json contains no OQ4 forbidden cost-claim tokens
+  // ========================================================================
+
+  it('marketplace plugin.json contains no OQ4 forbidden cost-claim tokens (raw file scan)', () => {
+    assert.ok(
+      existsSync(MARKETPLACE_PLUGIN_JSON),
+      `marketplace plugin.json not found at ${MARKETPLACE_PLUGIN_JSON}`,
+    );
+    const raw = readFileSync(MARKETPLACE_PLUGIN_JSON, 'utf8');
+    const serialized = JSON.stringify(JSON.parse(raw));
+    for (const token of FORBIDDEN_COST_TOKENS) {
+      assert.equal(
+        raw.includes(token),
+        false,
+        `marketplace plugin.json (raw) contains forbidden token "${token}"`,
+      );
+      assert.equal(
+        serialized.includes(token),
+        false,
+        `marketplace plugin.json (serialized) contains forbidden token "${token}"`,
+      );
+    }
   });
 
   // ========================================================================

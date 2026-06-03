@@ -128,6 +128,11 @@ describe('plugin.json.version', () => {
     assert.equal(typeof manifest.version, 'string', 'version must be a string');
     assert.ok(manifest.version.length > 0, 'version must be non-empty');
   });
+
+  it('is exactly "0.2.0"', () => {
+    const manifest = readManifest();
+    assert.equal(manifest.version, '0.2.0', `expected version "0.2.0", got "${manifest.version}"`);
+  });
 });
 
 describe('plugin.json.description', () => {
@@ -152,6 +157,53 @@ describe('plugin.json.skills', () => {
       manifest.skills,
       './skills/',
       `expected skills field "./skills/", got "${manifest.skills}"`,
+    );
+  });
+});
+
+describe('plugin.json.author', () => {
+  it('author.name exists and is a non-empty string', () => {
+    const manifest = readManifest();
+    assert.equal(typeof manifest.author?.name, 'string', 'author.name must be a string');
+    assert.ok(manifest.author.name.length > 0, 'author.name must be non-empty');
+  });
+
+  it('author.url exists and is a non-empty string', () => {
+    const manifest = readManifest();
+    assert.equal(typeof manifest.author?.url, 'string', 'author.url must be a string');
+    assert.ok(manifest.author.url.length > 0, 'author.url must be non-empty');
+  });
+});
+
+describe('plugin.json.interface.displayName and category', () => {
+  it('interface.displayName exists and is a non-empty string', () => {
+    const manifest = readManifest();
+    assert.equal(
+      typeof manifest.interface?.displayName,
+      'string',
+      'interface.displayName must be a string',
+    );
+    assert.ok(manifest.interface.displayName.length > 0, 'interface.displayName must be non-empty');
+  });
+
+  it('interface.category exists and is a non-empty string', () => {
+    const manifest = readManifest();
+    assert.equal(
+      typeof manifest.interface?.category,
+      'string',
+      'interface.category must be a string',
+    );
+    assert.ok(manifest.interface.category.length > 0, 'interface.category must be non-empty');
+  });
+});
+
+describe('plugin.json.interface.brandColor', () => {
+  it('is exactly "#D97706"', () => {
+    const manifest = readManifest();
+    assert.equal(
+      manifest.interface?.brandColor,
+      '#D97706',
+      `expected interface.brandColor "#D97706", got "${manifest.interface?.brandColor}"`,
     );
   });
 });
@@ -473,6 +525,49 @@ describe('plugin.json contains no forbidden tokens at any depth', () => {
   }
 });
 
+// ---------- v0.2.0: cost-savings / benchmark heuristic scan on manifest string fields ----------
+
+/**
+ * Tokens that must not appear in manifest JSON string values (case-insensitive).
+ * These legitimately appear in tests/docs but are banned from manifest content.
+ */
+const MANIFEST_COST_BENCHMARK_TOKENS = ['benchmark', 'cost saving', 'saves', 'cheaper', 'faster'];
+
+describe('plugin.json string fields contain no cost-savings or benchmark claims (v0.2.0)', () => {
+  /**
+   * Walk all string values in a parsed JSON object (recursively).
+   * Returns an array of { path, value } for each string leaf.
+   */
+  function collectStringValues(obj, path = '') {
+    const results = [];
+    if (typeof obj === 'string') {
+      results.push({ path, value: obj });
+    } else if (Array.isArray(obj)) {
+      obj.forEach((item, i) => results.push(...collectStringValues(item, `${path}[${i}]`)));
+    } else if (obj !== null && typeof obj === 'object') {
+      for (const [key, val] of Object.entries(obj)) {
+        results.push(...collectStringValues(val, path ? `${path}.${key}` : key));
+      }
+    }
+    return results;
+  }
+
+  for (const token of MANIFEST_COST_BENCHMARK_TOKENS) {
+    it(`no string field contains "${token}" (case-insensitive)`, () => {
+      const manifest = readManifest();
+      const stringFields = collectStringValues(manifest);
+      const offending = stringFields.filter(({ value }) =>
+        value.toLowerCase().includes(token.toLowerCase()),
+      );
+      assert.equal(
+        offending.length,
+        0,
+        `plugin.json string field(s) contain banned token "${token}": ${offending.map(({ path, value }) => `${path}="${value}"`).join(', ')}`,
+      );
+    });
+  }
+});
+
 // ---------- T8: review skills — per-skill guards ----------
 
 const APPROVED_USAGE_NOTICE =
@@ -621,6 +716,19 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
     assert.ok(
       dp.length >= 8,
       `interface.defaultPrompt must have at least 8 entries after T8; got ${dp.length}`,
+    );
+  });
+});
+
+describe('plugin.json.interface.defaultPrompt length is exactly 8 (v0.2.0 contract)', () => {
+  it('array length equals 8', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.equal(
+      dp.length,
+      8,
+      `interface.defaultPrompt must have exactly 8 entries (v0.2.0 contract); got ${dp.length}`,
     );
   });
 });

@@ -299,3 +299,110 @@ None. The Plan 0006 § 3.1 manifest shape was accepted on first attempt. T1's fl
 ### Status
 
 **T2 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1 and T2 of Stage 2 done; T3 paused awaiting maintainer go-ahead.
+
+---
+
+## T3 — Finalize plugin manifest shape
+
+**Status**: complete pending CI
+**Date**: 2026-06-03
+**Codex version tested**: `codex-cli 0.136.0`
+**Empirical smoke artifact**: [`artifacts/t3-marketplace-manifest-20260603.txt`](artifacts/t3-marketplace-manifest-20260603.txt)
+
+### Deliverables
+
+T3 finalizes the plugin manifest contract for the marketplace distribution.
+
+**Manifest changes**:
+
+- `packages/plugin-codex/.codex-plugin/plugin.json` — version bumped `0.1.0` → `0.2.0`. Source of truth.
+- `marketplace/plugins/claude-companion/.codex-plugin/plugin.json` — byte-identical copy (verified via `cmp` exit 0).
+
+The single line change is the version bump. All other manifest fields (`name`, `description`, `author{name,url}`, `skills`, `interface{displayName,category,capabilities,defaultPrompt,brandColor}`) were already at their T3 final shape from Plans 0001–0003 — no shape change was needed.
+
+**Workspace package.json** at `packages/plugin-codex/package.json` remains version `0.0.0` (workspace-internal, decoupled from plugin.json per OQ-B resolution). Root `package.json` also unchanged.
+
+**Final manifest shape (v0.2.0)**:
+
+```json
+{
+  "name": "claude-companion",
+  "version": "0.2.0",
+  "description": "Delegate tasks from Codex to Claude Code background sessions.",
+  "author": { "name": "Hongjun Wu", "url": "https://github.com/wu-hongjun" },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Claude Companion",
+    "category": "Coding",
+    "capabilities": ["Interactive"],
+    "defaultPrompt": [/* 8 skill-trigger sentences */],
+    "brandColor": "#D97706"
+  }
+}
+```
+
+### Test changes
+
+Subagent B extended two existing test files (+14 net) to lock in the v0.2.0 manifest contract:
+
+- `packages/plugin-codex/test/skills-manifest.test.mjs`: +11 tests covering version-pinned-to-0.2.0, author.{name,url} non-empty, displayName + category non-empty, brandColor `#D97706`, defaultPrompt length exactly 8, and a recursive `collectStringValues` walker that scans all manifest string fields for benchmark/cost-savings/marketing tokens.
+- `packages/plugin-codex/test/marketplace-layout.test.mjs`: +3 tests covering marketplace JSON validity, marketplace version pin, and marketplace-side OQ4 forbidden-token scan.
+
+Test counts: plugin lane 633 → 648 (+15; B reported +14, the +1 overshoot is a minor test-split that does not change coverage semantics). All 13 acceptance points from the T3 brief are covered.
+
+### Empirical Codex acceptance smoke
+
+Captured at `artifacts/t3-marketplace-manifest-20260603.txt`. Sequence (Codex 0.136.0):
+
+1. `codex plugin marketplace add /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace` → exit 0; `Added marketplace cc-plugin-codex-local from <path>`.
+2. `codex plugin marketplace remove cc-plugin-codex-local` → exit 0; `Removed marketplace cc-plugin-codex-local.`
+3. Pre-existing stale `cc-plugin-codex-local-smoke` entry (lines 73 + 119 in `~/.codex/config.toml`) NOT touched. T3 left no residual Codex state.
+
+Codex 0.136.0 accepts the v0.2.0 manifest unchanged from T2. No iteration needed.
+
+### A/B/C findings
+
+- **A (orchestrator-direct)**: trivial single-line edit + byte-identical copy. No issues.
+- **B (subagent)**: +14 tests across two existing files; all 13 acceptance points covered; no new file needed; no manifest modifications.
+- **C (subagent, read-only)**: APPROVE on all 11 review checks. Single content change isolated to the version bump. OQ4 + marketing-claim greps both 0 hits. Plan 0004 tag intact at 7d9b5f1. Recommends commit.
+
+### Deviation from 1-plan.md
+
+None. The manifest shape Plan 0006 § 3.1 specified as final-T3 was already the existing shape from Plan 0001/0003 development; only the version field changed. Codex 0.136.0 acceptance confirms the planner's recommendation for OQ-C (single source of truth at `packages/plugin-codex/.codex-plugin/plugin.json`, marketplace copy derived) and OQ-B (semver `0.x.y`) without contradiction.
+
+### Local gate evidence
+
+- `npm run lint` — clean
+- `npm run typecheck` — clean
+- `npx prettier --check .` — clean (after format-write auto-fix on the new test file)
+- `npm test` — exit 0; mock 68 + runtime 172 + driver 178 + plugin **648** = **1066** (was 1051 at T2; +15)
+- `npm run test:attach` — **28/28** (unchanged)
+- `npm run test:bench` — **258/258** (unchanged)
+- **Combined total: 1352** tests passing
+
+### Safety + scope confirmation
+
+- 4 tracked files modified: both plugin.json files + both test files.
+- 1 untracked new artifact: `artifacts/t3-marketplace-manifest-20260603.txt`.
+- `tools/bench/**` untouched.
+- `documentation/plan/0004-*/artifacts/**` untouched.
+- `packages/plugin-codex/README.md` cost paragraph untouched.
+- `packages/plugin-codex/scripts/**`, `packages/plugin-codex/skills/**`, `packages/runtime/**`, `packages/driver-claude-code/**` untouched.
+- No hooks or stop-gate code. Plan 0005 stays `deferred`.
+- `git rev-parse plan-0004-pre-cutover` → `7d9b5f1...`; tag preserved.
+
+### Implications for later tasks
+
+| Task | Implication from T3 |
+|---|---|
+| T4 (packaging manifest / procedure) | The single-source pattern (OQ-C) is locked. T4 codifies the byte-identical copy step as a release-time procedure or script. |
+| T5 (exclusion enforcement) | T3 changed only the version field. Existing T2 exclusion tests still apply unchanged. |
+| T6 (install procedure) | Install command stays `codex plugin add claude-companion@cc-plugin-codex-local` per T1's verbatim command shapes. |
+| T9 (smoke test) | Smoke must verify `plugin.json` reports `version: 0.2.0` in installed plugin output. |
+| T10 (version bump procedure) | T3 demonstrates the version-bump procedure: edit source, `cp` to marketplace, run gates, commit. T10 documents this in the release checklist. |
+| T11 (release checklist) | Add version bump as a checklist step. |
+
+### CI evidence (pending)
+
+- Commit: pending — `Plan 0006 T3: finalize plugin manifest shape`
+- CI run: pending

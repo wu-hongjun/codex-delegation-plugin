@@ -324,3 +324,164 @@ describe('runDelegate() — caveats', () => {
     }
   });
 });
+
+describe('runDelegate() — finally cleanup (P1-T1, P1-T2, P1-T3)', () => {
+  it('P1-T1: stop <jobId> is called via spawn when an exception is thrown after job creation', async () => {
+    const { root, cleanup } = makeFixtureRoot();
+    const calls = [];
+    let callCount = 0;
+    const spy = (_cmd, args, _opts) => {
+      calls.push([...args]);
+      callCount++;
+      // delegate call succeeds and returns a jobId
+      if (callCount === 1) {
+        return {
+          status: 0,
+          stdout: delegateResponse(FAKE_JOB_ID),
+          stderr: '',
+          signal: null,
+          error: null,
+        };
+      }
+      // status call throws to simulate failure after job creation
+      if (callCount === 2) {
+        throw new Error('status poll exploded');
+      }
+      // stop call (in finally) — succeeds
+      return { status: 0, stdout: '', stderr: '', signal: null, error: null };
+    };
+    try {
+      await assert.rejects(
+        () => runDelegate(TASK, root, {}, { spawn: spy, pollIntervalMs: 0 }),
+        /status poll exploded/,
+      );
+      // Verify that a stop call was recorded with the correct jobId
+      const stopCall = calls.find(
+        (args) => args[0] === 'stop' || (args.includes('--yes') && calls.indexOf(args) > 0),
+      );
+      // More direct: find a call whose first arg is FAKE_JOB_ID (after 'stop' subcommand)
+      // The stop call args are [jobId, '--yes'] passed to runDispatcher as args
+      const stopArgs = calls.find((args) => args.includes(FAKE_JOB_ID) && args.includes('--yes'));
+      assert.ok(
+        stopArgs !== undefined,
+        `expected a stop call with jobId=${FAKE_JOB_ID}, got calls: ${JSON.stringify(calls)}`,
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('P1-T2: if the stop spawn fails, the runner re-raises the original error (not the stop error)', async () => {
+    const { root, cleanup } = makeFixtureRoot();
+    let callCount = 0;
+    const spy = (_cmd, _args, _opts) => {
+      callCount++;
+      if (callCount === 1) {
+        // delegate succeeds
+        return {
+          status: 0,
+          stdout: delegateResponse(FAKE_JOB_ID),
+          stderr: '',
+          signal: null,
+          error: null,
+        };
+      }
+      if (callCount === 2) {
+        // status poll throws the "original error"
+        throw new Error('original inner error');
+      }
+      // stop call in finally — also throws
+      throw new Error('stop failed too');
+    };
+    try {
+      await assert.rejects(
+        () => runDelegate(TASK, root, {}, { spawn: spy, pollIntervalMs: 0 }),
+        (err) => {
+          assert.equal(
+            err.message,
+            'original inner error',
+            `expected original error, got: ${err.message}`,
+          );
+          return true;
+        },
+      );
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('P1-T3: CC_PLUGIN_CODEX_HOME is cleaned up on success path', async () => {
+    const { root, cleanup } = makeFixtureRoot();
+    let capturedHome = null;
+    let callCount = 0;
+    const spy = (_cmd, _args, opts) => {
+      if (callCount === 0 && opts?.env?.CC_PLUGIN_CODEX_HOME) {
+        capturedHome = opts.env.CC_PLUGIN_CODEX_HOME;
+      }
+      const responses = [
+        { status: 0, stdout: delegateResponse() },
+        { status: 0, stdout: statusResponse() },
+        { status: 0, stdout: resultResponse() },
+        { status: 0, stdout: '' }, // stop
+      ];
+      return {
+        ...responses[Math.min(callCount++, responses.length - 1)],
+        signal: null,
+        error: null,
+      };
+    };
+    try {
+      await runDelegate(TASK, root, {}, { spawn: spy });
+      assert.ok(capturedHome !== null, 'expected CC_PLUGIN_CODEX_HOME to be captured');
+      assert.ok(
+        !existsSync(capturedHome),
+        `expected CC_PLUGIN_CODEX_HOME to be cleaned up, but ${capturedHome} still exists`,
+      );
+    } finally {
+      cleanup();
+      if (capturedHome && existsSync(capturedHome)) {
+        rmSync(capturedHome, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('P1-T3 (error path): CC_PLUGIN_CODEX_HOME is cleaned up when an exception is thrown', async () => {
+    const { root, cleanup } = makeFixtureRoot();
+    let capturedHome = null;
+    let callCount = 0;
+    const spy = (_cmd, _args, opts) => {
+      callCount++;
+      if (callCount === 1 && opts?.env?.CC_PLUGIN_CODEX_HOME) {
+        capturedHome = opts.env.CC_PLUGIN_CODEX_HOME;
+        return {
+          status: 0,
+          stdout: delegateResponse(FAKE_JOB_ID),
+          stderr: '',
+          signal: null,
+          error: null,
+        };
+      }
+      if (callCount === 2) {
+        throw new Error('injected error');
+      }
+      // stop in finally
+      return { status: 0, stdout: '', stderr: '', signal: null, error: null };
+    };
+    try {
+      await assert.rejects(
+        () => runDelegate(TASK, root, {}, { spawn: spy, pollIntervalMs: 0 }),
+        /injected error/,
+      );
+      assert.ok(capturedHome !== null, 'expected CC_PLUGIN_CODEX_HOME to be captured');
+      assert.ok(
+        !existsSync(capturedHome),
+        `expected CC_PLUGIN_CODEX_HOME to be cleaned up on error path`,
+      );
+    } finally {
+      cleanup();
+      if (capturedHome && existsSync(capturedHome)) {
+        rmSync(capturedHome, { recursive: true, force: true });
+      }
+    }
+  });
+});

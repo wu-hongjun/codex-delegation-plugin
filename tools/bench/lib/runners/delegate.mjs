@@ -56,6 +56,8 @@ export async function runDelegate(task, fixtureRoot, env, opts = {}) {
 
   const wallStart = performance.now();
 
+  let jobId = null;
+
   try {
     // 3. Spawn delegate.
     const delegateResult = runDispatcher({
@@ -93,7 +95,6 @@ export async function runDelegate(task, fixtureRoot, env, opts = {}) {
     }
 
     // 4. Parse jobId from delegate output.
-    let jobId;
     try {
       const parsed = JSON.parse(delegateResult.stdout);
       jobId = parsed?.job?.jobId;
@@ -252,14 +253,17 @@ export async function runDelegate(task, fixtureRoot, env, opts = {}) {
 
     return result;
   } finally {
-    // 11. Best-effort stop.
-    // We attempt to stop only if we successfully parsed a jobId and no spawn override.
-    // (In tests with a spawn mock the cleanup is a no-op.)
-    if (!spawnFn) {
-      // Best-effort; ignore errors.
+    // 11. Best-effort stop: send stop <jobId> if we captured a jobId during the run.
+    if (jobId) {
       try {
-        // We don't have jobId in scope here — stop is best-effort only.
-        // The isolated CC_PLUGIN_CODEX_HOME will be cleaned up regardless.
+        runDispatcher({
+          subcommand: 'stop',
+          args: [jobId, '--yes'],
+          cwd: fixtureRoot,
+          env: runEnv,
+          timeoutMs: 30_000,
+          spawn: spawnFn,
+        });
       } catch {
         // ignore
       }

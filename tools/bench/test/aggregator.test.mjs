@@ -257,3 +257,34 @@ describe('aggregate() — JSON round-trip', () => {
     );
   });
 });
+
+describe('aggregate() — findingsCount validation (P2-T1, P2-T2)', () => {
+  it('P2-T1: manually-constructed RunResult missing findingsCount throws BenchAggregateError', () => {
+    const bad = {
+      flow: 'delegate',
+      task: 'summarize-todos',
+      runIndex: 0,
+      wallClockMs: 0,
+      turnsWallClockMs: [],
+      tempoTransitions: null,
+      tokenCounts: null,
+      reviewVerdict: null,
+      // findingsCount intentionally omitted
+      error: null,
+      caveats: [],
+    };
+    assert.throws(
+      () => aggregate([bad], makeMetadata()),
+      (err) => err instanceof BenchAggregateError && err.message.includes('findingsCount'),
+    );
+  });
+
+  it('P2-T2: RunResult from createEmptyRunResult (findingsCount: null) passes aggregate() cleanly', () => {
+    const run = createEmptyRunResult({ flow: 'delegate', task: 'summarize-todos', runIndex: 0 });
+    assert.equal(run.findingsCount, null, 'createEmptyRunResult should set findingsCount: null');
+    // Should not throw
+    const result = aggregate([run], makeMetadata());
+    assert.equal(result.cells.length, 1);
+    assert.equal(result.cells[0].runs[0].findingsCount, null);
+  });
+});

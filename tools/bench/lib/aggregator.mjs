@@ -58,6 +58,7 @@ const REQUIRED_RUN_RESULT_FIELDS = [
   'tempoTransitions',
   'tokenCounts',
   'reviewVerdict',
+  'findingsCount',
   'error',
   'caveats',
 ];

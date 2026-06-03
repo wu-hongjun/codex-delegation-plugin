@@ -1,11 +1,11 @@
 # Stage 4 — Polish: T1–T9 benchmark harness audit findings
 
-**Status**: complete pending CI
+**Status**: complete
 **Scope**: audited harness slice only (T1–T9)
 **Audit input**: `3-audit.md` (commit `eba27b7`, verdict `ready-for-live-T10`; 1 MEDIUM + 1 LOW + 2 NIT)
-**Polish commit**: pending
-**Polish format follow-up**: in-flight (auto-applied via `npx prettier --write` before commit)
-**CI run**: pending
+**Polish commit**: `9161a27`
+**Polish format follow-up**: bundled into the substance commit (auto-applied via `npx prettier --write tools/bench/test/runners/delegate.test.mjs` pre-commit)
+**CI run**: `26887707220` — success (ubuntu-latest + macos-latest × Node 20 + 22)
 
 **Plan status remains `implementing`** because T10 (pre-cutover live run), T11 (post-cutover live run), and T12 (README cost-paragraph decision) are still pending. This polish does NOT close Plan 0004.
 
@@ -92,8 +92,8 @@ CI evidence: pending Stage 4 commit + matrix run.
 
 | Commit | Subject | Purpose |
 |---|---|---|
-| _pending_ | Plan 0004 Stage 4: polish T1-T9 harness audit findings | F1 + F2 + F3 fixes + regression tests; format follow-up applied in same pre-commit pass |
-| _pending_ | Plan 0004 Stage 4 log: record CI success | CI evidence; updates this file with run ID + final counts |
+| `9161a27` | Plan 0004 Stage 4: polish T1-T9 harness audit findings | F1 + F2 + F3 fixes + regression tests; format follow-up applied in same pre-commit pass |
+| _pending log commit_ | Plan 0004 Stage 4 log: record CI success | CI evidence; updates this file with run ID + final counts |
 
 ---
 
@@ -115,7 +115,7 @@ CI evidence: pending Stage 4 commit + matrix run.
 - [x] N1 deferred to T10 (documented)
 - [x] Regression tests added — +4 delegate, +2 aggregator
 - [x] Gates green locally (1296 tests)
-- [ ] CI green — pending
+- [x] CI green — run `26887707220` success on all 4 matrix legs (ubuntu-latest + macos-latest × Node 20 + 22)
 - [x] No scope creep (only 4 source files + 2 doc files touched)
 - [x] No new cost-claim wording
 - [x] Plan 0004 status remains `implementing`

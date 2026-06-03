@@ -42,9 +42,7 @@ export function createOutputDir(opts) {
 
   if (absolutePath) {
     if (!isAbsolute(absolutePath)) {
-      throw new Error(
-        `absolutePath must be an absolute path; got: "${absolutePath}"`,
-      );
+      throw new Error(`absolutePath must be an absolute path; got: "${absolutePath}"`);
     }
     targetPath = absolutePath;
   } else if (dateYYYYMMDD && runId) {

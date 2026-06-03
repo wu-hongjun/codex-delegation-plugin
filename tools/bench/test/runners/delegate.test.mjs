@@ -175,9 +175,7 @@ describe('runDelegate() — failure paths', () => {
   it('returns RunResult with error populated when delegate exits non-zero', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const spawn = makeSequencedSpawn([
-        { status: 1, stdout: '', stderr: 'Claude not found' },
-      ]);
+      const spawn = makeSequencedSpawn([{ status: 1, stdout: '', stderr: 'Claude not found' }]);
       const result = await runDelegate(TASK, root, {}, { spawn });
       assert.ok(result.error !== null, 'expected error to be set');
     } finally {
@@ -188,9 +186,7 @@ describe('runDelegate() — failure paths', () => {
   it('error message reflects stderr content on delegate failure', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const spawn = makeSequencedSpawn([
-        { status: 1, stdout: '', stderr: 'Claude not found' },
-      ]);
+      const spawn = makeSequencedSpawn([{ status: 1, stdout: '', stderr: 'Claude not found' }]);
       const result = await runDelegate(TASK, root, {}, { spawn });
       assert.ok(
         result.error.includes('Claude not found') || result.error === 'delegate_failed',
@@ -204,9 +200,7 @@ describe('runDelegate() — failure paths', () => {
   it('returns RunResult with error="timeout" when spawn signals SIGTERM', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const spawn = makeSequencedSpawn([
-        { status: null, timedOut: true, stdout: '', stderr: '' },
-      ]);
+      const spawn = makeSequencedSpawn([{ status: null, timedOut: true, stdout: '', stderr: '' }]);
       const result = await runDelegate(TASK, root, {}, { spawn, timeoutMs: 100 });
       assert.equal(result.error, 'timeout');
     } finally {
@@ -217,9 +211,7 @@ describe('runDelegate() — failure paths', () => {
   it('returns error when delegate stdout cannot be parsed as JSON', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const spawn = makeSequencedSpawn([
-        { status: 0, stdout: 'not-json', stderr: '' },
-      ]);
+      const spawn = makeSequencedSpawn([{ status: 0, stdout: 'not-json', stderr: '' }]);
       const result = await runDelegate(TASK, root, {}, { spawn });
       assert.ok(result.error !== null, 'expected error due to unparseable stdout');
     } finally {
@@ -251,7 +243,7 @@ describe('runDelegate() — isolation', () => {
         { status: 0, stdout: resultResponse() },
       ];
       return {
-        ...(responses[Math.min(callCount++, responses.length - 1)]),
+        ...responses[Math.min(callCount++, responses.length - 1)],
         signal: null,
         error: null,
       };
@@ -287,7 +279,7 @@ describe('runDelegate() — isolation', () => {
           { status: 0, stdout: resultResponse() },
         ];
         return {
-          ...(responses[Math.min(callCount++, responses.length - 1)]),
+          ...responses[Math.min(callCount++, responses.length - 1)],
           signal: null,
           error: null,
         };

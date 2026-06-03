@@ -304,9 +304,7 @@ export async function runDelegateFollowup(task, fixtureRoot, env, opts = {}) {
       const sanitized = fixtureRoot.replace(/\//g, '-');
       const sanitizedCwd = sanitized.startsWith('-') ? sanitized : `-${sanitized}`;
       const transcriptDir = join(homedir(), '.claude', 'projects', sanitizedCwd);
-      result.caveats.push(
-        `transcript path not in job record; expected dir: ${transcriptDir}`,
-      );
+      result.caveats.push(`transcript path not in job record; expected dir: ${transcriptDir}`);
     } else {
       result.caveats.push('transcript not found: no transcriptPath and no shortId in job record');
     }

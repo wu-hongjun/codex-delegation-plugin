@@ -75,9 +75,7 @@ function validateRunResult(run, index) {
   }
   for (const field of REQUIRED_RUN_RESULT_FIELDS) {
     if (!(field in run)) {
-      throw new BenchAggregateError(
-        `runs[${index}] is missing required field "${field}"`,
-      );
+      throw new BenchAggregateError(`runs[${index}] is missing required field "${field}"`);
     }
   }
 }

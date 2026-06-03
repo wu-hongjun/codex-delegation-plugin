@@ -56,7 +56,14 @@ async function main() {
   }
 
   if (parsed.dryRun) {
-    printDryRun({ runId, outputDir, cutoverPhase: parsed.cutoverPhase, flows, tasks, runs: parsed.runs });
+    printDryRun({
+      runId,
+      outputDir,
+      cutoverPhase: parsed.cutoverPhase,
+      flows,
+      tasks,
+      runs: parsed.runs,
+    });
     process.exit(0);
   }
 
@@ -72,9 +79,8 @@ function printDryRun({ runId, outputDir, cutoverPhase, flows, tasks, runs }) {
   // For baseline-p, only summarize-todos is in scope (OQ-A resolution)
   const lines = [];
   for (const flow of flows) {
-    const taskList = flow.id === 'baseline-p'
-      ? tasks.filter((t) => t.id === 'summarize-todos')
-      : tasks;
+    const taskList =
+      flow.id === 'baseline-p' ? tasks.filter((t) => t.id === 'summarize-todos') : tasks;
     for (const task of taskList) {
       lines.push({ flow: flow.id, task: task.id, runs });
     }

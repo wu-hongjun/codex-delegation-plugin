@@ -131,18 +131,14 @@ describe('aggregate() — single run', () => {
 
 describe('aggregate() — multiple runs per cell', () => {
   it('multiple runs for the same (flow, task) all land in one cell', () => {
-    const runs = [0, 1, 2].map((i) =>
-      makeRun({ runIndex: i, wallClockMs: 1000 * (i + 1) }),
-    );
+    const runs = [0, 1, 2].map((i) => makeRun({ runIndex: i, wallClockMs: 1000 * (i + 1) }));
     const result = aggregate(runs, makeMetadata());
     assert.equal(result.cells.length, 1);
     assert.equal(result.cells[0].runs.length, 3);
   });
 
   it('runs within a cell are ordered by runIndex', () => {
-    const runs = [2, 0, 1].map((i) =>
-      makeRun({ runIndex: i, wallClockMs: 1000 }),
-    );
+    const runs = [2, 0, 1].map((i) => makeRun({ runIndex: i, wallClockMs: 1000 }));
     const result = aggregate(runs, makeMetadata());
     const indices = result.cells[0].runs.map((r) => r.runIndex);
     assert.deepEqual(indices, [0, 1, 2]);

@@ -33,7 +33,7 @@ const REVIEWABLE_TERMINAL_STATUSES = new Set([
 // Non-terminal / ineligible states.
 const INELIGIBLE_STATUSES = new Set(['running', 'queued', 'starting', 'needs_input']);
 
-const DEFAULT_TIMEOUT_MS = 600_000;        // 10 minutes for delegation + polling
+const DEFAULT_TIMEOUT_MS = 600_000; // 10 minutes for delegation + polling
 const DEFAULT_REVIEW_TIMEOUT_MS = 1_800_000; // 30 minutes for adversarial review (DD-1)
 const POLL_INTERVAL_MS = 3_000;
 
@@ -227,8 +227,7 @@ export async function runDelegateAdversarial(task, fixtureRoot, env, opts = {}) 
     const hasResult =
       resultJobRecord?.result != null ||
       resultJobRecord?.resultText != null ||
-      (resultJobRecord?.status &&
-        REVIEWABLE_TERMINAL_STATUSES.has(resultJobRecord.status));
+      (resultJobRecord?.status && REVIEWABLE_TERMINAL_STATUSES.has(resultJobRecord.status));
 
     if (!hasResult && !finalJobRecord) {
       result.wallClockMs = performance.now() - wallStart;
@@ -408,7 +407,12 @@ export async function runDelegateAdversarial(task, fixtureRoot, env, opts = {}) 
  * @param {string} fixtureRoot
  * @returns {Promise<import('../run-result.mjs').TokenUsage | null>}
  */
-async function _aggregateTargetTranscriptUsage(result, resultJobRecord, finalJobRecord, fixtureRoot) {
+async function _aggregateTargetTranscriptUsage(
+  result,
+  resultJobRecord,
+  finalJobRecord,
+  fixtureRoot,
+) {
   const transcriptPath = resultJobRecord?.claude?.transcriptPath ?? null;
   const shortId = resultJobRecord?.claude?.shortId ?? finalJobRecord?.claude?.shortId ?? null;
 
@@ -421,12 +425,12 @@ async function _aggregateTargetTranscriptUsage(result, resultJobRecord, finalJob
       return null;
     }
   } else if (shortId) {
-    result.caveats.push(
-      `target transcript path not in job record; shortId: ${shortId}`,
-    );
+    result.caveats.push(`target transcript path not in job record; shortId: ${shortId}`);
     return null;
   } else {
-    result.caveats.push('target transcript not found: no transcriptPath and no shortId in job record');
+    result.caveats.push(
+      'target transcript not found: no transcriptPath and no shortId in job record',
+    );
     return null;
   }
 }

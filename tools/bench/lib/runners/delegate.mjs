@@ -204,9 +204,7 @@ export async function runDelegate(task, fixtureRoot, env, opts = {}) {
       const sanitizedCwd = sanitized.startsWith('-') ? sanitized : `-${sanitized}`;
       const transcriptDir = join(homedir(), '.claude', 'projects', sanitizedCwd);
       // We don't know the exact sessionId filename; mark as caveat.
-      result.caveats.push(
-        `transcript path not in job record; expected dir: ${transcriptDir}`,
-      );
+      result.caveats.push(`transcript path not in job record; expected dir: ${transcriptDir}`);
     } else {
       result.caveats.push('transcript not found: no transcriptPath and no shortId in job record');
     }

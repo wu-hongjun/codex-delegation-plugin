@@ -304,9 +304,6 @@ describe('runBaselineP() — architectural invariants', () => {
   it('runner source does not import from packages/plugin-codex/scripts/', () => {
     const src = readFileSync(RUNNER_PATH, 'utf8');
     const hasPackagesImport = /from\s+['"][^'"]*packages\/plugin-codex\/scripts/.test(src);
-    assert.ok(
-      !hasPackagesImport,
-      'runner must not import from packages/plugin-codex/scripts/',
-    );
+    assert.ok(!hasPackagesImport, 'runner must not import from packages/plugin-codex/scripts/');
   });
 });

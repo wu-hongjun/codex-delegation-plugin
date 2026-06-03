@@ -92,7 +92,8 @@ function buildTaskBreakdown(results) {
       const latencies = cell.runs.map((r) => r.wallClockMs);
       const stats = summarizeLatency(latencies);
       const errors = cell.runs.filter((r) => r.error !== null).map((r) => r.error);
-      const errorStr = errors.length === 0 ? '0' : `${errors.length} (${[...new Set(errors)].join(', ')})`;
+      const errorStr =
+        errors.length === 0 ? '0' : `${errors.length} (${[...new Set(errors)].join(', ')})`;
       lines.push(`| ${cell.flow} | ${fmtMs(stats.median)} | ${errorStr} |`);
     }
 

@@ -85,7 +85,9 @@ export async function runBaselineP(task, fixtureRoot, env, opts = {}) {
   // Capture stdout as result text (preserve a ≤200 char excerpt in caveats for evidence).
   const excerpt = stdout.slice(0, STDOUT_EXCERPT_MAX);
   if (excerpt.length > 0) {
-    result.caveats.push(`stdout excerpt (${Math.min(stdout.length, STDOUT_EXCERPT_MAX)} chars): ${excerpt}`);
+    result.caveats.push(
+      `stdout excerpt (${Math.min(stdout.length, STDOUT_EXCERPT_MAX)} chars): ${excerpt}`,
+    );
   }
 
   // tempoTransitions: null — no sidecar for `-p`; it's a single-shot CLI invocation.

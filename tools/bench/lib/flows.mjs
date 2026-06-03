@@ -51,7 +51,9 @@ export function selectFlows({ flowIds, includeBaselineP }) {
   if (flowIds != null) {
     for (const id of flowIds) {
       if (!FLOWS.find((f) => f.id === id)) {
-        throw new Error(`Unknown flow id: "${id}". Valid ids: ${FLOWS.map((f) => f.id).join(', ')}`);
+        throw new Error(
+          `Unknown flow id: "${id}". Valid ids: ${FLOWS.map((f) => f.id).join(', ')}`,
+        );
       }
     }
     pool = pool.filter((f) => flowIds.includes(f.id));

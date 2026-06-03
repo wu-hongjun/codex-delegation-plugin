@@ -26,7 +26,10 @@ describe('bench CLI — --help', () => {
     const r = run(['--help']);
     assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
     assert.ok(r.stdout.includes('--dry-run'), `missing --dry-run in help: ${r.stdout}`);
-    assert.ok(r.stdout.includes('--include-baseline-p'), `missing --include-baseline-p in help: ${r.stdout}`);
+    assert.ok(
+      r.stdout.includes('--include-baseline-p'),
+      `missing --include-baseline-p in help: ${r.stdout}`,
+    );
     assert.ok(r.stdout.includes('--cutover-phase'), `missing --cutover-phase in help: ${r.stdout}`);
     assert.ok(r.stdout.includes('--flows'), `missing --flows in help: ${r.stdout}`);
     assert.ok(r.stdout.includes('--tasks'), `missing --tasks in help: ${r.stdout}`);
@@ -84,7 +87,15 @@ describe('bench CLI — --dry-run (default: all flows × all tasks)', () => {
 
 describe('bench CLI — --dry-run with filters', () => {
   it('--dry-run --flows delegate --tasks summarize-todos --runs 3 prints exactly 3 cells', () => {
-    const r = run(['--dry-run', '--flows', 'delegate', '--tasks', 'summarize-todos', '--runs', '3']);
+    const r = run([
+      '--dry-run',
+      '--flows',
+      'delegate',
+      '--tasks',
+      'summarize-todos',
+      '--runs',
+      '3',
+    ]);
     assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
     const cellLines = r.stdout.split('\n').filter((l) => /^\s+\S.*\/.*\/.*N=/.test(l));
     assert.equal(cellLines.length, 1, `expected 1 cell row, got ${cellLines.length}:\n${r.stdout}`);
@@ -103,7 +114,11 @@ describe('bench CLI — --dry-run with filters', () => {
     const r = run(['--dry-run', '--flows', 'delegate,delegate-followup']);
     assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
     const cellLines = r.stdout.split('\n').filter((l) => /^\s+\S.*\/.*\/.*N=/.test(l));
-    assert.equal(cellLines.length, 6, `expected 6 cell rows, got ${cellLines.length}:\n${r.stdout}`);
+    assert.equal(
+      cellLines.length,
+      6,
+      `expected 6 cell rows, got ${cellLines.length}:\n${r.stdout}`,
+    );
   });
 });
 
@@ -121,8 +136,15 @@ describe('bench CLI — --include-baseline-p', () => {
     const r = run(['--dry-run', '--include-baseline-p', '--flows', 'baseline-p']);
     assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
     const cellLines = r.stdout.split('\n').filter((l) => /^\s+\S.*\/.*\/.*N=/.test(l));
-    assert.equal(cellLines.length, 1, `expected exactly 1 cell row for baseline-p, got ${cellLines.length}:\n${r.stdout}`);
-    assert.ok(cellLines[0].includes('summarize-todos'), `expected summarize-todos in baseline-p row: ${cellLines[0]}`);
+    assert.equal(
+      cellLines.length,
+      1,
+      `expected exactly 1 cell row for baseline-p, got ${cellLines.length}:\n${r.stdout}`,
+    );
+    assert.ok(
+      cellLines[0].includes('summarize-todos'),
+      `expected summarize-todos in baseline-p row: ${cellLines[0]}`,
+    );
     const mInv = r.stdout.match(/\((\d+)\s+invocations\)/);
     assert.ok(mInv, 'missing invocations count');
     assert.equal(Number(mInv[1]), 5, `expected 5 invocations for baseline-p, got ${mInv[1]}`);

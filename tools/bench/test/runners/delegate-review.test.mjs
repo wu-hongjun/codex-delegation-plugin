@@ -175,9 +175,14 @@ describe('runDelegateReview() — verdict parsing', () => {
   it('parses verdict "pass" correctly', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const result = await runDelegateReview(TASK, root, {}, {
-        spawn: happyPathSpawn({ verdict: 'pass', findings: [] }),
-      });
+      const result = await runDelegateReview(
+        TASK,
+        root,
+        {},
+        {
+          spawn: happyPathSpawn({ verdict: 'pass', findings: [] }),
+        },
+      );
       assert.equal(result.reviewVerdict, 'pass');
       assert.equal(result.error, null);
     } finally {
@@ -188,9 +193,14 @@ describe('runDelegateReview() — verdict parsing', () => {
   it('parses verdict "fail" correctly', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const result = await runDelegateReview(TASK, root, {}, {
-        spawn: happyPathSpawn({ verdict: 'fail', findings: [{ id: 'f1' }] }),
-      });
+      const result = await runDelegateReview(
+        TASK,
+        root,
+        {},
+        {
+          spawn: happyPathSpawn({ verdict: 'fail', findings: [{ id: 'f1' }] }),
+        },
+      );
       assert.equal(result.reviewVerdict, 'fail');
       assert.equal(result.error, null);
     } finally {
@@ -201,9 +211,17 @@ describe('runDelegateReview() — verdict parsing', () => {
   it('parses verdict "pass_with_findings" correctly', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const result = await runDelegateReview(TASK, root, {}, {
-        spawn: happyPathSpawn({ verdict: 'pass_with_findings', findings: [{ id: 'f1' }, { id: 'f2' }] }),
-      });
+      const result = await runDelegateReview(
+        TASK,
+        root,
+        {},
+        {
+          spawn: happyPathSpawn({
+            verdict: 'pass_with_findings',
+            findings: [{ id: 'f1' }, { id: 'f2' }],
+          }),
+        },
+      );
       assert.equal(result.reviewVerdict, 'pass_with_findings');
       assert.equal(result.error, null);
     } finally {
@@ -216,9 +234,14 @@ describe('runDelegateReview() — findings count', () => {
   it('findingsCount=0 when findings array is empty', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const result = await runDelegateReview(TASK, root, {}, {
-        spawn: happyPathSpawn({ verdict: 'pass', findings: [] }),
-      });
+      const result = await runDelegateReview(
+        TASK,
+        root,
+        {},
+        {
+          spawn: happyPathSpawn({ verdict: 'pass', findings: [] }),
+        },
+      );
       assert.equal(result.findingsCount, 0);
     } finally {
       cleanup();
@@ -228,9 +251,17 @@ describe('runDelegateReview() — findings count', () => {
   it('findingsCount matches length of findings array (3 items)', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const result = await runDelegateReview(TASK, root, {}, {
-        spawn: happyPathSpawn({ verdict: 'fail', findings: [{ id: 'f1' }, { id: 'f2' }, { id: 'f3' }] }),
-      });
+      const result = await runDelegateReview(
+        TASK,
+        root,
+        {},
+        {
+          spawn: happyPathSpawn({
+            verdict: 'fail',
+            findings: [{ id: 'f1' }, { id: 'f2' }, { id: 'f3' }],
+          }),
+        },
+      );
       assert.equal(result.findingsCount, 3);
     } finally {
       cleanup();
@@ -242,9 +273,7 @@ describe('runDelegateReview() — failure paths', () => {
   it('returns error when delegate exits non-zero; turnsWallClockMs has 1 entry', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const spawn = makeSequencedSpawn([
-        { status: 1, stdout: '', stderr: 'Claude not found' },
-      ]);
+      const spawn = makeSequencedSpawn([{ status: 1, stdout: '', stderr: 'Claude not found' }]);
       const result = await runDelegateReview(TASK, root, {}, { spawn });
       assert.ok(result.error !== null, 'expected error to be set');
       assert.equal(result.turnsWallClockMs.length, 1);
@@ -302,9 +331,7 @@ describe('runDelegateReview() — failure paths', () => {
   it('returns error="timeout" when delegate spawn signals SIGTERM', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const spawn = makeSequencedSpawn([
-        { status: null, timedOut: true, stdout: '', stderr: '' },
-      ]);
+      const spawn = makeSequencedSpawn([{ status: null, timedOut: true, stdout: '', stderr: '' }]);
       const result = await runDelegateReview(TASK, root, {}, { spawn, timeoutMs: 100 });
       assert.equal(result.error, 'timeout');
     } finally {
@@ -328,7 +355,7 @@ describe('runDelegateReview() — isolation', () => {
         { status: 0, stdout: reviewResponse({ verdict: 'pass', findings: [] }) },
       ];
       return {
-        ...(responses[Math.min(callCount++, responses.length - 1)]),
+        ...responses[Math.min(callCount++, responses.length - 1)],
         signal: null,
         error: null,
       };

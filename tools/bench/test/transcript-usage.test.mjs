@@ -33,12 +33,13 @@ function usageEntry(opts = {}) {
     serviceTier = 'standard',
   } = opts;
 
-  const cacheCreationObj = ephemeral1h > 0 || ephemeral5m > 0
-    ? {
-        ...(ephemeral1h > 0 ? { ephemeral_1h_input_tokens: ephemeral1h } : {}),
-        ...(ephemeral5m > 0 ? { ephemeral_5m_input_tokens: ephemeral5m } : {}),
-      }
-    : undefined;
+  const cacheCreationObj =
+    ephemeral1h > 0 || ephemeral5m > 0
+      ? {
+          ...(ephemeral1h > 0 ? { ephemeral_1h_input_tokens: ephemeral1h } : {}),
+          ...(ephemeral5m > 0 ? { ephemeral_5m_input_tokens: ephemeral5m } : {}),
+        }
+      : undefined;
 
   return JSON.stringify({
     type: 'assistant',

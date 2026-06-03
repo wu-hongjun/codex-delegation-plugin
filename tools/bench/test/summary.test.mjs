@@ -28,9 +28,7 @@ function makeResults(overrides = {}) {
     runsPerCell: 5,
     tasks: ['summarize-todos'],
     flows: ['delegate'],
-    cells: [
-      { flow: 'delegate', task: 'summarize-todos', runs: [run] },
-    ],
+    cells: [{ flow: 'delegate', task: 'summarize-todos', runs: [run] }],
     metadata: {
       cutoverPhase: 'pre',
       billingBucketObservation: null,

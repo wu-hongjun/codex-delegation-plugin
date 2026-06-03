@@ -83,8 +83,18 @@ export function parseCliArgs(argv) {
 
   return {
     dryRun: values['dry-run'],
-    flowIds: values.flows ? values.flows.split(',').map((s) => s.trim()).filter(Boolean) : null,
-    taskIds: values.tasks ? values.tasks.split(',').map((s) => s.trim()).filter(Boolean) : null,
+    flowIds: values.flows
+      ? values.flows
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : null,
+    taskIds: values.tasks
+      ? values.tasks
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : null,
     runs,
     includeBaselineP: values['include-baseline-p'],
     outputDir: values['output-dir'] ?? null,

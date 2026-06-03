@@ -205,12 +205,14 @@ describe('runDelegateFollowup() — failure paths', () => {
   it('delegate failure (non-zero) → error populated; turnsWallClockMs has 1 entry', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const spawn = makeSequencedSpawn([
-        { status: 1, stdout: '', stderr: 'Claude not found' },
-      ]);
+      const spawn = makeSequencedSpawn([{ status: 1, stdout: '', stderr: 'Claude not found' }]);
       const result = await runDelegateFollowup(TASK, root, {}, { spawn });
       assert.ok(result.error !== null, 'expected error to be set');
-      assert.equal(result.turnsWallClockMs.length, 1, 'expected only 1 turn entry after delegate failure');
+      assert.equal(
+        result.turnsWallClockMs.length,
+        1,
+        'expected only 1 turn entry after delegate failure',
+      );
     } finally {
       cleanup();
     }
@@ -252,7 +254,11 @@ describe('runDelegateFollowup() — failure paths', () => {
         { status: 0, stdout: statusResponse(FAKE_JOB_ID, 'completed') },
       ]);
       const result = await runDelegateFollowup(TASK, root, {}, { spawn });
-      assert.equal(result.turnsWallClockMs.length, 1, 'expected only 1 turn entry when ttl_expired');
+      assert.equal(
+        result.turnsWallClockMs.length,
+        1,
+        'expected only 1 turn entry when ttl_expired',
+      );
     } finally {
       cleanup();
     }
@@ -268,7 +274,11 @@ describe('runDelegateFollowup() — failure paths', () => {
       ]);
       const result = await runDelegateFollowup(TASK, root, {}, { spawn });
       assert.ok(result.error !== null, 'expected error to be set on followup failure');
-      assert.equal(result.turnsWallClockMs.length, 2, 'expected 2 turn entries after followup failure');
+      assert.equal(
+        result.turnsWallClockMs.length,
+        2,
+        'expected 2 turn entries after followup failure',
+      );
     } finally {
       cleanup();
     }
@@ -277,9 +287,7 @@ describe('runDelegateFollowup() — failure paths', () => {
   it('overall timeout during delegate → error = "timeout"', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const spawn = makeSequencedSpawn([
-        { status: null, timedOut: true, stdout: '', stderr: '' },
-      ]);
+      const spawn = makeSequencedSpawn([{ status: null, timedOut: true, stdout: '', stderr: '' }]);
       const result = await runDelegateFollowup(TASK, root, {}, { spawn, timeoutMs: 100 });
       assert.equal(result.error, 'timeout');
     } finally {
@@ -305,7 +313,7 @@ describe('runDelegateFollowup() — isolation', () => {
         { status: 0, stdout: resultResponse() },
       ];
       return {
-        ...(responses[Math.min(callCount++, responses.length - 1)]),
+        ...responses[Math.min(callCount++, responses.length - 1)],
         signal: null,
         error: null,
       };

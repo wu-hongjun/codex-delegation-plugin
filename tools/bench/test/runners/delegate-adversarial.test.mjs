@@ -155,7 +155,12 @@ describe('runDelegateAdversarial() — happy path', () => {
   it('reviewVerdict="pass" for pass verdict', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const result = await runDelegateAdversarial(TASK, root, {}, { spawn: happyPathSpawn('pass', 0) });
+      const result = await runDelegateAdversarial(
+        TASK,
+        root,
+        {},
+        { spawn: happyPathSpawn('pass', 0) },
+      );
       assert.equal(result.reviewVerdict, 'pass');
     } finally {
       cleanup();
@@ -165,7 +170,12 @@ describe('runDelegateAdversarial() — happy path', () => {
   it('findingsCount=0 for pass verdict', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const result = await runDelegateAdversarial(TASK, root, {}, { spawn: happyPathSpawn('pass', 0) });
+      const result = await runDelegateAdversarial(
+        TASK,
+        root,
+        {},
+        { spawn: happyPathSpawn('pass', 0) },
+      );
       assert.equal(result.findingsCount, 0);
     } finally {
       cleanup();
@@ -198,7 +208,12 @@ describe('runDelegateAdversarial() — verdict variants', () => {
   it('reviewVerdict="fail" for fail verdict', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const result = await runDelegateAdversarial(TASK, root, {}, { spawn: happyPathSpawn('fail', 3) });
+      const result = await runDelegateAdversarial(
+        TASK,
+        root,
+        {},
+        { spawn: happyPathSpawn('fail', 3) },
+      );
       assert.equal(result.reviewVerdict, 'fail');
       assert.equal(result.findingsCount, 3);
     } finally {
@@ -209,9 +224,14 @@ describe('runDelegateAdversarial() — verdict variants', () => {
   it('reviewVerdict="pass_with_findings" for pass_with_findings verdict', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const result = await runDelegateAdversarial(TASK, root, {}, {
-        spawn: happyPathSpawn('pass_with_findings', 2),
-      });
+      const result = await runDelegateAdversarial(
+        TASK,
+        root,
+        {},
+        {
+          spawn: happyPathSpawn('pass_with_findings', 2),
+        },
+      );
       assert.equal(result.reviewVerdict, 'pass_with_findings');
       assert.equal(result.findingsCount, 2);
     } finally {
@@ -224,9 +244,7 @@ describe('runDelegateAdversarial() — failure paths', () => {
   it('returns error when delegate exits non-zero', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const spawn = makeSequencedSpawn([
-        { status: 1, stdout: '', stderr: 'Claude not found' },
-      ]);
+      const spawn = makeSequencedSpawn([{ status: 1, stdout: '', stderr: 'Claude not found' }]);
       const result = await runDelegateAdversarial(TASK, root, {}, { spawn });
       assert.ok(result.error !== null, `expected error, got null`);
       assert.equal(result.turnsWallClockMs.length, 1);
@@ -238,9 +256,7 @@ describe('runDelegateAdversarial() — failure paths', () => {
   it('returns error when delegate stdout is not parseable JSON', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const spawn = makeSequencedSpawn([
-        { status: 0, stdout: 'not-valid-json', stderr: '' },
-      ]);
+      const spawn = makeSequencedSpawn([{ status: 0, stdout: 'not-valid-json', stderr: '' }]);
       const result = await runDelegateAdversarial(TASK, root, {}, { spawn });
       assert.ok(result.error !== null, 'expected error due to unparseable stdout');
     } finally {
@@ -251,9 +267,7 @@ describe('runDelegateAdversarial() — failure paths', () => {
   it('returns error="timeout" when delegate spawn signals SIGTERM', async () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
-      const spawn = makeSequencedSpawn([
-        { status: null, timedOut: true, stdout: '', stderr: '' },
-      ]);
+      const spawn = makeSequencedSpawn([{ status: null, timedOut: true, stdout: '', stderr: '' }]);
       const result = await runDelegateAdversarial(TASK, root, {}, { spawn, timeoutMs: 100 });
       assert.equal(result.error, 'timeout');
     } finally {
@@ -270,10 +284,15 @@ describe('runDelegateAdversarial() — failure paths', () => {
         { status: 0, stdout: resultResponse() },
         { status: null, timedOut: true, stdout: '', stderr: '' }, // review times out
       ]);
-      const result = await runDelegateAdversarial(TASK, root, {}, {
-        spawn,
-        reviewTimeoutMs: 100,
-      });
+      const result = await runDelegateAdversarial(
+        TASK,
+        root,
+        {},
+        {
+          spawn,
+          reviewTimeoutMs: 100,
+        },
+      );
       assert.equal(result.error, 'review_timeout');
       assert.equal(result.reviewVerdict, null);
     } finally {
@@ -328,11 +347,16 @@ describe('runDelegateAdversarial() — ineligible terminal state', () => {
         { status: 0, stdout: statusResponse(FAKE_JOB_ID, 'running') },
         { status: 0, stdout: statusResponse(FAKE_JOB_ID, 'running') },
       ]);
-      const result = await runDelegateAdversarial(TASK, root, {}, {
-        spawn,
-        timeoutMs: 200,
-        pollIntervalMs: 50,
-      });
+      const result = await runDelegateAdversarial(
+        TASK,
+        root,
+        {},
+        {
+          spawn,
+          timeoutMs: 200,
+          pollIntervalMs: 50,
+        },
+      );
       // Should time out since status never reaches terminal.
       assert.ok(result.error !== null, 'expected error from non-terminal status');
     } finally {
@@ -357,8 +381,8 @@ describe('runDelegateAdversarial() — token aggregation', () => {
     const { root, cleanup } = makeFixtureRoot();
     try {
       const result = await runDelegateAdversarial(TASK, root, {}, { spawn: happyPathSpawn() });
-      const hasReviewTranscriptCaveat = result.caveats.some(
-        (c) => c.includes('adversarial review session transcript missing'),
+      const hasReviewTranscriptCaveat = result.caveats.some((c) =>
+        c.includes('adversarial review session transcript missing'),
       );
       assert.ok(
         hasReviewTranscriptCaveat,
@@ -400,10 +424,15 @@ describe('runDelegateAdversarial() — opts.reviewTimeoutMs', () => {
         { status: 0, stdout: resultResponse() },
         { status: null, timedOut: true, stdout: '', stderr: '' },
       ]);
-      const result = await runDelegateAdversarial(TASK, root, {}, {
-        spawn,
-        reviewTimeoutMs: 500, // custom value (not 1_800_000 default)
-      });
+      const result = await runDelegateAdversarial(
+        TASK,
+        root,
+        {},
+        {
+          spawn,
+          reviewTimeoutMs: 500, // custom value (not 1_800_000 default)
+        },
+      );
       assert.equal(result.error, 'review_timeout');
     } finally {
       cleanup();
@@ -436,9 +465,14 @@ describe('runDelegateAdversarial() — severity caveats', () => {
         },
       ]);
       const result = await runDelegateAdversarial(TASK, root, {}, { spawn });
-      const severityCaveat = result.caveats.find((c) => c.includes('adversarial-review severities'));
+      const severityCaveat = result.caveats.find((c) =>
+        c.includes('adversarial-review severities'),
+      );
       assert.ok(severityCaveat, `expected severity caveat, got: ${JSON.stringify(result.caveats)}`);
-      assert.ok(severityCaveat.includes('blocker:1'), `expected blocker count in caveat: ${severityCaveat}`);
+      assert.ok(
+        severityCaveat.includes('blocker:1'),
+        `expected blocker count in caveat: ${severityCaveat}`,
+      );
     } finally {
       cleanup();
     }

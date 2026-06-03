@@ -20,6 +20,12 @@ describe('withRetry', () => {
   });
 
   it('throws after exhausting all attempts', () => {
-    assert.throws(() => withRetry(() => { throw new Error('fail'); }, 2), /fail/);
+    assert.throws(
+      () =>
+        withRetry(() => {
+          throw new Error('fail');
+        }, 2),
+      /fail/,
+    );
   });
 });

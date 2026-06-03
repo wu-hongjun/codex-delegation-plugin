@@ -404,6 +404,8 @@ If any condition fails, the paragraph stays byte-identical and Stage 5 explains 
 
 **Resolution (2026-06-03)**: Planner default accepted. T1 research determines the primary source; if T1 finds an automated per-request token surface (sidecar `output.usage`, transcript `events.jsonl`, `claude --usage`), it becomes primary. If T1 finds nothing, harness runs in Option 5 "honest non-measurement" mode for tokens/cost and reports latency + verdict only. Anthropic console (Option 4) is reserved for OQ-I billing-bucket observation only.
 
+**T1 outcome (2026-06-03)**: Primary source confirmed as Option 1 — transcript JSONL at `~/.claude/projects/<sanitized-cwd>/<sessionId>.jsonl` with `message.usage` object per assistant-typed entry (`input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens`, `cache_creation.ephemeral_1h_input_tokens`, `cache_creation.ephemeral_5m_input_tokens`, `service_tier`, `speed`, `server_tool_use`, `requestId` for correlation). No automated fallback exists (sidecar `state.json` `output` is `null` on every job inspected; no `claude usage` subcommand). T4-T7 runners parse the transcript file and populate `tokenCounts` per run; failure to parse falls through to `tokenCounts: null` with a per-run caveat in `metadata.caveats`. Existing `ResultContext.usageSnapshot` and `TurnRecord.usageSnapshot` fields in `packages/runtime/src/types.ts` are already-reserved `unknown` placeholders that the runners may populate (no schema migration needed).
+
 ### OQ-C — Task corpus -- resolved
 
 **Statement**: what specific tasks should the corpus contain? How many?

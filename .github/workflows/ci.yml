@@ -84,3 +84,6 @@ jobs:
 
       - name: Test attach lane
         run: npm run test:attach
+
+      - name: Test bench lane
+        run: npm run test:bench

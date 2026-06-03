@@ -666,9 +666,7 @@ function cmdAttach(config, args) {
     // role:'assistant',content:<response>}` line to the transcript so the
     // reconciler's transcript-events path can still recover the full text.
     const sidecarResultValue =
-      typeof config.sidecarSummaryOnSubmit === 'string'
-        ? config.sidecarSummaryOnSubmit
-        : response;
+      typeof config.sidecarSummaryOnSubmit === 'string' ? config.sidecarSummaryOnSubmit : response;
     writeSidecar(session.shortId, {
       ...base,
       state: 'done',

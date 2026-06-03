@@ -33,31 +33,31 @@ afterEach(() => {
 // =============================================================================
 
 describe('readTurnFinalMessageOrFallback — T12b', () => {
-  it(
-    'T12b-S1: file contains fenced JSON, fallback is sidecar summary → returns file content',
-    async () => {
-      const filePath = join(WORK_DIR, 'job_abc.result.md');
-      const fullText =
-        '```json\n{\n  "verdict": "pass_with_findings",\n  "findings": [\n    { "severity": "high", "description": "real finding" }\n  ]\n}\n```\n\nNarrative below…';
-      writeFileSync(filePath, fullText, 'utf8');
+  it('T12b-S1: file contains fenced JSON, fallback is sidecar summary → returns file content', async () => {
+    const filePath = join(WORK_DIR, 'job_abc.result.md');
+    const fullText =
+      '```json\n{\n  "verdict": "pass_with_findings",\n  "findings": [\n    { "severity": "high", "description": "real finding" }\n  ]\n}\n```\n\nNarrative below…';
+    writeFileSync(filePath, fullText, 'utf8');
 
-      const turn = { result: { finalMessagePath: filePath } };
-      const fallback = 'review verdict: pass — all TODOs found, no omissions';
+    const turn = { result: { finalMessagePath: filePath } };
+    const fallback = 'review verdict: pass — all TODOs found, no omissions';
 
-      const result = await readTurnFinalMessageOrFallback(turn, fallback);
+    const result = await readTurnFinalMessageOrFallback(turn, fallback);
 
-      assert.equal(
-        result,
-        fullText,
-        'must return file content (full text), not the sidecar-summary fallback',
-      );
-      assert.ok(
-        result.includes('"verdict": "pass_with_findings"'),
-        'returned text must contain the structured JSON parseReviewOutput needs',
-      );
-      assert.ok(!result.includes('review verdict: pass — all TODOs found'), 'must not be the summary');
-    },
-  );
+    assert.equal(
+      result,
+      fullText,
+      'must return file content (full text), not the sidecar-summary fallback',
+    );
+    assert.ok(
+      result.includes('"verdict": "pass_with_findings"'),
+      'returned text must contain the structured JSON parseReviewOutput needs',
+    );
+    assert.ok(
+      !result.includes('review verdict: pass — all TODOs found'),
+      'must not be the summary',
+    );
+  });
 
   // ===========================================================================
   // T12b-S2: file missing on disk → falls back to summary text
@@ -93,7 +93,9 @@ describe('readTurnFinalMessageOrFallback — T12b', () => {
   // ===========================================================================
 
   it('T12b-S4: turn without a result block → returns fallback', async () => {
-    const turn = { /* no result */ };
+    const turn = {
+      /* no result */
+    };
     const fallback = 'sendResult fallback';
 
     const result = await readTurnFinalMessageOrFallback(turn, fallback);

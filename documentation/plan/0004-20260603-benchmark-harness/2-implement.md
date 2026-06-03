@@ -369,3 +369,12 @@ Per OQ-E + OQ-J resolutions, Stage 5 closes only after T10 + T11 + T12 complete 
 
 Plan 0003 baseline `1041 + 28 = 1069` is preserved (no regression in any pre-existing lane).
 
+### Stage 2 commit timeline + CI evidence
+
+| Commit | Subject | Purpose |
+|---|---|---|
+| `ce562a8` | Plan 0004 Stage 2: benchmark harness (T1-T9) | Substance — T1 research + T2-T9 harness + package.json `test:bench` + ci.yml `Test bench lane` |
+| `059c882` | Plan 0004 Stage 2: prettier --write tools/bench/ after subagent edits | Format-only follow-up; subagent A files needed prettier reformatting; CI caught it after first push |
+
+CI run `26884440768` at `059c882`: **success** across all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+

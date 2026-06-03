@@ -1,0 +1,74 @@
+# Plan 0006 T5 — exclusion enforcement check (committed tree)
+# Date: 2026-06-03T21:26:16Z
+# HEAD: 2a5c95615db7fb2ce824b47109d07aeed9d32019
+
+===========================================
+# node tools/package-marketplace.mjs --check
+===========================================
+check: OK — 18 derived files match source, 1 marketplace-owned files present, no unexpected files.
+
+# exit code: 0
+
+===========================================
+# find marketplace/plugins/claude-companion -type f | sort
+===========================================
+marketplace/plugins/claude-companion/.codex-plugin/plugin.json
+marketplace/plugins/claude-companion/README.md
+marketplace/plugins/claude-companion/scripts/claude-companion.mjs
+marketplace/plugins/claude-companion/scripts/lib/ack.mjs
+marketplace/plugins/claude-companion/scripts/lib/adapter.mjs
+marketplace/plugins/claude-companion/scripts/lib/args.mjs
+marketplace/plugins/claude-companion/scripts/lib/format.mjs
+marketplace/plugins/claude-companion/scripts/lib/prompt-meta.mjs
+marketplace/plugins/claude-companion/scripts/lib/review-parser.mjs
+marketplace/plugins/claude-companion/scripts/lib/review-prompts.mjs
+marketplace/plugins/claude-companion/scripts/lib/review-result-source.mjs
+marketplace/plugins/claude-companion/skills/claude-adversarial-review/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-delegate/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-followup/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-result/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-review/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-setup/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-status/SKILL.md
+marketplace/plugins/claude-companion/skills/claude-stop/SKILL.md
+
+===========================================
+# find marketplace/plugins/claude-companion -name '*.test.*'
+===========================================
+
+===========================================
+# find marketplace/plugins/claude-companion -name 'tsconfig*'
+===========================================
+
+===========================================
+# find marketplace/plugins/claude-companion -name '.env*'
+===========================================
+
+===========================================
+# find marketplace/plugins/claude-companion -name 'credentials*'
+===========================================
+
+===========================================
+# find marketplace/plugins/claude-companion -name '*.pem'
+===========================================
+
+===========================================
+# find marketplace/plugins/claude-companion -name '*.key'
+===========================================
+
+===========================================
+# find marketplace/plugins/claude-companion -name 'CLAUDE.md'
+===========================================
+
+===========================================
+# find marketplace/plugins/claude-companion -name 'AGENTS.md'
+===========================================
+
+===========================================
+# find marketplace/plugins/claude-companion -path '*node_modules*'
+===========================================
+
+===========================================
+# find marketplace/plugins/claude-companion -path '*/test/*' -o -path '*/tests/*' -o -path '*/src/*' -o -path '*/.github/*'
+===========================================
+

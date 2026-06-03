@@ -8,7 +8,15 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, writeFileSync, readdirSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  rmSync,
+  readdirSync,
+  statSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -689,6 +697,329 @@ describe('marketplace packaging procedure (Plan 0006 T4)', () => {
       hits,
       [],
       `tools/package-marketplace.mjs non-comment source contains forbidden path literal(s): ${JSON.stringify(hits)}`,
+    );
+  });
+});
+
+// ==========================================================================
+// Plan 0006 T5 — marketplace exclusion-list enforcement tests
+// ==========================================================================
+
+// ---------- T5 path constants ----------
+
+const EXCLUSIONS_MD = resolve(MARKETPLACE_ROOT, 'EXCLUSIONS.md');
+
+// OQ4 forbidden tokens — same list as rest of the suite
+const OQ4_FORBIDDEN = [
+  'saves money',
+  'cheaper than',
+  'reduces cost',
+  'preserves prompt-cache savings',
+  'avoids the',
+  'more efficient than',
+];
+
+describe('marketplace exclusion enforcement (Plan 0006 T5)', () => {
+  // ========================================================================
+  // T5-1: marketplace/EXCLUSIONS.md exists and is non-empty
+  // ========================================================================
+
+  it('marketplace/EXCLUSIONS.md exists and is non-empty', () => {
+    assert.ok(existsSync(EXCLUSIONS_MD), `EXCLUSIONS.md not found at ${EXCLUSIONS_MD}`);
+    const content = readFileSync(EXCLUSIONS_MD, 'utf8');
+    assert.ok(content.length > 0, 'EXCLUSIONS.md is empty');
+  });
+
+  // ========================================================================
+  // T5-2: EXCLUSIONS.md contains all required category substrings
+  // ========================================================================
+
+  it('EXCLUSIONS.md contains all required category substrings', () => {
+    assert.ok(existsSync(EXCLUSIONS_MD), `EXCLUSIONS.md not found at ${EXCLUSIONS_MD}`);
+    const content = readFileSync(EXCLUSIONS_MD, 'utf8');
+
+    const REQUIRED_CATEGORIES = [
+      'Tests',
+      'TypeScript sources',
+      'Build config',
+      'CI',
+      'Internal docs and plans',
+      'Development tools',
+      'Workspace metadata',
+      'Orchestration metadata',
+      'VCS metadata',
+      'Secrets',
+    ];
+    for (const cat of REQUIRED_CATEGORIES) {
+      assert.ok(
+        content.includes(cat),
+        `EXCLUSIONS.md is missing required category substring: "${cat}"`,
+      );
+    }
+
+    // lint or format (either is acceptable)
+    assert.ok(
+      content.includes('lint') || content.includes('format'),
+      'EXCLUSIONS.md must contain "lint" or "format"',
+    );
+
+    // Node dependency trees or node_modules (either is acceptable)
+    assert.ok(
+      content.includes('Node dependency trees') || content.includes('node_modules'),
+      'EXCLUSIONS.md must contain "Node dependency trees" or "node_modules"',
+    );
+  });
+
+  // ========================================================================
+  // T5-3: EXCLUSIONS.md contains no OQ4 forbidden tokens
+  // ========================================================================
+
+  it('EXCLUSIONS.md contains no OQ4 forbidden cost-claim tokens', () => {
+    assert.ok(existsSync(EXCLUSIONS_MD), `EXCLUSIONS.md not found at ${EXCLUSIONS_MD}`);
+    const content = readFileSync(EXCLUSIONS_MD, 'utf8');
+    for (const token of OQ4_FORBIDDEN) {
+      assert.equal(
+        content.includes(token),
+        false,
+        `EXCLUSIONS.md contains forbidden cost-claim token "${token}"`,
+      );
+    }
+  });
+
+  // ========================================================================
+  // T5-4: `node tools/package-marketplace.mjs --check` exits 0 on committed tree
+  //        (guard — same as T4-5, verify still passes after T5 additions)
+  // ========================================================================
+
+  it('`node tools/package-marketplace.mjs --check` exits 0 on committed tree (T5 guard)', () => {
+    assert.ok(existsSync(PACKAGE_SCRIPT), `packaging script not found at ${PACKAGE_SCRIPT}`);
+    const result = spawnSync('node', [PACKAGE_SCRIPT, '--check'], { encoding: 'utf8' });
+    assert.equal(
+      result.status,
+      0,
+      `--check exited ${result.status}; stdout: ${result.stdout}; stderr: ${result.stderr}`,
+    );
+  });
+
+  // ========================================================================
+  // T5-5: --check fails when a .test.mjs file is injected into the real tree
+  //
+  // Strategy: inject into real marketplace tree inside try/finally.
+  // The exclusion check (step 0) fires BEFORE the allowlist comparison,
+  // so the script exits 1 immediately on the injected file.
+  // ========================================================================
+
+  it('`--check` exits non-zero and reports excluded suffix when a .test.mjs file is injected', () => {
+    assert.ok(existsSync(PACKAGE_SCRIPT), `packaging script not found at ${PACKAGE_SCRIPT}`);
+
+    const injectPath = resolve(MARKETPLACE_PLUGIN_ROOT, 'scripts', 'lib', 'foo.test.mjs');
+    writeFileSync(injectPath, 'export {};\n');
+    try {
+      const result = spawnSync('node', [PACKAGE_SCRIPT, '--check'], { encoding: 'utf8' });
+      assert.notEqual(
+        result.status,
+        0,
+        `--check should exit non-zero when .test.mjs is injected; stdout: ${result.stdout}; stderr: ${result.stderr}`,
+      );
+      const output = result.stdout + result.stderr;
+      assert.ok(
+        output.includes('excluded'),
+        `--check output should contain "excluded" substring; got: ${output}`,
+      );
+    } finally {
+      rmSync(injectPath, { force: true });
+    }
+  });
+
+  // ========================================================================
+  // T5-6: --check fails when a .ts file is injected (TypeScript source)
+  // ========================================================================
+
+  it('`--check` exits non-zero and reports excluded when a .ts file is injected', () => {
+    assert.ok(existsSync(PACKAGE_SCRIPT), `packaging script not found at ${PACKAGE_SCRIPT}`);
+
+    const injectPath = resolve(MARKETPLACE_PLUGIN_ROOT, 'scripts', 'lib', 'foo.ts');
+    writeFileSync(injectPath, 'export const x = 1;\n');
+    try {
+      const result = spawnSync('node', [PACKAGE_SCRIPT, '--check'], { encoding: 'utf8' });
+      assert.notEqual(
+        result.status,
+        0,
+        `--check should exit non-zero when .ts file is injected; stdout: ${result.stdout}; stderr: ${result.stderr}`,
+      );
+      const output = result.stdout + result.stderr;
+      assert.ok(
+        output.includes('excluded'),
+        `--check output should contain "excluded" substring; got: ${output}`,
+      );
+    } finally {
+      rmSync(injectPath, { force: true });
+    }
+  });
+
+  // ========================================================================
+  // T5-7: --check fails when a .env file is injected (secrets)
+  // ========================================================================
+
+  it('`--check` exits non-zero and reports excluded exact basename when a .env file is injected', () => {
+    assert.ok(existsSync(PACKAGE_SCRIPT), `packaging script not found at ${PACKAGE_SCRIPT}`);
+
+    const injectPath = resolve(MARKETPLACE_PLUGIN_ROOT, '.env');
+    writeFileSync(injectPath, 'SECRET=hunter2\n');
+    try {
+      const result = spawnSync('node', [PACKAGE_SCRIPT, '--check'], { encoding: 'utf8' });
+      assert.notEqual(
+        result.status,
+        0,
+        `--check should exit non-zero when .env is injected; stdout: ${result.stdout}; stderr: ${result.stderr}`,
+      );
+      const output = result.stdout + result.stderr;
+      assert.ok(
+        output.includes('excluded'),
+        `--check output should contain "excluded" substring; got: ${output}`,
+      );
+    } finally {
+      rmSync(injectPath, { force: true });
+    }
+  });
+
+  // ========================================================================
+  // T5-8: --check fails when node_modules/ is injected
+  // ========================================================================
+
+  it('`--check` exits non-zero and reports excluded segment when node_modules/ is injected', () => {
+    assert.ok(existsSync(PACKAGE_SCRIPT), `packaging script not found at ${PACKAGE_SCRIPT}`);
+
+    const injectDir = resolve(MARKETPLACE_PLUGIN_ROOT, 'node_modules', 'foo');
+    const injectPath = resolve(injectDir, 'index.js');
+    mkdirSync(injectDir, { recursive: true });
+    writeFileSync(injectPath, 'module.exports = {};\n');
+    try {
+      const result = spawnSync('node', [PACKAGE_SCRIPT, '--check'], { encoding: 'utf8' });
+      assert.notEqual(
+        result.status,
+        0,
+        `--check should exit non-zero when node_modules/ is injected; stdout: ${result.stdout}; stderr: ${result.stderr}`,
+      );
+      const output = result.stdout + result.stderr;
+      assert.ok(
+        output.includes('excluded'),
+        `--check output should contain "excluded" substring; got: ${output}`,
+      );
+    } finally {
+      rmSync(resolve(MARKETPLACE_PLUGIN_ROOT, 'node_modules'), { recursive: true, force: true });
+    }
+  });
+
+  // ========================================================================
+  // T5-9: Real marketplace tree contains no excluded files
+  //        (manual re-implementation of exclusion semantics — does NOT import
+  //         the packaging script, tests the committed state independently)
+  // ========================================================================
+
+  it('real marketplace tree contains no excluded files (independent exclusion walk)', () => {
+    assert.ok(
+      existsSync(MARKETPLACE_PLUGIN_ROOT),
+      `marketplace plugin root not found at ${MARKETPLACE_PLUGIN_ROOT}`,
+    );
+
+    // Excluded suffix patterns (applied to basename)
+    const EXCL_SUFFIXES = ['.test.mjs', '.test.ts', '.test.js', '.ts', '.pem', '.key', '.crt'];
+
+    // Excluded path segments (any segment in the path equal to these)
+    const EXCL_SEGMENTS = new Set([
+      'test',
+      'tests',
+      'src',
+      'node_modules',
+      '.git',
+      '.github',
+      '.omc',
+      'documentation',
+      'references',
+      'tools',
+    ]);
+
+    // Excluded exact basenames
+    const EXCL_EXACT_BASENAMES = new Set([
+      'tsconfig.json',
+      'tsconfig.build.json',
+      'package-lock.json',
+      '.env',
+      '.gitignore',
+      '.prettierrc',
+      'eslint.config.mjs',
+      'eslint.config.js',
+      'CLAUDE.md',
+      'AGENTS.md',
+      'credentials.json',
+    ]);
+
+    // Excluded basename prefixes
+    const EXCL_BASENAME_PREFIXES = ['tsconfig', '.env.', 'credentials'];
+
+    walkFiles(MARKETPLACE_PLUGIN_ROOT, (filePath) => {
+      const normalized = filePath.replace(/\\/g, '/');
+      const segments = normalized.split('/');
+      const bn = segments[segments.length - 1];
+
+      // Check segments
+      for (const seg of segments) {
+        assert.ok(
+          !EXCL_SEGMENTS.has(seg),
+          `real marketplace file has excluded path segment "${seg}": ${filePath}`,
+        );
+      }
+
+      // Check suffixes
+      for (const suf of EXCL_SUFFIXES) {
+        assert.ok(
+          !bn.endsWith(suf),
+          `real marketplace file has excluded suffix "${suf}": ${filePath}`,
+        );
+      }
+
+      // Check exact basenames
+      assert.ok(
+        !EXCL_EXACT_BASENAMES.has(bn),
+        `real marketplace file has excluded exact basename "${bn}": ${filePath}`,
+      );
+
+      // Check basename prefixes
+      for (const pre of EXCL_BASENAME_PREFIXES) {
+        assert.ok(
+          !bn.startsWith(pre),
+          `real marketplace file has excluded basename prefix "${pre}": ${filePath}`,
+        );
+      }
+    });
+  });
+
+  // ========================================================================
+  // T5-10: Every real marketplace file remains listed in MANIFEST.md
+  //         (guard — T4-2 / T4-3 coverage, verify still passes after T5)
+  // ========================================================================
+
+  it('every real marketplace file is listed in MANIFEST.md (T5 guard)', () => {
+    assert.ok(existsSync(MANIFEST_MD), `MANIFEST.md not found at ${MANIFEST_MD}`);
+    assert.ok(
+      existsSync(MARKETPLACE_PLUGIN_ROOT),
+      `marketplace plugin root not found at ${MARKETPLACE_PLUGIN_ROOT}`,
+    );
+
+    const listed = readManifestList(MANIFEST_MD);
+    const actualFiles = collectRelFiles(MARKETPLACE_PLUGIN_ROOT);
+
+    const missing = [];
+    for (const rel of actualFiles) {
+      if (!MARKETPLACE_OWNED.has(rel) && !listed.has(rel)) {
+        missing.push(rel);
+      }
+    }
+    assert.deepEqual(
+      missing,
+      [],
+      `MANIFEST.md is missing entries for these marketplace files after T5: ${JSON.stringify(missing)}`,
     );
   });
 });

@@ -42,6 +42,10 @@ Note: `scripts/claude-companion.mjs` is copied from source and the packaging scr
 
 This file is the Codex marketplace root manifest. It is owned by the marketplace, not derived from the plugin source. The packaging script leaves it in place.
 
-## Exclusions (informational; T5 owns the authoritative exclusion list)
+## Exclusions
 
-Anything not listed above is not part of the packaged plugin. The T2 `marketplace-layout.test.mjs` already enforces that no test files, `node_modules/`, `tsconfig*`, `package.json`, `.env*`, `*.pem`, `*.key`, `*.crt`, `dist/`, `.git/`, `.github/`, `tools/`, `documentation/`, or `references/` appear under `marketplace/plugins/claude-companion/`.
+Anything not listed above is not part of the packaged plugin. See
+[`EXCLUSIONS.md`](EXCLUSIONS.md) for the categorized list of file types and
+paths that must not appear in the packaged plugin (defense-in-depth alongside
+the allowlist above). The `tools/package-marketplace.mjs --check` command
+enforces both the allowlist and the exclusion list.

@@ -552,3 +552,112 @@ Note: a similar single-leg cancellation hit the Plan 0006 T2-log commit (`4507cd
 ### Status
 
 **T4 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3, T4 of Stage 2 done; T5 (formal exclusion list + defense-in-depth) paused awaiting maintainer go-ahead.
+
+---
+
+## T5 — Exclusion list + defense-in-depth enforcement
+
+**Status**: complete pending CI
+**Date**: 2026-06-03
+**Codex version tested**: `codex-cli 0.136.0`
+**Empirical artifact**: [`artifacts/t5-exclusion-check-20260603.txt`](artifacts/t5-exclusion-check-20260603.txt)
+
+### Deliverables
+
+T5 formalizes the marketplace exclusion list and adds defense-in-depth enforcement layers.
+
+**New files**:
+
+- `marketplace/EXCLUSIONS.md` — categorized exclusion document with 11 category table + enforcement section + POSIX-path notes.
+- `documentation/plan/0006-*/artifacts/t5-exclusion-check-20260603.txt` — empirical check capture showing `--check` exit 0 on the committed tree + `find` commands across all forbidden patterns all returning empty.
+
+**Modified files**:
+
+- `tools/package-marketplace.mjs` — added `EXCLUDED_SEGMENTS` (10), `EXCLUDED_SUFFIXES` (7), `EXCLUDED_EXACT_BASENAMES` (15), `EXCLUDED_BASENAME_PREFIXES` (3); `isExcluded(rel)` helper; exclusion check runs as **step 0** in `--check`, before the allowlist comparison; `--marketplace-root <path>` CLI flag and `CC_PLUGIN_CODEX_MARKETPLACE_ROOT` env var as test seams.
+- `marketplace/MANIFEST.md` — 4-line paragraph pointing readers at `EXCLUSIONS.md`.
+- `packages/plugin-codex/test/marketplace-layout.test.mjs` — +10 T5 tests in a new `describe('marketplace exclusion enforcement (Plan 0006 T5)')` block (23 → 33). Also removed unused `basename` import flagged by eslint during the gate run.
+
+### Exclusion categories (EXCLUSIONS.md)
+
+| Category | Coverage |
+|---|---|
+| Tests | `*.test.{mjs,ts,js}`, `test/`, `tests/` segments |
+| TypeScript sources | `src/` segment, `*.ts` suffix |
+| Build config | `tsconfig*.json` |
+| Repo CI / lint / format config | `.github/`, `.prettierrc`, `eslint.config.{mjs,js}` |
+| Internal docs and plans | `documentation/`, `references/` |
+| Development tools | `tools/` segment (covers `tools/bench/`, `tools/mock-*`) |
+| Node dependency trees | `node_modules/` |
+| Workspace metadata | `package-lock.json` |
+| Orchestration metadata | `CLAUDE.md`, `AGENTS.md`, `.omc/` |
+| VCS metadata | `.git/`, `.gitignore` at packaged-plugin root |
+| Secrets | `.env`, `.env.*`, `credentials*`, `*.pem`, `*.key`, `*.crt`, `id_rsa*`, `id_ed25519*` |
+
+### Test seam
+
+Subagent A added both `--marketplace-root <path>` CLI flag (primary) and `CC_PLUGIN_CODEX_MARKETPLACE_ROOT` env var (fallback). When the override is active, the `marketplace.json` validity check is skipped (synthetic roots don't need to mirror that path). Subagent B's tests use real-tree try/finally injection (simpler than synthetic-root copy) because the exclusion check runs as step 0 — injecting a forbidden file into the real tree, running `--check`, then immediately deleting it in `finally`.
+
+### Tests added (10 T5 points)
+
+1. `EXCLUSIONS.md exists and is non-empty`
+2. `EXCLUSIONS.md contains all required category substrings`
+3. `EXCLUSIONS.md contains no OQ4 forbidden cost-claim tokens`
+4. `--check exits 0 on committed tree (T5 guard)`
+5. `--check exits non-zero when .test.mjs injected`
+6. `--check exits non-zero when .ts injected`
+7. `--check exits non-zero when .env injected`
+8. `--check exits non-zero when node_modules/ injected`
+9. `real marketplace tree contains no excluded files (independent exclusion walk)`
+10. `every real marketplace file is listed in MANIFEST.md (T5 guard)`
+
+All injection tests use try/finally with `rmSync` cleanup. Post-test `--check` confirms exit 0 (no leaked injections).
+
+### A/B/C findings
+
+- **Subagent A**: produced EXCLUSIONS.md + script enforcement + dual test seam (CLI flag + env var). Validated `--check` exit 0 on committed tree (no false positives) + non-zero on synthetic injection.
+- **Subagent B**: extended `marketplace-layout.test.mjs` with the 10 T5 assertions. Used real-tree try/finally injection (cleaner than temp-copy because step 0 fires before source comparison). All 33 tests pass.
+- **Subagent C**: APPROVE on all 13 review checks. EXCLUDED_PATTERNS shape correct (10/7/15/3); F-H2 trace clean (EXCLUSIONS.md row → script pattern → test → real-tree absence) for Tests, node_modules, and Secrets categories.
+
+### Gate fix during T5
+
+Initial lint failed with `'basename' is defined but never used` in `marketplace-layout.test.mjs:12:25` — left over from a prior version of B's test additions. Removed the unused import in the imports block (orchestrator-applied fix); re-lint clean.
+
+### Deviation from 1-plan.md
+
+None. The exclusion-list shape Plan 0006 § 3.3 specified matches what A/B implemented. The README handling stays consistent with T4's Option A (marketplace-owned, not derived).
+
+### Local gate evidence
+
+- `npm run lint` — clean (after removing the unused `basename` import)
+- `npm run typecheck` — clean
+- `npx prettier --check .` — clean (after auto-fix on the new test file and script)
+- `npm test` — exit 0; mock 68 + runtime 172 + driver 178 + plugin **668** = **1086** (was 1076 at T4; +10)
+- `npm run test:attach` — unchanged (28/28)
+- `npm run test:bench` — unchanged (258/258)
+- **Combined total: 1372** tests passing
+
+### Implications for later tasks
+
+| Task | Implication from T5 |
+|---|---|
+| T6 (install procedure) | Install docs reference `--check` as a pre-install gate (catches stale marketplace state from upstream changes). |
+| T9 (smoke test procedure) | T9 smoke can rely on the layered enforcement: allowlist (T2-T4) + exclusion list (T5). |
+| T11 (RELEASING.md) | Release checklist references `tools/package-marketplace.mjs --check` AND a manual review of `EXCLUSIONS.md` before each cut. |
+
+### Safety + scope confirmation
+
+- 3 tracked files modified: `marketplace/MANIFEST.md`, `tools/package-marketplace.mjs`, `packages/plugin-codex/test/marketplace-layout.test.mjs`.
+- 2 new files: `marketplace/EXCLUSIONS.md`, `documentation/plan/0006-*/artifacts/t5-exclusion-check-20260603.txt`.
+- `tools/bench/**` untouched.
+- `documentation/plan/0004-*/artifacts/**` untouched.
+- `packages/plugin-codex/README.md` cost paragraph untouched.
+- `packages/plugin-codex/scripts/**`, `skills/**`, `.codex-plugin/plugin.json` untouched.
+- `marketplace/plugins/claude-companion/**` and `marketplace/.agents/plugins/marketplace.json` untouched.
+- No hooks / stop-gate code. Plan 0005 stays `deferred`.
+- `git rev-parse plan-0004-pre-cutover` → `7d9b5f1…`; tag preserved.
+- 0 OQ4 forbidden cost-claim tokens introduced (grep verified across all T5 surface files).
+
+### CI evidence (pending)
+
+- Commit: pending — `Plan 0006 T5: define marketplace exclusion list`
+- CI run: pending

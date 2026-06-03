@@ -1,0 +1,26 @@
+{
+  "name": "claude-companion",
+  "version": "0.1.0",
+  "description": "Delegate tasks from Codex to Claude Code background sessions.",
+  "author": {
+    "name": "Hongjun Wu",
+    "url": "https://github.com/wu-hongjun"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Claude Companion",
+    "category": "Coding",
+    "capabilities": ["Interactive"],
+    "defaultPrompt": [
+      "Set up Claude Companion.",
+      "Delegate a task to Claude Code.",
+      "Check my Claude jobs.",
+      "Show the result of a Claude job.",
+      "Stop a Claude job.",
+      "Send a follow-up instruction to a Claude job I started earlier.",
+      "Review a Claude job in the same session.",
+      "Run an adversarial (fresh-session) review of a Claude job."
+    ],
+    "brandColor": "#D97706"
+  }
+}

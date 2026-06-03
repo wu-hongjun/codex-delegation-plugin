@@ -174,3 +174,122 @@ None. T1's findings match Plan 0006 § 3.5 (marketplace lifecycle) and resolve O
 ### Gate evidence
 
 T1 is research/docs only. `npm run format` is the only gate run (other gates are unchanged from `fff78de`).
+
+### CI evidence
+
+- Commit: `97f8ea4` ("Plan 0006 T1: research Codex plugin lifecycle commands")
+- CI run: `26907649775`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+
+---
+
+## T2 — Commit local marketplace layout
+
+**Status**: complete pending CI
+**Date**: 2026-06-03
+**Codex version tested**: `codex-cli 0.136.0` on Darwin 25.5.0
+**Empirical smoke artifact**: [`artifacts/t2-marketplace-add-20260603.txt`](artifacts/t2-marketplace-add-20260603.txt)
+
+### Deliverables
+
+T2 created the top-level `marketplace/` tree as a DERIVED copy of `packages/plugin-codex/`. The source plugin under `packages/plugin-codex/` was not modified; T2 is creation-only outside `marketplace/`.
+
+**Files created (20 under `marketplace/`)**:
+
+- `marketplace/.agents/plugins/marketplace.json` — Codex marketplace manifest (shape per Plan 0006 § 3.1).
+- `marketplace/plugins/claude-companion/.codex-plugin/plugin.json` — byte-identical copy of the source plugin manifest (`cmp` reports zero diff).
+- `marketplace/plugins/claude-companion/README.md` — minimal T2 placeholder; final marketplace-facing README is T12 scope.
+- `marketplace/plugins/claude-companion/scripts/claude-companion.mjs` — copy of source dispatcher entry; executable bit set (`-rwxr-xr-x`).
+- `marketplace/plugins/claude-companion/scripts/lib/{ack,adapter,args,format,prompt-meta,review-parser,review-prompts,review-result-source}.mjs` — 8 helpers, copies of source.
+- `marketplace/plugins/claude-companion/skills/{claude-adversarial-review,claude-delegate,claude-followup,claude-result,claude-review,claude-setup,claude-status,claude-stop}/SKILL.md` — 8 skill manifests, copies of source.
+
+**Static-validation test file (NEW, in plugin test lane)**:
+
+- `packages/plugin-codex/test/marketplace-layout.test.mjs` — 10 `it` blocks covering: marketplace.json shape + valid JSON; marketplace plugin.json existence + byte-identity vs source; 8 skill dirs + non-empty SKILL.md each; claude-companion.mjs executable bit; scripts/lib mirror against source; recursive forbidden-file/path exclusion; OQ4 cost-claim token scan over marketplace.json + marketplace README.
+
+### marketplace.json shape (Plan 0006 § 3.1 candidate, accepted by Codex 0.136.0)
+
+```json
+{
+  "name": "cc-plugin-codex-local",
+  "interface": { "displayName": "cc-plugin-codex Local Marketplace" },
+  "plugins": [
+    {
+      "name": "claude-companion",
+      "source": { "source": "local", "path": "./plugins/claude-companion" },
+      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
+      "category": "Coding"
+    }
+  ]
+}
+```
+
+### Empirical marketplace add smoke
+
+Captured at `artifacts/t2-marketplace-add-20260603.txt`. Sequence (Codex 0.136.0):
+
+1. `codex plugin marketplace add /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace` → exit 0, output: `Added marketplace cc-plugin-codex-local from <path>.`
+2. `codex plugin marketplace list` → exit 1, surfaced the **pre-existing** stale `cc-plugin-codex-local-smoke` error (T1-observed; not created by T2). The newly-added `cc-plugin-codex-local` was registered in `~/.codex/config.toml` regardless — confirmed via read-only `grep` on the config file: lines 119/146 showed both `cc-plugin-codex-local-smoke` and the new `cc-plugin-codex-local` with the correct repo path.
+3. `codex plugin list` → exit 1, same pre-existing stale-entry error.
+
+The list errors do NOT block the add; the marketplace was registered. The T1 finding that the stale entry causes downstream `list` commands to fail also holds for T2.
+
+### Cleanup
+
+`codex plugin marketplace remove cc-plugin-codex-local` → exit 0, output: `Removed marketplace cc-plugin-codex-local.` Post-cleanup `grep` of `~/.codex/config.toml` confirmed the `cc-plugin-codex-local` entry is gone. The stale `cc-plugin-codex-local-smoke` entry (from before T1) was NOT touched — per the maintainer's brief. No residual Codex state from T2.
+
+### Resolves Q6 of T1
+
+T1 left open the question of whether Codex 0.136.0's "supported manifest" validator would accept the Plan 0006 § 3.1 manifest shape. T2 empirically confirms: **yes**. The shape passes. No iteration on the manifest was needed.
+
+### Acceptance evidence
+
+- Layout matches Plan 0006 § 3.1 (Subagent C cross-checked).
+- Source plugin not modified (`git diff --stat HEAD packages/plugin-codex/` empty; only the new test file is untracked).
+- Marketplace plugin.json byte-identical to source (`cmp` zero diff).
+- 8 skill dirs present; each `SKILL.md` size 608-1709 bytes.
+- 8 lib helpers mirror source exactly.
+- `claude-companion.mjs` mode includes user-executable bit.
+- No forbidden internal/test/secret files in marketplace tree (recursive walk).
+- 0 OQ4 forbidden cost-claim tokens in marketplace.json or marketplace README.
+- Empirical `codex plugin marketplace add` succeeds AND cleanup succeeds.
+
+### Implications for later tasks
+
+| Task | Implication from T2 |
+|---|---|
+| T3 (plugin.json shape) | The current source plugin.json is already accepted by Codex 0.136.0 via the byte-identical marketplace copy. T3 may bump the version per OQ-B (semver) but no shape change is needed. |
+| T4 (packaging manifest) | T2 IS the packaging step's output for v1; T4 codifies it as a documented procedure / script. |
+| T5 (exclusion enforcement) | T2's test file already enforces the exclusion list via the recursive walk. T5 may extend the test or copy the same pattern into a release-time script. |
+| T6 (install procedure) | T2 confirms `codex plugin marketplace add <repo>/marketplace` works. T6 documents the full install sequence including `codex plugin add claude-companion@cc-plugin-codex-local`. |
+| T9 (smoke test) | T2's empirical smoke proves marketplace REGISTRATION works. T9's smoke must extend to verify per-skill DISCOVERY via `codex plugin list` + per-skill invocation (after cleaning the stale entry, or in an isolated Codex config). |
+
+### Deviation from 1-plan.md
+
+None. The Plan 0006 § 3.1 manifest shape was accepted on first attempt. T1's flagged compatibility concern (stricter manifest validation in 0.136.0) does NOT block the planned shape.
+
+### Local gate evidence at T2 close (commit pending)
+
+- `npm run lint` — clean
+- `npm run typecheck` — clean
+- `npx prettier --check .` — pending
+- `npm test` — pending (expected 1051: prior 1041 + 10 from marketplace-layout test file; plugin lane 623 → 633)
+- `npm run test:attach` — unchanged from Plan 0004 T10 (28/28)
+- `npm run test:bench` — unchanged from Plan 0004 T10 (258/258)
+
+### Safety + scope confirmation
+
+- 0 changes to tracked files (`git diff --stat HEAD` empty).
+- Only new files under `marketplace/`, `packages/plugin-codex/test/marketplace-layout.test.mjs`, and `documentation/plan/0006-*/artifacts/t2-marketplace-add-20260603.txt`.
+- `tools/bench/**` untouched.
+- `documentation/plan/0004-*/artifacts/**` untouched.
+- `packages/plugin-codex/README.md` cost paragraph untouched.
+- `packages/plugin-codex/scripts/**`, `packages/runtime/**`, `packages/driver-claude-code/**` untouched.
+- No hooks or stop-gate code; Plan 0005 stays `deferred`.
+- `git rev-parse plan-0004-pre-cutover` → `7d9b5f1...`; tag preserved.
+- Pre-existing stale `cc-plugin-codex-local-smoke` Codex entry preserved per the brief.
+
+### CI evidence (pending)
+
+- Commit: pending — `Plan 0006 T2: commit local marketplace layout`
+- CI run: pending

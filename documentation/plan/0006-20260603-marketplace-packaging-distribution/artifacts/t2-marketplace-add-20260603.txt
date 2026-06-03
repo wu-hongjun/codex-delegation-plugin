@@ -1,0 +1,70 @@
+# Plan 0006 T2 — empirical marketplace add smoke
+# Date: 2026-06-03T19:37:52Z
+# Host platform: Darwin 25.5.0
+# Codex version: codex-cli 0.136.0
+# HEAD: 97f8ea41ff3262d7a789ed017c4877a2985ceb02
+# Repo: /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+# Marketplace path: /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+
+===========================================
+# codex plugin marketplace add /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+===========================================
+Added marketplace `cc-plugin-codex-local` from /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace.
+Installed marketplace root: /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+
+# exit code: 0
+
+===========================================
+# codex plugin marketplace list
+===========================================
+Error: failed to load marketplace(s):
+- `cc-plugin-codex-local-smoke` at /private/tmp/cc-plugin-codex-marketplace-15INUy: marketplace root does not contain a supported manifest
+
+# exit code: 1
+
+===========================================
+# codex plugin list
+===========================================
+Error: failed to load configured marketplace snapshot(s):
+- `cc-plugin-codex-local-smoke` at /private/tmp/cc-plugin-codex-marketplace-15INUy: marketplace root does not contain a supported manifest
+
+# exit code: 1
+
+===========================================
+# read-only: grep cc-plugin-codex-local in ~/.codex/config.toml
+===========================================
+73:[plugins."claude-companion@cc-plugin-codex-local-smoke"]
+74-enabled = true
+75-
+76-[plugins."documents@openai-primary-runtime"]
+--
+119:[marketplaces.cc-plugin-codex-local-smoke]
+120-last_updated = "2026-05-31T03:14:06Z"
+121-source_type = "local"
+122-source = "/private/tmp/cc-plugin-codex-marketplace-15INUy"
+--
+146:[marketplaces.cc-plugin-codex-local]
+147-last_updated = "2026-06-03T19:37:52Z"
+148-source_type = "local"
+149-source = "/Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace"
+
+===========================================
+# codex plugin marketplace remove cc-plugin-codex-local
+===========================================
+Removed marketplace `cc-plugin-codex-local`.
+
+# exit code: 0
+
+===========================================
+# post-cleanup grep cc-plugin-codex-local in ~/.codex/config.toml
+===========================================
+73:[plugins."claude-companion@cc-plugin-codex-local-smoke"]
+74-enabled = true
+75-
+76-[plugins."documents@openai-primary-runtime"]
+--
+119:[marketplaces.cc-plugin-codex-local-smoke]
+120-last_updated = "2026-05-31T03:14:06Z"
+121-source_type = "local"
+122-source = "/private/tmp/cc-plugin-codex-marketplace-15INUy"
+

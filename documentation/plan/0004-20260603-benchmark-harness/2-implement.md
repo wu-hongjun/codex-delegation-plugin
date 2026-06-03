@@ -415,15 +415,21 @@ Review verdict cross-comparison (15 runs each flow):
 - 1 cell had `transcript not found: no transcriptPath and no shortId in job record` — single missed discovery; not a systemic issue.
 - Harness `--permission-mode bypassPermissions` per-cell is the only safety-bypass in the entire bench. Bounded by throwaway fixture + isolated `CC_PLUGIN_CODEX_HOME`.
 
-### Local gate evidence at T10 close (commit pending)
+### Local gate evidence at T10 close
 
 - `npm run lint` — clean
 - `npm run typecheck` — clean
-- `npx prettier --check .` — clean (after auto-format follow-up)
+- `npx prettier --check .` — clean
 - `npm test` — exit 0; counts: **mock 68 + runtime 172 + driver 178 + plugin 623 = 1041** (no regression)
 - `npm run test:attach` — **28/28**
 - `npm run test:bench` — **258/258** (was 227 at Stage 4 close; +31 from T10 wiring + 3 bug fixes)
 - **Combined total: 1327** tests passing
+
+### CI evidence
+
+- Commit: `94db8d5` ("Plan 0004 T10: pre-cutover benchmark run")
+- CI run: `26903938210`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
 
 ## T11/T12 — Deferred to post-cutover
 

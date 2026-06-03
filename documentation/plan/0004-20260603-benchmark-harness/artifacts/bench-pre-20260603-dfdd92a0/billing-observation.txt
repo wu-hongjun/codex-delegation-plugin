@@ -1,0 +1,56 @@
+# Manual billing-bucket observation — pre-cutover (OQ-I)
+
+Date/time observed:           2026-06-03 (UTC; same day as the bench run)
+Claude Code version:          2.1.150
+Codex version:                codex-cli 0.136.0
+Anthropic plan/dashboard
+surface checked:              Claude Code TUI `/status` → Usage tab
+Observation window:           Post-bench snapshot (the bench ran
+                              17:00:34Z → 17:58:46Z UTC; this
+                              snapshot was captured shortly after).
+
+Agent SDK / Claude Code usage delta:
+
+The pre-cutover `/status` Usage tab presents a single unified Claude
+Code subscription limit. There is NO separate "Agent SDK monthly
+credit" line item, breakdown, or delta surface for `claude --bg`
+usage. This is consistent with the 2026-06-15 Anthropic policy
+having not yet taken effect — the Agent SDK monthly credit bucket
+does not exist pre-cutover.
+
+What `/status` does surface (session-aggregated, not bench-specific):
+
+- Session total cost in USD (cumulative since the session started)
+- Token usage by model (input / output / cache read / cache write)
+- "Cur N% used" against the current daily limit
+- Daily limit reset time
+- "Usage credits" toggle (currently OFF on this account)
+- Last-24h heuristics (subagent share, session-length share, etc.)
+
+Because /status aggregates per-session usage and all sessions on
+the machine share one daily limit, a clean pre/post-bench delta for
+THIS bench specifically is not derivable from this surface alone —
+the orchestrator's own activity is co-mingled with the bench's
+claude --bg sessions in the displayed totals.
+
+Notes:
+
+- The bench's 60 cells of claude --bg activity rolled into the same
+  Claude Code subscription daily limit as the orchestrator's session.
+  No separate Agent SDK credit was consumed (because the credit
+  bucket does not yet exist pre-cutover).
+- Cost accounting visible on /status is dollars per session; per-
+  request token data is in the bench artifact's results.json instead.
+- "Usage credits are off" on this account, so no API-rate pay-as-
+  you-go overflow path is active.
+
+Post-cutover (T11) expectation:
+
+After 2026-06-15, the Anthropic Plan dashboard / Claude Code
+/status surface is expected to introduce a separate "Agent SDK
+monthly credit" bucket per the policy excerpt. T11 should re-check
+/status (and the web Plan dashboard if accessible) immediately
+before and after the post-cutover bench run, and record whether
+`claude --bg` activity is now bucketed against the Agent SDK
+monthly credit or remains in the Claude Code subscription limit.
+This is the load-bearing OQ-I question.

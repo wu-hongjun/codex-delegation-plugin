@@ -231,9 +231,8 @@ describe('bench CLI — --cutover-phase label', () => {
   });
 });
 
-describe('bench CLI — no-op without --dry-run', () => {
-  it('exits non-zero and prints an error when run without --dry-run', () => {
-    const r = run([]);
-    assert.notEqual(r.status, 0, `expected non-zero exit without --dry-run`);
-  });
-});
+// (T10) Removed obsolete pre-T10 test "bench CLI — no-op without --dry-run".
+// Pre-T10, run.mjs without --dry-run printed "Live execution not yet implemented"
+// and exited 1. Post-T10, run.mjs without --dry-run invokes the live execution
+// loop against real Claude. Live behavior is covered by live-runner.test.mjs
+// via DI (no real Claude invocations).

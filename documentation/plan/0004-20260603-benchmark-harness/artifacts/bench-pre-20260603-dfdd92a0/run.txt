@@ -1,0 +1,71 @@
+Plan 0004 benchmark run log
+Run ID: 4904d374
+Started: 2026-06-03T17:00:34.166Z
+Output dir: documentation/plan/0004-20260603-benchmark-harness/artifacts/bench-pre-20260603-dfdd92a0
+
+delegate                 / summarize-todos        / run 1/5 → ok (35610ms)
+delegate                 / summarize-todos        / run 2/5 → ok (68875ms)
+delegate                 / summarize-todos        / run 3/5 → ok (36268ms)
+delegate                 / summarize-todos        / run 4/5 → ok (32393ms)
+delegate                 / summarize-todos        / run 5/5 → ok (30367ms)
+delegate                 / rename-variable        / run 1/5 → ok (91743ms)
+delegate                 / rename-variable        / run 2/5 → ok (58562ms)
+delegate                 / rename-variable        / run 3/5 → ok (75485ms)
+delegate                 / rename-variable        / run 4/5 → ok (65205ms)
+delegate                 / rename-variable        / run 5/5 → ok (94562ms)
+delegate                 / answer-question        / run 1/5 → ok (41762ms)
+delegate                 / answer-question        / run 2/5 → ok (12041ms)
+delegate                 / answer-question        / run 3/5 → ok (15330ms)
+delegate                 / answer-question        / run 4/5 → ok (44868ms)
+delegate                 / answer-question        / run 5/5 → ok (12169ms)
+delegate-followup        / summarize-todos        / run 1/5 → ok (61050ms)
+delegate-followup        / summarize-todos        / run 2/5 → ok (54525ms)
+delegate-followup        / summarize-todos        / run 3/5 → ok (54636ms)
+delegate-followup        / summarize-todos        / run 4/5 → ok (54363ms)
+delegate-followup        / summarize-todos        / run 5/5 → ok (57561ms)
+delegate-followup        / rename-variable        / run 1/5 → ok (97040ms)
+delegate-followup        / rename-variable        / run 2/5 → ok (74389ms)
+delegate-followup        / rename-variable        / run 3/5 → ok (81708ms)
+delegate-followup        / rename-variable        / run 4/5 → ok (81458ms)
+delegate-followup        / rename-variable        / run 5/5 → ok (75354ms)
+delegate-followup        / answer-question        / run 1/5 → ok (24722ms)
+delegate-followup        / answer-question        / run 2/5 → ok (28336ms)
+delegate-followup        / answer-question        / run 3/5 → ok (32076ms)
+delegate-followup        / answer-question        / run 4/5 → ok (28589ms)
+delegate-followup        / answer-question        / run 5/5 → ok (28599ms)
+delegate-review          / summarize-todos        / run 1/5 → ok (63862ms)
+delegate-review          / summarize-todos        / run 2/5 → ok (59883ms)
+delegate-review          / summarize-todos        / run 3/5 → ok (59322ms)
+delegate-review          / summarize-todos        / run 4/5 → ok (62645ms)
+delegate-review          / summarize-todos        / run 5/5 → ERR (58395ms)  [error: review_failed]
+delegate-review          / rename-variable        / run 1/5 → ok (91694ms)
+delegate-review          / rename-variable        / run 2/5 → ok (105628ms)
+delegate-review          / rename-variable        / run 3/5 → ok (72330ms)
+delegate-review          / rename-variable        / run 4/5 → ERR (81105ms)  [error: review_failed]
+delegate-review          / rename-variable        / run 5/5 → ok (98256ms)
+delegate-review          / answer-question        / run 1/5 → ok (29076ms)
+delegate-review          / answer-question        / run 2/5 → ok (32865ms)
+delegate-review          / answer-question        / run 3/5 → ok (29446ms)
+delegate-review          / answer-question        / run 4/5 → ok (29177ms)
+delegate-review          / answer-question        / run 5/5 → ok (29188ms)
+delegate-adversarial     / summarize-todos        / run 1/5 → ok (70313ms)
+delegate-adversarial     / summarize-todos        / run 2/5 → ok (81595ms)
+delegate-adversarial     / summarize-todos        / run 3/5 → ok (86351ms)
+delegate-adversarial     / summarize-todos        / run 4/5 → ok (50660ms)
+delegate-adversarial     / summarize-todos        / run 5/5 → ok (69220ms)
+delegate-adversarial     / rename-variable        / run 1/5 → ok (96629ms)
+delegate-adversarial     / rename-variable        / run 2/5 → ok (114682ms)
+delegate-adversarial     / rename-variable        / run 3/5 → ok (84569ms)
+delegate-adversarial     / rename-variable        / run 4/5 → ok (99800ms)
+delegate-adversarial     / rename-variable        / run 5/5 → ok (107092ms)
+delegate-adversarial     / answer-question        / run 1/5 → ok (26461ms)
+delegate-adversarial     / answer-question        / run 2/5 → ok (29235ms)
+delegate-adversarial     / answer-question        / run 3/5 → ok (32601ms)
+delegate-adversarial     / answer-question        / run 4/5 → ok (29441ms)
+delegate-adversarial     / answer-question        / run 5/5 → ok (28150ms)
+
+Completed: 2026-06-03T17:58:46.279Z
+Total cells: 12
+Total invocations: 60
+Successful: 58
+Errors: 2

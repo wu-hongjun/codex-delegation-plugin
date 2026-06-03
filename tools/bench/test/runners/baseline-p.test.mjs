@@ -209,11 +209,11 @@ describe('runBaselineP() — transcript handling', () => {
   it('tokenCounts populated when transcript fixture exists', async () => {
     const { root, cleanup } = makeFixtureRoot();
 
-    // Build the sanitized transcript dir path that the runner will look for.
-    const sanitized = root.replace(/\//g, '-');
-    const sanitizedCwd = sanitized.startsWith('-') ? sanitized : `-${sanitized}`;
-    const { homedir } = await import('node:os');
-    const transcriptDir = join(homedir(), '.claude', 'projects', sanitizedCwd);
+    // Build the transcript dir path the runner will look for. Use the
+    // shared helper so the test matches the runner's realpath-aware
+    // sanitization (macOS /var/folders → /private/var/folders).
+    const { transcriptDirForCwd } = await import('../../lib/transcript-usage.mjs');
+    const transcriptDir = transcriptDirForCwd(root);
     mkdirSync(transcriptDir, { recursive: true });
 
     // Write a minimal JSONL transcript with usage data.

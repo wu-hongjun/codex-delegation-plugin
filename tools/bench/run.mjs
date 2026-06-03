@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { parseCliArgs, USAGE } from './lib/cli.mjs';
 import { selectFlows } from './lib/flows.mjs';
 import { selectTasks } from './lib/tasks.mjs';
+import { runLive } from './lib/live-runner.mjs';
 
 // Repo root: tools/bench/run.mjs → go up two levels
 const REPO_ROOT = resolve(fileURLToPath(import.meta.url), '..', '..', '..');
@@ -67,9 +68,24 @@ async function main() {
     process.exit(0);
   }
 
-  // Live execution: not yet implemented (T4-T8)
-  process.stderr.write('Live execution not yet implemented. Use --dry-run to preview.\n');
-  process.exit(1);
+  // Live execution.
+  try {
+    const { outputDir: finalDir } = await runLive({
+      flows,
+      tasks,
+      runs: parsed.runs,
+      outputDir,
+      cutoverPhase: parsed.cutoverPhase,
+      runId,
+      dateYYYYMMDD: yyyymmdd(),
+      includeBaselineP: parsed.includeBaselineP,
+      progress: (line) => process.stdout.write(`  ${line}\n`),
+    });
+    process.stdout.write(`\nBenchmark complete. Artifacts: ${finalDir}\n`);
+  } catch (err) {
+    process.stderr.write(`Error: ${err.stack ?? err.message}\n`);
+    process.exit(1);
+  }
 }
 
 /**

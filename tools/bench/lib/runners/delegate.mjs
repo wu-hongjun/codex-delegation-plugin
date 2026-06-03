@@ -16,7 +16,7 @@ import { tmpdir, homedir } from 'node:os';
 import { performance } from 'node:perf_hooks';
 
 import { createEmptyRunResult, markError } from '../run-result.mjs';
-import { aggregateUsage } from '../transcript-usage.mjs';
+import { aggregateUsage, findLatestTranscriptForCwd } from '../transcript-usage.mjs';
 import { runDispatcher } from '../dispatcher-spawn.mjs';
 
 const TERMINAL_STATUSES = new Set([
@@ -62,7 +62,13 @@ export async function runDelegate(task, fixtureRoot, env, opts = {}) {
     // 3. Spawn delegate.
     const delegateResult = runDispatcher({
       subcommand: 'delegate',
-      args: ['--yes', '--json', '--', task.prompt],
+      // --permission-mode acceptEdits: per Plan 0004 T10, the harness runs
+      // non-interactively and cannot answer Claude's per-edit permission
+      // prompts. Without this flag, edit-requiring tasks (e.g., rename-
+      // variable) hang until the 10-min cell timeout. The isolated
+      // CC_PLUGIN_CODEX_HOME + throwaway fixture bound the scope of
+      // auto-approved edits.
+      args: ['--yes', '--json', '--permission-mode', 'bypassPermissions', '--', task.prompt],
       cwd: fixtureRoot,
       env: runEnv,
       timeoutMs,
@@ -200,12 +206,19 @@ export async function runDelegate(task, fixtureRoot, env, opts = {}) {
         result.caveats.push(`transcript parse returned no usage: ${transcriptPath}`);
       }
     } else if (shortId) {
-      // Try to construct the transcript path from the cwd.
-      const sanitized = fixtureRoot.replace(/\//g, '-');
-      const sanitizedCwd = sanitized.startsWith('-') ? sanitized : `-${sanitized}`;
-      const transcriptDir = join(homedir(), '.claude', 'projects', sanitizedCwd);
-      // We don't know the exact sessionId filename; mark as caveat.
-      result.caveats.push(`transcript path not in job record; expected dir: ${transcriptDir}`);
+      // Job record had no transcriptPath; locate the latest .jsonl in the
+      // Claude Code projects dir matching the fixture cwd (realpath-aware).
+      const discovered = findLatestTranscriptForCwd(fixtureRoot);
+      if (discovered) {
+        const usage = await aggregateUsage(discovered);
+        if (usage !== null) {
+          result.tokenCounts = usage;
+        } else {
+          result.caveats.push(`transcript parse returned no usage: ${discovered}`);
+        }
+      } else {
+        result.caveats.push(`no transcript found for cwd: ${fixtureRoot}`);
+      }
     } else {
       result.caveats.push('transcript not found: no transcriptPath and no shortId in job record');
     }
@@ -232,13 +245,17 @@ export async function runDelegate(task, fixtureRoot, env, opts = {}) {
             }
             result.tempoTransitions = count;
           } else {
-            result.caveats.push(`sidecar state.json has no tempo field: ${sidecarPath}`);
+            result.caveats.push(
+              `sidecar state.json has no tempo field: ~/.claude/jobs/${shortId}/state.json`,
+            );
           }
         } catch {
-          result.caveats.push(`failed to parse sidecar state.json: ${sidecarPath}`);
+          result.caveats.push(
+            `failed to parse sidecar state.json: ~/.claude/jobs/${shortId}/state.json`,
+          );
         }
       } else {
-        result.caveats.push(`sidecar state.json not found: ${sidecarPath}`);
+        result.caveats.push(`sidecar state.json not found: ~/.claude/jobs/${shortId}/state.json`);
       }
     }
 

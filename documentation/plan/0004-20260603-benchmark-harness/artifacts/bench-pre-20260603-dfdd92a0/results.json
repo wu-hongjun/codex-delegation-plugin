@@ -1,0 +1,1648 @@
+{
+  "schemaVersion": 1,
+  "runId": "4904d374",
+  "date": "20260603",
+  "claudeCodeVersion": "2.1.150 (Claude Code)",
+  "nodeVersion": "v25.8.2",
+  "platform": "darwin",
+  "runsPerCell": 5,
+  "tasks": [
+    "summarize-todos",
+    "rename-variable",
+    "answer-question"
+  ],
+  "flows": [
+    "delegate",
+    "delegate-followup",
+    "delegate-review",
+    "delegate-adversarial"
+  ],
+  "cells": [
+    {
+      "flow": "delegate",
+      "task": "summarize-todos",
+      "runs": [
+        {
+          "flow": "delegate",
+          "task": "summarize-todos",
+          "runIndex": 0,
+          "wallClockMs": 35609.520333,
+          "turnsWallClockMs": [
+            35609.520333
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 60,
+            "outputTokens": 4358,
+            "cacheCreationInputTokens": 42877,
+            "cacheReadInputTokens": 305449,
+            "cacheEphemeral1hInputTokens": 42877,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 10,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/f28f5740/state.json"
+          ]
+        },
+        {
+          "flow": "delegate",
+          "task": "summarize-todos",
+          "runIndex": 1,
+          "wallClockMs": 68874.969166,
+          "turnsWallClockMs": [
+            68874.969166
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 66,
+            "outputTokens": 4926,
+            "cacheCreationInputTokens": 42251,
+            "cacheReadInputTokens": 338184,
+            "cacheEphemeral1hInputTokens": 42251,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 11,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/f935ed4c/state.json"
+          ]
+        },
+        {
+          "flow": "delegate",
+          "task": "summarize-todos",
+          "runIndex": 2,
+          "wallClockMs": 36267.96979100001,
+          "turnsWallClockMs": [
+            36267.96979100001
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 60,
+            "outputTokens": 4616,
+            "cacheCreationInputTokens": 41971,
+            "cacheReadInputTokens": 305245,
+            "cacheEphemeral1hInputTokens": 41971,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 10,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/bb361d58/state.json"
+          ]
+        },
+        {
+          "flow": "delegate",
+          "task": "summarize-todos",
+          "runIndex": 3,
+          "wallClockMs": 32393.35379199998,
+          "turnsWallClockMs": [
+            32393.35379199998
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 54,
+            "outputTokens": 5421,
+            "cacheCreationInputTokens": 36679,
+            "cacheReadInputTokens": 267857,
+            "cacheEphemeral1hInputTokens": 36679,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 9,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/fad7f6a1/state.json"
+          ]
+        },
+        {
+          "flow": "delegate",
+          "task": "summarize-todos",
+          "runIndex": 4,
+          "wallClockMs": 30367.237666,
+          "turnsWallClockMs": [
+            30367.237666
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 36,
+            "outputTokens": 2603,
+            "cacheCreationInputTokens": 34377,
+            "cacheReadInputTokens": 167934,
+            "cacheEphemeral1hInputTokens": 34377,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 6,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/2c76e2ed/state.json"
+          ]
+        }
+      ]
+    },
+    {
+      "flow": "delegate",
+      "task": "rename-variable",
+      "runs": [
+        {
+          "flow": "delegate",
+          "task": "rename-variable",
+          "runIndex": 0,
+          "wallClockMs": 91742.59645799999,
+          "turnsWallClockMs": [
+            91742.59645799999
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 112,
+            "outputTokens": 4681,
+            "cacheCreationInputTokens": 72064,
+            "cacheReadInputTokens": 730622,
+            "cacheEphemeral1hInputTokens": 72064,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 22,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/44a59652/state.json"
+          ]
+        },
+        {
+          "flow": "delegate",
+          "task": "rename-variable",
+          "runIndex": 1,
+          "wallClockMs": 58562.07891699998,
+          "turnsWallClockMs": [
+            58562.07891699998
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 84,
+            "outputTokens": 5033,
+            "cacheCreationInputTokens": 54083,
+            "cacheReadInputTokens": 635978,
+            "cacheEphemeral1hInputTokens": 54083,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 19,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/aa7242c3/state.json"
+          ]
+        },
+        {
+          "flow": "delegate",
+          "task": "rename-variable",
+          "runIndex": 2,
+          "wallClockMs": 75484.785416,
+          "turnsWallClockMs": [
+            75484.785416
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 101,
+            "outputTokens": 5366,
+            "cacheCreationInputTokens": 73814,
+            "cacheReadInputTokens": 700923,
+            "cacheEphemeral1hInputTokens": 73814,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 21,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/d1f74bc0/state.json"
+          ]
+        },
+        {
+          "flow": "delegate",
+          "task": "rename-variable",
+          "runIndex": 3,
+          "wallClockMs": 65205.16837500001,
+          "turnsWallClockMs": [
+            65205.16837500001
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 90,
+            "outputTokens": 5547,
+            "cacheCreationInputTokens": 88648,
+            "cacheReadInputTokens": 639777,
+            "cacheEphemeral1hInputTokens": 88648,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 20,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/9a7849d6/state.json"
+          ]
+        },
+        {
+          "flow": "delegate",
+          "task": "rename-variable",
+          "runIndex": 4,
+          "wallClockMs": 94561.75529100001,
+          "turnsWallClockMs": [
+            94561.75529100001
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 136,
+            "outputTokens": 10197,
+            "cacheCreationInputTokens": 75568,
+            "cacheReadInputTokens": 894335,
+            "cacheEphemeral1hInputTokens": 75568,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 26,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/8b2bb5a9/state.json"
+          ]
+        }
+      ]
+    },
+    {
+      "flow": "delegate",
+      "task": "answer-question",
+      "runs": [
+        {
+          "flow": "delegate",
+          "task": "answer-question",
+          "runIndex": 0,
+          "wallClockMs": 41761.84149999998,
+          "turnsWallClockMs": [
+            41761.84149999998
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 18,
+            "outputTokens": 266,
+            "cacheCreationInputTokens": 29430,
+            "cacheReadInputTokens": 68273,
+            "cacheEphemeral1hInputTokens": 29430,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 3,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/c5360a64/state.json"
+          ]
+        },
+        {
+          "flow": "delegate",
+          "task": "answer-question",
+          "runIndex": 1,
+          "wallClockMs": 12040.911458999966,
+          "turnsWallClockMs": [
+            12040.911458999966
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 18,
+            "outputTokens": 260,
+            "cacheCreationInputTokens": 29872,
+            "cacheReadInputTokens": 68867,
+            "cacheEphemeral1hInputTokens": 29872,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 3,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/4cbb6b4f/state.json"
+          ]
+        },
+        {
+          "flow": "delegate",
+          "task": "answer-question",
+          "runIndex": 2,
+          "wallClockMs": 15330.347540999996,
+          "turnsWallClockMs": [
+            15330.347540999996
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 18,
+            "outputTokens": 270,
+            "cacheCreationInputTokens": 29867,
+            "cacheReadInputTokens": 68862,
+            "cacheEphemeral1hInputTokens": 29867,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 3,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/8a15f5b9/state.json"
+          ]
+        },
+        {
+          "flow": "delegate",
+          "task": "answer-question",
+          "runIndex": 3,
+          "wallClockMs": 44868.44908400008,
+          "turnsWallClockMs": [
+            44868.44908400008
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 18,
+            "outputTokens": 270,
+            "cacheCreationInputTokens": 29865,
+            "cacheReadInputTokens": 68861,
+            "cacheEphemeral1hInputTokens": 29865,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 3,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/ff332227/state.json"
+          ]
+        },
+        {
+          "flow": "delegate",
+          "task": "answer-question",
+          "runIndex": 4,
+          "wallClockMs": 12168.962541999994,
+          "turnsWallClockMs": [
+            12168.962541999994
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 18,
+            "outputTokens": 268,
+            "cacheCreationInputTokens": 30096,
+            "cacheReadInputTokens": 69176,
+            "cacheEphemeral1hInputTokens": 30096,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 3,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/86182b1d/state.json"
+          ]
+        }
+      ]
+    },
+    {
+      "flow": "delegate-followup",
+      "task": "summarize-todos",
+      "runs": [
+        {
+          "flow": "delegate-followup",
+          "task": "summarize-todos",
+          "runIndex": 0,
+          "wallClockMs": 61049.984582999954,
+          "turnsWallClockMs": [
+            40011.724624999915,
+            15694.355666999938
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 84,
+            "outputTokens": 5014,
+            "cacheCreationInputTokens": 65400,
+            "cacheReadInputTokens": 434484,
+            "cacheEphemeral1hInputTokens": 65400,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 14,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/3d0e5ca3/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-followup",
+          "task": "summarize-todos",
+          "runIndex": 1,
+          "wallClockMs": 54525.351790999994,
+          "turnsWallClockMs": [
+            33286.463791999966,
+            15810.408249999979
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 72,
+            "outputTokens": 4274,
+            "cacheCreationInputTokens": 60138,
+            "cacheReadInputTokens": 364486,
+            "cacheEphemeral1hInputTokens": 60138,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 12,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/71c95185/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-followup",
+          "task": "summarize-todos",
+          "runIndex": 2,
+          "wallClockMs": 54636.421875,
+          "turnsWallClockMs": [
+            33147.45945800003,
+            15670.120667000068
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 72,
+            "outputTokens": 5064,
+            "cacheCreationInputTokens": 61586,
+            "cacheReadInputTokens": 353535,
+            "cacheEphemeral1hInputTokens": 61586,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 12,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/4cac43ed/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-followup",
+          "task": "summarize-todos",
+          "runIndex": 3,
+          "wallClockMs": 54363.36400000006,
+          "turnsWallClockMs": [
+            33140.70212500007,
+            15746.381209000014
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 66,
+            "outputTokens": 4926,
+            "cacheCreationInputTokens": 62005,
+            "cacheReadInputTokens": 323315,
+            "cacheEphemeral1hInputTokens": 62005,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 11,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/f06c68da/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-followup",
+          "task": "summarize-todos",
+          "runIndex": 4,
+          "wallClockMs": 57560.838666999945,
+          "turnsWallClockMs": [
+            36417.08137500007,
+            15733.455958000035
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 72,
+            "outputTokens": 4799,
+            "cacheCreationInputTokens": 60589,
+            "cacheReadInputTokens": 364765,
+            "cacheEphemeral1hInputTokens": 60589,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 12,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/fa324410/state.json"
+          ]
+        }
+      ]
+    },
+    {
+      "flow": "delegate-followup",
+      "task": "rename-variable",
+      "runs": [
+        {
+          "flow": "delegate-followup",
+          "task": "rename-variable",
+          "runIndex": 0,
+          "wallClockMs": 97040.429458,
+          "turnsWallClockMs": [
+            79184.08999999997,
+            12404.181458000094
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 88,
+            "outputTokens": 4064,
+            "cacheCreationInputTokens": 74998,
+            "cacheReadInputTokens": 580545,
+            "cacheEphemeral1hInputTokens": 74998,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 18,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/a2987cc5/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-followup",
+          "task": "rename-variable",
+          "runIndex": 1,
+          "wallClockMs": 74389.43799999985,
+          "turnsWallClockMs": [
+            56183.03674999997,
+            12586.966500000097
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 101,
+            "outputTokens": 4345,
+            "cacheCreationInputTokens": 75948,
+            "cacheReadInputTokens": 691236,
+            "cacheEphemeral1hInputTokens": 75948,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 21,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/280ef1d0/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-followup",
+          "task": "rename-variable",
+          "runIndex": 2,
+          "wallClockMs": 81707.71537500015,
+          "turnsWallClockMs": [
+            63130.748249999946,
+            12493.848292000126
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 89,
+            "outputTokens": 5664,
+            "cacheCreationInputTokens": 92524,
+            "cacheReadInputTokens": 599729,
+            "cacheEphemeral1hInputTokens": 92524,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 19,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/39a94930/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-followup",
+          "task": "rename-variable",
+          "runIndex": 3,
+          "wallClockMs": 81457.929458,
+          "turnsWallClockMs": [
+            63060.81491700001,
+            12588.21016599983
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 96,
+            "outputTokens": 5302,
+            "cacheCreationInputTokens": 76863,
+            "cacheReadInputTokens": 693359,
+            "cacheEphemeral1hInputTokens": 76863,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 21,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/9a85d739/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-followup",
+          "task": "rename-variable",
+          "runIndex": 4,
+          "wallClockMs": 75354.22308299993,
+          "turnsWallClockMs": [
+            57141.967458000174,
+            12488.6234579999
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 81,
+            "outputTokens": 4949,
+            "cacheCreationInputTokens": 57303,
+            "cacheReadInputTokens": 521446,
+            "cacheEphemeral1hInputTokens": 57303,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 16,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/23afb4e9/state.json"
+          ]
+        }
+      ]
+    },
+    {
+      "flow": "delegate-followup",
+      "task": "answer-question",
+      "runs": [
+        {
+          "flow": "delegate-followup",
+          "task": "answer-question",
+          "runIndex": 0,
+          "wallClockMs": 24721.69858399988,
+          "turnsWallClockMs": [
+            6830.358957999852,
+            12472.678624999942
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 24,
+            "outputTokens": 272,
+            "cacheCreationInputTokens": 30534,
+            "cacheReadInputTokens": 102411,
+            "cacheEphemeral1hInputTokens": 30534,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 4,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/5961f1fe/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-followup",
+          "task": "answer-question",
+          "runIndex": 1,
+          "wallClockMs": 28335.583334000083,
+          "turnsWallClockMs": [
+            10231.213750000112,
+            12545.122625000076
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 24,
+            "outputTokens": 266,
+            "cacheCreationInputTokens": 30537,
+            "cacheReadInputTokens": 102414,
+            "cacheEphemeral1hInputTokens": 30537,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 4,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/e11b9d4f/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-followup",
+          "task": "answer-question",
+          "runIndex": 2,
+          "wallClockMs": 32076.4343330001,
+          "turnsWallClockMs": [
+            10247.860208000056,
+            16121.73825000017
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 24,
+            "outputTokens": 276,
+            "cacheCreationInputTokens": 30530,
+            "cacheReadInputTokens": 102407,
+            "cacheEphemeral1hInputTokens": 30530,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 4,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/499c13c4/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-followup",
+          "task": "answer-question",
+          "runIndex": 3,
+          "wallClockMs": 28589.35858400003,
+          "turnsWallClockMs": [
+            10276.25074999989,
+            12601.398999999976
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 24,
+            "outputTokens": 272,
+            "cacheCreationInputTokens": 30530,
+            "cacheReadInputTokens": 102407,
+            "cacheEphemeral1hInputTokens": 30530,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 4,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/0bbccb35/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-followup",
+          "task": "answer-question",
+          "runIndex": 4,
+          "wallClockMs": 28599.485208000056,
+          "turnsWallClockMs": [
+            10162.145624999888,
+            12522.189207999967
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 24,
+            "outputTokens": 262,
+            "cacheCreationInputTokens": 30531,
+            "cacheReadInputTokens": 102408,
+            "cacheEphemeral1hInputTokens": 30531,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 4,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": null,
+          "caveats": [
+            "sidecar state.json has no tempo field: ~/.claude/jobs/6cdc28f4/state.json"
+          ]
+        }
+      ]
+    },
+    {
+      "flow": "delegate-review",
+      "task": "summarize-todos",
+      "runs": [
+        {
+          "flow": "delegate-review",
+          "task": "summarize-todos",
+          "runIndex": 0,
+          "wallClockMs": 63861.810624999925,
+          "turnsWallClockMs": [
+            46386.39408400003,
+            17475.38995799981
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass_with_findings",
+          "findingsCount": 1,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        },
+        {
+          "flow": "delegate-review",
+          "task": "summarize-todos",
+          "runIndex": 1,
+          "wallClockMs": 59883.29433299997,
+          "turnsWallClockMs": [
+            42398.14833300002,
+            17485.126875000075
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        },
+        {
+          "flow": "delegate-review",
+          "task": "summarize-todos",
+          "runIndex": 2,
+          "wallClockMs": 59321.82899999991,
+          "turnsWallClockMs": [
+            41914.04854199989,
+            17407.759957999922
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass_with_findings",
+          "findingsCount": 1,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        },
+        {
+          "flow": "delegate-review",
+          "task": "summarize-todos",
+          "runIndex": 3,
+          "wallClockMs": 62644.804459000006,
+          "turnsWallClockMs": [
+            45222.77537499997,
+            17422.013999999966
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        },
+        {
+          "flow": "delegate-review",
+          "task": "summarize-todos",
+          "runIndex": 4,
+          "wallClockMs": 58394.60137499985,
+          "turnsWallClockMs": [
+            44924.56199999992,
+            13470.037583000027
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": "review_failed",
+          "caveats": []
+        }
+      ]
+    },
+    {
+      "flow": "delegate-review",
+      "task": "rename-variable",
+      "runs": [
+        {
+          "flow": "delegate-review",
+          "task": "rename-variable",
+          "runIndex": 0,
+          "wallClockMs": 91694.16766699986,
+          "turnsWallClockMs": [
+            74353.797792,
+            17340.351249999832
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass_with_findings",
+          "findingsCount": 1,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        },
+        {
+          "flow": "delegate-review",
+          "task": "rename-variable",
+          "runIndex": 1,
+          "wallClockMs": 105628.15304200002,
+          "turnsWallClockMs": [
+            88282.36487499997,
+            17345.76199999987
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass_with_findings",
+          "findingsCount": 1,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        },
+        {
+          "flow": "delegate-review",
+          "task": "rename-variable",
+          "runIndex": 2,
+          "wallClockMs": 72330.48837499972,
+          "turnsWallClockMs": [
+            54929.97058399976,
+            17400.502290999983
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass_with_findings",
+          "findingsCount": 1,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        },
+        {
+          "flow": "delegate-review",
+          "task": "rename-variable",
+          "runIndex": 3,
+          "wallClockMs": 81105.41779199988,
+          "turnsWallClockMs": [
+            67714.84858300025,
+            13390.568165999837
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": null,
+          "findingsCount": null,
+          "error": "review_failed",
+          "caveats": []
+        },
+        {
+          "flow": "delegate-review",
+          "task": "rename-variable",
+          "runIndex": 4,
+          "wallClockMs": 98256.04474999988,
+          "turnsWallClockMs": [
+            80948.62941599963,
+            17307.39900000021
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass_with_findings",
+          "findingsCount": 1,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        }
+      ]
+    },
+    {
+      "flow": "delegate-review",
+      "task": "answer-question",
+      "runs": [
+        {
+          "flow": "delegate-review",
+          "task": "answer-question",
+          "runIndex": 0,
+          "wallClockMs": 29075.711667000316,
+          "turnsWallClockMs": [
+            11791.064542000182,
+            17284.63287499966
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass_with_findings",
+          "findingsCount": 1,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        },
+        {
+          "flow": "delegate-review",
+          "task": "answer-question",
+          "runIndex": 1,
+          "wallClockMs": 32865.112208000384,
+          "turnsWallClockMs": [
+            15549.11820799997,
+            17315.97733299993
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        },
+        {
+          "flow": "delegate-review",
+          "task": "answer-question",
+          "runIndex": 2,
+          "wallClockMs": 29445.801582999993,
+          "turnsWallClockMs": [
+            12166.310124999844,
+            17279.47558300011
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass_with_findings",
+          "findingsCount": 1,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        },
+        {
+          "flow": "delegate-review",
+          "task": "answer-question",
+          "runIndex": 3,
+          "wallClockMs": 29177.410167000256,
+          "turnsWallClockMs": [
+            11809.259291999973,
+            17368.13754200004
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        },
+        {
+          "flow": "delegate-review",
+          "task": "answer-question",
+          "runIndex": 4,
+          "wallClockMs": 29188.082665999886,
+          "turnsWallClockMs": [
+            11840.589583000168,
+            17347.481541000307
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": null,
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "transcript not found: no transcriptPath and no shortId in job record"
+          ]
+        }
+      ]
+    },
+    {
+      "flow": "delegate-adversarial",
+      "task": "summarize-todos",
+      "runs": [
+        {
+          "flow": "delegate-adversarial",
+          "task": "summarize-todos",
+          "runIndex": 0,
+          "wallClockMs": 70312.96670799982,
+          "turnsWallClockMs": [
+            31638.542291999795,
+            38397.54983399995
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 66,
+            "outputTokens": 6239,
+            "cacheCreationInputTokens": 44529,
+            "cacheReadInputTokens": 350131,
+            "cacheEphemeral1hInputTokens": 44529,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 11,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:0, low:0, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/31aa99f8/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-adversarial",
+          "task": "summarize-todos",
+          "runIndex": 1,
+          "wallClockMs": 81594.79575000005,
+          "turnsWallClockMs": [
+            38263.60233299993,
+            43039.59991700016
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 60,
+            "outputTokens": 4796,
+            "cacheCreationInputTokens": 41323,
+            "cacheReadInputTokens": 319889,
+            "cacheEphemeral1hInputTokens": 41323,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 10,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass_with_findings",
+          "findingsCount": 3,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:0, low:1, nit:2",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/84f1100d/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-adversarial",
+          "task": "summarize-todos",
+          "runIndex": 2,
+          "wallClockMs": 86351.15120799979,
+          "turnsWallClockMs": [
+            38729.75674999971,
+            47348.881666999776
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 66,
+            "outputTokens": 5770,
+            "cacheCreationInputTokens": 40625,
+            "cacheReadInputTokens": 352722,
+            "cacheEphemeral1hInputTokens": 40625,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 11,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:0, low:0, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/bccb363d/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-adversarial",
+          "task": "summarize-todos",
+          "runIndex": 3,
+          "wallClockMs": 50659.78445899999,
+          "turnsWallClockMs": [
+            38495.9318339997,
+            11899.216916000005
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 6,
+            "outputTokens": 197,
+            "cacheCreationInputTokens": 15804,
+            "cacheReadInputTokens": 18082,
+            "cacheEphemeral1hInputTokens": 15804,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 1,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:0, low:0, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/9f70862f/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-adversarial",
+          "task": "summarize-todos",
+          "runIndex": 4,
+          "wallClockMs": 69220.06216700003,
+          "turnsWallClockMs": [
+            25233.866458999924,
+            43700.06754099997
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 60,
+            "outputTokens": 4568,
+            "cacheCreationInputTokens": 37944,
+            "cacheReadInputTokens": 317493,
+            "cacheEphemeral1hInputTokens": 37944,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 10,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:0, low:0, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/3fe68774/state.json"
+          ]
+        }
+      ]
+    },
+    {
+      "flow": "delegate-adversarial",
+      "task": "rename-variable",
+      "runs": [
+        {
+          "flow": "delegate-adversarial",
+          "task": "rename-variable",
+          "runIndex": 0,
+          "wallClockMs": 96628.6175830001,
+          "turnsWallClockMs": [
+            71686.69504100038,
+            24653.11950000003
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 6,
+            "outputTokens": 1018,
+            "cacheCreationInputTokens": 14875,
+            "cacheReadInputTokens": 18082,
+            "cacheEphemeral1hInputTokens": 14875,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 1,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass_with_findings",
+          "findingsCount": 4,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:2, low:2, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/8f09f192/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-adversarial",
+          "task": "rename-variable",
+          "runIndex": 1,
+          "wallClockMs": 114681.94845800009,
+          "turnsWallClockMs": [
+            94616.75412499998,
+            19777.0542919999
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 6,
+            "outputTokens": 807,
+            "cacheCreationInputTokens": 14857,
+            "cacheReadInputTokens": 18082,
+            "cacheEphemeral1hInputTokens": 14857,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 1,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass_with_findings",
+          "findingsCount": 3,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:1, low:1, nit:1",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/e71ac3c8/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-adversarial",
+          "task": "rename-variable",
+          "runIndex": 2,
+          "wallClockMs": 84568.98729200009,
+          "turnsWallClockMs": [
+            74681.45137500018,
+            9599.746374999639
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 6,
+            "outputTokens": 144,
+            "cacheCreationInputTokens": 14918,
+            "cacheReadInputTokens": 18082,
+            "cacheEphemeral1hInputTokens": 14918,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 1,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:0, low:0, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/bca2aa23/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-adversarial",
+          "task": "rename-variable",
+          "runIndex": 3,
+          "wallClockMs": 99799.87800000003,
+          "turnsWallClockMs": [
+            74820.95399999991,
+            24694.391916000284
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 6,
+            "outputTokens": 950,
+            "cacheCreationInputTokens": 15712,
+            "cacheReadInputTokens": 18082,
+            "cacheEphemeral1hInputTokens": 15712,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 1,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass_with_findings",
+          "findingsCount": 3,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:2, low:1, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/fafdaa9c/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-adversarial",
+          "task": "rename-variable",
+          "runIndex": 4,
+          "wallClockMs": 107091.66949999984,
+          "turnsWallClockMs": [
+            91538.92408399982,
+            15246.211999999825
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 6,
+            "outputTokens": 217,
+            "cacheCreationInputTokens": 15970,
+            "cacheReadInputTokens": 18082,
+            "cacheEphemeral1hInputTokens": 15970,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 1,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:0, low:0, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/031e7e79/state.json"
+          ]
+        }
+      ]
+    },
+    {
+      "flow": "delegate-adversarial",
+      "task": "answer-question",
+      "runs": [
+        {
+          "flow": "delegate-adversarial",
+          "task": "answer-question",
+          "runIndex": 0,
+          "wallClockMs": 26461.307124999817,
+          "turnsWallClockMs": [
+            11760.292957999744,
+            14401.156709000003
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 18,
+            "outputTokens": 533,
+            "cacheCreationInputTokens": 30758,
+            "cacheReadInputTokens": 68723,
+            "cacheEphemeral1hInputTokens": 30758,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 3,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:0, low:0, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/1e2da472/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-adversarial",
+          "task": "answer-question",
+          "runIndex": 1,
+          "wallClockMs": 29235.04450000031,
+          "turnsWallClockMs": [
+            12341.39245800022,
+            16601.1357499999
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 18,
+            "outputTokens": 498,
+            "cacheCreationInputTokens": 30756,
+            "cacheReadInputTokens": 68729,
+            "cacheEphemeral1hInputTokens": 30756,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 3,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:0, low:0, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/ddea2de5/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-adversarial",
+          "task": "answer-question",
+          "runIndex": 2,
+          "wallClockMs": 32600.798584000207,
+          "turnsWallClockMs": [
+            15620.129459000193,
+            16680.463082999922
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 24,
+            "outputTokens": 1158,
+            "cacheCreationInputTokens": 45798,
+            "cacheReadInputTokens": 86860,
+            "cacheEphemeral1hInputTokens": 45798,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 4,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:0, low:0, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/6152ebe4/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-adversarial",
+          "task": "answer-question",
+          "runIndex": 3,
+          "wallClockMs": 29441.362333000172,
+          "turnsWallClockMs": [
+            12280.135583000258,
+            16850.603666999843
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 24,
+            "outputTokens": 1140,
+            "cacheCreationInputTokens": 47425,
+            "cacheReadInputTokens": 87896,
+            "cacheEphemeral1hInputTokens": 47425,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 4,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:0, low:0, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/b02a4080/state.json"
+          ]
+        },
+        {
+          "flow": "delegate-adversarial",
+          "task": "answer-question",
+          "runIndex": 4,
+          "wallClockMs": 28150.23170799995,
+          "turnsWallClockMs": [
+            15596.796374999918,
+            12235.2843340002
+          ],
+          "tempoTransitions": null,
+          "tokenCounts": {
+            "inputTokens": 18,
+            "outputTokens": 478,
+            "cacheCreationInputTokens": 30867,
+            "cacheReadInputTokens": 68778,
+            "cacheEphemeral1hInputTokens": 30867,
+            "cacheEphemeral5mInputTokens": 0,
+            "messageCount": 3,
+            "serviceTier": "standard"
+          },
+          "reviewVerdict": "pass",
+          "findingsCount": 0,
+          "error": null,
+          "caveats": [
+            "adversarial-review severities: blocker:0, high:0, medium:0, low:0, nit:0",
+            "adversarial review session transcript missing: transcriptPath not in review output",
+            "sidecar state.json has no tempo field: ~/.claude/jobs/09146c43/state.json"
+          ]
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "cutoverPhase": "pre",
+    "billingBucketObservation": null,
+    "caveats": [
+      "sidecar state.json has no tempo field: ~/.claude/jobs/f28f5740/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/f935ed4c/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/bb361d58/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/fad7f6a1/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/2c76e2ed/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/44a59652/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/aa7242c3/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/d1f74bc0/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/9a7849d6/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/8b2bb5a9/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/c5360a64/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/4cbb6b4f/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/8a15f5b9/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/ff332227/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/86182b1d/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/3d0e5ca3/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/71c95185/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/4cac43ed/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/f06c68da/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/fa324410/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/a2987cc5/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/280ef1d0/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/39a94930/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/9a85d739/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/23afb4e9/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/5961f1fe/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/e11b9d4f/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/499c13c4/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/0bbccb35/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/6cdc28f4/state.json",
+      "transcript not found: no transcriptPath and no shortId in job record",
+      "adversarial-review severities: blocker:0, high:0, medium:0, low:0, nit:0",
+      "adversarial review session transcript missing: transcriptPath not in review output",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/31aa99f8/state.json",
+      "adversarial-review severities: blocker:0, high:0, medium:0, low:1, nit:2",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/84f1100d/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/bccb363d/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/9f70862f/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/3fe68774/state.json",
+      "adversarial-review severities: blocker:0, high:0, medium:2, low:2, nit:0",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/8f09f192/state.json",
+      "adversarial-review severities: blocker:0, high:0, medium:1, low:1, nit:1",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/e71ac3c8/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/bca2aa23/state.json",
+      "adversarial-review severities: blocker:0, high:0, medium:2, low:1, nit:0",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/fafdaa9c/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/031e7e79/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/1e2da472/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/ddea2de5/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/6152ebe4/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/b02a4080/state.json",
+      "sidecar state.json has no tempo field: ~/.claude/jobs/09146c43/state.json"
+    ]
+  }
+}

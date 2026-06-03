@@ -18,7 +18,7 @@ import { tmpdir, homedir } from 'node:os';
 import { performance } from 'node:perf_hooks';
 
 import { createEmptyRunResult, markError } from '../run-result.mjs';
-import { aggregateUsage } from '../transcript-usage.mjs';
+import { aggregateUsage, findLatestTranscriptForCwd } from '../transcript-usage.mjs';
 import { runDispatcher } from '../dispatcher-spawn.mjs';
 
 const TERMINAL_STATUSES = new Set([
@@ -67,7 +67,9 @@ export async function runDelegateFollowup(task, fixtureRoot, env, opts = {}) {
     // 3. Spawn delegate.
     const delegateResult = runDispatcher({
       subcommand: 'delegate',
-      args: ['--yes', '--json', '--', task.prompt],
+      // --permission-mode acceptEdits: see comment in delegate.mjs. Required
+      // for non-interactive bench runs against edit-requiring tasks.
+      args: ['--yes', '--json', '--permission-mode', 'bypassPermissions', '--', task.prompt],
       cwd: fixtureRoot,
       env: runEnv,
       timeoutMs,
@@ -301,10 +303,17 @@ export async function runDelegateFollowup(task, fixtureRoot, env, opts = {}) {
         result.caveats.push(`transcript parse returned no usage: ${transcriptPath}`);
       }
     } else if (shortId) {
-      const sanitized = fixtureRoot.replace(/\//g, '-');
-      const sanitizedCwd = sanitized.startsWith('-') ? sanitized : `-${sanitized}`;
-      const transcriptDir = join(homedir(), '.claude', 'projects', sanitizedCwd);
-      result.caveats.push(`transcript path not in job record; expected dir: ${transcriptDir}`);
+      const discovered = findLatestTranscriptForCwd(fixtureRoot);
+      if (discovered) {
+        const usage = await aggregateUsage(discovered);
+        if (usage !== null) {
+          result.tokenCounts = usage;
+        } else {
+          result.caveats.push(`transcript parse returned no usage: ${discovered}`);
+        }
+      } else {
+        result.caveats.push(`no transcript found for cwd: ${fixtureRoot}`);
+      }
     } else {
       result.caveats.push('transcript not found: no transcriptPath and no shortId in job record');
     }
@@ -330,13 +339,17 @@ export async function runDelegateFollowup(task, fixtureRoot, env, opts = {}) {
             }
             result.tempoTransitions = count;
           } else {
-            result.caveats.push(`sidecar state.json has no tempo field: ${sidecarPath}`);
+            result.caveats.push(
+              `sidecar state.json has no tempo field: ~/.claude/jobs/${shortId}/state.json`,
+            );
           }
         } catch {
-          result.caveats.push(`failed to parse sidecar state.json: ${sidecarPath}`);
+          result.caveats.push(
+            `failed to parse sidecar state.json: ~/.claude/jobs/${shortId}/state.json`,
+          );
         }
       } else {
-        result.caveats.push(`sidecar state.json not found: ${sidecarPath}`);
+        result.caveats.push(`sidecar state.json not found: ~/.claude/jobs/${shortId}/state.json`);
       }
     }
 

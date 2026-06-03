@@ -11,7 +11,7 @@
  * handled here and will produce a caveat in the RunResult).
  */
 
-import { createReadStream, existsSync } from 'node:fs';
+import { createReadStream, existsSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -19,14 +19,27 @@ import { join } from 'node:path';
 /**
  * Compute the sanitized cwd path used by Claude Code for transcript storage.
  *
- * Rule: replace all '/' with '-'. If the result does not start with '-',
- * prepend one. Dots are passed through unchanged (best-effort).
+ * Rule: resolve realpath FIRST (on macOS, /var/folders is a symlink to
+ * /private/var/folders; Claude Code stores transcripts under the realpath,
+ * so we must do the same). Then replace all '/' with '-'. If the result
+ * does not start with '-', prepend one. Dots are passed through unchanged
+ * (best-effort).
+ *
+ * realpath failures (e.g., path no longer exists by the time we look) fall
+ * back to the original cwd — better to compute a defensible best-effort
+ * path than to throw.
  *
  * @param {string} cwd - absolute path, e.g. '/Users/hongjunwu/Repositories/Git/cc-plugin-codex'
  * @returns {string} e.g. '-Users-hongjunwu-Repositories-Git-cc-plugin-codex'
  */
 export function sanitizeCwd(cwd) {
-  const replaced = cwd.replace(/\//g, '-');
+  let resolved = cwd;
+  try {
+    resolved = realpathSync(cwd);
+  } catch {
+    // Fall back to the original path if realpath fails (e.g., path was cleaned up).
+  }
+  const replaced = resolved.replace(/\//g, '-');
   return replaced.startsWith('-') ? replaced : `-${replaced}`;
 }
 
@@ -38,6 +51,34 @@ export function sanitizeCwd(cwd) {
  */
 export function transcriptDirForCwd(cwd) {
   return join(homedir(), '.claude', 'projects', sanitizeCwd(cwd));
+}
+
+/**
+ * Find the most-recently-modified `.jsonl` transcript inside the Claude Code
+ * projects directory for the given cwd. realpath-aware via `sanitizeCwd`.
+ *
+ * Returns the absolute path to the latest transcript file, or null if the
+ * dir does not exist or contains no `.jsonl` files. Never throws.
+ *
+ * @param {string} cwd
+ * @returns {string | null}
+ */
+export function findLatestTranscriptForCwd(cwd) {
+  const dir = transcriptDirForCwd(cwd);
+  if (!existsSync(dir)) return null;
+  let entries;
+  try {
+    entries = readdirSync(dir)
+      .filter((f) => f.endsWith('.jsonl'))
+      .map((f) => {
+        const p = join(dir, f);
+        return { p, mtimeMs: statSync(p).mtimeMs };
+      })
+      .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  } catch {
+    return null;
+  }
+  return entries.length > 0 ? entries[0].p : null;
 }
 
 /**

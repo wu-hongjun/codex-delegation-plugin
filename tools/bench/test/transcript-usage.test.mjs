@@ -6,7 +6,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, rmSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -234,5 +234,42 @@ describe('sanitizeCwd()', () => {
   it('preserves dots in path segments', () => {
     const result = sanitizeCwd('/home/user/.config');
     assert.equal(result, '-home-user-.config');
+  });
+
+  it('resolves realpath before sanitizing (macOS /var/folders symlink fix)', () => {
+    // On macOS, paths created under os.tmpdir() (typically /var/folders/...)
+    // are symlinks to /private/var/folders/.... Claude Code stores transcripts
+    // under the realpath. The harness must do the same to find them.
+    //
+    // We create a real temp dir and verify sanitizeCwd resolves the symlink
+    // before sanitizing — i.e., the result reflects the realpath, not the
+    // original (possibly symlinked) path.
+    const tmp = mkdtempSync(join(tmpdir(), 't10-realpath-'));
+    try {
+      const result = sanitizeCwd(tmp);
+      const expected = realpathSync(tmp).replace(/\//g, '-');
+      const expectedWithDash = expected.startsWith('-') ? expected : `-${expected}`;
+      assert.equal(
+        result,
+        expectedWithDash,
+        `sanitizeCwd should resolve realpath first; on macOS /var/folders should become /private/var/folders. Got: ${result}, expected: ${expectedWithDash}`,
+      );
+      // On macOS specifically, the realpath should contain "/private/" if the original was under /var/.
+      if (tmp.startsWith('/var/')) {
+        assert.ok(
+          result.includes('-private-'),
+          `on macOS, /var/... should resolve to /private/var/...; got: ${result}`,
+        );
+      }
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  it('falls back to the original path when realpath fails (path does not exist)', () => {
+    // A path that does not exist on disk → realpath throws → fall back.
+    // The result should be the same as the original sanitization.
+    const result = sanitizeCwd('/definitely/does/not/exist/at/all/12345xyz');
+    assert.equal(result, '-definitely-does-not-exist-at-all-12345xyz');
   });
 });

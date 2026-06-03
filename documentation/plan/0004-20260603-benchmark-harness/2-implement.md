@@ -339,13 +339,98 @@ T4 also produced the shared helpers (`run-result.mjs`, `transcript-usage.mjs`, `
 
 ---
 
-## T10/T11/T12 — Deferred to actual measurement dates
+## T10 — Pre-cutover benchmark run
 
-- **T10**: pre-cutover benchmark run (≤ 2026-06-14). Awaiting maintainer-driven run against real Claude Code 2.1.150 + Codex 0.136.0.
-- **T11**: post-cutover benchmark run (≥ 2026-06-16). Same.
+**Status**: complete
+**Date**: 2026-06-03
+**Artifact**: [`artifacts/bench-pre-20260603-dfdd92a0/`](artifacts/bench-pre-20260603-dfdd92a0/)
+**Wall time**: 58 minutes (started 17:00:34 UTC, completed 17:58:46 UTC)
+**Real binaries**: Claude Code 2.1.150 + Codex 0.136.0 on Node 25.8.2 / darwin 25.5.0
+
+### Deliverables
+
+T10 wired the live execution loop in `tools/bench/run.mjs` and ran the full pre-cutover benchmark against real Claude.
+
+**Code (T10 wiring)**:
+- `tools/bench/lib/live-runner.mjs` (NEW) — extracted live execution loop with full DI surface (createFixtureFn, runnerOverrides, aggregateFn, writeSummaryFn, writeFile, mkdirSync, progress, spawnFn).
+- `tools/bench/lib/environment.mjs` (NEW) — `formatEnvironment` + `writeEnvironment` with HOME redaction.
+- `tools/bench/run.mjs` (M) — replaced the "Live execution not yet implemented" stub with a `runLive(...)` call; `--dry-run` path unchanged.
+- `tools/bench/test/live-runner.test.mjs` (NEW) — 15 DI-based tests.
+- `tools/bench/test/environment.test.mjs` (NEW) — 10 tests.
+- `tools/bench/test/cli.test.mjs` (M) — removed the stale "no-op without --dry-run" test (pre-T10 stub-behavior assertion).
+
+The Stage 3 audit's N1 finding (runners hardcode `runIndex: 0`) is closed here: `live-runner.mjs:182` patches `result.runIndex = runIndex` from the actual loop variable.
+
+**Mid-stream bug fixes (3 real bugs discovered by live smokes; not anticipated by the plan)**:
+
+1. **Float-timeout error in `spawnSync`** (`tools/bench/lib/dispatcher-spawn.mjs`). Runners compute timeouts via `deadline - performance.now()` which is a high-resolution float. Passing the float to `spawnSync({ timeout })` throws `The value of "timeout" is out of range. It must be an integer. Received <float>`. Fixed centrally: `coercedTimeoutMs = Math.max(1, Math.floor(Number(timeoutMs) || 0))`. Added 5 regression tests (`dispatcher-spawn.test.mjs`).
+2. **`sanitizeCwd` did not resolve realpath** (`tools/bench/lib/transcript-usage.mjs`). On macOS, `os.tmpdir()` returns `/var/folders/...` which is a symlink to `/private/var/folders/...`. Claude Code stores transcripts under the realpath, so the harness was looking for transcripts at the wrong path. Fixed: `sanitizeCwd` now calls `realpathSync(cwd)` before slash-replacement, with a graceful fallback to the original path if realpath throws. Added 2 tests covering the realpath case + the no-path-exists fallback.
+3. **Transcript discovery missing in 4 of 5 runners**. `baseline-p.mjs` already globbed `transcriptDirForCwd(cwd)` for the latest `.jsonl`, but `delegate.mjs` / `delegate-followup.mjs` / `delegate-review.mjs` / `delegate-adversarial.mjs` each had inline sanitization (`fixtureRoot.replace(/\//g, '-')`) and only appended a caveat instead of actually finding the transcript file. Extracted shared helper `findLatestTranscriptForCwd(cwd)` in `transcript-usage.mjs` and updated all 4 runners to use it.
+
+**Edit-permission gating (`bypassPermissions`)** — OQ-C corpus includes `rename-variable` which requires file edits. The harness runs non-interactively and cannot answer Claude's per-edit permission prompts; the cell hung until the 10-min timeout. Added `--permission-mode bypassPermissions` to all 4 delegate-spawn sites. Auto-approval is bounded by the throwaway fixture + isolated `CC_PLUGIN_CODEX_HOME` (single cell). Documented in source comments.
+
+**HOME-redaction in caveats** (`tools/bench/lib/runners/*.mjs`). Sidecar-related caveats included `/Users/<user>/.claude/jobs/...` (PII leak via username in artifact). Patched all 4 runners to emit `~/.claude/jobs/<shortId>/state.json` form in caveat strings while preserving the absolute path for actual `existsSync`/`readFileSync` calls. The existing artifact was post-processed with `sed 's|/Users/hongjunwu/|~/|g'` to redact the same PII (data unaffected — only narrative strings changed).
+
+### Acceptance evidence
+
+- Run date: 2026-06-03 (≤ 2026-06-14 deadline).
+- `results.json` `metadata.cutoverPhase: "pre"` ✓
+- All 4 flows × 3 tasks completed runs ✓ (58/60 cells `error: null`; 2 cells `error: "review_failed"` on `delegate-review` — non-blocking error-shaped results, harness loop continued).
+- `metadata.claudeCodeVersion: "2.1.150 (Claude Code)"` ✓
+- `metadata.caveats` populated with per-cell observations (sidecar-no-tempo, transcript-not-found one-off, per-cell adversarial-review severities).
+- Billing-bucket observation: `metadata.billingBucketObservation: null` + summary.md "Not observed in this run (see OQ-I)." Maintainer is expected to record an Anthropic Plan dashboard delta observation separately; OQ-I planner recommendation accepted that the harness CANNOT determine billing buckets programmatically.
+
+### Pre-cutover headline metrics
+
+Per-flow median wall-clock latency (all tasks aggregated):
+
+| Flow | Median (ms) | IQR (ms) | Successful runs |
+|---|---|---|---|
+| delegate | 41762 | 31380–67040 | 15/15 |
+| delegate-followup | 54636 | 30338–74872 | 15/15 |
+| delegate-review | 59883 | 31155–76718 | 13/15 |
+| delegate-adversarial | 70313 | 31021–91490 | 15/15 |
+
+Per-task highlights:
+- `summarize-todos`: fastest task (~35s delegate median); all flows complete.
+- `rename-variable`: middle (~75s delegate median); requires bypassPermissions to complete.
+- `answer-question`: fastest of all (~15s delegate median); single-shot inspection.
+
+Aggregated token usage (sum over 15 runs per flow):
+- delegate: 889 input + 54082 output tokens
+- delegate-followup: 941 input + 49749 output tokens
+- delegate-adversarial: 390 input + 28513 output tokens
+
+(`delegate-review` token totals are 0 in summary.md — the review-flow runner currently aggregates only the review-session transcript, not the underlying delegate-job transcript. This is a measurement gap that should be addressed in a future polish if delegate-review's token usage matters for T12.)
+
+Review verdict cross-comparison (15 runs each flow):
+- `summarize-todos`: delegate-review (2 pass / 2 pass_with_findings); delegate-adversarial (4 pass / 1 pass_with_findings)
+- `rename-variable`: delegate-review (0 pass / 4 pass_with_findings); delegate-adversarial (2 pass / 3 pass_with_findings)
+- `answer-question`: delegate-review (3 pass / 2 pass_with_findings); delegate-adversarial (5 pass / 0 pass_with_findings)
+
+### Caveats
+
+- 2 `delegate-review` cells failed with `review_failed`. The harness's error-shaped result + caveats path worked; loop continued.
+- `tempoTransitions: null` in every cell — sidecar `state.json` does not expose a `tempo` field on 2.1.150 (matches T1 research expectation; previously documented).
+- 1 cell had `transcript not found: no transcriptPath and no shortId in job record` — single missed discovery; not a systemic issue.
+- Harness `--permission-mode bypassPermissions` per-cell is the only safety-bypass in the entire bench. Bounded by throwaway fixture + isolated `CC_PLUGIN_CODEX_HOME`.
+
+### Local gate evidence at T10 close (commit pending)
+
+- `npm run lint` — clean
+- `npm run typecheck` — clean
+- `npx prettier --check .` — clean (after auto-format follow-up)
+- `npm test` — exit 0; counts: **mock 68 + runtime 172 + driver 178 + plugin 623 = 1041** (no regression)
+- `npm run test:attach` — **28/28**
+- `npm run test:bench` — **258/258** (was 227 at Stage 4 close; +31 from T10 wiring + 3 bug fixes)
+- **Combined total: 1327** tests passing
+
+## T11/T12 — Deferred to post-cutover
+
+- **T11**: post-cutover benchmark run (≥ 2026-06-16). Awaits the 2026-06-15 Anthropic Agent SDK credit cutover.
 - **T12**: README cost paragraph decision (depends on T10/T11 data).
 
-Per OQ-E + OQ-J resolutions, Stage 5 closes only after T10 + T11 + T12 complete (or after the 30-day cutover-slip escape hatch fires).
+Per OQ-E + OQ-J resolutions, Stage 5 closes only after T11 + T12 complete (or after the 30-day cutover-slip escape hatch fires).
 
 ---
 

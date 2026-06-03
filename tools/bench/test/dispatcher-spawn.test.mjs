@@ -137,6 +137,90 @@ describe('runDispatcher() — basic contract', () => {
   });
 });
 
+describe('runDispatcher() — timeout integer coercion (T10 regression)', () => {
+  /** Spy spawn captures the options passed to spawnSync. */
+  function makeSpySpawn(result = { status: 0, stdout: '', stderr: '', signal: null, error: null }) {
+    const calls = [];
+    const fn = (cmd, args, opts) => {
+      calls.push({ cmd, args, opts });
+      return result;
+    };
+    return { fn, calls };
+  }
+
+  it('floors a fractional timeout to the nearest integer before passing to spawn', () => {
+    const spy = makeSpySpawn();
+    runDispatcher({
+      subcommand: 'status',
+      args: [],
+      cwd: '/tmp',
+      env: {},
+      timeoutMs: 28430.70337500004, // exact float observed in T10 first live run
+      spawn: spy.fn,
+    });
+    assert.equal(spy.calls.length, 1);
+    assert.equal(
+      Number.isInteger(spy.calls[0].opts.timeout),
+      true,
+      `expected integer timeout; got ${spy.calls[0].opts.timeout}`,
+    );
+    assert.equal(spy.calls[0].opts.timeout, 28430);
+  });
+
+  it('coerces a negative timeout (deadline already exceeded) to a minimum of 1ms', () => {
+    const spy = makeSpySpawn();
+    runDispatcher({
+      subcommand: 'status',
+      args: [],
+      cwd: '/tmp',
+      env: {},
+      timeoutMs: -500.7, // deadline already past
+      spawn: spy.fn,
+    });
+    assert.equal(spy.calls.length, 1);
+    assert.equal(spy.calls[0].opts.timeout, 1);
+  });
+
+  it('coerces timeout=0 to a minimum of 1ms (avoid Node "no timeout" semantics)', () => {
+    const spy = makeSpySpawn();
+    runDispatcher({
+      subcommand: 'status',
+      args: [],
+      cwd: '/tmp',
+      env: {},
+      timeoutMs: 0,
+      spawn: spy.fn,
+    });
+    assert.equal(spy.calls[0].opts.timeout, 1);
+  });
+
+  it('preserves an integer timeout unchanged', () => {
+    const spy = makeSpySpawn();
+    runDispatcher({
+      subcommand: 'status',
+      args: [],
+      cwd: '/tmp',
+      env: {},
+      timeoutMs: 30000,
+      spawn: spy.fn,
+    });
+    assert.equal(spy.calls[0].opts.timeout, 30000);
+  });
+
+  it('handles non-number timeoutMs (undefined / NaN) by coercing to 1ms', () => {
+    const spy = makeSpySpawn();
+    runDispatcher({
+      subcommand: 'status',
+      args: [],
+      cwd: '/tmp',
+      env: {},
+      timeoutMs: undefined,
+      spawn: spy.fn,
+    });
+    assert.equal(spy.calls[0].opts.timeout, 1);
+  });
+});
+
 describe('getRepoRoot()', () => {
   it('returns a non-empty string path', () => {
     const root = getRepoRoot();

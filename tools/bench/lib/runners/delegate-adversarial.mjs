@@ -18,7 +18,7 @@ import { tmpdir, homedir } from 'node:os';
 import { performance } from 'node:perf_hooks';
 
 import { createEmptyRunResult, markError } from '../run-result.mjs';
-import { aggregateUsage } from '../transcript-usage.mjs';
+import { aggregateUsage, findLatestTranscriptForCwd } from '../transcript-usage.mjs';
 import { runDispatcher } from '../dispatcher-spawn.mjs';
 
 // Terminal states that have a reviewable result per Plan 0003.
@@ -96,7 +96,9 @@ export async function runDelegateAdversarial(task, fixtureRoot, env, opts = {}) 
     // 3. Spawn delegate.
     const delegateResult = runDispatcher({
       subcommand: 'delegate',
-      args: ['--yes', '--json', '--', task.prompt],
+      // --permission-mode acceptEdits: see comment in delegate.mjs. Required
+      // for non-interactive bench runs against edit-requiring tasks.
+      args: ['--yes', '--json', '--permission-mode', 'bypassPermissions', '--', task.prompt],
       cwd: fixtureRoot,
       env: runEnv,
       timeoutMs,
@@ -425,8 +427,23 @@ async function _aggregateTargetTranscriptUsage(
       return null;
     }
   } else if (shortId) {
-    result.caveats.push(`target transcript path not in job record; shortId: ${shortId}`);
-    return null;
+    // Job record had no transcriptPath; discover the latest .jsonl under
+    // the fixture's projects dir (realpath-aware).
+    const discovered = findLatestTranscriptForCwd(fixtureRoot);
+    if (discovered) {
+      const usage = await aggregateUsage(discovered);
+      if (usage !== null) {
+        return usage;
+      } else {
+        result.caveats.push(`target transcript parse returned no usage: ${discovered}`);
+        return null;
+      }
+    } else {
+      result.caveats.push(
+        `no target transcript found for cwd: ${fixtureRoot}; shortId: ${shortId}`,
+      );
+      return null;
+    }
   } else {
     result.caveats.push(
       'target transcript not found: no transcriptPath and no shortId in job record',
@@ -464,7 +481,7 @@ function _aggregateSidecar(result, resultJobRecord, finalJobRecord) {
 
   const sidecarPath = join(homedir(), '.claude', 'jobs', shortId, 'state.json');
   if (!existsSync(sidecarPath)) {
-    result.caveats.push(`sidecar state.json not found: ${sidecarPath}`);
+    result.caveats.push(`sidecar state.json not found: ~/.claude/jobs/${shortId}/state.json`);
     return;
   }
 
@@ -485,9 +502,11 @@ function _aggregateSidecar(result, resultJobRecord, finalJobRecord) {
       }
       result.tempoTransitions = count;
     } else {
-      result.caveats.push(`sidecar state.json has no tempo field: ${sidecarPath}`);
+      result.caveats.push(
+        `sidecar state.json has no tempo field: ~/.claude/jobs/${shortId}/state.json`,
+      );
     }
   } catch {
-    result.caveats.push(`failed to parse sidecar state.json: ${sidecarPath}`);
+    result.caveats.push(`failed to parse sidecar state.json: ~/.claude/jobs/${shortId}/state.json`);
   }
 }

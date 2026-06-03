@@ -1,0 +1,13 @@
+date: 2026-06-03T17:58:46.538Z
+gitCommit: 93a41e2
+nodeVersion: v25.8.2
+npmVersion: 11.11.1
+codexVersion: codex-cli 0.136.0
+claudeVersion: 2.1.150 (Claude Code)
+platform: darwin
+unameRelease: darwin 25.5.0
+cutoverPhase: pre
+runsPerCell: 5
+flowsIncluded: delegate, delegate-followup, delegate-review, delegate-adversarial
+tasksIncluded: summarize-todos, rename-variable, answer-question
+includeBaselineP: false

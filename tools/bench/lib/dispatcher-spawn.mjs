@@ -86,10 +86,18 @@ export function runDispatcher({ subcommand, args, cwd, env, timeoutMs, spawn }) 
   const spawnFn = spawn ?? spawnSync;
   const cmdArgs = [dispatcherPath, subcommand, ...args];
 
+  // Node's spawnSync timeout option requires a non-negative integer.
+  // Runners compute timeouts as `deadline - performance.now()` which is a
+  // float (performance.now() has fractional milliseconds). If the deadline
+  // has already passed, the value is also negative. Coerce to a positive
+  // integer (minimum 1ms) so spawn fires and timeouts immediately if the
+  // deadline is exhausted.
+  const coercedTimeoutMs = Math.max(1, Math.floor(Number(timeoutMs) || 0));
+
   const result = spawnFn('node', cmdArgs, {
     cwd,
     env,
-    timeout: timeoutMs,
+    timeout: coercedTimeoutMs,
     encoding: 'utf8',
     maxBuffer: 10 * 1024 * 1024, // 10 MB
   });

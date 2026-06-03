@@ -6367,17 +6367,14 @@ describe('printUsage reflects review/adversarial-review accepted flags (Stage 4 
   it('N2-1c: --help describes --model as applying to adversarial-review', () => {
     const result = runDispatcher(['--help']);
     assert.ok(
-      result.stdout.includes('(delegate, adversarial-review)') &&
-        result.stdout.includes('--model'),
+      result.stdout.includes('(delegate, adversarial-review)') && result.stdout.includes('--model'),
       `--help --model flag description must include "(delegate, adversarial-review)"\nActual stdout:\n${result.stdout}`,
     );
   });
 
   it('N2-1d: --help describes --effort as applying to adversarial-review', () => {
     const result = runDispatcher(['--help']);
-    const effortLine = result.stdout
-      .split('\n')
-      .find((l) => l.includes('--effort'));
+    const effortLine = result.stdout.split('\n').find((l) => l.includes('--effort'));
     assert.ok(
       effortLine && effortLine.includes('adversarial-review'),
       `--help --effort flag description must include "adversarial-review"\nLine: ${effortLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,
@@ -6386,9 +6383,7 @@ describe('printUsage reflects review/adversarial-review accepted flags (Stage 4 
 
   it('N2-1e: --help describes --permission-mode as applying to adversarial-review', () => {
     const result = runDispatcher(['--help']);
-    const pmLine = result.stdout
-      .split('\n')
-      .find((l) => l.includes('--permission-mode'));
+    const pmLine = result.stdout.split('\n').find((l) => l.includes('--permission-mode'));
     assert.ok(
       pmLine && pmLine.includes('adversarial-review'),
       `--help --permission-mode flag description must include "adversarial-review"\nLine: ${pmLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,
@@ -6405,9 +6400,7 @@ describe('printUsage reflects review/adversarial-review accepted flags (Stage 4 
 
   it('N2-1g: --help describes --all with applicability including review/adversarial-review', () => {
     const result = runDispatcher(['--help']);
-    const allLine = result.stdout
-      .split('\n')
-      .find((l) => /^\s+--all\s/.test(l));
+    const allLine = result.stdout.split('\n').find((l) => /^\s+--all\s/.test(l));
     assert.ok(
       allLine && allLine.includes('review'),
       `--help --all flag description must mention "review"\nLine: ${allLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,
@@ -6416,9 +6409,7 @@ describe('printUsage reflects review/adversarial-review accepted flags (Stage 4 
 
   it('N2-1h: --help describes --json with applicability including review/adversarial-review', () => {
     const result = runDispatcher(['--help']);
-    const jsonLine = result.stdout
-      .split('\n')
-      .find((l) => /^\s+--json\s/.test(l));
+    const jsonLine = result.stdout.split('\n').find((l) => /^\s+--json\s/.test(l));
     assert.ok(
       jsonLine && jsonLine.includes('review'),
       `--help --json flag description must mention "review"\nLine: ${jsonLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,
@@ -6427,9 +6418,7 @@ describe('printUsage reflects review/adversarial-review accepted flags (Stage 4 
 
   it('N2-1i: --help describes --yes with applicability including review/adversarial-review', () => {
     const result = runDispatcher(['--help']);
-    const yesLine = result.stdout
-      .split('\n')
-      .find((l) => /^\s+--yes\s/.test(l));
+    const yesLine = result.stdout.split('\n').find((l) => /^\s+--yes\s/.test(l));
     assert.ok(
       yesLine && yesLine.includes('review'),
       `--help --yes flag description must mention "review"\nLine: ${yesLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,

@@ -1156,13 +1156,8 @@ describe('README.md documents claude ultrareview distinction (T10-24 — tighten
   it('T10-24b: README states the plugin does not wrap claude ultrareview', () => {
     const body = readReadme();
     // At least one line that mentions ultrareview must also carry a negation token
-    const ultraLines = body
-      .split('\n')
-      .filter((l) => l.toLowerCase().includes('ultrareview'));
-    assert.ok(
-      ultraLines.length > 0,
-      'README.md must mention ultrareview at least once',
-    );
+    const ultraLines = body.split('\n').filter((l) => l.toLowerCase().includes('ultrareview'));
+    assert.ok(ultraLines.length > 0, 'README.md must mention ultrareview at least once');
     const negationTokens = ['not', 'does not', 'no ', 'never', 'without', 'separate'];
     const hasNegatedLine = ultraLines.some((l) => {
       const lw = l.toLowerCase();
@@ -1335,7 +1330,10 @@ describe('README.md documents operator escape hatches (T10-27)', () => {
     );
     // Must appear in the Tuning subsection specifically
     const section = extractTuningSubsection(body);
-    assert.ok(section !== null, 'README.md must have the Tuning operator escape hatches subsection');
+    assert.ok(
+      section !== null,
+      'README.md must have the Tuning operator escape hatches subsection',
+    );
     assert.ok(
       section.includes('`CC_PLUGIN_CODEX_ATTACH_WARMUP_MS`'),
       'The Tuning subsection must mention `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS`',
@@ -1345,7 +1343,10 @@ describe('README.md documents operator escape hatches (T10-27)', () => {
   it('T10-27c: README mentions CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS in fenced-backtick form', () => {
     const body = readReadme();
     const section = extractTuningSubsection(body);
-    assert.ok(section !== null, 'README.md must have the Tuning operator escape hatches subsection');
+    assert.ok(
+      section !== null,
+      'README.md must have the Tuning operator escape hatches subsection',
+    );
     assert.ok(
       section.includes('`CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS`'),
       'The Tuning subsection must mention `CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS` in fenced-backtick form',
@@ -1355,7 +1356,10 @@ describe('README.md documents operator escape hatches (T10-27)', () => {
   it('T10-27d: README mentions CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS in fenced-backtick form', () => {
     const body = readReadme();
     const section = extractTuningSubsection(body);
-    assert.ok(section !== null, 'README.md must have the Tuning operator escape hatches subsection');
+    assert.ok(
+      section !== null,
+      'README.md must have the Tuning operator escape hatches subsection',
+    );
     assert.ok(
       section.includes('`CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS`'),
       'The Tuning subsection must mention `CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS` in fenced-backtick form',
@@ -1373,7 +1377,10 @@ describe('README.md documents operator escape hatches (T10-27)', () => {
   it('T10-27f: The Tuning subsection does not expose env vars as CLI flags', () => {
     const body = readReadme();
     const section = extractTuningSubsection(body);
-    assert.ok(section !== null, 'README.md must have the Tuning operator escape hatches subsection');
+    assert.ok(
+      section !== null,
+      'README.md must have the Tuning operator escape hatches subsection',
+    );
     // Must not contain a CLI-flag form of the env vars
     assert.equal(
       section.includes('--CC_PLUGIN_CODEX_'),
@@ -1390,7 +1397,10 @@ describe('README.md documents operator escape hatches (T10-27)', () => {
   it('T10-27g: The Tuning subsection contains no OQ4-forbidden cost-claim tokens', () => {
     const body = readReadme();
     const section = extractTuningSubsection(body);
-    assert.ok(section !== null, 'README.md must have the Tuning operator escape hatches subsection');
+    assert.ok(
+      section !== null,
+      'README.md must have the Tuning operator escape hatches subsection',
+    );
     for (const token of FORBIDDEN_TOKENS) {
       assert.equal(
         section.includes(token),

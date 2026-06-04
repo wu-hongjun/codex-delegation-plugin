@@ -1776,3 +1776,101 @@ Per the maintainer's "lightweight A/B/C" instruction + memory `feedback_orchestr
 ### Status
 
 **T10 complete + CI green.** Versioning procedure codified. Source-of-truth = `packages/plugin-codex/.codex-plugin/plugin.json` (v0.2.0, unchanged this task). Smoke helper derives version at runtime; no hard-coded literals. Workspace `package.json` files locked at `0.0.0` decoupling. RELEASING.md has the canonical 7-step bump procedure. T11 (release checklist consolidation) and T12 (docs split) remain, awaiting maintainer go-ahead per task.
+
+---
+
+## T11 — Release checklist consolidation (2026-06-04)
+
+### What changed
+
+T11 reorganises `documentation/RELEASING.md` from a growing task-by-task stub into the canonical release-day checklist. The file is rewritten in release-day order with four new sections (Prerequisites, CI Verification, Tagging, Post-release) plus a Scope preamble and a Troubleshooting / Rollback table. Existing T4-T10 procedural content is preserved verbatim or with minor cosmetic edits; section names that earlier T-task tests pin (e.g., `## Upgrade procedure (Plan 0006 T7)`) keep their headings to avoid breaking those tests.
+
+### Final section order
+
+1. `## Scope` (NEW) — local-marketplace scope; external registry submission out of scope.
+2. `## Prerequisites` (NEW) — OS, Node, npm, Codex CLI, Claude CLI, repo state, push permissions.
+3. `## Version Bump (Plan 0006 T10)` (kept; reordered upward) — semver, source-of-truth, decoupling, 6-step procedure.
+4. `## Packaging (Plan 0006 T4 + T5 + T9.5)` (consolidated) — `--write` + `--check` + T9.5 runtime-packaging lesson (ERR_MODULE_NOT_FOUND guard).
+5. `## Smoke Test (Plan 0006 T9)` (kept) — automated preflight + manual TUI checklist for all 8 skills.
+6. `## CI Verification` (NEW) — all local gates + GitHub Actions matrix verification via `gh run view`.
+7. `## Tagging` (NEW) — `git tag v0.x.y`, gated on smoke + CI green, example `v0.2.0`.
+8. `## Post-release` (NEW) — verify tag on remote, update plan-status, optional fresh-clone re-smoke.
+9. `## Troubleshooting / Rollback` (NEW) — symptom → cause → action table covering packaging drift, ERR_MODULE_NOT_FOUND, smoke failure, CI cancellation, post-tag regression.
+10. `## Install procedure (Plan 0006 T6)` (kept; demoted to reference) — T6's commands, points at marketplace README for end users.
+11. `## Upgrade procedure (Plan 0006 T7)` (kept; demoted to reference) — section name pinned by `marketplace-readme.test.mjs` T7-10.
+12. `## Uninstall procedure (Plan 0006 T8)` (kept; demoted to reference, includes the T8 cache-breadcrumb-may-remain fact) — section name pinned by `marketplace-readme.test.mjs` T8 tests.
+
+The canonical release-day flow is sections 2-8. Sections 9-12 are appendices kept for backward-compatibility with existing tests and as per-procedure reference material when the helper-driven Smoke Test fails and a maintainer needs finer-grained verification.
+
+### Deliverables
+
+- `documentation/RELEASING.md` — full rewrite. Net diff ~+220 / -80 lines. Adds 5 new top-level sections (Scope, Prerequisites, CI Verification, Tagging, Post-release, Troubleshooting). Reorders Version Bump to appear before Install/Upgrade/Uninstall. Renames `Packaging verification` → `Packaging` per the brief's AC #1 heading list. Removes the trailing `## Other release-checklist steps` placeholder.
+- `packages/plugin-codex/test/marketplace-releasing.test.mjs` (NEW, 15 T11 cases) — covers required-headings-in-order, all section contents (Version Bump / Packaging / Smoke Test / CI Verification / Tagging / Post-release), T9.5 runtime-packaging lesson, T8 uninstall ordering + cache-breadcrumb fact, OQ4 token guard, Plan 0004 vocabulary guard, no-smoke-in-CI rule, local-marketplace-only scope (no `npm publish` / external registry submission).
+
+### Tests added (15 T11 cases)
+
+All under `describe('consolidated release checklist (Plan 0006 T11)', ...)` in the new `marketplace-releasing.test.mjs`:
+
+| # | Assertion |
+|---|---|
+| T11-1 | RELEASING.md exists and is non-empty. |
+| T11-2 | All 7 required headings appear in canonical release-day order (Prerequisites < Version Bump < Packaging < Smoke Test < CI Verification < Tagging < Post-release), verified by sequential `content.search()` with strictly-increasing indices. |
+| T11-3 | Version Bump section names source-of-truth manifest + `--write` + `--check` + "semver" + `v0.x.y` tag format + workspace `0.0.0` decoupling. |
+| T11-4 | Packaging section includes both `package-marketplace --write` + `--check` commands + marketplace plugin path. |
+| T11-5 | Packaging section preserves T9.5 runtime-packaging lesson: mentions `ERR_MODULE_NOT_FOUND`, "bundled" or "self-contained", and the dispatcher `setup` command as the cache-execution probe. |
+| T11-6 | Smoke Test section enumerates all 8 skills (`$claude-setup` ... `$claude-adversarial-review`) and identifies `$claude-setup` as the gate with `ok` or `warn` aggregate pass criterion. |
+| T11-7 | CI Verification section includes all 6 local gates (`lint`, `typecheck`, `format`, `test`, `test:attach`, `test:bench`) + GitHub Actions matrix mention (`ubuntu-latest`/`macos-latest` + `Node 20`/`Node 22`) + "all matrix legs green" rule. |
+| T11-8 | Tagging section includes `git tag v0.x.y` pattern + the current `v0.2.0` example + the "tag only after smoke + CI" gating rule (regex captures "after"/"once" + smoke/CI ordering). |
+| T11-9 | Post-release section exists and contains at least one concrete action (`git ls-remote --tags origin` for tag-visibility verification). |
+| T11-10 | Smoke helper is not invoked from CI (negative regex on "CI runs/invokes/executes ... smoke") + positive statement that the helper is "not invoked by CI" or "release-time only". |
+| T11-11 | Scope is local marketplace (regex for "local marketplace" + "out of scope" or "future plan") + negative invariant against `npm publish` (external registry submission language). |
+| T11-12 | Uninstall ordering preserved (T8): `codex plugin remove` appears BEFORE `codex plugin marketplace remove` in the file (verified by `indexOf` ordering). |
+| T11-13 | Uninstall section documents the empty-cache-breadcrumb-may-remain fact from T8 (regex matches "empty breadcrumb" or "breadcrumb directories/directory"). |
+| T11-14 | No OQ4 forbidden cost-claim tokens anywhere in RELEASING.md. |
+| T11-15 | No Plan 0004 benchmark/cutover vocabulary anywhere in RELEASING.md. |
+
+### A/B/C cadence
+
+Orchestrator-absorbed per memory `feedback_orchestrator_b_role`. T11 is pure docs + tests + verbatim-template work; subagent dispatch would have exceeded the benefit. The file rewrite preserves the T6/T7/T8/T9/T10-tested contracts (verified by re-running the existing 65 cases across `marketplace-readme.test.mjs` + `marketplace-smoke.test.mjs` + the new 15 T11 cases = 80/80 pass).
+
+### In-task fixes (caught + resolved before commit)
+
+1. **Lint: invalid regex escape `\Z`** at line 288 of `marketplace-releasing.test.mjs`. JS regex has no `\Z` anchor; eslint flagged it as `no-useless-escape`. Rewrote the section-body match to lazy-match up to the next `## ` heading (which always exists after Post-release in the current layout — Troubleshooting / Install / Upgrade / Uninstall follow it).
+2. **Prettier**: auto-formatted the new test file after edits. Final `--check` clean.
+
+### Subagent C — read-only review (orchestrator-led)
+
+- **Allowed-files check:** `git status --short` reports modified `documentation/RELEASING.md` + new file `packages/plugin-codex/test/marketplace-releasing.test.mjs`. All within the brief's allowed set.
+- **Forbidden-files check:** `git diff --stat HEAD` against the full forbidden list (tools/bench, source plugin scripts/skills/plugin.json, packages/plugin-codex/README.md, marketplace packaged scripts/skills/plugin.json + node_modules, packages/runtime, packages/driver-claude-code, .github, documentation/plan/0004-*, documentation/plan/0005-*, marketplace/.agents, tools/package-marketplace.mjs, tools/smoke-marketplace.mjs) reports empty.
+- **Tag guard:** `plan-0004-pre-cutover` = `7d9b5f1...` (unchanged).
+- **Cost paragraph guard:** last commit on `packages/plugin-codex/README.md` still `86cb729` (Plan 0003 era).
+- **F-H2 trace (T1 → T6 → T7 → T8 → T9 → T9.5 → T10 → T11):**
+  - T1 lifecycle command capture (1-plan.md L183+) → T6 install commands (RELEASING.md L380+) → T7 upgrade negation + flows (L391+) → T8 uninstall ordering + breadcrumb (L404+) → T9 smoke + 8 skills + gate (L198+) → T9.5 ERR_MODULE_NOT_FOUND guard (L194 + Packaging section) → T10 Version Bump (L44+) → T11 new sections (Prerequisites L24, CI Verification L262, Tagging L310, Post-release L338, Troubleshooting L367, Scope L8).
+- **No behavior changes:** no source-plugin, runtime, driver, scripts, or skills modifications.
+- **Plan 0005 still deferred:** no hooks, no stop-gate code.
+
+### Local gates
+
+| Gate | Result |
+|---|---|
+| `node tools/package-marketplace.mjs --check` | OK (18 derived + 64 bundled + 3 synthesized + 1 marketplace-owned, exit 0). |
+| `node tools/smoke-marketplace.mjs --help` | exit 0 (regression guard). |
+| `npm run lint` | exit 0 (after replacing invalid `\Z` regex anchor). |
+| `npm run typecheck` | exit 0. |
+| `npm run format` | exit 0 (after `prettier --write` on the new test file). |
+| `npm test` | **1188/1188** (mock 68 + runtime 172 + driver 178 + plugin **770**) — plugin lane 755 → 770 (+15 T11). |
+| `npm run test:attach` | 28/28 (unchanged). |
+| `npm run test:bench` | 258/258 (unchanged). |
+| Combined | **1474 tests** (T10 baseline 1459 + 15 T11). |
+
+### Implications for later tasks
+
+| Task | Implication from T11 |
+|---|---|
+| T12 (docs split) | RELEASING.md is now stable. T12 should focus on the marketplace README structure: which sections belong end-user-facing (in the marketplace README) vs maintainer-facing (in RELEASING.md). T12 should NOT touch the canonical 7-section release-day flow established by T11. |
+| Plan 0006 closeout | All sections of RELEASING.md required by T11's AC #1 are in place. The release-day flow is mechanically locked by 15 T11 tests. The maintainer can drive a real `v0.2.x` release using this checklist verbatim. |
+
+### CI evidence (pending)
+
+- Commit: pending — `Plan 0006 T11: consolidate release checklist`
+- CI run: pending

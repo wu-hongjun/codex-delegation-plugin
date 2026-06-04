@@ -1765,7 +1765,14 @@ Per the maintainer's "lightweight A/B/C" instruction + memory `feedback_orchestr
 | T11 (release checklist) | RELEASING.md now has Install (T6) + Uninstall+verification (T8) + Upgrade (T7) + Packaging verification (T4+T5) + Smoke Test (T9) + Version Bump (T10). T11 stitches them into the canonical release-day checklist. |
 | T12 (docs split) | Marketplace README pointer for smoke testing remains user-facing; the Version Bump procedure stays in RELEASING.md (maintainer-facing, not user-facing) and is intentionally not surfaced to end users. |
 
-### CI evidence (pending)
+### CI evidence
 
-- Commit: pending — `Plan 0006 T10: document plugin versioning procedure`
-- CI run: pending
+- Commit: `cc45644` ("Plan 0006 T10: document plugin versioning procedure")
+- CI run: `26952578283`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+- Plugin lane post-T10: 755/755 (up from 743; +12 T10 versioning tests).
+- Combined: 1459 tests (1173 npm test + 28 test:attach + 258 test:bench).
+
+### Status
+
+**T10 complete + CI green.** Versioning procedure codified. Source-of-truth = `packages/plugin-codex/.codex-plugin/plugin.json` (v0.2.0, unchanged this task). Smoke helper derives version at runtime; no hard-coded literals. Workspace `package.json` files locked at `0.0.0` decoupling. RELEASING.md has the canonical 7-step bump procedure. T11 (release checklist consolidation) and T12 (docs split) remain, awaiting maintainer go-ahead per task.

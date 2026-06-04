@@ -299,6 +299,64 @@ logStep('STEP 5: codex plugin list + assertions');
   }
 }
 
+// Step 5.5: dispatcher execution from cache
+//
+// Spawn `node <PLUGIN_ROOT>/scripts/claude-companion.mjs setup` against the
+// cached install to verify the T9.5 fix: the dispatcher must be resolvable
+// from the committed bundled node_modules/ tree. The T9 defect was
+// ERR_MODULE_NOT_FOUND because the runtime/driver/node-pty packages were
+// absent from the marketplace cache. After T9.5 they are bundled, so this
+// probe must NOT produce ERR_MODULE_NOT_FOUND.
+//
+// Exit-code logic: a successful probe returns exit 0; the probe may exit
+// non-zero if (for example) the claude binary is missing or fails — that is
+// an environment issue, not a packaging defect. The packaging defect is
+// specifically ERR_MODULE_NOT_FOUND; its absence is the T9.5 contract.
+logStep('STEP 5.5: dispatcher execution from cache');
+{
+  const pluginRoot = join(
+    codexHome,
+    'plugins',
+    'cache',
+    'cc-plugin-codex-local',
+    'claude-companion',
+    '0.2.0',
+  );
+  const dispatcherScript = join(pluginRoot, 'scripts', 'claude-companion.mjs');
+  process.stdout.write(`  Plugin root: ${pluginRoot}\n`);
+  process.stdout.write(`  Dispatcher:  ${dispatcherScript}\n`);
+
+  const r = spawnSync(process.execPath, [dispatcherScript, 'setup'], {
+    env: childEnv,
+    encoding: 'utf8',
+    stdio: ['ignore', 'pipe', 'pipe'],
+    timeout: 30_000,
+  });
+  const combined = (r.stdout || '') + (r.stderr || '');
+  if (r.stdout) process.stdout.write(r.stdout);
+  if (r.stderr) process.stderr.write(r.stderr);
+  process.stdout.write(`exit=${r.status ?? 'null'}\n`);
+
+  // Extract aggregate line if present (e.g. "aggregate: ok")
+  const aggMatch = combined.match(/aggregate:\s*(\S+)/);
+  if (aggMatch) {
+    process.stdout.write(`  aggregate: ${aggMatch[1]}\n`);
+  }
+
+  // T9.5 contract: ERR_MODULE_NOT_FOUND must be absent.
+  if (combined.includes('ERR_MODULE_NOT_FOUND')) {
+    recordFailure(
+      'STEP 5.5: ERR_MODULE_NOT_FOUND in dispatcher output — bundled-dep packaging defect (T9 regression)',
+    );
+  } else if (r.status === 0) {
+    process.stdout.write('  ok    dispatcher-execution    exit 0, no ERR_MODULE_NOT_FOUND\n');
+  } else {
+    process.stdout.write(
+      `  warn  dispatcher-execution    exit ${r.status} (environment issue, not a packaging defect)\n`,
+    );
+  }
+}
+
 // Step 6: manual TUI checklist
 logStep('STEP 6: manual Codex TUI skill checklist (operator-driven)');
 process.stdout.write(

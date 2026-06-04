@@ -20,9 +20,19 @@
  *   The --check mode runs the exclusion enforcement BEFORE the allowlist comparison.
  */
 
-import { readFileSync, writeFileSync, mkdirSync, chmodSync, statSync, readdirSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  chmodSync,
+  statSync,
+  readdirSync,
+  copyFileSync,
+  rmSync,
+} from 'node:fs';
+import { join, dirname, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 // ---------------------------------------------------------------------------
 // Allowlist — authoritative list of files managed by this script.
@@ -65,8 +75,204 @@ const DERIVED_FILES = [
  */
 const MARKETPLACE_OWNED_FILES = ['README.md'];
 
-// The complete set of expected files under marketplace/plugins/claude-companion/
-const ALL_EXPECTED_FILES = new Set([...DERIVED_FILES, ...MARKETPLACE_OWNED_FILES]);
+// ---------------------------------------------------------------------------
+// Bundled dependency layout (T9.5).
+// ---------------------------------------------------------------------------
+//
+// The marketplace cache copy of the plugin has no node_modules of its own —
+// `codex plugin add` materialises only what is committed under
+// marketplace/plugins/claude-companion/. To make the dispatcher resolvable
+// when executed from that cache, we bundle the runtime + driver + node-pty
+// payload directly under marketplace/plugins/claude-companion/node_modules/.
+//
+// Choice: we ship `.js` + `.d.ts` only (no `.js.map`/`.d.ts.map`).
+//   - Maps roughly double the committed size for zero load-time value.
+//   - The cache-execution defect (ERR_MODULE_NOT_FOUND) is a module-resolution
+//     failure, not a debug-source-path failure; maps are not part of the fix.
+//   - `.d.ts` is kept so type-aware consumers (`tsc --noEmit` against the
+//     cached install) still work.
+
+/**
+ * Bundled runtime files — `packages/runtime/dist/*.{js,d.ts}` copied to
+ * `marketplace/plugins/claude-companion/node_modules/@cc-plugin-codex/runtime/dist/`.
+ * Discovered dynamically rather than hardcoded so additions to the runtime
+ * package show up automatically.
+ */
+const RUNTIME_SRC_DIST = 'packages/runtime/dist';
+const RUNTIME_DEST_BASE = 'node_modules/@cc-plugin-codex/runtime';
+
+/**
+ * Bundled driver files — `packages/driver-claude-code/dist/*.{js,d.ts}` copied
+ * to `marketplace/plugins/claude-companion/node_modules/@cc-plugin-codex/driver-claude-code/dist/`.
+ */
+const DRIVER_SRC_DIST = 'packages/driver-claude-code/dist';
+const DRIVER_DEST_BASE = 'node_modules/@cc-plugin-codex/driver-claude-code';
+
+/**
+ * Bundled node-pty layout. Sourced from the workspace's npm-installed
+ * `node-pty@1.2.0-beta.13`. We ship `lib/**` (the JS runtime), `typings/**`,
+ * darwin/linux prebuilds, and the original LICENSE + README (MIT license
+ * compliance). Excluded: `src/` (C++), `binding.gyp`, `scripts/` (postinstall
+ * hooks), `third_party/`, win32 prebuilds.
+ */
+const NODEPTY_SRC_BASE = 'node_modules/node-pty';
+const NODEPTY_DEST_BASE = 'node_modules/node-pty';
+const NODEPTY_INCLUDE_DIRS = [
+  'lib',
+  'typings',
+  'prebuilds/darwin-arm64',
+  'prebuilds/darwin-x64',
+  'prebuilds/linux-arm64',
+  'prebuilds/linux-x64',
+];
+const NODEPTY_INCLUDE_FILES = ['LICENSE', 'README.md'];
+
+/**
+ * Synthesised `package.json` bodies for the two workspace packages.
+ *
+ * Version marker: `0.2.0-bundled`. The workspace source stays at `0.0.0` so
+ * `npm` keeps recognising it as the in-tree workspace; the `-bundled` suffix
+ * exists only on the marketplace cache copy to make inspection unambiguous.
+ */
+const SYNTH_RUNTIME_PKG = {
+  name: '@cc-plugin-codex/runtime',
+  version: '0.2.0-bundled',
+  type: 'module',
+  main: './dist/index.js',
+  types: './dist/index.d.ts',
+  exports: {
+    '.': {
+      types: './dist/index.d.ts',
+      import: './dist/index.js',
+    },
+  },
+  engines: { node: '>=20' },
+};
+
+const SYNTH_DRIVER_PKG = {
+  name: '@cc-plugin-codex/driver-claude-code',
+  version: '0.2.0-bundled',
+  type: 'module',
+  main: './dist/index.js',
+  types: './dist/index.d.ts',
+  exports: {
+    '.': {
+      types: './dist/index.d.ts',
+      import: './dist/index.js',
+    },
+  },
+  dependencies: {
+    '@cc-plugin-codex/runtime': '0.2.0-bundled',
+    'node-pty': '1.2.0-beta.13',
+  },
+  engines: { node: '>=20' },
+};
+
+/**
+ * Fields kept from the upstream node-pty package.json. The install +
+ * postinstall + prepare + prepublishOnly scripts are stripped so that no
+ * package manager attempts to rebuild native bindings against the bundled
+ * prebuilds.
+ */
+const NODEPTY_PKG_KEEP_FIELDS = [
+  'name',
+  'version',
+  'description',
+  'author',
+  'license',
+  'main',
+  'types',
+  'homepage',
+  'bugs',
+  'keywords',
+  'dependencies',
+  'engines',
+  'files',
+];
+
+/**
+ * Compute the bundled-file allowlist (relative to DEST_DIR) by enumerating
+ * the source trees. Returns:
+ *   {
+ *     runtimeDist: string[],         // paths like 'node_modules/@cc-plugin-codex/runtime/dist/index.js'
+ *     driverDist: string[],
+ *     nodepty: string[],
+ *     packageJsons: string[],        // synthesised package.json paths
+ *     all: string[],                 // union of the above
+ *   }
+ */
+function computeBundledFiles() {
+  const runtimeAbsDist = join(REPO_ROOT, RUNTIME_SRC_DIST);
+  const driverAbsDist = join(REPO_ROOT, DRIVER_SRC_DIST);
+  const nodeptyAbsBase = join(REPO_ROOT, NODEPTY_SRC_BASE);
+
+  const runtimeDistRel = readdirSync(runtimeAbsDist, { withFileTypes: true })
+    .filter((e) => e.isFile() && (e.name.endsWith('.js') || e.name.endsWith('.d.ts')))
+    .map((e) => `${RUNTIME_DEST_BASE}/dist/${e.name}`)
+    .sort();
+
+  const driverDistRel = readdirSync(driverAbsDist, { withFileTypes: true })
+    .filter((e) => e.isFile() && (e.name.endsWith('.js') || e.name.endsWith('.d.ts')))
+    .map((e) => `${DRIVER_DEST_BASE}/dist/${e.name}`)
+    .sort();
+
+  const nodeptyRel = [];
+  for (const dir of NODEPTY_INCLUDE_DIRS) {
+    const abs = join(nodeptyAbsBase, dir);
+    const found = collectFiles(abs).map((f) => `${NODEPTY_DEST_BASE}/${dir}/${f}`);
+    nodeptyRel.push(...found);
+  }
+  for (const f of NODEPTY_INCLUDE_FILES) {
+    nodeptyRel.push(`${NODEPTY_DEST_BASE}/${f}`);
+  }
+  nodeptyRel.sort();
+
+  const packageJsons = [
+    `${RUNTIME_DEST_BASE}/package.json`,
+    `${DRIVER_DEST_BASE}/package.json`,
+    `${NODEPTY_DEST_BASE}/package.json`,
+  ];
+
+  return {
+    runtimeDist: runtimeDistRel,
+    driverDist: driverDistRel,
+    nodepty: nodeptyRel,
+    packageJsons,
+    all: [...runtimeDistRel, ...driverDistRel, ...nodeptyRel, ...packageJsons],
+  };
+}
+
+/**
+ * Forbidden paths under the bundled node_modules tree. Even if `--write`
+ * misbehaves, these must never appear in the committed marketplace.
+ */
+function isForbiddenBundledPath(rel) {
+  const normalized = rel.split('\\').join('/');
+  if (!normalized.startsWith('node_modules/')) return null;
+  const checks = [
+    { match: 'node_modules/node-pty/src/', reason: 'node-pty C++ sources' },
+    { match: 'node_modules/node-pty/binding.gyp', reason: 'node-pty gyp build descriptor' },
+    { match: 'node_modules/node-pty/scripts/', reason: 'node-pty install/postinstall scripts' },
+    { match: 'node_modules/node-pty/third_party/', reason: 'node-pty third_party tree' },
+    { match: 'node_modules/node-pty/prebuilds/win32-', reason: 'win32 prebuild' },
+  ];
+  for (const { match, reason } of checks) {
+    if (normalized === match || normalized.startsWith(match)) {
+      return reason;
+    }
+  }
+  if (normalized.endsWith('.tsbuildinfo')) {
+    return 'non-deterministic tsbuildinfo';
+  }
+  if (normalized.endsWith('.js.map') || normalized.endsWith('.d.ts.map')) {
+    return 'sourcemap (excluded for size; see EXCLUSIONS.md)';
+  }
+  return null;
+}
+
+// The complete set of expected files under marketplace/plugins/claude-companion/.
+// Bundled files are computed lazily because they depend on dist contents which
+// must exist; runCheck/runWrite compute and merge them at call time.
 
 // ---------------------------------------------------------------------------
 // Defense-in-depth exclusion list.
@@ -294,11 +500,79 @@ ${MARKETPLACE_OWNED_FILES.map((f) => '  ' + f).join('\n')}
 }
 
 // ---------------------------------------------------------------------------
+// Bundled-tree helpers (T9.5)
+// ---------------------------------------------------------------------------
+
+/**
+ * Map a bundled-destination relative path back to its source-of-truth absolute
+ * path on disk. Used by `--check` byte-identity verification and by `--write`
+ * to know what to copy.
+ *
+ * Returns null if the path is not a known bundled file (caller should treat
+ * that as an unexpected-extra error).
+ */
+function bundledSourceFor(rel) {
+  const norm = rel.split('\\').join('/');
+  if (norm.startsWith(`${RUNTIME_DEST_BASE}/dist/`)) {
+    const basename = norm.slice(`${RUNTIME_DEST_BASE}/dist/`.length);
+    return join(REPO_ROOT, RUNTIME_SRC_DIST, basename);
+  }
+  if (norm.startsWith(`${DRIVER_DEST_BASE}/dist/`)) {
+    const basename = norm.slice(`${DRIVER_DEST_BASE}/dist/`.length);
+    return join(REPO_ROOT, DRIVER_SRC_DIST, basename);
+  }
+  if (norm.startsWith(`${NODEPTY_DEST_BASE}/`)) {
+    const subpath = norm.slice(`${NODEPTY_DEST_BASE}/`.length);
+    // package.json is synthesised, not byte-copied; caller handles separately.
+    if (subpath === 'package.json') return null;
+    return join(REPO_ROOT, NODEPTY_SRC_BASE, subpath);
+  }
+  return null;
+}
+
+/**
+ * Synthesise the canonical bytes for a given bundled package.json.
+ * Returns a Buffer with a trailing newline. Returns null if `rel` is not a
+ * package.json we manage.
+ */
+function synthesizedPackageJsonBytes(rel) {
+  if (rel === `${RUNTIME_DEST_BASE}/package.json`) {
+    return Buffer.from(JSON.stringify(SYNTH_RUNTIME_PKG, null, 2) + '\n', 'utf8');
+  }
+  if (rel === `${DRIVER_DEST_BASE}/package.json`) {
+    return Buffer.from(JSON.stringify(SYNTH_DRIVER_PKG, null, 2) + '\n', 'utf8');
+  }
+  if (rel === `${NODEPTY_DEST_BASE}/package.json`) {
+    const srcAbs = join(REPO_ROOT, NODEPTY_SRC_BASE, 'package.json');
+    const upstream = JSON.parse(readFileSync(srcAbs, 'utf8'));
+    const reduced = {};
+    for (const field of NODEPTY_PKG_KEEP_FIELDS) {
+      if (upstream[field] !== undefined) reduced[field] = upstream[field];
+    }
+    return Buffer.from(JSON.stringify(reduced, null, 2) + '\n', 'utf8');
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // --check
 // ---------------------------------------------------------------------------
 
 function runCheck() {
   const issues = [];
+
+  // Compute bundled-file allowlist (depends on source dist contents).
+  let bundled;
+  try {
+    bundled = computeBundledFiles();
+  } catch (err) {
+    issues.push(
+      `ISSUE: failed to enumerate bundled-dep source files (did you run 'npm run build'?): ${err.message}`,
+    );
+    bundled = { runtimeDist: [], driverDist: [], nodepty: [], packageJsons: [], all: [] };
+  }
+
+  const allExpected = new Set([...DERIVED_FILES, ...MARKETPLACE_OWNED_FILES, ...bundled.all]);
 
   // 0. Exclusion enforcement (defense-in-depth, runs BEFORE allowlist comparison).
   let actualFilesForExclusion;
@@ -309,6 +583,18 @@ function runCheck() {
     actualFilesForExclusion = [];
   }
   for (const rel of actualFilesForExclusion) {
+    // The bundled tree intentionally contains `node_modules/`, which is on the
+    // global exclusion list. Skip exclusion enforcement for paths under the
+    // bundled tree; instead, apply the bundled-specific forbidden-paths check.
+    if (rel.split('\\').join('/').startsWith('node_modules/')) {
+      const reason = isForbiddenBundledPath(rel);
+      if (reason) {
+        issues.push(
+          `ISSUE: marketplace/plugins/claude-companion/${rel} is forbidden in bundled tree (${reason})`,
+        );
+      }
+      continue;
+    }
     const result = isExcluded(rel);
     if (result.excluded) {
       issues.push(
@@ -342,6 +628,57 @@ function runCheck() {
     }
   }
 
+  // 1b. Verify each bundled-dep file exists in destination and is byte-identical to source.
+  const bundledByteCheck = [...bundled.runtimeDist, ...bundled.driverDist, ...bundled.nodepty];
+  for (const rel of bundledByteCheck) {
+    const srcAbs = bundledSourceFor(rel);
+    if (!srcAbs) {
+      issues.push(`ISSUE: internal: no source mapping for bundled file: ${rel}`);
+      continue;
+    }
+    const dst = join(DEST_DIR, rel);
+    let srcBuf, dstBuf;
+    try {
+      srcBuf = readFileSync(srcAbs);
+    } catch {
+      issues.push(`ISSUE: bundled-dep source missing on disk: ${srcAbs}`);
+      continue;
+    }
+    try {
+      dstBuf = readFileSync(dst);
+    } catch {
+      issues.push(
+        `ISSUE: bundled-dep missing from marketplace: marketplace/plugins/claude-companion/${rel}`,
+      );
+      continue;
+    }
+    if (!srcBuf.equals(dstBuf)) {
+      issues.push(`ISSUE: byte mismatch between source and marketplace for bundled-dep: ${rel}`);
+    }
+  }
+
+  // 1c. Verify synthesized package.json files match the canonical shape.
+  for (const rel of bundled.packageJsons) {
+    const expected = synthesizedPackageJsonBytes(rel);
+    if (!expected) {
+      issues.push(`ISSUE: internal: no synthesized shape for: ${rel}`);
+      continue;
+    }
+    const dst = join(DEST_DIR, rel);
+    let actual;
+    try {
+      actual = readFileSync(dst);
+    } catch {
+      issues.push(
+        `ISSUE: bundled package.json missing from marketplace: marketplace/plugins/claude-companion/${rel}`,
+      );
+      continue;
+    }
+    if (!expected.equals(actual)) {
+      issues.push(`ISSUE: bundled package.json does not match canonical synthesized shape: ${rel}`);
+    }
+  }
+
   // 2. Verify marketplace-owned files exist (but do not compare to source).
   for (const rel of MARKETPLACE_OWNED_FILES) {
     const dst = join(DEST_DIR, rel);
@@ -363,7 +700,7 @@ function runCheck() {
     actualFiles = [];
   }
   for (const rel of actualFiles) {
-    if (!ALL_EXPECTED_FILES.has(rel)) {
+    if (!allExpected.has(rel)) {
       issues.push(
         `ISSUE: unexpected file in marketplace tree: marketplace/plugins/claude-companion/${rel}`,
       );
@@ -404,7 +741,10 @@ function runCheck() {
   // Report
   if (issues.length === 0) {
     console.log(
-      `check: OK — ${DERIVED_FILES.length} derived files match source, ${MARKETPLACE_OWNED_FILES.length} marketplace-owned files present, no unexpected files.`,
+      `check: OK — ${DERIVED_FILES.length} derived files match source, ` +
+        `${bundledByteCheck.length} bundled-dep files match source, ` +
+        `${bundled.packageJsons.length} synthesized package.json files match canonical shape, ` +
+        `${MARKETPLACE_OWNED_FILES.length} marketplace-owned files present, no unexpected files.`,
     );
     return 0;
   } else {
@@ -420,32 +760,100 @@ function runCheck() {
 // ---------------------------------------------------------------------------
 
 function runWrite() {
+  // Ensure source dists are fresh before copying.
+  // Skipped when CC_PLUGIN_CODEX_SKIP_BUILD=1 (used by tests that already built).
+  if (!process.env.CC_PLUGIN_CODEX_SKIP_BUILD) {
+    console.log('Building workspace packages (tsc --build)...');
+    try {
+      execFileSync('npm', ['run', 'build'], { cwd: REPO_ROOT, stdio: 'inherit' });
+    } catch (err) {
+      console.error(`ERROR: npm run build failed: ${err.message}`);
+      return 1;
+    }
+  }
+
   let wrote = 0;
   const skipped = MARKETPLACE_OWNED_FILES.length;
 
+  // 1. Derived files (plugin scripts + skills).
   for (const rel of DERIVED_FILES) {
     const src = join(SOURCE_DIR, rel);
     const dst = join(DEST_DIR, rel);
 
-    // Ensure destination directory exists
     mkdirSync(dirname(dst), { recursive: true });
-
-    // Copy bytes
     const buf = readFileSync(src);
     writeFileSync(dst, buf);
     wrote++;
 
-    // Preserve / enforce executable bit for the entrypoint
     if (rel === 'scripts/claude-companion.mjs') {
       chmodSync(dst, 0o755);
     }
   }
 
-  console.log(`Wrote ${wrote} derived files, skipped ${skipped} marketplace-owned files.`);
+  // 2. Bundled-dep tree.
+  const bundled = computeBundledFiles();
 
-  // Post-write check: warn about any unexpected extras (do not delete them)
+  // Pre-clean the bundled tree so removed/renamed source files don't linger.
+  // Keeps the operation idempotent across source-tree changes.
+  const bundledRoot = join(DEST_DIR, 'node_modules');
+  try {
+    const existing = collectFiles(bundledRoot);
+    const expected = new Set(bundled.all);
+    for (const rel of existing) {
+      const fullRel = `node_modules/${rel}`;
+      if (!expected.has(fullRel)) {
+        const fullPath = join(bundledRoot, rel);
+        try {
+          rmSync(fullPath, { force: true });
+        } catch {
+          /* best-effort; --check will flag any leftover */
+        }
+      }
+    }
+  } catch {
+    /* bundled tree does not yet exist; nothing to clean */
+  }
+
+  let bundledWrote = 0;
+
+  // 2a. Copy runtime + driver dist + node-pty source files.
+  const byteCopy = [...bundled.runtimeDist, ...bundled.driverDist, ...bundled.nodepty];
+  for (const rel of byteCopy) {
+    const srcAbs = bundledSourceFor(rel);
+    if (!srcAbs) {
+      console.error(`internal: no source mapping for bundled file: ${rel}`);
+      return 1;
+    }
+    const dst = join(DEST_DIR, rel);
+    mkdirSync(dirname(dst), { recursive: true });
+    copyFileSync(srcAbs, dst);
+    bundledWrote++;
+  }
+
+  // 2b. Write synthesized package.json files.
+  let pkgsWrote = 0;
+  for (const rel of bundled.packageJsons) {
+    const bytes = synthesizedPackageJsonBytes(rel);
+    if (!bytes) {
+      console.error(`internal: no synthesized shape for: ${rel}`);
+      return 1;
+    }
+    const dst = join(DEST_DIR, rel);
+    mkdirSync(dirname(dst), { recursive: true });
+    writeFileSync(dst, bytes);
+    pkgsWrote++;
+  }
+
+  console.log(
+    `Wrote ${wrote} derived files, ${bundledWrote} bundled-dep files, ` +
+      `${pkgsWrote} synthesized package.json files, ` +
+      `skipped ${skipped} marketplace-owned files.`,
+  );
+
+  // Post-write check: warn about any unexpected extras (do not delete them).
+  const allExpected = new Set([...DERIVED_FILES, ...MARKETPLACE_OWNED_FILES, ...bundled.all]);
   const actualFiles = collectFiles(DEST_DIR);
-  const extras = actualFiles.filter((f) => !ALL_EXPECTED_FILES.has(f));
+  const extras = actualFiles.filter((f) => !allExpected.has(f));
   if (extras.length > 0) {
     console.warn(
       `\nWARNING: the following unexpected files exist in the marketplace tree and were not removed:`,

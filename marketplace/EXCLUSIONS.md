@@ -26,6 +26,45 @@ tree) fails `tools/package-marketplace.mjs --check`.
 | VCS metadata | `.git/`, `.gitignore` at the packaged-plugin root |
 | Secrets | `.env`, `.env.*`, `credentials*`, `*.pem`, `*.key`, `*.crt`, `id_rsa*`, `id_ed25519*` |
 
+## Bundled-dep exclusions (T9.5)
+
+The bundled `marketplace/plugins/claude-companion/node_modules/` tree
+is an intentional exception to the global `node_modules/` exclusion.
+Inside that tree, the following categories must NOT appear:
+
+| Category | Path / pattern |
+|---|---|
+| node-pty C++ source | `node_modules/node-pty/src/` |
+| node-pty gyp descriptor | `node_modules/node-pty/binding.gyp` |
+| node-pty install scripts | `node_modules/node-pty/scripts/` |
+| node-pty third_party | `node_modules/node-pty/third_party/` |
+| node-pty win32 prebuilds | `node_modules/node-pty/prebuilds/win32-arm64/`, `node_modules/node-pty/prebuilds/win32-x64/` |
+| Non-deterministic build artefacts | `**/*.tsbuildinfo` |
+| Sourcemaps | `**/*.js.map`, `**/*.d.ts.map` |
+
+Rationale:
+- `src/` + `binding.gyp` are only needed to *build* node-pty from source.
+  We ship platform prebuilds, so the C++ side is dead weight (and risks
+  triggering `node-gyp` if a package manager touches the tree).
+- `scripts/` runs `prebuild.js` + `post-install.js`. The synthesized
+  `node-pty/package.json` strips the `install`/`postinstall`/`prepare`/
+  `prepublishOnly` script fields; removing the scripts directory is
+  belt-and-braces.
+- Windows prebuilds are excluded by maintainer decision — the plugin's
+  primary platforms are macOS and Linux. A future Windows lane can
+  add them back without changing this script's shape.
+- `.tsbuildinfo` is non-deterministic and is not needed at runtime.
+- Sourcemaps double the bundled-payload size for zero load-time value;
+  the dispatcher's cache-execution defect is a module-resolution failure,
+  not a debug-source-path issue.
+
+Enforcement: `tools/package-marketplace.mjs --check` runs the
+`isForbiddenBundledPath()` test against every file under
+`marketplace/plugins/claude-companion/node_modules/` and exits non-zero
+if any matches. The global `EXCLUDED_SEGMENTS` (which contains
+`node_modules`) is bypassed under the bundled tree only — the bundled
+tree has its own forbidden-path table above.
+
 ## Enforcement
 
 Two enforcement layers exist:

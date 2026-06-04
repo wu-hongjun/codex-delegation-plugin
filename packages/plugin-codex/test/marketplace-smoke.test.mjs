@@ -349,3 +349,56 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
     );
   });
 });
+
+// ==========================================================================
+// Plan 0006 T9.5 — smoke helper dispatcher-execution check
+// ==========================================================================
+//
+// These tests verify that tools/smoke-marketplace.mjs contains the STEP 5.5
+// dispatcher-execution check added in T9.5. They are static source inspections
+// only — no real codex calls, no real dispatcher invocations.
+
+describe('smoke helper dispatcher-execution check (Plan 0006 T9.5)', () => {
+  // ========================================================================
+  // T9.5-S20: smoke helper contains a STEP 5.5 dispatcher-execution block
+  // ========================================================================
+
+  it('smoke script source contains a STEP 5.5 dispatcher-execution step', () => {
+    const body = readFileSync(SMOKE_SCRIPT, 'utf8');
+    assert.ok(
+      body.includes('STEP 5.5'),
+      'smoke script must contain a STEP 5.5 dispatcher-execution block',
+    );
+    // Must spawn the claude-companion.mjs setup command
+    assert.ok(
+      body.includes('claude-companion.mjs') && body.includes('setup'),
+      'smoke script STEP 5.5 must spawn claude-companion.mjs setup',
+    );
+  });
+
+  // ========================================================================
+  // T9.5-S21: smoke helper asserts the absence of ERR_MODULE_NOT_FOUND
+  // ========================================================================
+
+  it('smoke script dispatcher-execution check asserts absence of ERR_MODULE_NOT_FOUND', () => {
+    const body = readFileSync(SMOKE_SCRIPT, 'utf8');
+    assert.ok(
+      body.includes('ERR_MODULE_NOT_FOUND'),
+      'smoke script must reference ERR_MODULE_NOT_FOUND as the T9 defect signal',
+    );
+  });
+
+  // ========================================================================
+  // T9.5-S22: smoke helper --help still exits 0 (regression guard)
+  // ========================================================================
+
+  it('`smoke-marketplace.mjs --help` still exits 0 after T9.5 additions (regression guard)', () => {
+    const r = spawnSync(process.execPath, [SMOKE_SCRIPT, '--help'], {
+      encoding: 'utf8',
+      timeout: 10_000,
+    });
+    assert.equal(r.status, 0, `--help exit code after T9.5: expected 0, got ${r.status}`);
+    const out = (r.stdout || '') + (r.stderr || '');
+    assert.match(out, /--marketplace-root/, '--help must still document --marketplace-root');
+  });
+});

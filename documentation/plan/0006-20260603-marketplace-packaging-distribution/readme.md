@@ -1,17 +1,18 @@
 # Plan 0006 — Marketplace packaging and distribution polish
 
-**Status**: `planning`
+**Status**: `auditing`
 **Started**: 2026-06-03
 **Stage 1 approved**: 2026-06-03
-**Last updated**: 2026-06-03
+**Stage 2 complete**: 2026-06-04
+**Last updated**: 2026-06-04
 
 ## Stages
 
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-03** — all 10 OQs (A–J) resolved; 12 tasks (T1–T12) with acceptance criteria; 7 risks (R1–R7); awaiting Stage 2 kickoff (parallel with Plan 0004 T11/T12) |
-| 2 — Implement | `2-implement.md` | not started |
-| 3 — Audit | `3-audit.md` | not started |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-04** — T1–T12 done (T9.5 runtime-packaging remediation included); marketplace layout committed under `marketplace/`; plugin cache is self-contained and executable from `<CODEX_HOME>/plugins/cache/.../0.2.0/scripts/claude-companion.mjs setup` without `ERR_MODULE_NOT_FOUND`; install / upgrade / uninstall / smoke / versioning / release-checklist / docs-split procedures all in place; plugin version `0.2.0`; 1493 tests passing locally (1207 npm test + 28 test:attach + 258 test:bench); CI green on run `26958704913` across `ubuntu-latest + macos-latest × Node 20 + 22` |
+| 3 — Audit | `3-audit.md` | not started — requires independent context |
 | 4 — Polish | `4-polish.md` | not started |
 | 5 — Report | `5-report.md` | not started |
 

@@ -246,3 +246,39 @@ POST-FINDING: real $HOME/.codex/config.toml UNCHANGED
   Non-smoke 'cc-plugin-codex-local' entry count: 0 before = 0 after.
 
 === End of T9 manual-discovery + reproduction capture ===
+
+==========================================================
+APPENDED 2026-06-04: T9 ACCEPTANCE — orchestrator-run cache-execution proof
+==========================================================
+
+T9.5 substance commit: 155ee3d ("bundle workspace runtime + driver +
+node-pty into marketplace cache").
+T9.5 CI: run 26933689683, success on ubuntu-latest + macos-latest x
+Node 20 + 22.
+
+T9 acceptance method (maintainer-chosen 2026-06-04): accept the
+orchestrator-run cache-execution proof from the T9.5 final
+verification (see 2-implement.md T9.5 section "Empirical
+defect-closure verification (final, orchestrator-run)").
+
+Final T9 manual-discovery status:
+- $claude-setup: PASS — fresh isolated CODEX_HOME on 155ee3d, dispatcher
+  setup probe ran from cache with exit 0, aggregate "warn" (informational
+  claude-bg-flag only). ERR_MODULE_NOT_FOUND absent. pty-build ok.
+  All 16 probes ok except one informational warn. This exercises the
+  same execution path the Codex TUI hits when $claude-setup is typed;
+  combined with the prior qa-tester PASS for $claude-setup recognition
+  (skill expanded, dispatcher invoked), it satisfies both the discovery
+  and execution criteria of the original T9 acceptance brief.
+- $claude-delegate ... $claude-adversarial-review (7 skills):
+  PASS, qa-tester via tmux (2026-06-04). Re-verification with the
+  bundled tree was waived by the maintainer because the runtime
+  packaging fix is in the import-resolution layer, not the skill-
+  registration layer; the discovery evidence captured earlier remains
+  valid against the bundled tree.
+
+T9 status: CLOSED (8/8 acceptance criteria satisfied).
+T9.5 status: CLOSED (defect resolved, CI green).
+T10 status: UNBLOCKED.
+
+=== End of T9 acceptance ===

@@ -1429,15 +1429,9 @@ Then pause before T10.
 
 ### Status
 
-**T9 automation complete + CI green + manual discovery partial: 7/8 PASS, 1 FAIL (`$claude-setup`) due to newly-discovered marketplace runtime-packaging defect.** Plan 0006 status remains `planning`; T1-T8 of Stage 2 fully done; T9 automation infrastructure + CI + manual TUI verification are all done at the *discovery* layer. T9 is **not closed**: the `$claude-setup` FAIL is a real defect (workspace deps `@cc-plugin-codex/runtime` and `@cc-plugin-codex/driver-claude-code` missing from the marketplace plugin cache), and the same defect blocks end-to-end execution of every dispatcher-backed skill from a real install. The defect is **out of T9's allowed-files scope** — fixing it requires touching `tools/package-marketplace.mjs` and/or the marketplace tree's deps, which is a new T-task. T10 (version bump) is paused; the runtime-packaging fix should land first (likely as a new task between T9 and T10, or as a Plan 0006 amendment) to avoid version-bumping a plugin that cannot actually execute from its installed cache.
+**T9 CLOSED (2026-06-04).** Discovery layer: 8/8 PASS (qa-tester via tmux). Execution layer: PASS for `$claude-setup` per the orchestrator-run cache-execution proof on T9.5 commit `155ee3d` — fresh isolated `CODEX_HOME`, dispatcher setup probe runs from cache with exit 0, aggregate `warn`, 15/16 probes `ok` (one informational `warn` on `claude-bg-flag`), `pty-build` `ok`, `ERR_MODULE_NOT_FOUND` absent. The maintainer accepted this proof as evidence that the same execution code path the TUI hits when `$claude-setup` is typed succeeds end-to-end from the bundled cache; the prior qa-tester PASS for `$claude-setup` recognition (skill expanded, dispatcher invoked) combined with the post-T9.5 dispatcher-execution success satisfies both T9 acceptance layers. The 7 other-skill PASS entries captured earlier remain valid against the bundled tree because T9.5's fix lives in the import-resolution layer, not in skill registration.
 
-**Open items requiring maintainer decision:**
-
-1. Which fix option (1-4 in the previous section) for the marketplace runtime-packaging defect.
-2. Whether the fix is a new T-task in Plan 0006 (e.g., T9.5 / T9b) or a separate Plan 0007 cycle.
-3. Whether T9 stays "open / blocked on packaging fix" or closes-with-known-issue and the fix becomes T10's prereq.
-
-**Maintainer decision (2026-06-04):** option 1 — new T-task T9.5 inside Plan 0006, before T10. T9 stays "open / blocked on T9.5" until the cache execution defect is fixed; then T9 closes alongside T9.5. T10-T12 stay paused behind that.
+Plan 0006 status: `planning` (Stage 1 approved). T1-T8 fully done. **T9 and T9.5 both CLOSED.** T10-T12 unblocked, awaiting maintainer go-ahead per task.
 
 ---
 
@@ -1652,4 +1646,4 @@ T9.5 closes the T9 `$claude-setup` FAIL. With the bundled tree in place, the T9 
 
 ### Status
 
-**T9.5 complete + CI green.** The marketplace-cache runtime-packaging defect discovered in T9 is closed. `node <PLUGIN_ROOT>/scripts/claude-companion.mjs setup` runs end-to-end from a fresh isolated `CODEX_HOME` cache with exit 0, full probe output, no `ERR_MODULE_NOT_FOUND`, and node-pty PTY probe `ok`. T9 acceptance is unblocked: `$claude-setup` now passes its gate criterion (`ok`/`warn` aggregate). Pending the maintainer's choice of acceptance method (re-run qa-tester TUI checklist with the bundled tree, OR accept the orchestrator-run cache-execution proof above). T10 (version bump) is unblocked once T9 closes.
+**T9.5 CLOSED (2026-06-04).** The marketplace-cache runtime-packaging defect discovered in T9 is fixed. CI green on `155ee3d`. T9 closed alongside T9.5 — the maintainer accepted the orchestrator-run cache-execution proof as evidence of `$claude-setup` execution-layer PASS. T10 (version bump) is now unblocked and awaits maintainer go-ahead.

@@ -931,7 +931,13 @@ Per the maintainer's "Use A/B/C, but keep it tight" instruction and memory `feed
 | T11 (release checklist) | RELEASING.md now has full Install (T6) + Upgrade (T7) sections. T8-T10 plug remaining steps in. |
 | T12 (docs split) | T12 finalizes the marketplace README structure. The Upgrade section's wording is stable and should survive verbatim. |
 
-### CI evidence (pending)
+### CI evidence
 
-- Commit: pending — `Plan 0006 T7: document marketplace upgrade procedure`
-- CI run: pending
+- Commit: `31a93b6` ("Plan 0006 T7: document marketplace upgrade procedure")
+- CI run: `26928354226`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+- Plugin lane post-T7: 691/691 (up from 681; +10 upgrade-doc tests).
+
+### Status
+
+**T7 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3, T4, T5, T6, T7 of Stage 2 done; T8 (uninstall procedure) paused awaiting maintainer go-ahead.

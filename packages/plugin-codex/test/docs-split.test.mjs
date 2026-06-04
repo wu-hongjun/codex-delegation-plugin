@@ -430,3 +430,58 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
     });
   });
 });
+
+describe('docs polish — Stage 4 audit findings (Plan 0006 Stage 4)', () => {
+  describe('F-1: plugin README known-limitation bullet must reflect committed marketplace', () => {
+    it('plugin README must NOT contain the stale "No committed marketplace packaging" bullet', () => {
+      const content = readFileSync(PLUGIN_README, 'utf8');
+      assert.ok(
+        !/No committed marketplace packaging/i.test(content),
+        'Plugin README still contains the stale "No committed marketplace packaging" bullet from before Plan 0006',
+      );
+    });
+
+    it('plugin README must mention the committed `marketplace/` tree', () => {
+      const content = readFileSync(PLUGIN_README, 'utf8');
+      assert.match(
+        content,
+        /committed[^\n]*`marketplace\/`|`marketplace\/`[^\n]*committed/i,
+        'Plugin README must state that the local marketplace packaging under `marketplace/` is committed',
+      );
+    });
+  });
+
+  describe('F-2: root README plan-status checklist must reflect current truth', () => {
+    it('root README must mark Plans 0001, 0002, and 0003 complete', () => {
+      const content = readFileSync(ROOT_README, 'utf8');
+      const required = [
+        /^- \[x\][^\n]*Plan 0001[^\n]*(complete|Initial foundation)/m,
+        /^- \[x\][^\n]*Plan 0002[^\n]*complete/m,
+        /^- \[x\][^\n]*Plan 0003[^\n]*complete/m,
+      ];
+      for (const regex of required) {
+        assert.match(
+          content,
+          regex,
+          `Root README plan-status checklist must mark this plan complete: ${regex}`,
+        );
+      }
+    });
+
+    it('root README must NOT mark Plan 0004 complete', () => {
+      const content = readFileSync(ROOT_README, 'utf8');
+      assert.ok(
+        !/^- \[x\][^\n]*Plan 0004/m.test(content),
+        'Root README must not mark Plan 0004 complete (it is paused pending post-cutover measurement)',
+      );
+    });
+
+    it('root README must NOT mark Plan 0006 complete', () => {
+      const content = readFileSync(ROOT_README, 'utf8');
+      assert.ok(
+        !/^- \[x\][^\n]*Plan 0006/m.test(content),
+        'Root README must not mark Plan 0006 complete (it is still polishing through Stage 4)',
+      );
+    });
+  });
+});

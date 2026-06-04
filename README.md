@@ -148,17 +148,17 @@ Update with `git submodule update --remote --merge`.
 
 ## Status
 
-Implementation in progress under **Plan 0001 — Initial foundation** ([readme](documentation/plan/0001-20260530-initial-plan/readme.md), [plan](documentation/plan/0001-20260530-initial-plan/1-plan.md)).
+Plans 0001-0003 are complete; Plan 0004 is paused pending post-cutover measurement; Plan 0005 is deferred; Plan 0006 (marketplace packaging + distribution polish) is in progress. See the [plan history](documentation/plan/) for details.
 
 - [x] Repository scaffolded; four reference submodules pinned; docs snapshotted.
 - [x] Architectural research complete and corrected ([report](documentation/research/20260530-initial-research/report.md)).
 - [x] Plan 0001 drafted and approved 2026-05-30; all six open questions resolved by the maintainer.
-- [ ] Plan 0001 implementation (in progress).
-- [ ] Plan 0002 — multi-turn reuse via PTY attach / channels.
-- [ ] Plan 0003 — `$claude-review`, `$claude-adversarial-review`.
-- [ ] Plan 0004 — benchmark harness comparing `-p`, `-p --resume`, fresh-per-task background, reused background.
-- [ ] Plan 0005 — stop-time review gate via hooks.
-- [ ] Plan 0006 — marketplace packaging + distribution polish.
+- [x] Plan 0001 — Initial foundation ([readme](documentation/plan/0001-20260530-initial-plan/readme.md)) — complete.
+- [x] Plan 0002 — multi-turn reuse via PTY attach / channels — complete.
+- [x] Plan 0003 — `$claude-review`, `$claude-adversarial-review` — complete.
+- [ ] Plan 0004 — benchmark harness comparing `-p`, `-p --resume`, fresh-per-task background, reused background (paused pending post-cutover T11/T12).
+- [ ] Plan 0005 — stop-time review gate via hooks (deferred).
+- [ ] Plan 0006 — marketplace packaging + distribution polish (in progress).
 
 ### Known risks
 

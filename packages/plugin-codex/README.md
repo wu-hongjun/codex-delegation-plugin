@@ -352,7 +352,7 @@ This v1 uses Claude Code background sessions and does not use `claude -p`. It is
 - **Review-of-review recursion is not hard-prevented** — default target selection skips review turns, but no hard depth limit is enforced. A future plan may add explicit depth tracking.
 - **No stop-time review gate yet** — plan 0005 will add this.
 - **No benchmarked cost-savings claim** — we measure in plan 0004.
-- **No committed marketplace packaging** — plan 0006 handles distribution polish.
+- **Local marketplace packaging is committed; no external registry submission** — plan 0006 ships the local marketplace tree under `marketplace/`, installed via `codex plugin marketplace add "<repo-root>/marketplace"`. Submission to an external / hosted plugin registry is not part of this release.
 - **Windows not supported or tested in plan 0001 or plan 0002** — development and testing are on macOS and Linux only.
 - **Real Claude agents --json schema differs from mock** — plan 0001 supports the 2.1.149-style row format with derived short IDs (shortId is the first 8 hex characters of the UUID, stripped of dashes). The reconciler uses this derivation for matching.
 - **No `claude ultrareview` wrapper** — the plugin review skills are local-session and fresh-session review flows; Anthropic's `claude ultrareview` remains a separate Claude Code review surface and is not wrapped by this plugin.

@@ -1071,7 +1071,13 @@ T8-5 and T8-6 initially used `/no longer appear in[\s\S]*?codex plugin list/i` a
 | T11 (release checklist) | RELEASING.md now has Install (T6) + Upgrade (T7) + Uninstall procedure + Uninstall verification (T8). T9-T10 fill remaining sections. |
 | T12 (docs split) | Uninstall section is now content-rich; T12 should keep its structure verbatim while reorganizing the README's outline. |
 
-### CI evidence (pending)
+### CI evidence
 
-- Commit: pending — `Plan 0006 T8: document marketplace uninstall procedure`
-- CI run: pending
+- Commit: `e8cfc92` ("Plan 0006 T8: document marketplace uninstall procedure")
+- CI run: `26930112172`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+- Plugin lane post-T8: 701/701 (up from 691; +10 uninstall-doc tests).
+
+### Status
+
+**T8 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3, T4, T5, T6, T7, T8 of Stage 2 done; T9 (smoke test procedure) paused awaiting maintainer go-ahead.

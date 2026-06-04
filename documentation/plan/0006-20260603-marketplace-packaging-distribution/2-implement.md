@@ -1642,7 +1642,14 @@ T9.5 closes the T9 `$claude-setup` FAIL. With the bundled tree in place, the T9 
 | T11 (release checklist) | RELEASING.md gets a new packaging note: `node tools/package-marketplace.mjs --write` is required as a release-time step to refresh the bundled tree, with `--check` as the verification gate. |
 | T12 (docs split) | The marketplace README pointer for smoke testing stays unchanged. Bundled-tree structure is opaque to end users. |
 
-### CI evidence (pending)
+### CI evidence
 
-- Commit: pending — `Plan 0006 T9.5: bundle workspace runtime + driver + node-pty into marketplace cache`
-- CI run: pending
+- Commit: `155ee3d` ("Plan 0006 T9.5: bundle workspace runtime + driver + node-pty into marketplace cache")
+- CI run: `26933689683`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+- Plugin lane post-T9.5: 743/743 (up from 718; +25 bundled-deps + STEP 5.5 tests).
+- Combined: 1447 tests (1161 npm test + 28 test:attach + 258 test:bench).
+
+### Status
+
+**T9.5 complete + CI green.** The marketplace-cache runtime-packaging defect discovered in T9 is closed. `node <PLUGIN_ROOT>/scripts/claude-companion.mjs setup` runs end-to-end from a fresh isolated `CODEX_HOME` cache with exit 0, full probe output, no `ERR_MODULE_NOT_FOUND`, and node-pty PTY probe `ok`. T9 acceptance is unblocked: `$claude-setup` now passes its gate criterion (`ok`/`warn` aggregate). Pending the maintainer's choice of acceptance method (re-run qa-tester TUI checklist with the bundled tree, OR accept the orchestrator-run cache-execution proof above). T10 (version bump) is unblocked once T9 closes.

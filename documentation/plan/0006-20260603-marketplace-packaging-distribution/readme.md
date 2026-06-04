@@ -1,11 +1,12 @@
 # Plan 0006 — Marketplace packaging and distribution polish
 
-**Status**: `reporting`
+**Status**: `complete`
 **Started**: 2026-06-03
 **Stage 1 approved**: 2026-06-03
 **Stage 2 complete**: 2026-06-04
 **Stage 3 complete**: 2026-06-04
 **Stage 4 complete**: 2026-06-04
+**Stage 5 complete / Completed**: 2026-06-04
 **Last updated**: 2026-06-04
 
 ## Stages
@@ -16,7 +17,7 @@
 | 2 — Implement | `2-implement.md` | **complete 2026-06-04** — T1–T12 done (T9.5 runtime-packaging remediation included); marketplace layout committed under `marketplace/`; plugin cache is self-contained and executable from `<CODEX_HOME>/plugins/cache/.../0.2.0/scripts/claude-companion.mjs setup` without `ERR_MODULE_NOT_FOUND`; install / upgrade / uninstall / smoke / versioning / release-checklist / docs-split procedures all in place; plugin version `0.2.0`; 1493 tests passing locally (1207 npm test + 28 test:attach + 258 test:bench); CI green on run `26958704913` across `ubuntu-latest + macos-latest × Node 20 + 22` |
 | 3 — Audit | `3-audit.md` | **complete 2026-06-04** — verdict `ready-for-polish`; 2 findings (F-1 stale known-limitation bullet in plugin README L355, F-2 stale plan-status checklist in root README L151-162); all 20 contract questions PASS, all safety invariants PASS, gates green (1493 tests, `package-marketplace --check` exit 0, lint/typecheck/format clean); auditor `oh-my-claudecode:critic` (Opus, fresh-context subagent) |
 | 4 — Polish | `4-polish.md` | **complete 2026-06-04** — F-1 plugin README known-limitation bullet rewritten as "Local marketplace packaging is committed; no external registry submission"; F-2 root README plan-status checklist updated to mark Plans 0001-0003 complete while keeping Plan 0004 (paused) and Plan 0006 (in progress) unchecked; 5 new tests added to `docs-split.test.mjs` (1207 → 1212 in `npm test`); local total 1498 tests pass; CI green on run `26976755879` across `ubuntu-latest + macos-latest × Node 20 + 22` |
-| 5 — Report | `5-report.md` | not started — awaiting maintainer authorization |
+| 5 — Report | `5-report.md` | **complete 2026-06-04** — final Plan 0006 report written; final local total 1498 tests pass; final CI evidence is Stage 4 run `26976755879` (success on `ubuntu-latest + macos-latest × Node 20 + 22`); no release tag (`v0.2.0`) created in Stage 5 — tagging is a separate maintainer-driven step using `documentation/RELEASING.md` |
 
 ## Summary
 

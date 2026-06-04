@@ -1870,7 +1870,14 @@ Orchestrator-absorbed per memory `feedback_orchestrator_b_role`. T11 is pure doc
 | T12 (docs split) | RELEASING.md is now stable. T12 should focus on the marketplace README structure: which sections belong end-user-facing (in the marketplace README) vs maintainer-facing (in RELEASING.md). T12 should NOT touch the canonical 7-section release-day flow established by T11. |
 | Plan 0006 closeout | All sections of RELEASING.md required by T11's AC #1 are in place. The release-day flow is mechanically locked by 15 T11 tests. The maintainer can drive a real `v0.2.x` release using this checklist verbatim. |
 
-### CI evidence (pending)
+### CI evidence
 
-- Commit: pending — `Plan 0006 T11: consolidate release checklist`
-- CI run: pending
+- Commit: `8f81387` ("Plan 0006 T11: consolidate release checklist")
+- CI run: `26955073675`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+- Plugin lane post-T11: 770/770 (up from 755; +15 T11 release-checklist tests).
+- Combined: 1474 tests (1188 npm test + 28 test:attach + 258 test:bench).
+
+### Status
+
+**T11 complete + CI green.** `documentation/RELEASING.md` is now the canonical release-day checklist. Release-day flow (Prerequisites → Version Bump → Packaging → Smoke Test → CI Verification → Tagging → Post-release) mechanically locked by 15 T11 tests + 65 inherited T6-T10 tests. T12 (docs split) remains, awaiting maintainer go-ahead.

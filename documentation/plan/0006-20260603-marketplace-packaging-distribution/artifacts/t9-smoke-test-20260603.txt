@@ -157,3 +157,92 @@ Automated checks: PASS
 Manual TUI skill checklist: pending maintainer (not run by orchestrator)
 
 === End of T9 capture ===
+
+==========================================================
+APPENDED 2026-06-04: Manual skill-discovery via qa-tester (tmux)
+==========================================================
+
+Driver: oh-my-claudecode:qa-tester subagent via tmux session
+TUI session: qa-codex-t9-1780549518
+TUI auth state: authenticated (Claude code, claude.ai, dev@bullpen.fi)
+CODEX_HOME: isolated mktemp -d (removed after test)
+
+T9 manual skill discovery (qa-tester via tmux, 2026-06-04):
+- $claude-setup: FAIL — skill recognized, dispatcher invoked, but ERR_MODULE_NOT_FOUND: @cc-plugin-codex/runtime missing in plugin cache; no aggregate verdict produced
+- $claude-delegate: PASS — skill expanded, read SKILL.md, returned usage: "$claude-delegate needs a task prompt to forward to Claude"
+- $claude-status: PASS — skill expanded, dispatcher invoked (claude-companion:claude-status), skill machinery fired
+- $claude-result: PASS — skill expanded, read SKILL.md, returned usage: "$claude-result needs a job ID or unique prefix"
+- $claude-stop: PASS — skill expanded, read SKILL.md, returned usage: "$claude-stop needs a job ID or unique prefix"
+- $claude-followup: PASS — skill expanded, read SKILL.md, returned usage: "$claude-followup needs both a job ID and the follow-up instruction"
+- $claude-review: PASS — skill expanded, read SKILL.md, returned usage: "$claude-review needs a job ID or unique prefix"
+- $claude-adversarial-review: PASS — skill expanded, read SKILL.md, returned usage: "$claude-adversarial-review needs a job ID or unique prefix"
+TUI auth state: authenticated
+tmux session: captured
+CODEX_HOME cleanup: removed
+Real ~/.codex/config.toml stale-smoke preserved: yes
+
+==========================================================
+APPENDED 2026-06-04: Reproduction (orchestrator-verified)
+==========================================================
+
+Confirms qa-tester's $claude-setup finding is a real packaging defect,
+not a session artifact. Same isolated-CODEX_HOME pattern.
+
+Imports under packages/plugin-codex/scripts/:
+  claude-companion.mjs:20: import { ... } from '@cc-plugin-codex/runtime'
+  claude-companion.mjs:25: import { ... } from '@cc-plugin-codex/driver-claude-code'
+  scripts/lib/ack.mjs:9:   import { getCompanionHome } from '@cc-plugin-codex/runtime'
+  (plus JSDoc type imports in lib/adapter.mjs and lib/format.mjs)
+
+Plugin cache state after codex plugin add (isolated CODEX_HOME):
+  PLUGIN_ROOT exists: yes
+  node_modules under PLUGIN_ROOT: no
+
+Direct execution from CACHE path:
+  $ node <PLUGIN_ROOT>/scripts/claude-companion.mjs setup
+  Error [ERR_MODULE_NOT_FOUND]: Cannot find package '@cc-plugin-codex/runtime'
+    imported from <PLUGIN_ROOT>/scripts/claude-companion.mjs
+
+Direct execution from MARKETPLACE SOURCE path (same script bytes):
+  $ node <repo>/marketplace/plugins/claude-companion/scripts/claude-companion.mjs setup
+  Claude companion setup — warn
+    delegate capability: ok
+    follow-up capability: ok
+    Shared:
+      ok    node-version                  Node 25.8.2
+      ok    companion-dir-writable        /Users/hongjunwu/.codex/cc-plugin-codex
+      ok    codex-version                 codex-cli 0.136.0
+      ok    claude-binary                 claude binary is executable
+      ok    claude-version                2.1.150 (Claude Code)
+      ok    claude-auth                   {loggedIn: true, authMethod: claude.ai,
+                                           apiProvider: firstParty, email: dev@bullpen.fi}
+      (exit 0)
+
+Root cause:
+  packages/plugin-codex/ depends on workspace packages
+  @cc-plugin-codex/runtime and @cc-plugin-codex/driver-claude-code.
+  Source path resolves these via the workspace's root node_modules.
+  Marketplace tree (committed under marketplace/plugins/claude-companion/)
+  is byte-identical to source but contains NO node_modules. When Codex
+  installs the plugin into <CODEX_HOME>/plugins/cache/.../0.2.0/, that
+  cache copy also has no node_modules. The dispatcher CAN load when
+  invoked from the source path (workspace resolves), but FAILS when
+  invoked from the cache path (no resolution path to workspace deps).
+
+Skill-discovery scope:
+  Codex's TUI $<skill-name> expansion works for all 8 skills (qa-tester
+  PASS confirmed). This finding does NOT invalidate Plan 0006's skill
+  registration / marketplace allowlist / packaging-check work.
+
+Skill-execution scope:
+  Every dispatcher-backed skill is blocked by this missing dep when run
+  from the cache. That is the user-facing behavior after a real
+  `codex plugin add` against the local marketplace. The discovery
+  layer (qa-tester PASS for 7/8) is the floor, not the ceiling, of
+  what users will experience.
+
+POST-FINDING: real $HOME/.codex/config.toml UNCHANGED
+  Stale 'cc-plugin-codex-local-smoke' at lines 73 + 119: preserved.
+  Non-smoke 'cc-plugin-codex-local' entry count: 0 before = 0 after.
+
+=== End of T9 manual-discovery + reproduction capture ===

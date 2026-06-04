@@ -1158,18 +1158,85 @@ Real $HOME/.codex/config.toml pre/post comparison:
 
 ### Manual skill-discovery result
 
-**Pending maintainer.** The orchestrator cannot drive the Codex 0.136.0 TUI from outside, so each of the 8 skills is currently recorded as `not run (pending maintainer)` in the artifact (STEP D). Per the maintainer's brief: "do not mark T9 done unless the maintainer explicitly accepts automation-only smoke ... ask the maintainer to run the manual checklist and paste results, or record the limitation as a blocker." This implementation log records the limitation as an open item; the orchestrator will request the manual checklist outcome in the user-facing summary at T9-commit close.
+**Partial: 7/8 PASS, 1 FAIL (`$claude-setup`).** Driven by the `oh-my-claudecode:qa-tester` subagent via a tmux Codex session (TUI authenticated as `dev@bullpen.fi`), then independently reproduced by the orchestrator outside qa-tester.
 
-The maintainer can run the manual checklist via:
+Per-skill result block (also appended verbatim to the artifact):
 
-```bash
-CODEX_HOME=$(mktemp -d) node tools/smoke-marketplace.mjs --keep-home
-# Note the preserved CODEX_HOME path printed at the end.
-CODEX_HOME=<preserved-dir> codex
-# Inside Codex, invoke each $claude-* skill and note whether it is recognized.
+```text
+T9 manual skill discovery (qa-tester via tmux, 2026-06-04):
+- $claude-setup: FAIL — skill recognized, dispatcher invoked, but
+  ERR_MODULE_NOT_FOUND: @cc-plugin-codex/runtime missing in plugin
+  cache; no aggregate verdict produced
+- $claude-delegate: PASS — skill expanded, read SKILL.md, returned
+  usage "$claude-delegate needs a task prompt to forward to Claude"
+- $claude-status: PASS — skill expanded, dispatcher invoked
+  (claude-companion:claude-status), skill machinery fired
+- $claude-result: PASS — skill expanded, returned usage
+  "$claude-result needs a job ID or unique prefix"
+- $claude-stop: PASS — skill expanded, returned usage
+  "$claude-stop needs a job ID or unique prefix"
+- $claude-followup: PASS — skill expanded, returned usage
+  "$claude-followup needs both a job ID and the follow-up instruction"
+- $claude-review: PASS — skill expanded, returned usage
+  "$claude-review needs a job ID or unique prefix"
+- $claude-adversarial-review: PASS — skill expanded, returned usage
+  "$claude-adversarial-review needs a job ID or unique prefix"
+TUI auth state: authenticated
+tmux session: captured
+CODEX_HOME cleanup: removed
+Real ~/.codex/config.toml stale-smoke preserved: yes
 ```
 
-Outcomes can be recorded by appending a follow-up section to the t9 artifact, or in a successor commit if the maintainer wants the result version-controlled.
+Discovery-layer reading: **all 8 skills are recognized** by Codex 0.136.0's TUI `$<name>` expansion. The cc-plugin-codex marketplace registration + skill manifest + skill-files allowlist work as designed at the discovery layer. Plan 0006 T2/T3/T4/T5's invariants are not invalidated by this result.
+
+Execution-layer reading: the `$claude-setup` FAIL surfaces a **distinct runtime-packaging defect** (see next section) that affects dispatcher-backed execution from the plugin cache. It is not a skill-discovery regression; it is a downstream packaging bug previously masked by source-tree development. The 7 PASS entries above represent skill *recognition* only — when those skills are invoked with real arguments that exercise the dispatcher, they hit the same `ERR_MODULE_NOT_FOUND` as `$claude-setup`.
+
+### T9 finding — marketplace runtime packaging defect
+
+**Scope:** Plan 0006 T9 is the first task in this cycle to exercise end-to-end skill *execution* (not just discovery). Doing so surfaced a real defect that the prior automated smoke could not detect.
+
+**Symptom:** Inside the Codex 0.136.0 TUI, with the plugin installed in an isolated `CODEX_HOME` via `codex plugin marketplace add` + `codex plugin add`, invoking `$claude-setup` (and any other dispatcher-backed skill with real args) fails with:
+
+```text
+Error [ERR_MODULE_NOT_FOUND]: Cannot find package
+'@cc-plugin-codex/runtime' imported from
+<CODEX_HOME>/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/scripts/claude-companion.mjs
+```
+
+**Root cause:** `packages/plugin-codex/scripts/claude-companion.mjs` and `packages/plugin-codex/scripts/lib/ack.mjs` import from workspace packages `@cc-plugin-codex/runtime` and `@cc-plugin-codex/driver-claude-code`. Those resolve from the repo root's `node_modules` (workspace setup) when the script is executed from `marketplace/plugins/claude-companion/scripts/` inside the cc-plugin-codex checkout. The marketplace tree under `marketplace/plugins/claude-companion/` is byte-identical to source and contains no `node_modules`. After `codex plugin add`, Codex copies the plugin into `<CODEX_HOME>/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/`, which also has no `node_modules`. Without a resolution path to the workspace packages, the dispatcher fails to import.
+
+**Reproduction (orchestrator-verified, outside qa-tester):**
+
+```text
+Plugin cache after `codex plugin add`:
+  PLUGIN_ROOT/scripts/claude-companion.mjs                    : exists
+  PLUGIN_ROOT/node_modules                                    : absent
+
+$ node <PLUGIN_ROOT>/scripts/claude-companion.mjs setup
+  → ERR_MODULE_NOT_FOUND: Cannot find package '@cc-plugin-codex/runtime'
+
+$ node <repo>/marketplace/plugins/claude-companion/scripts/claude-companion.mjs setup
+  → Claude companion setup — warn
+    delegate capability: ok / follow-up capability: ok
+    Shared: node-version ok / companion-dir-writable ok / codex-version ok /
+            claude-binary ok / claude-version ok / claude-auth ok
+    (exit 0)
+```
+
+Same script bytes, different cwd, different module-resolution result.
+
+**Confirms Plan 0006 T1 hypothesis layer:** the local-marketplace install path *registers* and *discovers* skills correctly, but the cache copy is not a self-contained executable unit. The marketplace packaging (T2-T5) deliberately ships only allowlisted source files; the workspace deps were never bundled.
+
+**Out-of-scope for T9 by file:** fixing this defect requires touching `tools/package-marketplace.mjs` and possibly the marketplace tree's `node_modules`/`package.json` shape — both outside T9's allowed-files set. T9 is the *discovery* of the defect, not the fix. The fix is a new T-task whose scope, file set, and risk profile need a fresh maintainer brief.
+
+**Options for next step (maintainer decision):**
+
+1. **Bundle workspace deps into the marketplace tree** — extend `tools/package-marketplace.mjs --write` to also copy `packages/runtime/dist/` and `packages/driver-claude-code/dist/` plus a minimal `package.json` + `node_modules` shim into `marketplace/plugins/claude-companion/`. Bumps marketplace size; preserves the current `import '@cc-plugin-codex/runtime'` shape in scripts.
+2. **Vendor the runtime + driver into `scripts/lib/`** — replace `@cc-plugin-codex/runtime` and `@cc-plugin-codex/driver-claude-code` imports with `./lib/...` paths that are real files in the marketplace tree. Bigger script-tree edit; eliminates the workspace-dep coupling.
+3. **Single-file bundle** — run a bundler (`esbuild`/`rollup`) to produce one self-contained `scripts/claude-companion.mjs` with all deps inlined. Cleanest runtime; biggest tooling addition.
+4. **Plain `package.json` with deps** — ship a `package.json` under `marketplace/plugins/claude-companion/` declaring real npm deps (if `@cc-plugin-codex/runtime` were ever published to npm). Not viable today since those packages are workspace-local.
+
+Each option needs its own plan-task (or its own plan cycle). T9 records the finding; it does not implement a fix.
 
 ### Isolated CODEX_HOME handling
 
@@ -1362,4 +1429,10 @@ Then pause before T10.
 
 ### Status
 
-**T9 automation complete + CI green.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3, T4, T5, T6, T7, T8 of Stage 2 fully done; T9 automation infrastructure done + CI green, but the manual 8-skill Codex TUI checklist (`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`) is **pending maintainer**. Per the plan's T9 acceptance criteria, T9 will not be declared "done" until the maintainer either runs the manual checklist or explicitly accepts automation-only smoke. T10 (version bump) paused awaiting that decision + maintainer go-ahead.
+**T9 automation complete + CI green + manual discovery partial: 7/8 PASS, 1 FAIL (`$claude-setup`) due to newly-discovered marketplace runtime-packaging defect.** Plan 0006 status remains `planning`; T1-T8 of Stage 2 fully done; T9 automation infrastructure + CI + manual TUI verification are all done at the *discovery* layer. T9 is **not closed**: the `$claude-setup` FAIL is a real defect (workspace deps `@cc-plugin-codex/runtime` and `@cc-plugin-codex/driver-claude-code` missing from the marketplace plugin cache), and the same defect blocks end-to-end execution of every dispatcher-backed skill from a real install. The defect is **out of T9's allowed-files scope** — fixing it requires touching `tools/package-marketplace.mjs` and/or the marketplace tree's deps, which is a new T-task. T10 (version bump) is paused; the runtime-packaging fix should land first (likely as a new task between T9 and T10, or as a Plan 0006 amendment) to avoid version-bumping a plugin that cannot actually execute from its installed cache.
+
+**Open items requiring maintainer decision:**
+
+1. Which fix option (1-4 in the previous section) for the marketplace runtime-packaging defect.
+2. Whether the fix is a new T-task in Plan 0006 (e.g., T9.5 / T9b) or a separate Plan 0007 cycle.
+3. Whether T9 stays "open / blocked on packaging fix" or closes-with-known-issue and the fix becomes T10's prereq.

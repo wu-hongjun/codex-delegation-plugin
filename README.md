@@ -148,7 +148,7 @@ Update with `git submodule update --remote --merge`.
 
 ## Status
 
-Plans 0001-0003 are complete; Plan 0004 is paused pending post-cutover measurement; Plan 0005 is deferred; Plan 0006 (marketplace packaging + distribution polish) is in progress. See the [plan history](documentation/plan/) for details.
+Plans 0001-0003 and Plan 0006 are complete; Plan 0004 is paused pending post-cutover measurement; Plan 0005 is deferred. See the [plan history](documentation/plan/) for details.
 
 - [x] Repository scaffolded; four reference submodules pinned; docs snapshotted.
 - [x] Architectural research complete and corrected ([report](documentation/research/20260530-initial-research/report.md)).
@@ -158,7 +158,7 @@ Plans 0001-0003 are complete; Plan 0004 is paused pending post-cutover measureme
 - [x] Plan 0003 — `$claude-review`, `$claude-adversarial-review` — complete.
 - [ ] Plan 0004 — benchmark harness comparing `-p`, `-p --resume`, fresh-per-task background, reused background (paused pending post-cutover T11/T12).
 - [ ] Plan 0005 — stop-time review gate via hooks (deferred).
-- [ ] Plan 0006 — marketplace packaging + distribution polish (in progress).
+- [x] Plan 0006 — marketplace packaging + distribution polish — complete.
 
 ### Known risks
 

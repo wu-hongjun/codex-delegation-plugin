@@ -476,11 +476,12 @@ describe('docs polish — Stage 4 audit findings (Plan 0006 Stage 4)', () => {
       );
     });
 
-    it('root README must NOT mark Plan 0006 complete', () => {
+    it('root README must mark Plan 0006 complete (post-Stage-5)', () => {
       const content = readFileSync(ROOT_README, 'utf8');
-      assert.ok(
-        !/^- \[x\][^\n]*Plan 0006/m.test(content),
-        'Root README must not mark Plan 0006 complete (it is still polishing through Stage 4)',
+      assert.match(
+        content,
+        /^- \[x\][^\n]*Plan 0006[^\n]*complete/m,
+        'Root README must mark Plan 0006 complete (Stage 5 closed; release tagged from this commit)',
       );
     });
   });

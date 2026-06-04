@@ -1983,7 +1983,14 @@ T12 was the final T-task of Plan 0006 Stage 2 (Implement). All 13 T-tasks done:
 
 Stage 3 (Audit), Stage 4 (Polish), Stage 5 (Report) follow when the maintainer green-lights closing Plan 0006 as a whole. T11 + T12 left RELEASING.md and the three README surfaces mechanically locked by 80 + 19 + 17 + ~33 = ~149 docs-lane assertions (full count across all marketplace-* and docs-split test files).
 
-### CI evidence (pending)
+### CI evidence
 
-- Commit: pending — `Plan 0006 T12: finalise docs split`
-- CI run: pending
+- Commit: `8dbbb61` ("Plan 0006 T12: finalise docs split")
+- CI run: `26958704913`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+- Plugin lane post-T12: 789/789 (up from 770; +19 T12 docs-split tests).
+- Combined: 1493 tests (1207 npm test + 28 test:attach + 258 test:bench).
+
+### Status
+
+**T12 complete + CI green. Plan 0006 Stage 2 (Implement) complete.** All 13 T-tasks done: T1, T2, T3, T4, T5, T6, T7, T8, T9, T9.5, T10, T11, T12. Three documentation surfaces split with distinct audiences (end-user marketplace README, comprehensive plugin README, workspace root README). RELEASING.md is the canonical maintainer-facing release-day checklist. The marketplace plugin is self-contained and executable from the cached install path (T9.5). Plugin version 0.2.0 unchanged. Plan 0004 tag `plan-0004-pre-cutover` still at `7d9b5f1`. Plan 0005 stays `deferred`. Stage 3 (Audit), Stage 4 (Polish), Stage 5 (Report) follow when the maintainer green-lights Plan 0006 closure as a whole.

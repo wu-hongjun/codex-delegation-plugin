@@ -31,35 +31,45 @@ Lifecycle: `delegate` creates one fresh background session; `status` reconciles 
 
 ## Install locally
 
-Use this marketplace-based installation. The commands below use `rsync` to mirror the plugin into a local marketplace root, then add it to Codex.
+The primary install path is the committed local marketplace at the
+repo root. Plan 0006 codified this flow as the supported way to add
+the plugin to Codex.
 
 ```bash
-REPO_ROOT="$(pwd)"
-MARKETPLACE_ROOT="$(mktemp -d /tmp/cc-plugin-codex-marketplace-XXXXXX)"
-mkdir -p "$MARKETPLACE_ROOT/.agents/plugins"
-mkdir -p "$MARKETPLACE_ROOT/plugins"
-rsync -a --delete \
-  "$REPO_ROOT/packages/plugin-codex/" \
-  "$MARKETPLACE_ROOT/plugins/claude-companion/"
-cat > "$MARKETPLACE_ROOT/.agents/plugins/marketplace.json" <<'JSON'
-{
-  "name": "cc-plugin-codex-local",
-  "interface": { "displayName": "cc-plugin-codex Local" },
-  "plugins": [
-    {
-      "name": "claude-companion",
-      "source": { "source": "local", "path": "./plugins/claude-companion" },
-      "policy": { "installation": "AVAILABLE", "authentication": "ON_INSTALL" },
-      "category": "Coding"
-    }
-  ]
-}
-JSON
-codex plugin marketplace add "$MARKETPLACE_ROOT"
+codex plugin marketplace add "$(pwd)/marketplace"
 codex plugin add "claude-companion@cc-plugin-codex-local"
+codex plugin list
 ```
 
-Note: marketplace packaging is intentionally not committed in plan 0001. Plan 0006 handles distribution polish.
+That's the whole install. The committed `marketplace/` tree under
+the repo root contains the byte-identical plugin payload at
+`marketplace/plugins/claude-companion/`, the marketplace root
+manifest at `marketplace/.agents/plugins/marketplace.json`, and the
+bundled runtime / driver / `node-pty` dependencies under
+`marketplace/plugins/claude-companion/node_modules/` (Plan 0006
+T9.5) needed for the cached install to execute end-to-end.
+
+The streamlined end-user surface for this install is
+[`marketplace/plugins/claude-companion/README.md`](../../marketplace/plugins/claude-companion/README.md).
+That file is short, install/use/troubleshoot focused, and ships
+alongside the marketplace tree itself. The full plugin docs (this
+README) cover the runtime, dispatcher, skills, and architecture in
+depth.
+
+For release maintainers, the canonical release-day checklist —
+prerequisites, version bump, packaging, smoke test, CI verification,
+tagging, post-release — is at
+[`documentation/RELEASING.md`](../../documentation/RELEASING.md).
+It is the single source of truth for the `node tools/package-marketplace.mjs --write` / `--check` workflow and the `v0.x.y` tag procedure (Plan 0006 T10 + T11).
+
+### Legacy install flow
+
+The pre-Plan-0006 ad-hoc `rsync` install path is no longer the
+recommended route and is intentionally not documented here. It
+relied on a temp-directory marketplace root and predated the
+committed `marketplace/` tree + bundled-dep payload. If you need
+historical context, see Plan 0006 T2 in
+`documentation/plan/0006-20260603-marketplace-packaging-distribution/2-implement.md`.
 
 ## Setup
 

@@ -1881,3 +1881,109 @@ Orchestrator-absorbed per memory `feedback_orchestrator_b_role`. T11 is pure doc
 ### Status
 
 **T11 complete + CI green.** `documentation/RELEASING.md` is now the canonical release-day checklist. Release-day flow (Prerequisites → Version Bump → Packaging → Smoke Test → CI Verification → Tagging → Post-release) mechanically locked by 15 T11 tests + 65 inherited T6-T10 tests. T12 (docs split) remains, awaiting maintainer go-ahead.
+
+---
+
+## T12 — Docs split (2026-06-04)
+
+### Goal
+
+Plan 0006 § 3.8 promised three distinct documentation surfaces with disjoint audiences. T12 finalises that split:
+
+| Surface | Audience | Length |
+|---|---|---|
+| `marketplace/plugins/claude-companion/README.md` | End users installing the plugin from the local marketplace | Short, install / verify / upgrade / uninstall / troubleshoot focused |
+| `packages/plugin-codex/README.md` | Developers + contributors | Comprehensive — runtime, dispatcher, skills, design pillars |
+| `README.md` (root) | Workspace overview / contributor entry point | Short Quick start + the existing v1 scope + design pillars + repo layout |
+
+T12 keeps `documentation/RELEASING.md` untouched as the maintainer-facing release checklist (T11 owns its shape).
+
+### Deliverables
+
+- `marketplace/plugins/claude-companion/README.md` — added a new `## Skills` section listing all 8 skills (`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`) with one-line descriptions; added a new troubleshooting entry `### Skill invocation fails with ERR_MODULE_NOT_FOUND` (the T9.5 packaging-defect signal at the end-user level); added the empty-cache-breadcrumb fact at the end of the Uninstall section. Forward-links to the comprehensive plugin README and to RELEASING.md.
+- `packages/plugin-codex/README.md` — rewrote `## Install locally` (L32-72 in the new file). The primary install path now reads:
+  ```
+  codex plugin marketplace add "$(pwd)/marketplace"
+  codex plugin add "claude-companion@cc-plugin-codex-local"
+  codex plugin list
+  ```
+  Removed the pre-T2 `rsync -a --delete` ad-hoc flow as the primary path. Added a `### Legacy install flow` subsection that names it explicitly as no-longer-recommended (without re-printing the command sequence). The section now points readers at the marketplace README for end users and at RELEASING.md for maintainers. The cost paragraph at L341 is untouched — byte-identical to the Plan 0001/0002 wording (`readme.test.mjs` T13-21 still passes).
+- `README.md` (root) — added a new `## Quick start` section after the opening preamble. It points at the 4 canonical surfaces (`marketplace/`, marketplace README, plugin README, RELEASING.md) plus the `documentation/plan/` history directory. The rest of the root README (v1 scope, design pillars 1-6, repository layout, submodule pins) is unchanged.
+- `packages/plugin-codex/test/docs-split.test.mjs` (NEW, 19 T12 cases) — locks each surface's required content + cross-file invariants.
+
+### Tests added (19 T12 cases)
+
+All under `describe('docs split — three distinct surfaces (Plan 0006 T12)', ...)` in the new `docs-split.test.mjs`:
+
+| # | Surface | Assertion |
+|---|---|---|
+| T12-1 | all three | All three README files exist on disk. |
+| T12-2 | marketplace | Required headings (`# Claude Companion`, `## Requirements`, `## Install`, `## Verify`, `## Skills`, `## Uninstall`, `## Smoke test`, `## Troubleshooting`, `## Upgrade`) all present. |
+| T12-3 | marketplace | `## Skills` section enumerates all 8 skill names with `$`-prefix and formats each as a list-item. |
+| T12-4 | marketplace | Exact install commands (`codex plugin marketplace add "<repo-root>/marketplace"` + `codex plugin add "claude-companion@cc-plugin-codex-local"`). |
+| T12-5 | marketplace | Verify section references `codex plugin list` + `$claude-setup`. |
+| T12-6 | marketplace | Smoke test section points at `documentation/RELEASING.md`. |
+| T12-7 | marketplace | Does NOT contain `rsync -a --delete` (legacy Plan 0001 install). |
+| T12-8 | marketplace | Troubleshooting covers `ERR_MODULE_NOT_FOUND` (T9.5 packaging-defect signal). |
+| T12-9 | marketplace | Uninstall area documents the empty-cache-breadcrumb fact. |
+| T12-10 | marketplace | No dev/CI/architecture-only phrases leak into the end-user surface (11-token deny-list: `npm run lint`, `tsc --build`, `Driver interface`, `design pillars`, etc.). |
+| T12-11 | marketplace | No OQ4 forbidden cost-claim tokens. |
+| T12-12 | marketplace | No Plan 0004 benchmark/cutover vocabulary (stricter than plugin README). |
+| T12-13 | plugin | `## Install locally` references the committed `marketplace/` install command. |
+| T12-14 | plugin | `## Install locally` does NOT include `rsync -a --delete` as a runnable command. |
+| T12-15 | plugin | `## Install locally` points at the marketplace README + RELEASING.md. |
+| T12-16 | plugin | Cost paragraph byte-identical to the Plan 0001/0002 wording (cross-checks the existing `readme.test.mjs` T13-21 invariant from the docs-split lane). |
+| T12-17 | root | `## Quick start` section exists and points at all 4 canonical surfaces. |
+| T12-18 | root | Quick start (or surrounding context) references `documentation/plan/`. |
+| T12-19 | cross-file | RELEASING.md still contains the T11 canonical-order headings (T12 did not restructure). |
+
+### A/B/C cadence (orchestrator-absorbed)
+
+Pure docs + tests rewrite. Per memory `feedback_orchestrator_b_role`, orchestrator absorbed A (3 README edits) + B (19-test extension) and ran C read-only. Existing 201 tests across `readme.test.mjs` + `marketplace-readme.test.mjs` + `marketplace-smoke.test.mjs` + `marketplace-releasing.test.mjs` + new 19 T12 cases = 220/220 across the docs lanes.
+
+### In-task fixes (caught + resolved before commit)
+
+1. **`.agents/plugins/marketplace.json` reference removed** — the original plugin README rsync flow contained this path, which `readme.test.mjs` test #11 (Plan 0001 era) asserted must be present. After removing the rsync flow, the test failed. Restored the path reference in the new install-section paragraph that describes the committed marketplace tree structure: `marketplace/.agents/plugins/marketplace.json` (the marketplace root manifest). The path now appears in a real-world context rather than an ad-hoc setup script.
+2. **Prettier** — auto-formatted the new `docs-split.test.mjs` after edits. Final `prettier --check` clean.
+
+### Subagent C — read-only review (orchestrator-led)
+
+- **Allowed-files check:** `git status --short` reports modified `README.md`, `marketplace/plugins/claude-companion/README.md`, `packages/plugin-codex/README.md` + new file `packages/plugin-codex/test/docs-split.test.mjs`. All within the brief's allowed set.
+- **Forbidden-files check:** `git diff --stat HEAD` against the full forbidden list (tools/bench, source plugin scripts/skills/plugin.json, marketplace packaged scripts/skills/plugin.json/`node_modules/`, packages/runtime, packages/driver-claude-code, .github, documentation/plan/0004-*, documentation/plan/0005-*, marketplace/.agents, tools/package-marketplace.mjs, tools/smoke-marketplace.mjs, documentation/RELEASING.md) reports empty.
+- **Tag guard:** `plan-0004-pre-cutover` = `7d9b5f1...` (unchanged).
+- **Cost paragraph guard:** L341 of plugin README contains the exact Plan 0001/0002 wording byte-for-byte. `readme.test.mjs` T13-21 still passes.
+- **F-H2 trace (Plan 0006 § 3.8 docs split → end-user / developer / contributor surfaces):**
+  - Marketplace README L58+ Skills + L181+ ERR_MODULE_NOT_FOUND troubleshooting + L129+ empty-cache-breadcrumb fact (end-user surface).
+  - Plugin README L32+ committed-marketplace install flow + L70+ legacy-install-flow note + L341 cost paragraph preserved (developer surface).
+  - Root README L13+ Quick start section with 4 surface pointers (workspace surface).
+  - RELEASING.md unchanged (maintainer surface; T11 owns).
+- **No behavior changes:** no source-plugin, runtime, driver, scripts, skills, or marketplace executable changes.
+- **`package-marketplace --check`** still passes (18 derived + 64 bundled-dep + 3 synthesized + 1 marketplace-owned, exit 0).
+- **Plan 0005 still deferred:** no hooks, no stop-gate code.
+
+### Local gates
+
+| Gate | Result |
+|---|---|
+| `node tools/package-marketplace.mjs --check` | OK (18 derived + 64 bundled-dep + 3 synthesized + 1 marketplace-owned, exit 0). |
+| `node tools/smoke-marketplace.mjs --help` | exit 0. |
+| `npm run lint` | exit 0. |
+| `npm run typecheck` | exit 0. |
+| `npm run format` | exit 0 (after `prettier --write` on `docs-split.test.mjs`). |
+| `npm test` | **1207/1207** (mock 68 + runtime 172 + driver 178 + plugin **789**) — plugin lane 770 → 789 (+19 T12). |
+| `npm run test:attach` | 28/28 (unchanged). |
+| `npm run test:bench` | 258/258 (unchanged). |
+| Combined | **1493 tests** (T11 baseline 1474 + 19 T12). |
+
+### Stage 2 closeout — Plan 0006
+
+T12 was the final T-task of Plan 0006 Stage 2 (Implement). All 13 T-tasks done:
+
+- **T1** Research (lifecycle commands) → **T2** marketplace layout → **T3** plugin manifest → **T4** packaging manifest → **T5** exclusion list → **T6** install → **T7** upgrade → **T8** uninstall → **T9** smoke + manual TUI checklist → **T9.5** runtime-packaging fix → **T10** versioning procedure → **T11** release checklist consolidation → **T12** docs split.
+
+Stage 3 (Audit), Stage 4 (Polish), Stage 5 (Report) follow when the maintainer green-lights closing Plan 0006 as a whole. T11 + T12 left RELEASING.md and the three README surfaces mechanically locked by 80 + 19 + 17 + ~33 = ~149 docs-lane assertions (full count across all marketplace-* and docs-split test files).
+
+### CI evidence (pending)
+
+- Commit: pending — `Plan 0006 T12: finalise docs split`
+- CI run: pending

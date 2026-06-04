@@ -55,6 +55,37 @@ status:
 
 If `$claude-setup` reports `ok` or `warn`, the install is complete.
 
+## Skills
+
+After install, the plugin makes 8 skills available inside the Codex
+TUI. Type the `$<name>` form at the Codex chat prompt.
+
+- `$claude-setup` — probes the local environment (Claude Code auth,
+  Codex version, Node.js, `node-pty` availability, background-session
+  support). Returns `ok`, `warn`, or `fail` aggregate.
+- `$claude-delegate` — starts a Claude Code background session with
+  the provided prompt and returns a job id you can use with the other
+  skills.
+- `$claude-status` — reports the live state (working, needs-input,
+  idle, completed, failed, stopped) of a job by id or unique prefix.
+- `$claude-result` — prints the final message + tool-use summary for
+  a completed job.
+- `$claude-stop` — stops a running background session by id or
+  unique prefix; also supports bulk forms like
+  `--all-awaiting-followup`.
+- `$claude-followup` — sends a follow-up instruction into an existing
+  job using PTY attach.
+- `$claude-review` — runs a same-session review of a Claude Code job.
+- `$claude-adversarial-review` — runs a fresh-session adversarial
+  review of a Claude Code job.
+
+Each skill prints a usage message when invoked without the arguments
+it needs (e.g., a job id). That usage message is normal behaviour —
+it confirms the skill is registered and reachable. The full plugin
+docs (including dispatcher subcommands and exit codes) are at
+[`packages/plugin-codex/README.md`](../../../packages/plugin-codex/README.md)
+in the cc-plugin-codex repository.
+
 ## Uninstall
 
 Remove the installed plugin first, then remove the local marketplace
@@ -94,6 +125,13 @@ What uninstall does **not** do:
 To remove the Git checkout itself, delete the directory manually. To clear
 Claude Companion job records, refer to your Claude Code session-management
 documentation; uninstalling this plugin does not touch them.
+
+After uninstall, the empty cache breadcrumb directory
+`<CODEX_HOME>/plugins/cache/cc-plugin-codex-local/` may remain on
+disk. This is normal Codex 0.136.0 behaviour — `codex plugin remove`
+empties the per-version cache contents but does not prune the parent
+directories. The empty breadcrumbs have no user-visible effect and
+do not block reinstall.
 
 ## Smoke test
 
@@ -139,6 +177,21 @@ Read the detailed probe output. Common causes:
 - Claude CLI not on `PATH` — verify `which claude` works.
 - Codex too old — upgrade Codex to a version with plugin marketplace
   support (`codex-cli 0.135.0` or later; 0.136.0 is the tested version).
+
+### Skill invocation fails with `ERR_MODULE_NOT_FOUND`
+
+If the dispatcher reports
+`Cannot find package '@cc-plugin-codex/runtime'` or similar when a
+skill is invoked, the packaged runtime dependencies are missing from
+the installed plugin cache. This is a packaging defect, not a
+configuration problem on your machine.
+
+End-user remediation: re-install the plugin from a fresh clone of
+the cc-plugin-codex repo. If the defect persists on a fresh clone,
+report it via the cc-plugin-codex issue tracker — the maintainer
+will need to re-run `node tools/package-marketplace.mjs --write` and
+re-publish the marketplace tree (see
+[`documentation/RELEASING.md`](../../../documentation/RELEASING.md)).
 
 ## Upgrade
 

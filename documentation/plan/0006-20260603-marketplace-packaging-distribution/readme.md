@@ -7,6 +7,7 @@
 **Stage 3 complete**: 2026-06-04
 **Stage 4 complete**: 2026-06-04
 **Stage 5 complete / Completed**: 2026-06-04
+**Released**: 2026-06-04 — tag [`v0.2.0`](https://github.com/wu-hongjun/cc-plugin-codex/releases/tag/v0.2.0) at commit `ea595e1` (release-gate CI run `26978909379` green on `ubuntu-latest + macos-latest × Node 20 + 22`; real-Codex 0.136.0 smoke PASS in isolated CODEX_HOME)
 **Last updated**: 2026-06-04
 
 ## Stages

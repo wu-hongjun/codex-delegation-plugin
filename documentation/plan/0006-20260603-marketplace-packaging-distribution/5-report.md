@@ -214,6 +214,33 @@ Plan 0006 was scoped to be invisible to every locked invariant from Plans 0001�
 
 ---
 
+## Release: v0.2.0
+
+Plan 0006 close was followed by a separate maintainer-driven release operation that produced the `v0.2.0` tag.
+
+- **Release tag**: [`v0.2.0`](https://github.com/wu-hongjun/cc-plugin-codex/releases/tag/v0.2.0)
+- **Tag SHA**: `ea595e146e26edbd1942486ac98ea38560947210` (commit `ea595e1`)
+- **Tag commit subject**: `Plan 0006 release: final doc consistency fix` — one narrow doc-only fix on top of the Plan 0006 Stage 5 chain: flipped root README L151 lead-in + L161 checkbox to reflect Plan 0006 complete, and adjusted the corresponding lock in `docs-split.test.mjs`. No code, marketplace payload, or RELEASING.md changes.
+- **Release-gate CI run**: [`26978909379`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26978909379) on `ea595e1` — `success` across `ubuntu-latest + macos-latest × Node 20 + 22`.
+- **Local gates on `ea595e1`**: `package-marketplace --check` exit 0; `npm run lint` / `typecheck` / `format` clean.
+- **Release smoke against real Codex 0.136.0** (`node tools/smoke-marketplace.mjs --marketplace-root "$(pwd)/marketplace"`): all 6 automated steps PASS in an isolated `CODEX_HOME`. Key lines (sensitive auth payload redacted):
+
+  ```
+  STEP 1: node tools/package-marketplace.mjs --check     exit=0
+  STEP 2: codex --version                                codex-cli 0.136.0
+  STEP 3: codex plugin marketplace add                   exit=0
+  STEP 4: codex plugin add                               exit=0
+  STEP 5: codex plugin list
+    claude-companion@cc-plugin-codex-local | installed, enabled | 0.2.0
+  STEP 5.5: dispatcher-execution                         exit 0, no ERR_MODULE_NOT_FOUND
+                                                         pty-build ok
+  Cleanup: plugin remove + marketplace remove + isolated CODEX_HOME deleted
+  ```
+
+  Real `~/.codex` was not mutated (the smoke ran under an OS-tempdir `CODEX_HOME` and cleaned up on exit). The smoke artifact remains uncommitted to avoid persisting sensitive `claude auth --output-format json` payload (email / orgId / orgName / subscriptionType).
+- **Manual Codex TUI 8-skill discovery checklist**: NOT re-run for the release. The release relies on the already-accepted Plan 0006 T9 (initial manual checklist; remediated by T9.5) and T9.5 (post-fix cache-execution proof) evidence captured in 2-implement.md.
+- **Plan 0004 / Plan 0005 status**: unchanged. `plan-0004-pre-cutover` still at `7d9b5f1`. Plan 0005 still `deferred`.
+
 ## Final assessment
 
 **Plan 0006 is complete.**

@@ -34,8 +34,10 @@
  *   3. codex --version (logged).
  *   4. codex plugin marketplace add <marketplace-root>
  *   5. codex plugin add "claude-companion@cc-plugin-codex-local"
- *   6. codex plugin list (parsed for installed,enabled,0.2.0).
- *   7. Asserts the plugin appears as installed,enabled at version 0.2.0.
+ *   6. codex plugin list (parsed for installed,enabled,<plugin-version>).
+ *   7. Asserts the plugin appears as installed,enabled at the version
+ *      declared in marketplace/plugins/claude-companion/.codex-plugin/plugin.json
+ *      (single source of truth; not hard-coded in this script — see T10).
  *   8. Prints the eight-skill manual TUI checklist.
  *   9. Cleanup: codex plugin remove + codex plugin marketplace remove.
  *  10. rm -rf CODEX_HOME unless --keep-home.
@@ -52,7 +54,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, realpathSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -63,7 +65,32 @@ import { fileURLToPath } from 'node:url';
 
 const PLUGIN_REF = 'claude-companion@cc-plugin-codex-local';
 const MARKETPLACE_NAME = 'cc-plugin-codex-local';
-const EXPECTED_VERSION = '0.2.0';
+
+// Plan 0006 T10: the expected plugin version is derived from the marketplace
+// plugin.json at startup, not hard-coded. The source-of-truth is the source
+// plugin.json under packages/plugin-codex/.codex-plugin/, copied byte-identically
+// into the marketplace tree by tools/package-marketplace.mjs --write. The
+// derivation lives below `parseArgs` so it can use the resolved marketplaceRoot.
+const PLUGIN_MANIFEST_REL_PATH = 'plugins/claude-companion/.codex-plugin/plugin.json';
+
+function deriveExpectedVersion(marketplaceRoot) {
+  const manifestPath = join(marketplaceRoot, PLUGIN_MANIFEST_REL_PATH);
+  if (!existsSync(manifestPath)) {
+    throw new Error(`marketplace plugin.json not found at ${manifestPath}`);
+  }
+  const raw = readFileSync(manifestPath, 'utf8');
+  let parsed;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    throw new Error(`marketplace plugin.json is not valid JSON: ${e.message}`);
+  }
+  const version = parsed?.version;
+  if (typeof version !== 'string' || version.length === 0) {
+    throw new Error(`marketplace plugin.json has no string "version" field`);
+  }
+  return version;
+}
 
 // All eight skills shipped by the cc-plugin-codex marketplace plugin. Order
 // follows the natural delegate -> verify lifecycle so the maintainer can
@@ -193,6 +220,8 @@ if (!existsSync(marketplaceRoot)) {
   process.exit(2);
 }
 
+const EXPECTED_VERSION = deriveExpectedVersion(marketplaceRoot);
+
 let codexHome = mkdtempSync(join(tmpdir(), 'smoke-codex-home-'));
 codexHome = realpathSync(codexHome);
 const childEnv = { ...process.env, CODEX_HOME: codexHome };
@@ -320,7 +349,7 @@ logStep('STEP 5.5: dispatcher execution from cache');
     'cache',
     'cc-plugin-codex-local',
     'claude-companion',
-    '0.2.0',
+    EXPECTED_VERSION,
   );
   const dispatcherScript = join(pluginRoot, 'scripts', 'claude-companion.mjs');
   process.stdout.write(`  Plugin root: ${pluginRoot}\n`);

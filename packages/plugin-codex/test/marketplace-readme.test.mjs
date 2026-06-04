@@ -266,7 +266,19 @@ const CMD_PLUGIN_UPGRADE_BARE_LINE = /^\s*codex plugin upgrade\b/m;
 const CMD_PLUGIN_UPDATE_BARE_LINE = /^\s*codex plugin update\b/m;
 const NEGATED_UPGRADE_PHRASE = /does not expose .*codex plugin upgrade/i;
 
-const UPGRADE_VERSION_STRING = '0.2.0';
+// Plan 0006 T10: derive the upgrade-verification version from the source
+// plugin manifest (source of truth) instead of hard-coding it. The marketplace
+// plugin.json is a byte-identical derived copy enforced by `package-marketplace
+// --check`, and the marketplace README's upgrade-verification line should
+// reference this version.
+const SOURCE_PLUGIN_JSON_PATH = resolve(
+  REPO_ROOT,
+  'packages',
+  'plugin-codex',
+  '.codex-plugin',
+  'plugin.json',
+);
+const UPGRADE_VERSION_STRING = JSON.parse(readFileSync(SOURCE_PLUGIN_JSON_PATH, 'utf8')).version;
 
 describe('marketplace upgrade procedure docs (Plan 0006 T7)', () => {
   // ========================================================================

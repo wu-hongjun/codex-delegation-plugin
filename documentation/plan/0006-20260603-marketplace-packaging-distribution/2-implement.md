@@ -1647,3 +1647,125 @@ T9.5 closes the T9 `$claude-setup` FAIL. With the bundled tree in place, the T9 
 ### Status
 
 **T9.5 CLOSED (2026-06-04).** The marketplace-cache runtime-packaging defect discovered in T9 is fixed. CI green on `155ee3d`. T9 closed alongside T9.5 — the maintainer accepted the orchestrator-run cache-execution proof as evidence of `$claude-setup` execution-layer PASS. T10 (version bump) is now unblocked and awaits maintainer go-ahead.
+
+---
+
+## T10 — Versioning scheme implementation (2026-06-04)
+
+### Framing
+
+T10 is **not** a version-bump task. T3 already performed the actual bump (`0.1.0` → `0.2.0`) in `packages/plugin-codex/.codex-plugin/plugin.json`. T10 codifies the procedure that future bumps will follow and adds mechanical guards against version drift between the source manifest, the derived marketplace manifest, the smoke helper, and the user-facing docs. The shipped plugin version stays at `0.2.0` throughout this task.
+
+### Deliverables
+
+- `documentation/RELEASING.md` — new `## Version Bump (Plan 0006 T10)` section. Documents:
+  - Semver `0.x.y` with `packages/plugin-codex/.codex-plugin/plugin.json` as the **single source of truth**.
+  - Marketplace plugin.json is a derived byte-identical copy maintained by `tools/package-marketplace.mjs --write` and verified by `--check`.
+  - Workspace `package.json` files (root + each `packages/*`) stay at `"version": "0.0.0"` — internal workspace metadata, decoupled from the shipped plugin version.
+  - Bundled `node_modules/@cc-plugin-codex/*` use the `<plugin-version>-bundled` marker (e.g., `0.2.0-bundled`), synthesized from the source plugin version by `--write`.
+  - 7-step procedure: edit source manifest → `--write` → `--check` → run gates → run smoke → commit → tag `v0.x.y`.
+  - Tag-format rule: lowercase `v` prefix + semver. Legacy verification tags from earlier plans use distinct schemes and must not be retagged as part of a plugin release.
+- `tools/smoke-marketplace.mjs` — refactored to derive `EXPECTED_VERSION` from `marketplace/plugins/claude-companion/.codex-plugin/plugin.json` at startup (no hard-coded version literal). The derivation runs after `marketplaceRoot` is resolved (so `--marketplace-root <path>` still works against test seams). The literal `'0.2.0'` previously embedded in the `PLUGIN_ROOT` computation for STEP 5.5 is replaced with the derived `EXPECTED_VERSION`. Docstring updated to point at the source-of-truth manifest. `--help` still exits 0 and STEP 5.5 dispatcher execution still verifies cache execution.
+- `packages/plugin-codex/test/marketplace-smoke.test.mjs`:
+  - Existing `const EXPECTED_VERSION = '0.2.0';` replaced with a derivation from the source plugin.json (`JSON.parse(readFileSync(SOURCE_PLUGIN_JSON, 'utf8')).version`).
+  - T9-10 rewritten: instead of asserting the smoke script body **includes** `'0.2.0'` (which forbade the refactor), now asserts the smoke script body **does not include** any hard-coded `0.x.y` literal, **does** reference the marketplace plugin.json relative path, and **does** call `deriveExpectedVersion`.
+  - +12 new T10 cases under `describe('plugin versioning scheme (Plan 0006 T10)', ...)`.
+- `packages/plugin-codex/test/marketplace-readme.test.mjs` — existing `const UPGRADE_VERSION_STRING = '0.2.0';` replaced with the same source-of-truth derivation pattern. T7-9 still passes (the README still mentions `0.2.0` because that's the current version), but now it does so by reading the source manifest rather than by hard-coding.
+- `documentation/plan/0006-20260603-marketplace-packaging-distribution/2-implement.md` — this section.
+
+### What did NOT change
+
+- `packages/plugin-codex/.codex-plugin/plugin.json` — version stays at `0.2.0`. T3 owns this.
+- `marketplace/plugins/claude-companion/.codex-plugin/plugin.json` — version stays at `0.2.0` (byte-identical to source).
+- Workspace `package.json` files — all 4 stay at `0.0.0`.
+- Bundled `node_modules/@cc-plugin-codex/*/package.json` — all stay at `0.2.0-bundled` (T9.5 owns this).
+- Source plugin scripts, skills, runtime, driver, bench, .github, marketplace packaged scripts/skills/plugin.json — all untouched per the brief's forbidden-files list.
+- `packages/plugin-codex/README.md` cost paragraph — untouched (last commit `86cb729` Plan 0003 era).
+
+### Tests added (12 T10 cases)
+
+All under `describe('plugin versioning scheme (Plan 0006 T10)', ...)` in `packages/plugin-codex/test/marketplace-smoke.test.mjs`:
+
+| # | Assertion |
+|---|---|
+| T10-1 | Source plugin.json declares a non-empty semver-shaped version (regex `/^0\.\d+\.\d+(?:[-+][\w.-]+)?$/`). |
+| T10-2 | Source plugin.json declares a string version field used as the source-of-truth anchor. (Replaces the original direct source↔marketplace dual-read, which raced against T4-6's drift test — see "Test-isolation note" below.) |
+| T10-3 (×4) | Each workspace `package.json` (`root`, `packages/plugin-codex`, `packages/runtime`, `packages/driver-claude-code`) declares `version === "0.0.0"`. Parameterized as 4 distinct `it()` calls so failures point at the specific file. |
+| T10-4 | RELEASING.md contains `## Version Bump` heading. |
+| T10-5 | RELEASING.md Version Bump section names source-of-truth path + `--write` + `--check` + "semver". |
+| T10-6 | RELEASING.md Version Bump section documents `v0.x.y` git-tag format. |
+| T10-7 | RELEASING.md Version Bump section documents workspace `0.0.0` decoupling. |
+| T10-8 | Smoke-helper-equivalent `EXPECTED_VERSION` (top-of-file derivation) equals source plugin.json version (transitive byte-identity proof). |
+| T10-9 | RELEASING.md Version Bump section contains no OQ4 forbidden tokens and no Plan 0004 benchmark vocabulary. |
+
+Plus the rewritten T9-10 (already in T9 lane, repurposed for T10): smoke script derives the expected plugin version from the marketplace plugin.json (no hard-coded literal); script references the manifest relative path and calls `deriveExpectedVersion`.
+
+### Test-isolation note
+
+The original T10-2 and T10-8 read both source and marketplace plugin.json directly. Running `node --test marketplace-smoke + marketplace-layout` in parallel surfaced a JSON parse failure because layout's T4-6 drift test mutates the marketplace plugin.json's first byte inside a `try/finally` restore window. The mutation window is tiny (≈30 ms) but real, and parallel test execution can read mid-window. The byte-identity invariant T10-2/T10-8 were trying to assert is **already enforced** elsewhere (T2 layout byte-identity per derived file + T4 `--check` exit-code drift detection), so T10-2 was reframed as a single-file invariant (source non-empty string version) and T10-8 was reframed to compare `EXPECTED_VERSION` against source only. This change is documented inline in the test file so future-me doesn't re-add the unsafe dual-read.
+
+### A/B/C cadence (orchestrator-absorbed)
+
+Per the maintainer's "lightweight A/B/C" instruction + memory `feedback_orchestrator_b_role` (docs + small test edits + verbatim-template tasks don't need subagent dispatch). Orchestrator absorbed A (docs + smoke-helper derivation) and B (test additions + readme test derivation) and ran C (read-only review) directly. The smoke-helper refactor is ~30 lines of clean code, the RELEASING.md addition is a verbatim-template section, and the test changes follow established T6/T7/T8/T9/T9.5 patterns. Subagent spawn cost would have exceeded the benefit.
+
+### In-task fixes (caught + resolved before commit)
+
+1. **Forbidden-token leak in initial RELEASING.md draft**: the first draft mentioned "the Plan 0004 verification tag" verbatim — both `Plan 0004` and `pre-cutover`/`cutover` substrings hit the FORBIDDEN_BENCHMARK_TOKENS list. Rephrased to "Legacy verification tags from earlier plans use distinct schemes and must not be retagged as part of a plugin release." All 5 affected token-scan tests now pass.
+2. **Test-isolation race**: T10-2/T10-8 originally raced with layout's drift test. Reframed (see Test-isolation note above).
+3. **Unused-constant lint**: after removing the marketplace dual-read, the `MARKETPLACE_PLUGIN_JSON` constant in the test file was unused. Removed.
+4. **Prettier**: auto-formatted the smoke test file after edits. Final `--check` clean.
+
+### Subagent C — read-only review (orchestrator-led)
+
+- **Allowed-files check:** `git status --short` reports modified `documentation/RELEASING.md`, `packages/plugin-codex/test/marketplace-readme.test.mjs`, `packages/plugin-codex/test/marketplace-smoke.test.mjs`, `tools/smoke-marketplace.mjs`. All within the brief's allowed set.
+- **Forbidden-files check:** `git diff --stat HEAD` against all guarded paths (tools/bench, source plugin scripts/skills/plugin.json, packages/plugin-codex/README.md, marketplace packaged scripts/skills/plugin.json, packages/runtime, packages/driver-claude-code, .github, documentation/plan/0004-*, documentation/plan/0005-*, marketplace/.agents) reports empty.
+- **Tag guard:** `plan-0004-pre-cutover` = `7d9b5f1...`.
+- **Cost paragraph guard:** last commit on `packages/plugin-codex/README.md` still `86cb729`.
+- **F-H2 trace (source-of-truth → derivation → docs → tests → CI):**
+  - Source plugin.json L?: `"version": "0.2.0"` — single source of truth.
+  - Marketplace plugin.json: `"version": "0.2.0"` (derived, byte-identical, enforced by `--check`).
+  - Smoke helper `tools/smoke-marketplace.mjs` L74-90: `PLUGIN_MANIFEST_REL_PATH` + `deriveExpectedVersion(marketplaceRoot)` + L223 `const EXPECTED_VERSION = deriveExpectedVersion(marketplaceRoot);`.
+  - Smoke STEP 5.5 PLUGIN_ROOT: now uses `EXPECTED_VERSION` instead of literal `'0.2.0'`.
+  - RELEASING.md L172: `## Version Bump (Plan 0006 T10)` heading + 7-step procedure + verification invariants.
+  - Tests: T10-1 anchors source version shape; T10-3 (×4) locks workspace `0.0.0`; T10-4..T10-7 lock RELEASING.md procedure shape; T10-8 transitive consistency; T10-9 forbidden-token guard.
+  - CI: existing `ci.yml` runs `npm test` / `test:attach` / `test:bench` — all three pass with the new derivation + 12 new T10 cases.
+- **No CI real-Codex gate:** `.github/workflows/ci.yml` still does not reference the smoke helper. T9-17 (smoke script not in ci.yml) still passes.
+- **Plan 0005 still deferred:** no hooks, no stop-gate code.
+
+### Local gates
+
+| Gate | Result |
+|---|---|
+| `node tools/package-marketplace.mjs --check` | OK (18 derived + 64 bundled + 3 synthesized + 1 marketplace-owned, exit 0). |
+| `node tools/smoke-marketplace.mjs --help` | exit 0 (regression guard). |
+| `npm run lint` | exit 0 (after removing unused `MARKETPLACE_PLUGIN_JSON` constant). |
+| `npm run typecheck` | exit 0. |
+| `npm run format` | exit 0 (after `prettier --write` on smoke test). |
+| `npm test` | **1173/1173** (mock 68 + runtime 172 + driver 178 + plugin **755**) — plugin lane 743 → 755 (+12 T10). |
+| `npm run test:attach` | 28/28 (unchanged). |
+| `npm run test:bench` | 258/258 (unchanged). |
+| Combined | **1459 tests** (T9.5 baseline 1447 + 12 T10). |
+
+### Gate evidence
+
+- `packages/plugin-codex/README.md` cost paragraph untouched (last commit `86cb729`).
+- `packages/plugin-codex/scripts/**`, `skills/**`, `.codex-plugin/plugin.json` untouched.
+- `packages/runtime/**`, `packages/driver-claude-code/**`, `tools/bench/**`, `.github/**` untouched.
+- `marketplace/MANIFEST.md`, `marketplace/EXCLUSIONS.md`, `marketplace/.agents/plugins/marketplace.json` untouched.
+- `marketplace/plugins/claude-companion/.codex-plugin/plugin.json`, `scripts/`, `skills/`, `node_modules/` (T9.5 bundled tree) untouched.
+- No hook or stop-gate code. Plan 0005 stays `deferred`.
+- `git rev-parse plan-0004-pre-cutover` → `7d9b5f1...`; tag preserved.
+- Real `~/.codex/config.toml` untouched by T10 (T10 does not exercise the smoke helper end-to-end against codex; only `--help` is exercised via spawnSync).
+
+### Implications for later tasks
+
+| Task | Implication from T10 |
+|---|---|
+| Future version bumps | Follow the RELEASING.md `## Version Bump` 7-step procedure. T3-equivalent edits live in the source manifest; everything else flows. |
+| T11 (release checklist) | RELEASING.md now has Install (T6) + Uninstall+verification (T8) + Upgrade (T7) + Packaging verification (T4+T5) + Smoke Test (T9) + Version Bump (T10). T11 stitches them into the canonical release-day checklist. |
+| T12 (docs split) | Marketplace README pointer for smoke testing remains user-facing; the Version Bump procedure stays in RELEASING.md (maintainer-facing, not user-facing) and is intentionally not surfaced to end users. |
+
+### CI evidence (pending)
+
+- Commit: pending — `Plan 0006 T10: document plugin versioning procedure`
+- CI run: pending

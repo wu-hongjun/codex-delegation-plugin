@@ -1271,7 +1271,87 @@ Per the maintainer's brief, T9 cannot be declared "done" by the orchestrator alo
 
 > "If manual TUI skill checks are not run in T9, do not mark T9 done unless the maintainer explicitly accepts automation-only smoke. The plan's T9 acceptance expects skill discovery verification."
 
-The automation infrastructure (helper script + tests + docs + artifact) is in place. The next step is the maintainer either (a) running the manual 8-skill TUI checklist and recording results, (b) explicitly accepting automation-only smoke as sufficient for T9 acceptance, or (c) deferring the manual checklist into a follow-up T9.5 / Stage 5 verification. The user-facing summary at T9 commit-close will request the choice.
+The automation infrastructure (helper script + tests + docs + artifact) is in place. The next step is the maintainer either (a) running the manual 8-skill TUI checklist and recording results, (b) explicitly accepting automation-only smoke as sufficient for T9 acceptance, or (c) deferring the manual checklist into a follow-up T9.5 / Stage 5 verification.
+
+**Maintainer decision (2026-06-04):** path (a) — the maintainer will run the manual TUI checklist personally and paste the 8-skill PASS/FAIL results. T9 stays open until those results land. T10 (version bump) is paused until then.
+
+### Engineer playbook — when manual TUI results arrive
+
+This subsection is a durable, compaction-safe handoff so the next pass through this thread (or a successor engineer) can close T9 immediately when the maintainer pastes their results. It captures the maintainer's 2026-06-04 follow-up brief verbatim.
+
+**Preferred path — maintainer-run manual skill-discovery checklist (path A):**
+
+1. Expect the maintainer to paste a result block in this shape:
+
+   ```text
+   T9 manual skill discovery:
+   - $claude-setup: PASS — <brief output>
+   - $claude-delegate: PASS — recognized / expected usage
+   - $claude-status: PASS — recognized / expected output
+   - $claude-result: PASS — recognized / expected usage
+   - $claude-stop: PASS — recognized / expected usage
+   - $claude-followup: PASS — recognized / expected usage
+   - $claude-review: PASS — recognized / expected usage
+   - $claude-adversarial-review: PASS — recognized / expected usage
+   CODEX_HOME cleanup: <removed / preserved intentionally>
+   ```
+
+2. Append the pasted block to:
+
+   `documentation/plan/0006-20260603-marketplace-packaging-distribution/artifacts/t9-smoke-test-20260603.txt`
+
+3. Update the T9 "Manual skill-discovery result" paragraph in this 2-implement.md from "Pending maintainer." to a one-line PASS summary noting the date and that the maintainer ran it. Also update the Status block: T9 fully accepted.
+
+4. Commit + push (no extra CI log unless CI runs):
+
+   ```bash
+   git add documentation/plan/0006-20260603-marketplace-packaging-distribution/artifacts/t9-smoke-test-20260603.txt \
+     documentation/plan/0006-20260603-marketplace-packaging-distribution/2-implement.md
+   git commit -m "Plan 0006 T9: record manual skill-discovery smoke"
+   git push origin main
+   ```
+
+5. If a follow-up CI run is triggered, verify success and add a CI-log commit only if non-trivial state changed; otherwise the substance commit above is sufficient.
+
+6. Pause before T10. T10 is the version-bump procedure and release-version checklist (RELEASING.md + marketplace README anchor updates; **no plugin runtime behavior changes**). Wait for maintainer go-ahead.
+
+**Alternate path B — maintainer explicitly accepts automation-only smoke:**
+
+Update the artifact and 2-implement.md to record:
+
+> Manual TUI skill discovery: not run. Maintainer explicitly accepted automation-only smoke for Plan 0006 T9 on 2026-06-04. Rationale: helper verified marketplace registration, plugin install, plugin list, installed/enabled status, version 0.2.0, cleanup, and all 8 skills are enumerated in the shipped manifest and static tests.
+
+Commit:
+
+```bash
+git add documentation/plan/0006-20260603-marketplace-packaging-distribution/artifacts/t9-smoke-test-20260603.txt \
+  documentation/plan/0006-20260603-marketplace-packaging-distribution/2-implement.md
+git commit -m "Plan 0006 T9: accept automation-only smoke"
+git push origin main
+```
+
+Then T9 closes.
+
+**Do NOT silently defer the manual checklist.** Per the maintainer's standing rule, T9 cannot be marked complete while the artifact still shows all 8 manual checks as `not run (pending maintainer)` unless the maintainer explicitly accepts that limitation. The implementation log enforces this rule; do not bypass it.
+
+**Final T9 closeout summary template (use after either path A or B):**
+
+```text
+Plan 0006 T9 complete.
+Substance commit: aad0a60
+CI-log commit:    6120968
+Manual smoke acceptance commit: <new hash>
+CI run: 26930742188 success on all 4 legs
+Plugin lane: 718/718
+Combined tests: 1422
+Automated smoke helper: PASS
+Manual skill discovery: <PASS / accepted automation-only>
+Real ~/.codex unchanged; stale cc-plugin-codex-local-smoke preserved at lines 73 + 119
+Plan 0004 tag plan-0004-pre-cutover still 7d9b5f1
+Plan 0005 still deferred
+```
+
+Then pause before T10.
 
 ### CI evidence
 

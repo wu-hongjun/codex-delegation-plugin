@@ -1273,7 +1273,13 @@ Per the maintainer's brief, T9 cannot be declared "done" by the orchestrator alo
 
 The automation infrastructure (helper script + tests + docs + artifact) is in place. The next step is the maintainer either (a) running the manual 8-skill TUI checklist and recording results, (b) explicitly accepting automation-only smoke as sufficient for T9 acceptance, or (c) deferring the manual checklist into a follow-up T9.5 / Stage 5 verification. The user-facing summary at T9 commit-close will request the choice.
 
-### CI evidence (pending)
+### CI evidence
 
-- Commit: pending — `Plan 0006 T9: add marketplace smoke test procedure`
-- CI run: pending
+- Commit: `aad0a60` ("Plan 0006 T9: add marketplace smoke test procedure")
+- CI run: `26930742188`
+- Conclusion: **success** on all four matrix legs (`ubuntu-latest + macos-latest × Node 20 + 22`).
+- Plugin lane post-T9: 718/718 (up from 701; +17 smoke-procedure tests).
+
+### Status
+
+**T9 automation complete + CI green.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3, T4, T5, T6, T7, T8 of Stage 2 fully done; T9 automation infrastructure done + CI green, but the manual 8-skill Codex TUI checklist (`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`) is **pending maintainer**. Per the plan's T9 acceptance criteria, T9 will not be declared "done" until the maintainer either runs the manual checklist or explicitly accepts automation-only smoke. T10 (version bump) paused awaiting that decision + maintainer go-ahead.

@@ -66,9 +66,9 @@ Run from a clean working tree at the audit-input commit + Stage 4 edits:
 | `npm run lint` | 0 | clean |
 | `npm run typecheck` | 0 | clean |
 | `npm run format` | 0 | `All matched files use Prettier code style!` |
-| `npm test` | 0 | <to be recorded — expect 1212 tests (1207 + 5 new) |
-| `npm run test:attach` | 0 | <to be recorded — expect 28 tests unchanged |
-| `npm run test:bench` | 0 | <to be recorded — expect 258 tests unchanged |
+| `npm test` | 0 | 1212 tests pass (mock 68 + runtime 172 + driver 178 + plugin 794 = +5 over Stage 3 plugin baseline of 789) |
+| `npm run test:attach` | 0 | 28 / 28 pass (unchanged) |
+| `npm run test:bench` | 0 | 258 / 258 pass (unchanged) |
 
 Combined Stage 4 test total: **1498** (vs. Stage 2/3 baseline of 1493 = +5 from the new polish tests).
 
@@ -82,9 +82,14 @@ Combined Stage 4 test total: **1498** (vs. Stage 2/3 baseline of 1493 = +5 from 
 
 ## CI verification
 
-CI run: <to be recorded after `git push origin main`>
+CI run: [`26976755879`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26976755879) on commit `7f25a9a` — **conclusion `success`**.
 
-Expected matrix: `ubuntu-latest + macos-latest × Node 20 + 22` = 4 legs, all green.
+| Matrix leg | Conclusion |
+|---|---|
+| ubuntu-latest / Node 20 | success |
+| ubuntu-latest / Node 22 | success |
+| macos-latest / Node 20 | success |
+| macos-latest / Node 22 | success |
 
 ## Approval gate
 

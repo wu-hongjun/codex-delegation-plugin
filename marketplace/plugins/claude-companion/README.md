@@ -95,6 +95,15 @@ To remove the Git checkout itself, delete the directory manually. To clear
 Claude Companion job records, refer to your Claude Code session-management
 documentation; uninstalling this plugin does not touch them.
 
+## Smoke test
+
+Before release, run the smoke checklist in
+[`documentation/RELEASING.md`](../../../documentation/RELEASING.md).
+It verifies the local marketplace install and all 8 skill names
+(`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`,
+`$claude-stop`, `$claude-followup`, `$claude-review`,
+`$claude-adversarial-review`) under an isolated `CODEX_HOME`.
+
 ## Troubleshooting
 
 ### `codex plugin list` fails with "marketplace root does not contain a supported manifest"

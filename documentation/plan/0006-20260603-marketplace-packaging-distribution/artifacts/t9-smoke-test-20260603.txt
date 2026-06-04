@@ -1,0 +1,159 @@
+=== Plan 0006 T9 — release-smoke empirical capture ===
+Captured: 2026-06-04
+Host: Darwin Hongjuns-MacBook-Pro.local 25.5.0 Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:15 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6041 arm64
+REPO_ROOT: /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+--- Pre-check: real $HOME/.codex/config.toml baseline ---
+Real config stale 'cc-plugin-codex-local-smoke' references (line numbers):
+73:[plugins."claude-companion@cc-plugin-codex-local-smoke"]|119:[marketplaces.cc-plugin-codex-local-smoke]|
+Real config 'cc-plugin-codex-local' (non-smoke) entry count: 0
+
+==========================================================
+STEP A: smoke-marketplace.mjs --help
+==========================================================
+tools/smoke-marketplace.mjs — Plan 0006 T9 release-smoke automation
+
+Usage:
+  node tools/smoke-marketplace.mjs [--help]
+  node tools/smoke-marketplace.mjs [--marketplace-root <path>] [--keep-home]
+
+Options:
+  --marketplace-root <path>   Path to the local marketplace root.
+                              Default: ./marketplace (relative to cwd).
+  --keep-home                 Do not delete the isolated CODEX_HOME on exit.
+  --help                      Print this help and exit 0.
+
+The helper runs against the real codex CLI on PATH. It creates an
+isolated CODEX_HOME under the OS tempdir so the real $HOME/.codex
+is never mutated. Codex 0.136.0 has no documented non-interactive
+skill-invocation interface, so the eight-skill discovery check must
+be run manually inside Codex. The helper prints the skill checklist
+after the automated install/list/version assertions pass.
+
+Eight skills covered by the manual TUI checklist:
+  - $claude-setup
+  - $claude-delegate
+  - $claude-status
+  - $claude-result
+  - $claude-stop
+  - $claude-followup
+  - $claude-review
+  - $claude-adversarial-review
+exit=0
+
+==========================================================
+STEP B: end-to-end automated smoke run (default isolated CODEX_HOME)
+==========================================================
+Plan 0006 T9 release smoke
+Repo root: /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+Marketplace root: /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+Isolated CODEX_HOME: /private/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/smoke-codex-home-AyBDdQ
+
+==> STEP 1: node tools/package-marketplace.mjs --check
++ /opt/homebrew/Cellar/node/25.8.2/bin/node /Users/hongjunwu/Repositories/Git/cc-plugin-codex/tools/package-marketplace.mjs --check
+check: OK — 18 derived files match source, 1 marketplace-owned files present, no unexpected files.
+exit=0
+
+==> STEP 2: codex --version
++ codex --version
+codex-cli 0.136.0
+exit=0
+
+==> STEP 3: codex plugin marketplace add
++ codex plugin marketplace add /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+Added marketplace `cc-plugin-codex-local` from /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace.
+Installed marketplace root: /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+exit=0
+
+==> STEP 4: codex plugin add
++ codex plugin add claude-companion@cc-plugin-codex-local
+Added plugin `claude-companion` from marketplace `cc-plugin-codex-local`.
+Installed plugin root: /private/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/smoke-codex-home-AyBDdQ/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0
+exit=0
+
+==> STEP 5: codex plugin list + assertions
++ codex plugin list
+Marketplace `cc-plugin-codex-local`
+/Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace/.agents/plugins/marketplace.json
+
+PLUGIN                                  STATUS              VERSION  PATH                                                                                  
+claude-companion@cc-plugin-codex-local  installed, enabled  0.2.0    /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace/plugins/claude-companion
+exit=0
+
+==> STEP 6: manual Codex TUI skill checklist (operator-driven)
+The helper cannot drive the Codex TUI. Open Codex with this isolated
+CODEX_HOME and verify each of the 8 skills below is recognized.
+
+  CODEX_HOME=/private/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/smoke-codex-home-AyBDdQ codex
+
+Skill checklist (each must NOT return an unknown-skill error):
+  [ ] $claude-setup
+  [ ] $claude-delegate
+  [ ] $claude-status
+  [ ] $claude-result
+  [ ] $claude-stop
+  [ ] $claude-followup
+  [ ] $claude-review
+  [ ] $claude-adversarial-review
+
+Pass criteria:
+  - $claude-setup returns an "ok" or "warn" aggregate.
+  - The other 7 skills do not return "unknown skill" or
+    "unrecognized skill" when invoked or shown in Codex skill
+    discovery. A skill that needs a job-id may stop at a usage
+    or error message; that still counts as recognized.
+
+==> Automated smoke summary
+Automated checks: PASS
+Manual TUI skill checklist: must be verified by the operator and recorded in the smoke artifact.
+
+==> Cleanup: codex plugin remove + marketplace remove
+Removed plugin `claude-companion` from marketplace `cc-plugin-codex-local`.
+Removed marketplace `cc-plugin-codex-local`.
+Removed isolated CODEX_HOME: /private/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/smoke-codex-home-AyBDdQ
+smoke-marketplace exit=0
+
+==========================================================
+STEP C: post-run independent confirmation (separate isolated CODEX_HOME)
+==========================================================
++ codex plugin list (in fresh isolated CODEX_HOME, expect empty)
+No marketplace plugins found.
+exit=0
++ codex plugin marketplace list (in fresh isolated CODEX_HOME, expect empty)
+No plugin marketplaces in scope.
+exit=0
+
+==========================================================
+STEP D: manual Codex TUI skill checklist — pending maintainer
+==========================================================
+Manual Codex TUI skill checklist:
+- $claude-setup: not run (pending maintainer)
+- $claude-delegate: not run (pending maintainer)
+- $claude-status: not run (pending maintainer)
+- $claude-result: not run (pending maintainer)
+- $claude-stop: not run (pending maintainer)
+- $claude-followup: not run (pending maintainer)
+- $claude-review: not run (pending maintainer)
+- $claude-adversarial-review: not run (pending maintainer)
+
+Note: orchestrator cannot drive the Codex 0.136.0 TUI from outside.
+Maintainer must run `CODEX_HOME=$(mktemp -d) node tools/smoke-marketplace.mjs --keep-home`
+and then `CODEX_HOME=<preserved-dir> codex` to verify each skill.
+T9 is automation-complete; manual checklist is the open item before
+true T9 acceptance per the plan's smoke-test acceptance criteria.
+
+==========================================================
+POST-SMOKE: verify real $HOME/.codex/config.toml untouched
+==========================================================
+Stale-smoke references after smoke: 73:[plugins."claude-companion@cc-plugin-codex-local-smoke"]|119:[marketplaces.cc-plugin-codex-local-smoke]|
+Non-smoke 'cc-plugin-codex-local' entries after smoke: 0
+RESULT: real ~/.codex/config.toml UNCHANGED (stale-smoke preserved, no T9 entries leaked)
+
+==========================================================
+SUMMARY
+==========================================================
+Automated smoke (STEP B) exit: 0
+Automated checks: PASS
+Manual TUI skill checklist: pending maintainer (not run by orchestrator)
+
+=== End of T9 capture ===

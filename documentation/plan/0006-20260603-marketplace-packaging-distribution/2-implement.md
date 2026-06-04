@@ -1081,3 +1081,199 @@ T8-5 and T8-6 initially used `/no longer appear in[\s\S]*?codex plugin list/i` a
 ### Status
 
 **T8 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3, T4, T5, T6, T7, T8 of Stage 2 done; T9 (smoke test procedure) paused awaiting maintainer go-ahead.
+
+---
+
+## T9 — Smoke test procedure (2026-06-04)
+
+### Deliverables
+
+- `tools/smoke-marketplace.mjs` (NEW, executable `0o755`) — release-smoke helper that automates the safe, non-TUI portions of the smoke checklist against a real local Codex CLI. Uses `mkdtempSync` for an isolated `CODEX_HOME` under the OS tempdir, runs `package-marketplace --check` as preflight, then `codex --version` → `marketplace add` → `plugin add` → `plugin list` with installed/enabled/`0.2.0` assertions. Cleans up (`plugin remove` + `marketplace remove` + `rm -rf` the temp home unless `--keep-home`). Prints the eight-skill manual TUI checklist after the automated assertions. Exits 0 only when all automated checks pass. Options: `--help`, `--marketplace-root <path>` (default `./marketplace`), `--keep-home`.
+- `documentation/RELEASING.md` — new `## Smoke Test (Plan 0006 T9)` section with an "Automated preflight" subsection (commands + helper-verified bullets) and a "Manual skill discovery" subsection that enumerates all 8 skills, identifies `$claude-setup` as the gate, and specifies the `ok`/`warn` aggregate pass criterion. Trailer "Other release-checklist steps" now lists only the remaining T10 + T11 items.
+- `marketplace/plugins/claude-companion/README.md` — new `## Smoke test` pointer that links to RELEASING.md and lists the 8 skill names so the smoke procedure is discoverable from the marketplace surface.
+- `packages/plugin-codex/test/marketplace-smoke.test.mjs` (NEW, 17 cases) — static-validation suite covering the smoke helper's shape, RELEASING.md Smoke Test content, marketplace README pointer, and the negative invariant that `.github/workflows/ci.yml` does **not** invoke the smoke helper.
+- `documentation/plan/0006-20260603-marketplace-packaging-distribution/artifacts/t9-smoke-test-20260603.txt` (NEW, 159 lines) — full empirical capture: STEP A `--help`, STEP B end-to-end smoke run via the helper (all 5 internal STEPs exit 0, plugin lane reports `installed, enabled  0.2.0`, automated checks PASS), STEP C independent post-cleanup confirmation in a fresh isolated `CODEX_HOME` (both list calls return empty + exit 0), STEP D manual TUI checklist with all 8 skills marked `not run (pending maintainer)`, real-config pre/post comparison shows zero leakage.
+
+### Smoke checklist contents (RELEASING.md L111+)
+
+Automated preflight (helper-driven):
+
+```bash
+node tools/package-marketplace.mjs --check
+node tools/smoke-marketplace.mjs --marketplace-root "<repo-root>/marketplace"
+```
+
+Helper verifies: `codex --version` reachable, `marketplace add` succeeds, `plugin add` succeeds, `plugin list` reports `installed, enabled 0.2.0`, cleanup succeeds. Runs inside isolated `CODEX_HOME` (mkdtemp), never writes the real `~/.codex`, not invoked by CI.
+
+Manual skill discovery (operator-driven, inside Codex TUI):
+
+```
+$claude-setup
+$claude-delegate
+$claude-status
+$claude-result
+$claude-stop
+$claude-followup
+$claude-review
+$claude-adversarial-review
+```
+
+Gate: `$claude-setup` must return `ok` or `warn`. Other 7 skills must not return `unknown skill` / `unrecognized skill`. A skill that needs a job-id may stop at a usage/error message; that still counts as recognized.
+
+### Helper script behavior
+
+| Arg | Behavior |
+|---|---|
+| `--help` | Print usage block + the 8-skill checklist + exit 0. |
+| `--marketplace-root <path>` | Default `./marketplace` (relative to cwd). Resolved to absolute. |
+| `--keep-home` | Preserve isolated `CODEX_HOME` (prints path at exit). |
+| (default) | Run all automated STEPs 1-5, print manual checklist (STEP 6), cleanup, exit 0 if no failures. |
+
+Implementation notes: `node:*` built-ins only (`child_process`, `fs`, `os`, `path`, `url`). No third-party deps. `process.on('exit'|'SIGINT'|'SIGTERM')` handlers ensure cleanup runs even on interrupt. `realpathSync(codexHome)` resolves macOS `/var` ↔ `/private/var` symlinks so the printed path matches what Codex sees.
+
+### Automated smoke result (empirical)
+
+```text
+codex-cli 0.136.0
+Isolated CODEX_HOME: /private/var/folders/.../smoke-codex-home-AyBDdQ
+node tools/package-marketplace.mjs --check → OK (exit 0)
+
+STEP 1 package-marketplace --check        → exit 0
+STEP 2 codex --version                    → exit 0 (codex-cli 0.136.0)
+STEP 3 codex plugin marketplace add       → exit 0 ("Added marketplace cc-plugin-codex-local")
+STEP 4 codex plugin add                   → exit 0 ("Installed plugin root: <home>/plugins/cache/.../0.2.0")
+STEP 5 codex plugin list + assertions     → exit 0
+                                            "claude-companion@cc-plugin-codex-local  installed, enabled  0.2.0"
+STEP 6 manual TUI checklist printed       → 8 skills listed, operator-only
+Automated checks: PASS, smoke-marketplace exit=0
+
+STEP C independent confirmation (fresh CODEX_HOME):
+  codex plugin list             → "No marketplace plugins found." (exit 0)
+  codex plugin marketplace list → "No plugin marketplaces in scope." (exit 0)
+
+Real $HOME/.codex/config.toml pre/post comparison:
+  stale 'cc-plugin-codex-local-smoke' at lines 73 + 119 BEFORE = AFTER (preserved)
+  non-smoke 'cc-plugin-codex-local' entry count: 0 BEFORE = 0 AFTER (no leak)
+```
+
+### Manual skill-discovery result
+
+**Pending maintainer.** The orchestrator cannot drive the Codex 0.136.0 TUI from outside, so each of the 8 skills is currently recorded as `not run (pending maintainer)` in the artifact (STEP D). Per the maintainer's brief: "do not mark T9 done unless the maintainer explicitly accepts automation-only smoke ... ask the maintainer to run the manual checklist and paste results, or record the limitation as a blocker." This implementation log records the limitation as an open item; the orchestrator will request the manual checklist outcome in the user-facing summary at T9-commit close.
+
+The maintainer can run the manual checklist via:
+
+```bash
+CODEX_HOME=$(mktemp -d) node tools/smoke-marketplace.mjs --keep-home
+# Note the preserved CODEX_HOME path printed at the end.
+CODEX_HOME=<preserved-dir> codex
+# Inside Codex, invoke each $claude-* skill and note whether it is recognized.
+```
+
+Outcomes can be recorded by appending a follow-up section to the t9 artifact, or in a successor commit if the maintainer wants the result version-controlled.
+
+### Isolated CODEX_HOME handling
+
+The helper creates the isolated home via `mkdtempSync(join(tmpdir(), 'smoke-codex-home-'))` and registers `process.on('exit'|'SIGINT'|'SIGTERM')` handlers that always run `codex plugin remove` + `codex plugin marketplace remove` (best-effort, errors ignored) and then `rmSync(codexHome, { recursive: true, force: true })` unless `--keep-home`. The independent STEP C in the artifact uses a separate `mktemp -d` + bash `trap` to confirm cleanup with eyes outside the helper.
+
+### Cleanup result
+
+Empirical evidence (artifact STEPS B-C):
+
+- After STEP B's `--keep-home`-less run, the helper printed `Removed isolated CODEX_HOME: <path>`.
+- STEP C's fresh isolated home shows `codex plugin list` and `codex plugin marketplace list` both return empty (`No marketplace plugins found.` / `No plugin marketplaces in scope.`) with exit 0. The helper's cleanup did not leak any entries between isolated homes.
+- Real `~/.codex/config.toml` stale `cc-plugin-codex-local-smoke` entry at lines 73 + 119 preserved; 0 non-smoke entries before = 0 after.
+
+### Tests added (17 T9 cases)
+
+All under `describe('release-smoke procedure (Plan 0006 T9)', ...)` in `packages/plugin-codex/test/marketplace-smoke.test.mjs`:
+
+1. `tools/smoke-marketplace.mjs` exists and is non-empty.
+2. `--help` exits 0 and documents `--marketplace-root`, `--keep-home`, `--help`.
+3. Script body contains all 8 skill names.
+4. Script references `CODEX_HOME`.
+5. Script uses `mkdtempSync` and does **not** embed `$HOME/.codex` or `~/.codex` as a string literal (negative invariants).
+6. Script invokes `tools/package-marketplace.mjs --check` as preflight.
+7. Script spawns `['plugin', 'marketplace', 'add']`.
+8. Script spawns `['plugin', 'add', PLUGIN_REF]` and mentions `claude-companion@cc-plugin-codex-local` verbatim.
+9. Script cleanup spawns `['plugin', 'remove', PLUGIN_REF]` + `['plugin', 'marketplace', 'remove', MARKETPLACE_NAME]`.
+10. Script asserts expected version `0.2.0`.
+11. RELEASING.md contains `## Smoke Test` heading.
+12. RELEASING.md enumerates all 8 skill names.
+13. RELEASING.md identifies `$claude-setup` as the gate skill (regex `/\$claude-setup[\s\S]*?gate/i`).
+14. RELEASING.md states `ok` or `warn` aggregate passes setup (regex `` /`ok`\s+or\s+`warn`/ ``).
+15. Marketplace README contains `## Smoke test` pointer referencing `RELEASING.md`.
+16. Smoke surfaces (script + RELEASING.md + README) contain no OQ4 forbidden tokens and no Plan 0004 benchmark vocabulary.
+17. `.github/workflows/ci.yml` does **not** invoke `smoke-marketplace.mjs` or mention `smoke-marketplace` (the smoke procedure requires real Codex, which CI does not have).
+
+### A/B/C cadence (deviation)
+
+Per the maintainer's "keep it tight" instruction + memory `feedback_orchestrator_b_role`, the orchestrator performed A (smoke script + docs) + B (17 static tests) directly and ran C read-only. The smoke script is the only new production artifact in T9; the docs and tests follow the T6/T7/T8 patterns. Subagent cost would have exceeded the benefit.
+
+### Initial in-task issues caught + fixed
+
+1. **JSDoc comment-terminator collision**: the smoke script's docstring originally contained the path `documentation/plan/0006-*/artifacts/t9-smoke-test-*.txt`. The `*/` in `0006-*/artifacts` closed the multi-line comment early and Node parsed the rest of the file as code, surfacing as `SyntaxError: Unexpected token '*'` on line 14. Fixed by rephrasing the docstring path to use `0006-...-marketplace-packaging-distribution / artifacts/` without the `*/` sequence. `--help` then exited 0 cleanly.
+2. **Lint: unused `MARKETPLACE_NAME` constant** in the test file. T9-9's regex matches the **identifier** `MARKETPLACE_NAME` in the smoke script's source, not the test-file constant, so the test-file constant was unused. Removed.
+3. **Format: prettier reformat** of both new files. Auto-fixed via `npx prettier --write`. Final `prettier --check` clean.
+
+### Subagent C — read-only review (orchestrator-led)
+
+- **Allowed-files check:** `git status --short` reports exactly 2 modified (`documentation/RELEASING.md`, `marketplace/plugins/claude-companion/README.md`) + 3 new files (`tools/smoke-marketplace.mjs`, `packages/plugin-codex/test/marketplace-smoke.test.mjs`, `documentation/plan/0006-*/artifacts/t9-smoke-test-20260603.txt`). All within the brief's allowed set.
+- **Forbidden-files check:** `git diff --stat HEAD` against all guarded paths returns empty — `tools/bench/`, source plugin scripts/skills/plugin.json, `packages/plugin-codex/README.md`, marketplace packaged scripts/skills/plugin.json, `packages/runtime/`, `packages/driver-claude-code/`, `.github/`, `documentation/plan/0004-*`, `documentation/plan/0005-*` all clean.
+- **No CI real-Codex gate:** `grep -rE "smoke-marketplace|tools/smoke" .github/` returns empty. T9-17 test enforces this invariant going forward.
+- **Cost paragraph guard:** last commit touching `packages/plugin-codex/README.md` is still `86cb729` (Plan 0003 era).
+- **Tag guard:** `git rev-parse plan-0004-pre-cutover` = `7d9b5f1...` (unchanged).
+- **Real-config guard:** smoke artifact's POST-SMOKE comparison shows stale-smoke entries preserved and zero T9 leakage.
+- **F-H2 trace (T6/T7/T8 lifecycle precedent → smoke script → RELEASING → README → artifact):**
+  - T6 install + T7 upgrade + T8 uninstall commands re-used inside `tools/smoke-marketplace.mjs` STEPS 3-5 + cleanup.
+  - T6/T7/T8's `CODEX_HOME=$(mktemp -d)` + `trap` pattern is now codified as `mkdtempSync` + `process.on(...)` handlers in the helper.
+  - RELEASING.md L111 `## Smoke Test (Plan 0006 T9)` → L150-157 (8 skills) → L161 (`$claude-setup` gate) → L163 (`ok` or `warn`).
+  - README L98 `## Smoke test` → L101 link to RELEASING.md → L102 enumerates 8 skill names.
+  - Artifact STEP B (automated PASS) → STEP D (manual TUI: pending maintainer) → POST-SMOKE comparison (real config UNCHANGED).
+- **Plan 0005 still deferred:** no hooks, no stop-gate code, no Plan 0005 file changes.
+
+### Local gates
+
+| Gate | Result |
+|---|---|
+| `node tools/package-marketplace.mjs --check` | OK — 18 derived + 1 marketplace-owned + no unexpected (exit 0). |
+| `node tools/smoke-marketplace.mjs --help` | exit 0 (usage block + 8-skill checklist printed). |
+| `npm run lint` | exit 0 (after removing unused `MARKETPLACE_NAME` test-file constant). |
+| `npm run typecheck` | exit 0 (`tsc --build` clean). |
+| `npm run format` | exit 0 (after `prettier --write` on the 2 new files). |
+| `npm test` | **1136/1136** (mock 68 + runtime 172 + driver 178 + plugin **718**) — plugin lane 701 → 718 (+17 T9). |
+| `npm run test:attach` | 28/28 (unchanged). |
+| `npm run test:bench` | 258/258 (unchanged). |
+| Combined | **1422 tests** passing (T8 baseline 1405 + 17 T9). |
+
+### Gate evidence
+
+- `packages/plugin-codex/README.md` cost paragraph untouched (last commit `86cb729`).
+- `packages/plugin-codex/scripts/**`, `skills/**`, `.codex-plugin/plugin.json` untouched.
+- `packages/runtime/**`, `packages/driver-claude-code/**`, `tools/bench/**`, `.github/**` untouched.
+- `marketplace/MANIFEST.md`, `marketplace/EXCLUSIONS.md`, `marketplace/.agents/plugins/marketplace.json` untouched.
+- `marketplace/plugins/claude-companion/.codex-plugin/plugin.json`, `scripts/`, `skills/` untouched.
+- No hook or stop-gate code. Plan 0005 stays `deferred`.
+- `git rev-parse plan-0004-pre-cutover` → `7d9b5f1...`; tag preserved.
+- Real `~/.codex/config.toml` unchanged by T9 (pre/post grep comparison in the artifact).
+- Pre-existing stale `cc-plugin-codex-local-smoke` entry preserved.
+
+### Implications for later tasks
+
+| Task | Implication from T9 |
+|---|---|
+| T10 (version bump) | T9 anchored verification on `0.2.0` in 3 places (smoke script `EXPECTED_VERSION`, RELEASING.md, README pointer). T10's version-bump procedure must update all three plus the prior T3/T6/T7/T8 anchor points. |
+| T11 (release checklist) | RELEASING.md now has Install (T6) + Uninstall + verification (T8) + Upgrade (T7) + Packaging verification (T4+T5) + Smoke Test (T9). T11 stitches them into the final checklist plus the version-bump step. |
+| T12 (docs split) | The marketplace README pointer is intentionally short (does not duplicate RELEASING.md). T12 should preserve that pointer and avoid bringing the full smoke checklist into the marketplace surface. |
+
+### Acceptance open items
+
+Per the maintainer's brief, T9 cannot be declared "done" by the orchestrator alone:
+
+> "If manual TUI skill checks are not run in T9, do not mark T9 done unless the maintainer explicitly accepts automation-only smoke. The plan's T9 acceptance expects skill discovery verification."
+
+The automation infrastructure (helper script + tests + docs + artifact) is in place. The next step is the maintainer either (a) running the manual 8-skill TUI checklist and recording results, (b) explicitly accepting automation-only smoke as sufficient for T9 acceptance, or (c) deferring the manual checklist into a follow-up T9.5 / Stage 5 verification. The user-facing summary at T9 commit-close will request the choice.
+
+### CI evidence (pending)
+
+- Commit: pending — `Plan 0006 T9: add marketplace smoke test procedure`
+- CI run: pending

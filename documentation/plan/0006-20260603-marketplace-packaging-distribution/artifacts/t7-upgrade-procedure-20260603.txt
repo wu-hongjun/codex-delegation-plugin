@@ -1,0 +1,128 @@
+=== Plan 0006 T7 — upgrade procedure empirical smoke ===
+Captured: 2026-06-03
+Host: Darwin Hongjuns-MacBook-Pro.local 25.5.0 Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:15 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6041 arm64
+CODEX_HOME (isolated): /var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t7-codex-home-XXXX.tmFcGnCrfO
+REPO_ROOT: /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+--- Pre-check: real $HOME/.codex/config.toml stale entry baseline ---
+Real config stale 'cc-plugin-codex-local-smoke' references (line numbers):
+73:[plugins."claude-companion@cc-plugin-codex-local-smoke"]|119:[marketplaces.cc-plugin-codex-local-smoke]|
+Real config 'cc-plugin-codex-local' (non-smoke) entry count: 0
+
+==========================================================
+STEP 0: env baseline
+==========================================================
+codex-cli 0.136.0
+exit=0
+
+check: OK — 18 derived files match source, 1 marketplace-owned files present, no unexpected files.
+exit=0
+
+==========================================================
+STEP 1: initial install from committed marketplace
+==========================================================
++ codex plugin marketplace add "/Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace"
+Added marketplace `cc-plugin-codex-local` from /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace.
+Installed marketplace root: /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+exit=0
+
++ codex plugin add "claude-companion@cc-plugin-codex-local"
+Added plugin `claude-companion` from marketplace `cc-plugin-codex-local`.
+Installed plugin root: /private/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t7-codex-home-XXXX.tmFcGnCrfO/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0
+exit=0
+
++ codex plugin list (post-install)
+Marketplace `cc-plugin-codex-local`
+/Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace/.agents/plugins/marketplace.json
+
+PLUGIN                                  STATUS              VERSION  PATH                                                                                  
+claude-companion@cc-plugin-codex-local  installed, enabled  0.2.0    /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace/plugins/claude-companion
+exit=0
+
+==========================================================
+STEP 2: same-path upgrade flow (remove + add, marketplace pointer unchanged)
+==========================================================
++ codex plugin remove "claude-companion@cc-plugin-codex-local"
+Removed plugin `claude-companion` from marketplace `cc-plugin-codex-local`.
+exit=0
+
++ codex plugin add "claude-companion@cc-plugin-codex-local"
+Added plugin `claude-companion` from marketplace `cc-plugin-codex-local`.
+Installed plugin root: /private/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t7-codex-home-XXXX.tmFcGnCrfO/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0
+exit=0
+
++ codex plugin list (post-same-path-upgrade)
+Marketplace `cc-plugin-codex-local`
+/Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace/.agents/plugins/marketplace.json
+
+PLUGIN                                  STATUS              VERSION  PATH                                                                                  
+claude-companion@cc-plugin-codex-local  installed, enabled  0.2.0    /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace/plugins/claude-companion
+exit=0
+
+==========================================================
+STEP 3: path-refresh upgrade flow (remove plugin + remove marketplace + re-add)
+==========================================================
++ codex plugin remove "claude-companion@cc-plugin-codex-local"
+Removed plugin `claude-companion` from marketplace `cc-plugin-codex-local`.
+exit=0
+
++ codex plugin marketplace remove "cc-plugin-codex-local"
+Removed marketplace `cc-plugin-codex-local`.
+exit=0
+
++ codex plugin marketplace add "/Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace"
+Added marketplace `cc-plugin-codex-local` from /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace.
+Installed marketplace root: /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+exit=0
+
++ codex plugin add "claude-companion@cc-plugin-codex-local"
+Added plugin `claude-companion` from marketplace `cc-plugin-codex-local`.
+Installed plugin root: /private/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t7-codex-home-XXXX.tmFcGnCrfO/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0
+exit=0
+
++ codex plugin list (post-path-refresh-upgrade)
+Marketplace `cc-plugin-codex-local`
+/Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace/.agents/plugins/marketplace.json
+
+PLUGIN                                  STATUS              VERSION  PATH                                                                                  
+claude-companion@cc-plugin-codex-local  installed, enabled  0.2.0    /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace/plugins/claude-companion
+exit=0
+
+==========================================================
+STEP 4: cleanup
+==========================================================
++ codex plugin remove "claude-companion@cc-plugin-codex-local"
+Removed plugin `claude-companion` from marketplace `cc-plugin-codex-local`.
+exit=0
+
++ codex plugin marketplace remove "cc-plugin-codex-local"
+Removed marketplace `cc-plugin-codex-local`.
+exit=0
+
+==========================================================
+STEP 5: negative command research (in isolated CODEX_HOME)
+==========================================================
++ codex plugin upgrade --help
+error: unrecognized subcommand 'upgrade'
+
+Usage: codex plugin [OPTIONS] <COMMAND>
+
+For more information, try '--help'.
+exit=2
+
++ codex plugin update --help
+error: unrecognized subcommand 'update'
+
+Usage: codex plugin [OPTIONS] <COMMAND>
+
+For more information, try '--help'.
+exit=2
+
+==========================================================
+POST-SMOKE: verify real $HOME/.codex/config.toml untouched
+==========================================================
+Stale-smoke references after smoke: 73:[plugins."claude-companion@cc-plugin-codex-local-smoke"]|119:[marketplaces.cc-plugin-codex-local-smoke]|
+Non-smoke 'cc-plugin-codex-local' entries after smoke: 0
+RESULT: real ~/.codex/config.toml UNCHANGED (stale-smoke preserved, no T7 entries leaked)
+
+=== End of T7 capture ===

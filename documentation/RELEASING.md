@@ -25,12 +25,35 @@ codex plugin remove "claude-companion@cc-plugin-codex-local"
 codex plugin marketplace remove "cc-plugin-codex-local"
 ```
 
-## Upgrade procedure
+## Upgrade procedure (Plan 0006 T7)
 
-Pending Plan 0006 T7. Codex 0.136.0 does not provide a
-`codex plugin upgrade` command; the upgrade path is
-`codex plugin remove` + `codex plugin add` against the updated
-marketplace tree.
+Codex 0.136.0 does not expose an in-place `codex plugin upgrade` or
+`codex plugin update` command. The upgrade procedure is to remove the
+installed plugin and re-add it from the same marketplace pointer.
+
+Same-path upgrade (after pulling new commits in cc-plugin-codex):
+
+```bash
+codex plugin remove "claude-companion@cc-plugin-codex-local"
+codex plugin add "claude-companion@cc-plugin-codex-local"
+codex plugin list
+```
+
+Marketplace-path-refresh upgrade (after moving or re-cloning the repo):
+
+```bash
+codex plugin remove "claude-companion@cc-plugin-codex-local"
+codex plugin marketplace remove "cc-plugin-codex-local"
+codex plugin marketplace add "<repo-root>/marketplace"
+codex plugin add "claude-companion@cc-plugin-codex-local"
+codex plugin list
+```
+
+After either flow, `codex plugin list` should report
+`claude-companion@cc-plugin-codex-local` with the current version
+(`0.2.0` as of Plan 0006 T3), `installed, enabled`. See
+[`marketplace/plugins/claude-companion/README.md`](../marketplace/plugins/claude-companion/README.md)
+for the user-facing upgrade section.
 
 ## Packaging verification (Plan 0006 T4 + T5)
 

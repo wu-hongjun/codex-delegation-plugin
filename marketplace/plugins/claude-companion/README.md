@@ -105,13 +105,37 @@ Read the detailed probe output. Common causes:
 
 ## Upgrade
 
-Plan 0006 T7 will document the upgrade procedure. In the meantime,
-to upgrade after pulling new commits in the cc-plugin-codex repo,
-remove and re-install the plugin:
+Codex 0.136.0 does not expose an in-place `codex plugin upgrade` or
+`codex plugin update` command. The upgrade procedure is to remove the
+installed plugin and re-add it from the same marketplace pointer.
+
+(Codex does expose `codex plugin marketplace upgrade`, but that
+subcommand only refreshes Git marketplace snapshots and is not used
+for the local cc-plugin-codex marketplace.)
+
+After pulling new commits in the cc-plugin-codex repo, if the
+marketplace path has not changed, run:
 
 ```bash
 codex plugin remove "claude-companion@cc-plugin-codex-local"
 codex plugin add "claude-companion@cc-plugin-codex-local"
 ```
 
-No `codex plugin upgrade` command exists in Codex 0.136.0.
+If you moved or re-cloned the repository, refresh the marketplace
+pointer first:
+
+```bash
+codex plugin remove "claude-companion@cc-plugin-codex-local"
+codex plugin marketplace remove "cc-plugin-codex-local"
+codex plugin marketplace add "<repo-root>/marketplace"
+codex plugin add "claude-companion@cc-plugin-codex-local"
+```
+
+Verify the upgrade:
+
+```bash
+codex plugin list
+```
+
+You should see `claude-companion@cc-plugin-codex-local` with version
+`0.2.0` (the current plugin version), reported as `installed, enabled`.

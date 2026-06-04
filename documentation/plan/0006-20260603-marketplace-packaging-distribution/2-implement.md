@@ -798,3 +798,140 @@ None. The brief's recommended approach was matched: isolated `CODEX_HOME` for th
 ### Status
 
 **T6 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3, T4, T5, T6 of Stage 2 done; T7 (upgrade procedure) paused awaiting maintainer go-ahead.
+
+---
+
+## T7 — Upgrade procedure (2026-06-03)
+
+### Deliverables
+
+- `marketplace/plugins/claude-companion/README.md` — replaced the T6 "Upgrade" placeholder with a full Upgrade section: explicit negation of `codex plugin upgrade` / `codex plugin update`, parenthetical clarification that `codex plugin marketplace upgrade` exists only for Git marketplaces (not used for local layouts), same-path upgrade flow (`remove` + `add`), and the marketplace-path-refresh upgrade flow (`remove plugin` + `marketplace remove` + `marketplace add` + `add plugin`), with `codex plugin list` verification anchored on `0.2.0` + `installed, enabled`.
+- `documentation/RELEASING.md` — replaced the T6 "Upgrade procedure (pending T7)" stub with a Plan 0006 T7 Upgrade procedure section: same negation + both upgrade flows + a forward pointer to the user-facing README section.
+- `packages/plugin-codex/test/marketplace-readme.test.mjs` — +10 T7 assertions covering Upgrade section heading, negation phrase, both upgrade-flow command sets, no-runnable-`codex plugin upgrade`/`update` rules, `0.2.0` verification mention, and an end-to-end RELEASING.md check (heading, negation, both command sets, no-runnable rules).
+- `documentation/plan/0006-20260603-marketplace-packaging-distribution/artifacts/t7-upgrade-procedure-20260603.txt` (NEW, 128 lines) — full empirical capture of install → same-path upgrade → path-refresh upgrade → cleanup → negative `--help` probes, with isolated `CODEX_HOME` and real-config baseline + post-state comparison.
+
+### Why remove + add, not upgrade/update
+
+T1 (1-plan.md lines 183, 316, 455) and the in-task probes both confirm: Codex 0.136.0 has no `codex plugin upgrade` and no `codex plugin update` subcommand. The artifact's STEP 5 records both as `error: unrecognized subcommand` (exit code 2). Codex does expose `codex plugin marketplace upgrade`, but its `--help` text ("Refresh configured Git marketplace snapshots") confirms it applies only to Git marketplaces and is not relevant for the local `marketplace/` layout. The README and RELEASING.md both call this out parenthetically so future readers don't conflate the two subcommands.
+
+### Same-path upgrade flow (post-pull, marketplace pointer unchanged)
+
+```bash
+codex plugin remove "claude-companion@cc-plugin-codex-local"
+codex plugin add "claude-companion@cc-plugin-codex-local"
+codex plugin list
+```
+
+Empirical evidence (artifact STEP 2): both commands exit 0; subsequent `codex plugin list` shows `claude-companion@cc-plugin-codex-local  installed, enabled  0.2.0` (line 59). Reinstall surfaces `Installed plugin root: <CODEX_HOME>/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0` (line 51).
+
+### Marketplace-path-refresh upgrade flow (after moving/re-cloning the repo)
+
+```bash
+codex plugin remove "claude-companion@cc-plugin-codex-local"
+codex plugin marketplace remove "cc-plugin-codex-local"
+codex plugin marketplace add "<repo-root>/marketplace"
+codex plugin add "claude-companion@cc-plugin-codex-local"
+codex plugin list
+```
+
+Empirical evidence (artifact STEP 3): all 4 mutator commands exit 0; `codex plugin list` again shows `installed, enabled  0.2.0` (line 88). The path-refresh flow is what end users will run after relocating their cc-plugin-codex checkout (the marketplace pointer is an absolute path baked into `$CODEX_HOME/config.toml`).
+
+### Real Codex smoke result
+
+```text
+codex-cli 0.136.0
+CODEX_HOME (isolated): /private/var/folders/.../t7-codex-home-XXXX.tmFcGnCrfO
+node tools/package-marketplace.mjs --check → OK (exit 0)
+
+STEP 1 install        → all 3 commands exit 0; plugin list shows 0.2.0 installed,enabled
+STEP 2 same-path      → remove + add + list, all 3 exit 0; list shows 0.2.0 installed,enabled
+STEP 3 path-refresh   → remove + mkt-remove + mkt-add + add + list, all 5 exit 0; list shows 0.2.0 installed,enabled
+STEP 4 cleanup        → remove + mkt-remove, both exit 0
+STEP 5 negative probes:
+  - codex plugin upgrade --help → error: unrecognized subcommand 'upgrade' (exit 2)
+  - codex plugin update  --help → error: unrecognized subcommand 'update'  (exit 2)
+
+Post-smoke real $HOME/.codex/config.toml comparison:
+  - stale 'cc-plugin-codex-local-smoke' references at lines 73 + 119 BEFORE = AFTER (preserved)
+  - non-smoke 'cc-plugin-codex-local' entry count: 0 BEFORE = 0 AFTER (no leak)
+```
+
+### Isolated CODEX_HOME handling
+
+The smoke script set `CODEX_HOME=$(mktemp -d -t t7-codex-home-XXXX)` and registered `trap 'rm -rf "$CODEX_HOME"' EXIT` so the temp directory is removed when the subshell exits, regardless of pass/fail. The real `~/.codex/config.toml` is read for the pre/post comparison (read-only) but never written. This mirrors the T6 pattern and preserves the documented constraint: do not edit `~/.codex` or `~/.claude` without explicit maintainer authorization, and never delete the stale `cc-plugin-codex-local-smoke` entry.
+
+### Tests added (10 T7 cases)
+
+All under `describe('marketplace upgrade procedure docs (Plan 0006 T7)', ...)`:
+
+1. README contains an `## Upgrade` section.
+2. README states Codex 0.136.0 does not expose in-place upgrade/update (regex `/does not expose .*codex plugin upgrade/i`).
+3. README contains the plugin remove command.
+4. README contains the plugin add command.
+5. README contains the marketplace remove command (path-refresh flow).
+6. README contains the marketplace add command (path-refresh flow).
+7. README does **not** present `codex plugin upgrade` as a runnable command (regex `/^\s*codex plugin upgrade\b/m` is line-anchored to permit the inline-backtick negation without false-positives).
+8. README does **not** present `codex plugin update` as a runnable command (same rule).
+9. README mentions version `0.2.0` in upgrade verification.
+10. RELEASING.md contains heading + negation + both command sets + no-runnable rules.
+
+These pair with the T6 11-test "no OQ4 forbidden tokens" + "no Plan 0004 vocabulary" checks already in the file, so the surface remains clean across both layers.
+
+### A/B/C cadence (deviation)
+
+Per the maintainer's "Use A/B/C, but keep it tight" instruction and memory `feedback_orchestrator_b_role` (orchestrator can absorb B for verbatim-template tasks), the orchestrator performed A (docs) and B (tests) directly and ran C (review) read-only without spawning subagents. The work was a verbatim-template documentation edit plus a 10-test extension of an existing test file with established patterns — the cost of subagent spawn would have exceeded the benefit. C review (below) is the equivalent of the subagent C pass.
+
+### Subagent C — read-only review (orchestrator-led)
+
+- **Allowed-files check:** `git diff --name-only HEAD` reports exactly 3 modified files (`documentation/RELEASING.md`, `marketplace/plugins/claude-companion/README.md`, `packages/plugin-codex/test/marketplace-readme.test.mjs`) + 1 new artifact under `documentation/plan/0006-*/artifacts/`. All within the brief's allowed set.
+- **Forbidden-files check:** `git diff --stat HEAD` against `tools/bench/`, `packages/plugin-codex/scripts/`, `skills/`, `.codex-plugin/plugin.json`, `packages/plugin-codex/README.md`, marketplace packaged `scripts/`, `skills/`, `.codex-plugin/plugin.json`, `packages/runtime/`, `packages/driver-claude-code/`, `.github/`, `documentation/plan/0004-*`, `documentation/plan/0005-*` reports no entries — all guarded paths intact.
+- **Cost paragraph guard:** last commit touching `packages/plugin-codex/README.md` is `86cb729` (Plan 0004 T11 era) — T7 did not touch it.
+- **Tag guard:** `git rev-parse plan-0004-pre-cutover` = `7d9b5f1...` (unchanged).
+- **Real-config guard:** smoke artifact's POST-SMOKE comparison shows stale-smoke entries preserved and zero T7 leakage.
+- **F-H2 trace (T1 source → README → RELEASING → artifact):**
+  - T1 source: 1-plan.md L183 ("Codex does not have an in-place `codex plugin upgrade` command as of 0.136.0"), L316, L455.
+  - README: L108 ("Codex 0.136.0 does not expose an in-place `codex plugin upgrade` or `codex plugin update` command").
+  - RELEASING.md: L30 (same negation).
+  - Artifact: L106 (`error: unrecognized subcommand 'upgrade'`), L114 (`error: unrecognized subcommand 'update'`).
+- **Plan 0005 still deferred:** no hooks, no stop-gate code, no Plan 0005 file changes.
+- **OQ4 / cost-claim guard:** T6 tests (forbidden tokens + benchmark vocabulary) still pass on the post-T7 surface; no new tokens introduced.
+
+### Local gates
+
+| Gate | Result |
+|---|---|
+| `node tools/package-marketplace.mjs --check` | OK — 18 derived + 1 marketplace-owned + no unexpected (exit 0). |
+| `npm run lint` | exit 0 (clean). |
+| `npm run typecheck` | exit 0 (`tsc --build` clean). |
+| `npm run format` | exit 0 (`prettier --check` clean across all matched files). |
+| `npm test` | **1109/1109** (mock 68 + runtime 172 + driver 178 + plugin **691**) — plugin lane 681 → 691 (+10 T7). |
+| `npm run test:attach` | 28/28 (unchanged). |
+| `npm run test:bench` | 258/258 (unchanged). |
+| Combined | **1395 tests** passing (T6 baseline 1385 + 10 T7). |
+
+### Gate evidence
+
+- `packages/plugin-codex/README.md` cost paragraph untouched (Plan 0004 T12 + Plan 0006 T12 own).
+- `packages/plugin-codex/scripts/**`, `skills/**`, `.codex-plugin/plugin.json` untouched.
+- `packages/runtime/**`, `packages/driver-claude-code/**`, `tools/bench/**`, `.github/**` untouched.
+- `marketplace/MANIFEST.md`, `marketplace/EXCLUSIONS.md`, `marketplace/.agents/plugins/marketplace.json` untouched.
+- `marketplace/plugins/claude-companion/.codex-plugin/plugin.json`, `scripts/`, `skills/` untouched.
+- No hook or stop-gate code. Plan 0005 stays `deferred`.
+- `git rev-parse plan-0004-pre-cutover` → `7d9b5f1...`; tag preserved.
+- Real `~/.codex/config.toml` unchanged by T7 (verified via pre/post grep comparison embedded in the artifact).
+- Pre-existing stale `cc-plugin-codex-local-smoke` entry preserved.
+
+### Implications for later tasks
+
+| Task | Implication from T7 |
+|---|---|
+| T8 (uninstall) | T6 + T7 already cover the uninstall commands. T8 can focus on RELEASING.md uninstall-verification language + an isolated `CODEX_HOME` artifact mirroring T7's pattern. |
+| T9 (smoke test) | T9 can codify the `CODEX_HOME=$(mktemp -d)` + `trap rm` + pre/post real-config grep pattern proven by T6 and T7 into a reusable smoke script under `tools/`. |
+| T10 (version bump) | T7 anchored verification on `0.2.0`; T10's version-bump procedure will need to update both the source `plugin.json` and the marketplace verification strings (test fixture + README + RELEASING). |
+| T11 (release checklist) | RELEASING.md now has full Install (T6) + Upgrade (T7) sections. T8-T10 plug remaining steps in. |
+| T12 (docs split) | T12 finalizes the marketplace README structure. The Upgrade section's wording is stable and should survive verbatim. |
+
+### CI evidence (pending)
+
+- Commit: pending — `Plan 0006 T7: document marketplace upgrade procedure`
+- CI run: pending

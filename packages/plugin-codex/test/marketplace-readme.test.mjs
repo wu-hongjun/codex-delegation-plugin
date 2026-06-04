@@ -246,3 +246,179 @@ describe('marketplace install procedure docs (Plan 0006 T6)', () => {
     );
   });
 });
+
+// ==========================================================================
+// Plan 0006 T7 — marketplace upgrade procedure docs
+// ==========================================================================
+//
+// T1 empirically confirmed that Codex 0.136.0 has no `codex plugin upgrade`
+// and no `codex plugin update` command. The user-facing upgrade procedure is
+// therefore `codex plugin remove` + `codex plugin add` against the same (or
+// refreshed) marketplace pointer. Note: Codex DOES expose
+// `codex plugin marketplace upgrade`, but that only refreshes Git
+// marketplaces and is not part of the local-marketplace upgrade flow.
+
+// Regex used to assert there is no runnable `codex plugin upgrade` /
+// `codex plugin update` line documented as a command. We match against the
+// start of a line (optionally indented) so we do not falsely trip on inline
+// negated prose like "does not expose an in-place `codex plugin upgrade`".
+const CMD_PLUGIN_UPGRADE_BARE_LINE = /^\s*codex plugin upgrade\b/m;
+const CMD_PLUGIN_UPDATE_BARE_LINE = /^\s*codex plugin update\b/m;
+const NEGATED_UPGRADE_PHRASE = /does not expose .*codex plugin upgrade/i;
+
+const UPGRADE_VERSION_STRING = '0.2.0';
+
+describe('marketplace upgrade procedure docs (Plan 0006 T7)', () => {
+  // ========================================================================
+  // T7-1: README contains an "## Upgrade" section
+  // ========================================================================
+
+  it('README contains an "## Upgrade" section', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.match(content, /^## Upgrade$/m, 'README.md must contain an "## Upgrade" heading');
+  });
+
+  // ========================================================================
+  // T7-2: README states Codex 0.136.0 does not expose in-place upgrade/update
+  // ========================================================================
+
+  it('README states Codex 0.136.0 does not expose in-place upgrade/update', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.match(
+      content,
+      NEGATED_UPGRADE_PHRASE,
+      'README.md must explicitly negate the existence of `codex plugin upgrade`',
+    );
+  });
+
+  // ========================================================================
+  // T7-3: README Upgrade section contains the plugin remove command
+  // ========================================================================
+
+  it('README contains the plugin remove command for the upgrade flow', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes(CMD_PLUGIN_REMOVE),
+      `README.md must contain the plugin remove command: ${CMD_PLUGIN_REMOVE}`,
+    );
+  });
+
+  // ========================================================================
+  // T7-4: README Upgrade section contains the plugin add command
+  // ========================================================================
+
+  it('README contains the plugin add command for the upgrade flow', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes(CMD_PLUGIN_ADD),
+      `README.md must contain the plugin add command: ${CMD_PLUGIN_ADD}`,
+    );
+  });
+
+  // ========================================================================
+  // T7-5: README contains marketplace remove command for path-refresh flow
+  // ========================================================================
+
+  it('README contains the marketplace remove command for the path-refresh upgrade flow', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes(CMD_MARKETPLACE_REMOVE),
+      `README.md must contain the marketplace remove command: ${CMD_MARKETPLACE_REMOVE}`,
+    );
+  });
+
+  // ========================================================================
+  // T7-6: README contains marketplace add command for path-refresh flow
+  // ========================================================================
+
+  it('README contains the marketplace add command for the path-refresh upgrade flow', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes(CMD_MARKETPLACE_ADD),
+      `README.md must contain the marketplace add command: ${CMD_MARKETPLACE_ADD}`,
+    );
+  });
+
+  // ========================================================================
+  // T7-7: README does NOT document a runnable `codex plugin upgrade` command
+  // ========================================================================
+
+  it('README does not document a runnable `codex plugin upgrade` command', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.doesNotMatch(
+      content,
+      CMD_PLUGIN_UPGRADE_BARE_LINE,
+      'README.md must not present `codex plugin upgrade` as a runnable command line',
+    );
+  });
+
+  // ========================================================================
+  // T7-8: README does NOT document a runnable `codex plugin update` command
+  // ========================================================================
+
+  it('README does not document a runnable `codex plugin update` command', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.doesNotMatch(
+      content,
+      CMD_PLUGIN_UPDATE_BARE_LINE,
+      'README.md must not present `codex plugin update` as a runnable command line',
+    );
+  });
+
+  // ========================================================================
+  // T7-9: README mentions version 0.2.0 in upgrade verification
+  // ========================================================================
+
+  it('README mentions version 0.2.0 in upgrade verification', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes(UPGRADE_VERSION_STRING),
+      `README.md must mention current plugin version ${UPGRADE_VERSION_STRING} in upgrade verification`,
+    );
+  });
+
+  // ========================================================================
+  // T7-10: RELEASING.md contains the upgrade procedure with both flows
+  // ========================================================================
+
+  it('RELEASING.md contains the upgrade procedure with remove + add for both flows', () => {
+    assert.ok(existsSync(RELEASING_MD), `RELEASING.md not found at ${RELEASING_MD}`);
+    const content = readFileSync(RELEASING_MD, 'utf8');
+    assert.match(
+      content,
+      /^## Upgrade procedure/m,
+      'RELEASING.md must contain an "## Upgrade procedure" section',
+    );
+    assert.match(
+      content,
+      NEGATED_UPGRADE_PHRASE,
+      'RELEASING.md must explicitly negate the existence of `codex plugin upgrade`',
+    );
+    assert.ok(
+      content.includes(CMD_PLUGIN_REMOVE),
+      `RELEASING.md must contain the plugin remove command: ${CMD_PLUGIN_REMOVE}`,
+    );
+    assert.ok(
+      content.includes(CMD_PLUGIN_ADD),
+      `RELEASING.md must contain the plugin add command: ${CMD_PLUGIN_ADD}`,
+    );
+    assert.ok(
+      content.includes(CMD_MARKETPLACE_REMOVE),
+      `RELEASING.md must contain the marketplace remove command: ${CMD_MARKETPLACE_REMOVE}`,
+    );
+    assert.ok(
+      content.includes(CMD_MARKETPLACE_ADD),
+      `RELEASING.md must contain the marketplace add command: ${CMD_MARKETPLACE_ADD}`,
+    );
+    assert.doesNotMatch(
+      content,
+      CMD_PLUGIN_UPGRADE_BARE_LINE,
+      'RELEASING.md must not present `codex plugin upgrade` as a runnable command line',
+    );
+    assert.doesNotMatch(
+      content,
+      CMD_PLUGIN_UPDATE_BARE_LINE,
+      'RELEASING.md must not present `codex plugin update` as a runnable command line',
+    );
+  });
+});

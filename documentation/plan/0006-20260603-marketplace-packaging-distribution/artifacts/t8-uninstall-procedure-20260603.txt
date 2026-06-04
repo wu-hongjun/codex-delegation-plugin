@@ -1,0 +1,119 @@
+=== Plan 0006 T8 — uninstall procedure empirical smoke ===
+Captured: 2026-06-04
+Host: Darwin Hongjuns-MacBook-Pro.local 25.5.0 Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:15 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6041 arm64
+CODEX_HOME (isolated): /var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl
+REPO_ROOT: /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+--- Pre-check: real $HOME/.codex/config.toml stale entry baseline ---
+Real config stale 'cc-plugin-codex-local-smoke' references (line numbers):
+73:[plugins."claude-companion@cc-plugin-codex-local-smoke"]|119:[marketplaces.cc-plugin-codex-local-smoke]|
+Real config 'cc-plugin-codex-local' (non-smoke) entry count: 0
+
+==========================================================
+STEP 0: env baseline
+==========================================================
+codex-cli 0.136.0
+exit=0
+
+check: OK — 18 derived files match source, 1 marketplace-owned files present, no unexpected files.
+exit=0
+
+==========================================================
+STEP 1: install
+==========================================================
++ codex plugin marketplace add "/Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace"
+Added marketplace `cc-plugin-codex-local` from /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace.
+Installed marketplace root: /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+exit=0
+
++ codex plugin add "claude-companion@cc-plugin-codex-local"
+Added plugin `claude-companion` from marketplace `cc-plugin-codex-local`.
+Installed plugin root: /private/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0
+exit=0
+
+==========================================================
+STEP 2: pre-uninstall list (expect plugin + marketplace present)
+==========================================================
++ codex plugin list
+Marketplace `cc-plugin-codex-local`
+/Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace/.agents/plugins/marketplace.json
+
+PLUGIN                                  STATUS              VERSION  PATH                                                                                  
+claude-companion@cc-plugin-codex-local  installed, enabled  0.2.0    /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace/plugins/claude-companion
+exit=0
+
++ codex plugin marketplace list
+MARKETPLACE            ROOT
+cc-plugin-codex-local  /Users/hongjunwu/Repositories/Git/cc-plugin-codex/marketplace
+exit=0
+
+==========================================================
+STEP 3: cache contents under isolated CODEX_HOME BEFORE uninstall
+==========================================================
++ find $CODEX_HOME/plugins -type d -maxdepth 6 2>/dev/null | sort
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/.codex-plugin
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/scripts
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/scripts/lib
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/skills
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/skills/claude-adversarial-review
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/skills/claude-delegate
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/skills/claude-followup
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/skills/claude-result
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/skills/claude-review
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/skills/claude-setup
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/skills/claude-status
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/skills/claude-stop
++ find $CODEX_HOME/plugins -type f 2>/dev/null | wc -l (file count)
+19
+
+==========================================================
+STEP 4: uninstall (plugin remove, then marketplace remove)
+==========================================================
++ codex plugin remove "claude-companion@cc-plugin-codex-local"
+Removed plugin `claude-companion` from marketplace `cc-plugin-codex-local`.
+exit=0
+
++ codex plugin marketplace remove "cc-plugin-codex-local"
+Removed marketplace `cc-plugin-codex-local`.
+exit=0
+
+==========================================================
+STEP 5: post-uninstall list (expect plugin + marketplace ABSENT)
+==========================================================
++ codex plugin list
+No marketplace plugins found.
+exit=0
+
++ codex plugin marketplace list
+No plugin marketplaces in scope.
+exit=0
+
+==========================================================
+STEP 6: cache contents under isolated CODEX_HOME AFTER uninstall
+==========================================================
++ find $CODEX_HOME/plugins -type d -maxdepth 6 2>/dev/null | sort
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache
+/var/folders/38/dmt8zdcs4f735lb71qsfx4hc0000gn/T/t8-codex-home-XXXX.p8C09dulzl/plugins/cache/cc-plugin-codex-local
++ find $CODEX_HOME/plugins -type f 2>/dev/null | wc -l (file count)
+0
+
+==========================================================
+STEP 7: absence verification via grep
+==========================================================
+PASS: 'claude-companion@cc-plugin-codex-local' is absent from 'codex plugin list'
+PASS: 'cc-plugin-codex-local' is absent from 'codex plugin marketplace list'
+
+==========================================================
+POST-SMOKE: verify real $HOME/.codex/config.toml untouched
+==========================================================
+Stale-smoke references after smoke: 73:[plugins."claude-companion@cc-plugin-codex-local-smoke"]|119:[marketplaces.cc-plugin-codex-local-smoke]|
+Non-smoke 'cc-plugin-codex-local' entries after smoke: 0
+RESULT: real ~/.codex/config.toml UNCHANGED (stale-smoke preserved, no T8 entries leaked)
+
+=== End of T8 capture ===

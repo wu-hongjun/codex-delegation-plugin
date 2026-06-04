@@ -941,3 +941,137 @@ Per the maintainer's "Use A/B/C, but keep it tight" instruction and memory `feed
 ### Status
 
 **T7 complete.** Plan 0006 status remains `planning` (Stage 1 approved); T1, T2, T3, T4, T5, T6, T7 of Stage 2 done; T8 (uninstall procedure) paused awaiting maintainer go-ahead.
+
+---
+
+## T8 — Uninstall procedure (2026-06-04)
+
+### Deliverables
+
+- `marketplace/plugins/claude-companion/README.md` — Uninstall section promoted from a terse command pair (T6) to a verification-grade lifecycle section: explicit "remove plugin first, then marketplace" ordering rationale, both verify commands (`codex plugin list` + `codex plugin marketplace list`), explicit post-state assertion ("should no longer appear in ..."), and a "What uninstall does **not** do" subsection that names the Git checkout and Claude Companion job records / companion-home data as out-of-scope for uninstall.
+- `documentation/RELEASING.md` — Uninstall procedure section retitled with the T8 marker and extended with a new `### Uninstall verification` subsection: install → list → uninstall → list flow inside an isolated `CODEX_HOME` (with `mktemp -d` + `trap`), and the explicit post-state contract (no `claude-companion@cc-plugin-codex-local`, no `cc-plugin-codex-local`).
+- `packages/plugin-codex/test/marketplace-readme.test.mjs` — +10 T8 assertions covering uninstall heading, both remove commands, both verification commands, post-state "no longer appear" prose, no-Git-checkout-deletion clause, no-companion-home-deletion clause, RELEASING.md verification section + commands + `CODEX_HOME` mention, and a T8-named reaffirmation of the OQ4 / Plan 0004 token bans across both surfaces.
+- `documentation/plan/0006-20260603-marketplace-packaging-distribution/artifacts/t8-uninstall-procedure-20260603.txt` (NEW, 119 lines) — full empirical capture: install → pre-list (both) → cache snapshot → uninstall → post-list (both) → cache snapshot → grep-based PASS assertions → real-config pre/post comparison.
+
+### What each uninstall command removes
+
+| Command | Effect |
+|---|---|
+| `codex plugin remove "claude-companion@cc-plugin-codex-local"` | Removes the installed plugin registration from `$CODEX_HOME/config.toml`. Also empties the per-version cache directory under `$CODEX_HOME/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/` (T8 evidence: 19 files → 0 files). Keeps the marketplace registration in place so re-install does not need a re-add. |
+| `codex plugin marketplace remove "cc-plugin-codex-local"` | Removes the marketplace pointer from `$CODEX_HOME/config.toml`. |
+| `codex plugin list` (verify) | After uninstall, prints `No marketplace plugins found.` (exit 0). |
+| `codex plugin marketplace list` (verify) | After uninstall, prints `No plugin marketplaces in scope.` (exit 0). |
+
+### Real Codex smoke result
+
+```text
+codex-cli 0.136.0
+CODEX_HOME (isolated): /private/var/folders/.../t8-codex-home-XXXX.p8C09dulzl
+node tools/package-marketplace.mjs --check → OK (exit 0)
+
+STEP 1 install         → marketplace add + plugin add, both exit 0
+STEP 2 pre-uninstall   → plugin list shows claude-companion@cc-plugin-codex-local installed,enabled 0.2.0;
+                          marketplace list shows cc-plugin-codex-local
+STEP 3 cache before    → 19 files under <CODEX_HOME>/plugins/cache/cc-plugin-codex-local/claude-companion/0.2.0/
+                          (scripts/lib/*.mjs + skills/*/SKILL.md + plugin.json + scripts/claude-companion.mjs)
+STEP 4 uninstall       → plugin remove "Removed plugin `claude-companion` from marketplace `cc-plugin-codex-local`." (exit 0)
+                          marketplace remove "Removed marketplace `cc-plugin-codex-local`." (exit 0)
+STEP 5 post-uninstall  → plugin list "No marketplace plugins found." (exit 0)
+                          marketplace list "No plugin marketplaces in scope." (exit 0)
+STEP 6 cache after     → 0 files. Empty parent directories remain:
+                          <CODEX_HOME>/plugins/cache/cc-plugin-codex-local/
+                          (Codex does not prune these empty breadcrumbs on uninstall.)
+STEP 7 absence asserts → PASS: 'claude-companion@cc-plugin-codex-local' absent from plugin list
+                          PASS: 'cc-plugin-codex-local' absent from marketplace list
+
+Post-smoke real $HOME/.codex/config.toml comparison:
+  - stale 'cc-plugin-codex-local-smoke' references at lines 73 + 119 BEFORE = AFTER (preserved)
+  - non-smoke 'cc-plugin-codex-local' entry count: 0 BEFORE = 0 AFTER (no leak)
+```
+
+### Cache residue (honest disclosure)
+
+After uninstall, the per-version plugin cache **files** are removed (19 → 0), but the **empty directory tree** `<CODEX_HOME>/plugins/cache/cc-plugin-codex-local/` remains. This is Codex 0.136.0 behavior, not a bug in our plugin: `codex plugin remove` clears cached payload contents but does not prune the parent breadcrumb directories. This does not block reinstall (a fresh `codex plugin add` refills the cache) and does not cause `codex plugin list` to falsely show the plugin as installed (verified empirically: list returns `No marketplace plugins found.`). The artifact records this honestly so future maintainers don't mistake the empty breadcrumb for a residual install. The README does not surface this Codex implementation detail to end users because it has no user-visible consequence.
+
+### Isolated CODEX_HOME handling
+
+The smoke script set `CODEX_HOME=$(mktemp -d -t t8-codex-home-XXXX)` with `trap 'rm -rf "$CODEX_HOME"' EXIT`. The real `~/.codex/config.toml` is read for the pre/post comparison only (read-only) and never written. The stale `cc-plugin-codex-local-smoke` entry at lines 73 + 119 of the real config is preserved (maintainer's standing brief). Same pattern as T6/T7.
+
+### Tests added (10 T8 cases)
+
+All under `describe('marketplace uninstall procedure docs (Plan 0006 T8)', ...)`:
+
+1. README contains an `## Uninstall` section.
+2. README contains the plugin remove command.
+3. README contains the marketplace remove command.
+4. README contains both `codex plugin list` and `codex plugin marketplace list` verification commands.
+5. README states the plugin should no longer appear in `codex plugin list` after uninstall (regex `/no longer\s+appear in[\s\S]*?codex plugin list/i` — `\s+` tolerates the README's line-wrap between "longer" and "appear").
+6. README states the marketplace should no longer appear in `codex plugin marketplace list` after uninstall (same regex tolerance).
+7. README states uninstall does not delete the Git checkout.
+8. README states uninstall does not delete Claude Companion job records / companion-home data.
+9. RELEASING.md contains uninstall verification section + both remove commands + both list commands + `CODEX_HOME` mention.
+10. T8-named reaffirmation: README and RELEASING.md contain no OQ4 forbidden tokens and no Plan 0004 benchmark vocabulary (catches uninstall-specific regressions in addition to the T6 catch-all).
+
+### A/B/C cadence (deviation)
+
+Same pattern as T7. Per maintainer's "keep it tight" instruction + memory `feedback_orchestrator_b_role`, the orchestrator performed A (docs) + B (tests) directly and ran C read-only. Work scope: ~30 lines of README + ~30 lines of RELEASING + ~175 lines of test additions inside an established file with proven patterns from T6/T7.
+
+### Initial regex bug (caught + fixed)
+
+T8-5 and T8-6 initially used `/no longer appear in[\s\S]*?codex plugin list/i` and `/no longer appear in[\s\S]*?codex plugin marketplace list/i`. The README's prose wraps after "no longer", so the actual text is `no longer\nappear in` — the literal single space in the regex prevented the match. Fixed by widening to `\s+` between "longer" and "appear" so the regex tolerates any whitespace (space, newline + leading indent). All 33 readme tests pass after the fix (T6 13 + T7 10 + T8 10). No production code was affected.
+
+### Subagent C — read-only review (orchestrator-led)
+
+- **Allowed-files check:** `git status --short` reports exactly 3 modified files (`documentation/RELEASING.md`, `marketplace/plugins/claude-companion/README.md`, `packages/plugin-codex/test/marketplace-readme.test.mjs`) + 1 new artifact under `documentation/plan/0006-*/artifacts/`. All within the brief's allowed set.
+- **Forbidden-files check:** `git diff --stat HEAD` against `tools/bench/`, `packages/plugin-codex/scripts/`, `skills/`, `.codex-plugin/plugin.json`, `packages/plugin-codex/README.md`, marketplace packaged `scripts/`, `skills/`, `.codex-plugin/plugin.json`, `packages/runtime/`, `packages/driver-claude-code/`, `.github/`, `documentation/plan/0004-*`, `documentation/plan/0005-*` reports no entries — all guarded paths intact.
+- **Cost paragraph guard:** last commit touching `packages/plugin-codex/README.md` is still `86cb729` ("Plan 0003 Stage 4: polish audit findings") — T8 did not touch it.
+- **Tag guard:** `git rev-parse plan-0004-pre-cutover` = `7d9b5f1...` (unchanged).
+- **Real-config guard:** smoke artifact's POST-SMOKE comparison shows stale-smoke entries preserved and zero T8 leakage.
+- **F-H2 trace (T1/T6/T7 precedent → README → RELEASING → artifact):**
+  - T1 (1-plan.md L259, L455 OQ-D research) confirmed the two-command uninstall shape.
+  - T6 README L58 (Uninstall heading) — pre-existing skeleton from install task.
+  - T7 README L106 (Upgrade heading) — used the same remove/add primitive in reverse.
+  - T8 README L58-95: full Uninstall section (verify commands + no-Git-checkout + no-companion-home clauses).
+  - T8 RELEASING.md L21-58: Uninstall procedure + `### Uninstall verification`.
+  - Artifact: STEPS 4-7 record both commands exit 0, post-state shows "No marketplace plugins found." / "No plugin marketplaces in scope.", grep PASS lines, real-config UNCHANGED.
+- **Plan 0005 still deferred:** no hooks, no stop-gate code, no Plan 0005 file changes.
+- **OQ4 / cost-claim guard:** T6 token tests + T8 T8-10 reaffirmation both pass.
+
+### Local gates
+
+| Gate | Result |
+|---|---|
+| `node tools/package-marketplace.mjs --check` | OK — 18 derived + 1 marketplace-owned + no unexpected (exit 0). |
+| `npm run lint` | exit 0 (clean). |
+| `npm run typecheck` | exit 0 (`tsc --build` clean). |
+| `npm run format` | exit 0 (`prettier --check` clean). |
+| `npm test` | **1119/1119** (mock 68 + runtime 172 + driver 178 + plugin **701**) — plugin lane 691 → 701 (+10 T8). |
+| `npm run test:attach` | 28/28 (unchanged). |
+| `npm run test:bench` | 258/258 (unchanged). |
+| Combined | **1405 tests** passing (T7 baseline 1395 + 10 T8). |
+
+### Gate evidence
+
+- `packages/plugin-codex/README.md` cost paragraph untouched (last commit `86cb729`).
+- `packages/plugin-codex/scripts/**`, `skills/**`, `.codex-plugin/plugin.json` untouched.
+- `packages/runtime/**`, `packages/driver-claude-code/**`, `tools/bench/**`, `.github/**` untouched.
+- `marketplace/MANIFEST.md`, `marketplace/EXCLUSIONS.md`, `marketplace/.agents/plugins/marketplace.json` untouched.
+- `marketplace/plugins/claude-companion/.codex-plugin/plugin.json`, `scripts/`, `skills/` untouched.
+- No hook or stop-gate code. Plan 0005 stays `deferred`.
+- `git rev-parse plan-0004-pre-cutover` → `7d9b5f1...`; tag preserved.
+- Real `~/.codex/config.toml` unchanged by T8 (pre/post grep comparison in the artifact).
+- Pre-existing stale `cc-plugin-codex-local-smoke` entry preserved.
+
+### Implications for later tasks
+
+| Task | Implication from T8 |
+|---|---|
+| T9 (smoke test) | T8's STEP 0-7 sequence + cache-residue check is now a reusable script template. T9 can codify this into `tools/smoke-marketplace.mjs` or a `RELEASING.md` checklist. The cache-residue disclosure is a release-checklist data point. |
+| T10 (version bump) | T8 anchored verification on `0.2.0`; T10 will need to update the same set of strings T7 listed plus this T8 artifact's expected `0.2.0` snippet. |
+| T11 (release checklist) | RELEASING.md now has Install (T6) + Upgrade (T7) + Uninstall procedure + Uninstall verification (T8). T9-T10 fill remaining sections. |
+| T12 (docs split) | Uninstall section is now content-rich; T12 should keep its structure verbatim while reorganizing the README's outline. |
+
+### CI evidence (pending)
+
+- Commit: pending — `Plan 0006 T8: document marketplace uninstall procedure`
+- CI run: pending

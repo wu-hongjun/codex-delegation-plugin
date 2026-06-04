@@ -57,6 +57,9 @@ If `$claude-setup` reports `ok` or `warn`, the install is complete.
 
 ## Uninstall
 
+Remove the installed plugin first, then remove the local marketplace
+registration:
+
 ```bash
 codex plugin remove "claude-companion@cc-plugin-codex-local"
 codex plugin marketplace remove "cc-plugin-codex-local"
@@ -66,6 +69,31 @@ The first command removes the installed plugin from Codex. The second
 removes the local marketplace registration. Running `codex plugin remove`
 alone keeps the marketplace entry so you can re-install without re-adding
 the marketplace.
+
+Verify the uninstall:
+
+```bash
+codex plugin list
+codex plugin marketplace list
+```
+
+After uninstall, `claude-companion@cc-plugin-codex-local` should no longer
+appear in `codex plugin list`, and `cc-plugin-codex-local` should no longer
+appear in `codex plugin marketplace list`.
+
+What uninstall does **not** do:
+
+- It does not delete this Git checkout. Your local cc-plugin-codex clone
+  remains on disk; only the Codex plugin and marketplace registrations
+  are removed.
+- It does not delete existing Claude Companion job records or transcripts
+  under your configured companion home. Those are owned by your local
+  Claude Code installation, not by the Codex plugin registry, and persist
+  after uninstall.
+
+To remove the Git checkout itself, delete the directory manually. To clear
+Claude Companion job records, refer to your Claude Code session-management
+documentation; uninstalling this plugin does not touch them.
 
 ## Troubleshooting
 

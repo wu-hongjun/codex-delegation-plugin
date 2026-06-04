@@ -18,12 +18,46 @@ Verify with `$claude-setup` inside a Codex session. See
 [`marketplace/plugins/claude-companion/README.md`](../marketplace/plugins/claude-companion/README.md)
 for the user-facing install + troubleshooting guide.
 
-## Uninstall procedure
+## Uninstall procedure (Plan 0006 T8)
 
 ```bash
 codex plugin remove "claude-companion@cc-plugin-codex-local"
 codex plugin marketplace remove "cc-plugin-codex-local"
 ```
+
+The first command removes the installed plugin from Codex. The second
+removes the local marketplace registration.
+
+### Uninstall verification
+
+Use an isolated `CODEX_HOME` (`CODEX_HOME=$(mktemp -d)` + a `trap` to
+remove it on exit) and run install → list → uninstall → list again.
+Confirm absence after uninstall:
+
+```bash
+# Install
+codex plugin marketplace add "<repo-root>/marketplace"
+codex plugin add "claude-companion@cc-plugin-codex-local"
+
+# Pre-state (should list claude-companion@cc-plugin-codex-local + the marketplace)
+codex plugin list
+codex plugin marketplace list
+
+# Uninstall
+codex plugin remove "claude-companion@cc-plugin-codex-local"
+codex plugin marketplace remove "cc-plugin-codex-local"
+
+# Post-state (should NOT list either)
+codex plugin list
+codex plugin marketplace list
+```
+
+The post-uninstall `codex plugin list` and `codex plugin marketplace list`
+output must not contain `claude-companion@cc-plugin-codex-local` or
+`cc-plugin-codex-local`, respectively. See
+[`marketplace/plugins/claude-companion/README.md`](../marketplace/plugins/claude-companion/README.md)
+for the user-facing uninstall section, which also documents what
+uninstall does not touch (Git checkout, companion-home job records).
 
 ## Upgrade procedure (Plan 0006 T7)
 

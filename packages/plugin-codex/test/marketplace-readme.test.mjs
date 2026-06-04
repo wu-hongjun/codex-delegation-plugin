@@ -422,3 +422,190 @@ describe('marketplace upgrade procedure docs (Plan 0006 T7)', () => {
     );
   });
 });
+
+// ==========================================================================
+// Plan 0006 T8 — marketplace uninstall procedure docs
+// ==========================================================================
+//
+// T6 first introduced the uninstall commands. T8 promotes uninstall to a
+// first-class lifecycle operation: verification commands, post-uninstall
+// state assertion, and explicit notes on what uninstall does NOT touch
+// (Git checkout and Claude Companion job records under the companion home).
+
+const CMD_MARKETPLACE_LIST = 'codex plugin marketplace list';
+
+describe('marketplace uninstall procedure docs (Plan 0006 T8)', () => {
+  // ========================================================================
+  // T8-1: README contains an "## Uninstall" section
+  // ========================================================================
+
+  it('README contains an "## Uninstall" section', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.match(content, /^## Uninstall$/m, 'README.md must contain an "## Uninstall" heading');
+  });
+
+  // ========================================================================
+  // T8-2: README contains the plugin remove command
+  // ========================================================================
+
+  it('README contains the plugin remove command for uninstall', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes(CMD_PLUGIN_REMOVE),
+      `README.md must contain the plugin remove command: ${CMD_PLUGIN_REMOVE}`,
+    );
+  });
+
+  // ========================================================================
+  // T8-3: README contains the marketplace remove command
+  // ========================================================================
+
+  it('README contains the marketplace remove command for uninstall', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes(CMD_MARKETPLACE_REMOVE),
+      `README.md must contain the marketplace remove command: ${CMD_MARKETPLACE_REMOVE}`,
+    );
+  });
+
+  // ========================================================================
+  // T8-4: README contains both verification commands
+  // ========================================================================
+
+  it('README contains both post-uninstall verification commands (`codex plugin list` + `codex plugin marketplace list`)', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes(CMD_VERIFY),
+      `README.md must contain the verify command: ${CMD_VERIFY}`,
+    );
+    assert.ok(
+      content.includes(CMD_MARKETPLACE_LIST),
+      `README.md must contain the marketplace list verification command: ${CMD_MARKETPLACE_LIST}`,
+    );
+  });
+
+  // ========================================================================
+  // T8-5: README states the plugin should no longer appear in plugin list
+  // ========================================================================
+
+  it('README states the plugin should no longer appear in `codex plugin list` after uninstall', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.match(
+      content,
+      /no longer\s+appear in[\s\S]*?codex plugin list/i,
+      'README.md must state that the plugin should no longer appear in `codex plugin list` after uninstall',
+    );
+  });
+
+  // ========================================================================
+  // T8-6: README states the marketplace should no longer appear in marketplace list
+  // ========================================================================
+
+  it('README states the marketplace should no longer appear in `codex plugin marketplace list` after uninstall', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.match(
+      content,
+      /no longer\s+appear in[\s\S]*?codex plugin marketplace list/i,
+      'README.md must state that the marketplace should no longer appear in `codex plugin marketplace list` after uninstall',
+    );
+  });
+
+  // ========================================================================
+  // T8-7: README states uninstall does not delete the Git checkout
+  // ========================================================================
+
+  it('README states uninstall does not delete the Git checkout', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.match(
+      content,
+      /(does not|not).*delete.*Git checkout/i,
+      'README.md must state that uninstall does not delete the Git checkout',
+    );
+  });
+
+  // ========================================================================
+  // T8-8: README states uninstall does not delete companion-home job records
+  // ========================================================================
+
+  it('README states uninstall does not delete Claude Companion job records / companion-home data', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.match(
+      content,
+      /(does not|not).*delete.*(job records|companion home|companion-home)/i,
+      'README.md must state that uninstall does not delete companion-home job records',
+    );
+  });
+
+  // ========================================================================
+  // T8-9: RELEASING.md contains uninstall verification language
+  // ========================================================================
+
+  it('RELEASING.md contains an uninstall verification section with both list commands and isolation guidance', () => {
+    assert.ok(existsSync(RELEASING_MD), `RELEASING.md not found at ${RELEASING_MD}`);
+    const content = readFileSync(RELEASING_MD, 'utf8');
+    assert.match(
+      content,
+      /(uninstall verification|Uninstall verification)/,
+      'RELEASING.md must contain an uninstall verification section',
+    );
+    assert.ok(
+      content.includes(CMD_PLUGIN_REMOVE),
+      `RELEASING.md must contain the plugin remove command: ${CMD_PLUGIN_REMOVE}`,
+    );
+    assert.ok(
+      content.includes(CMD_MARKETPLACE_REMOVE),
+      `RELEASING.md must contain the marketplace remove command: ${CMD_MARKETPLACE_REMOVE}`,
+    );
+    assert.ok(
+      content.includes(CMD_VERIFY),
+      `RELEASING.md must contain the plugin list verification command: ${CMD_VERIFY}`,
+    );
+    assert.ok(
+      content.includes(CMD_MARKETPLACE_LIST),
+      `RELEASING.md must contain the marketplace list verification command: ${CMD_MARKETPLACE_LIST}`,
+    );
+    assert.match(
+      content,
+      /CODEX_HOME/,
+      'RELEASING.md must reference CODEX_HOME isolation for uninstall verification',
+    );
+  });
+
+  // ========================================================================
+  // T8-10: README and RELEASING.md uninstall surfaces contain no forbidden tokens
+  // ========================================================================
+  //
+  // The T6 suite already enforces the absence of OQ4 cost-claim tokens and
+  // Plan 0004 benchmark vocabulary across the whole files. T8 re-asserts the
+  // rule explicitly so a regression in the uninstall-specific prose is caught
+  // by a T8-named test, not only by the catch-all.
+
+  it('README and RELEASING.md uninstall additions contain no OQ4 forbidden tokens and no Plan 0004 benchmark vocabulary', () => {
+    const readmeContent = readFileSync(MARKETPLACE_README, 'utf8');
+    const releasingContent = readFileSync(RELEASING_MD, 'utf8');
+    for (const token of FORBIDDEN_COST_TOKENS) {
+      assert.equal(
+        readmeContent.includes(token),
+        false,
+        `README.md contains forbidden cost-claim token: "${token}"`,
+      );
+      assert.equal(
+        releasingContent.includes(token),
+        false,
+        `RELEASING.md contains forbidden cost-claim token: "${token}"`,
+      );
+    }
+    for (const token of FORBIDDEN_BENCHMARK_TOKENS) {
+      assert.equal(
+        readmeContent.includes(token),
+        false,
+        `README.md contains forbidden Plan 0004 benchmark/cutover token: "${token}"`,
+      );
+      assert.equal(
+        releasingContent.includes(token),
+        false,
+        `RELEASING.md contains forbidden Plan 0004 benchmark/cutover token: "${token}"`,
+      );
+    }
+  });
+});

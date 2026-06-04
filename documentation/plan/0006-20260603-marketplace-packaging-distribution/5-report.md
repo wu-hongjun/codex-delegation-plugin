@@ -181,8 +181,7 @@ Remote CI evidence (most recent green run on `main`):
 
 - **Stage 2 close (`8dbbb61`)** — run [`26958704913`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26958704913): success on all 4 matrix legs (ubuntu-latest + macos-latest × Node 20 + 22).
 - **Stage 4 polish (`7f25a9a`)** — run [`26976755879`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26976755879): success on all 4 matrix legs.
-
-Stage 5 CI run is recorded after this report's commit (see "CI verification" below if added in a follow-up log commit).
+- **Stage 5 report (`99749a1`)** — run [`26977494823`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/26977494823): success on all 4 matrix legs (ubuntu-latest / Node 20, ubuntu-latest / Node 22, macos-latest / Node 20, macos-latest / Node 22).
 
 ---
 

@@ -673,23 +673,23 @@ describe('claude-adversarial-review/SKILL.md: no empty-prompt sequence on run li
 });
 
 describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () => {
-  it('includes "Review a Claude job in the same session."', () => {
+  it('includes "Review the output of a Claude job."', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.ok(
-      dp.includes('Review a Claude job in the same session.'),
-      `interface.defaultPrompt must contain "Review a Claude job in the same session."; got: ${JSON.stringify(dp)}`,
+      dp.includes('Review the output of a Claude job.'),
+      `interface.defaultPrompt must contain "Review the output of a Claude job."; got: ${JSON.stringify(dp)}`,
     );
   });
 
-  it('includes "Run an adversarial (fresh-session) review of a Claude job."', () => {
+  it('includes "Get an independent second-opinion review of a Claude job."', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.ok(
-      dp.includes('Run an adversarial (fresh-session) review of a Claude job.'),
-      `interface.defaultPrompt must contain "Run an adversarial (fresh-session) review of a Claude job."; got: ${JSON.stringify(dp)}`,
+      dp.includes('Get an independent second-opinion review of a Claude job.'),
+      `interface.defaultPrompt must contain "Get an independent second-opinion review of a Claude job."; got: ${JSON.stringify(dp)}`,
     );
   });
 
@@ -798,13 +798,13 @@ describe('claude-workflow/SKILL.md: --allow-edit is not referenced in run lines'
 });
 
 describe('plugin.json interface.defaultPrompt contains workflow entry', () => {
-  it('includes "Run a Claude Code dynamic workflow."', () => {
+  it('includes "Run a Claude Code dynamic workflow (multi-step, plan + execute)."', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.ok(
-      dp.includes('Run a Claude Code dynamic workflow.'),
-      `interface.defaultPrompt must contain "Run a Claude Code dynamic workflow."; got: ${JSON.stringify(dp)}`,
+      dp.includes('Run a Claude Code dynamic workflow (multi-step, plan + execute).'),
+      `interface.defaultPrompt must contain "Run a Claude Code dynamic workflow (multi-step, plan + execute)."; got: ${JSON.stringify(dp)}`,
     );
   });
 });
@@ -825,5 +825,245 @@ describe('no unexpected review-adjacent skill directories exist', () => {
       0,
       `Unexpected review-adjacent skill directories found: ${unexpected.join(', ')}`,
     );
+  });
+});
+
+// ---------- T6: OQ-C defaultPrompt rewrites (entries #6-#9) ----------
+
+describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)', () => {
+  it('array length is exactly 9', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.equal(
+      dp.length,
+      9,
+      `interface.defaultPrompt must have exactly 9 entries; got ${dp.length}`,
+    );
+  });
+
+  it('entry #6 is verbatim: "Send a follow-up instruction to a running Claude job."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('Send a follow-up instruction to a running Claude job.'),
+      `interface.defaultPrompt must contain "Send a follow-up instruction to a running Claude job."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+
+  it('entry #7 is verbatim: "Review the output of a Claude job."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('Review the output of a Claude job.'),
+      `interface.defaultPrompt must contain "Review the output of a Claude job."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+
+  it('entry #8 is verbatim: "Get an independent second-opinion review of a Claude job."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('Get an independent second-opinion review of a Claude job.'),
+      `interface.defaultPrompt must contain "Get an independent second-opinion review of a Claude job."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+
+  it('entry #9 is verbatim: "Run a Claude Code dynamic workflow (multi-step, plan + execute)."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('Run a Claude Code dynamic workflow (multi-step, plan + execute).'),
+      `interface.defaultPrompt must contain "Run a Claude Code dynamic workflow (multi-step, plan + execute)."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+
+  it('"follow-up" entry pairs with $claude-followup skill (substring check)', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.some((s) => s.includes('follow-up')),
+      `interface.defaultPrompt must contain an entry with "follow-up" to pair with $claude-followup; got: ${JSON.stringify(dp)}`,
+    );
+  });
+
+  it('"output of a Claude job" entry pairs with $claude-review skill (substring check)', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.some((s) => s.includes('output of a Claude job')),
+      `interface.defaultPrompt must contain an entry with "output of a Claude job" to pair with $claude-review; got: ${JSON.stringify(dp)}`,
+    );
+  });
+
+  it('"second-opinion review" entry pairs with $claude-adversarial-review skill (substring check)', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.some((s) => s.includes('second-opinion review')),
+      `interface.defaultPrompt must contain an entry with "second-opinion review" to pair with $claude-adversarial-review; got: ${JSON.stringify(dp)}`,
+    );
+  });
+
+  it('"multi-step, plan + execute" entry pairs with $claude-workflow skill (substring check)', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.some((s) => s.includes('multi-step, plan + execute')),
+      `interface.defaultPrompt must contain an entry with "multi-step, plan + execute" to pair with $claude-workflow; got: ${JSON.stringify(dp)}`,
+    );
+  });
+});
+
+// ---------- T1 (Plan 0009): cross-skill chaining hints — all 9 skills ----------
+
+describe('each SKILL.md ends with a "Next steps" subsection (T1 Plan 0009)', () => {
+  for (const name of SKILL_NAMES) {
+    it(`${name}: body contains "### Next steps"`, () => {
+      const body = readFileSync(skillPath(name), 'utf8');
+      assert.ok(
+        body.includes('### Next steps'),
+        `${name}/SKILL.md is missing the "### Next steps" subsection`,
+      );
+    });
+  }
+});
+
+describe('each SKILL.md Next steps subsection references at least one $claude-* skill (T1 Plan 0009)', () => {
+  for (const name of SKILL_NAMES) {
+    it(`${name}: "### Next steps" section mentions at least one $claude- skill`, () => {
+      const body = readFileSync(skillPath(name), 'utf8');
+      const nextStepsIdx = body.indexOf('### Next steps');
+      assert.ok(nextStepsIdx !== -1, `${name}/SKILL.md missing "### Next steps" subsection`);
+      const afterNextSteps = body.slice(nextStepsIdx);
+      assert.ok(
+        /\$claude-/.test(afterNextSteps),
+        `${name}/SKILL.md "### Next steps" section does not reference any $claude-* skill`,
+      );
+    });
+  }
+});
+
+// ---------- T2 (Plan 0009): sharpened review descriptions ----------
+
+describe('claude-review/SKILL.md: sharpened description matches T2 wording exactly (Plan 0009)', () => {
+  it('description equals the new T2 wording verbatim', () => {
+    const body = readFileSync(skillPath('claude-review'), 'utf8');
+    const fm = parseFrontmatter(body);
+    assert.equal(
+      fm.description,
+      'Review the output of a Claude job by reusing its existing Claude Code session (lightweight; same-session).',
+      `claude-review description does not match T2 wording; got: "${fm.description}"`,
+    );
+  });
+});
+
+describe('claude-adversarial-review/SKILL.md: sharpened description matches T2 wording exactly (Plan 0009)', () => {
+  it('description equals the new T2 wording verbatim', () => {
+    const body = readFileSync(skillPath('claude-adversarial-review'), 'utf8');
+    const fm = parseFrontmatter(body);
+    assert.equal(
+      fm.description,
+      'Run an adversarial code review of a Claude job in a fresh independent Claude Code session (thorough; eliminates confirmation bias).',
+      `claude-adversarial-review description does not match T2 wording; got: "${fm.description}"`,
+    );
+  });
+});
+
+// ---------- T3 (Plan 0009): run-line + arg-shape consistency ----------
+
+describe('claude-workflow/SKILL.md: run line uses -- separator (T3 Plan 0009)', () => {
+  it('body contains workflow -- "<', () => {
+    const body = readFileSync(skillPath('claude-workflow'), 'utf8');
+    assert.ok(
+      body.includes('workflow -- "<'),
+      'claude-workflow/SKILL.md run line does not use the "-- \\"<" separator convention',
+    );
+  });
+});
+
+describe('claude-followup/SKILL.md: argument label uses <jobId-or-prefix> (T3 Plan 0009)', () => {
+  it('body contains <jobId-or-prefix>', () => {
+    const body = readFileSync(skillPath('claude-followup'), 'utf8');
+    assert.ok(
+      body.includes('<jobId-or-prefix>'),
+      'claude-followup/SKILL.md does not use the <jobId-or-prefix> argument label',
+    );
+  });
+});
+
+// ---------- T4 (Plan 0009): followup explicit flag allow/reject lists ----------
+
+describe('claude-followup/SKILL.md: explicit "Accepted flags" section present (T4 Plan 0009)', () => {
+  it('body contains "Accepted flags (forwarded to the dispatcher):"', () => {
+    const body = readFileSync(skillPath('claude-followup'), 'utf8');
+    assert.ok(
+      body.includes('Accepted flags (forwarded to the dispatcher):'),
+      'claude-followup/SKILL.md is missing the "Accepted flags" section',
+    );
+  });
+});
+
+describe('claude-followup/SKILL.md: explicit "Rejected at parse time" section present (T4 Plan 0009)', () => {
+  it('body contains "Rejected at parse time"', () => {
+    const body = readFileSync(skillPath('claude-followup'), 'utf8');
+    assert.ok(
+      body.includes('Rejected at parse time'),
+      'claude-followup/SKILL.md is missing the "Rejected at parse time" section',
+    );
+  });
+});
+
+// ---------- T5 (Plan 0009): --json / --all on lifecycle skills ----------
+
+describe('claude-delegate/SKILL.md: mentions --json in accepted flags (T5 Plan 0009)', () => {
+  it('body contains "--json"', () => {
+    const body = readFileSync(skillPath('claude-delegate'), 'utf8');
+    assert.ok(
+      body.includes('--json'),
+      'claude-delegate/SKILL.md does not mention "--json" in its accepted flags',
+    );
+  });
+});
+
+describe('claude-workflow/SKILL.md: mentions --json in accepted flags (T5 Plan 0009)', () => {
+  it('body contains "--json"', () => {
+    const body = readFileSync(skillPath('claude-workflow'), 'utf8');
+    assert.ok(
+      body.includes('--json'),
+      'claude-workflow/SKILL.md does not mention "--json" in its accepted flags',
+    );
+  });
+});
+
+describe('claude-result/SKILL.md: mentions --json and --all (T5 Plan 0009)', () => {
+  it('body contains "--json"', () => {
+    const body = readFileSync(skillPath('claude-result'), 'utf8');
+    assert.ok(body.includes('--json'), 'claude-result/SKILL.md does not mention "--json"');
+  });
+
+  it('body contains "--all"', () => {
+    const body = readFileSync(skillPath('claude-result'), 'utf8');
+    assert.ok(body.includes('--all'), 'claude-result/SKILL.md does not mention "--all"');
+  });
+});
+
+describe('claude-stop/SKILL.md: mentions --json and --all (T5 Plan 0009)', () => {
+  it('body contains "--json"', () => {
+    const body = readFileSync(skillPath('claude-stop'), 'utf8');
+    assert.ok(body.includes('--json'), 'claude-stop/SKILL.md does not mention "--json"');
+  });
+
+  it('body contains "--all"', () => {
+    const body = readFileSync(skillPath('claude-stop'), 'utf8');
+    assert.ok(body.includes('--all'), 'claude-stop/SKILL.md does not mention "--all"');
   });
 });

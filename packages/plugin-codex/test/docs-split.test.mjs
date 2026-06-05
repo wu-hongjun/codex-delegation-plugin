@@ -258,6 +258,22 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
       }
     });
 
+    // T12-10b: $claude-status description leads with multi-job list behavior
+    it('$claude-status description mentions "list" (multi-job phrasing)', () => {
+      const content = readFileSync(MARKETPLACE_README, 'utf8');
+      const match = content.match(/^## Skills\b[\s\S]*?(?=^## )/m);
+      assert.ok(match, 'marketplace README must have a `## Skills` section');
+      const skillsBody = match[0];
+      // Find the $claude-status entry (the line(s) after `$claude-status`)
+      const statusMatch = skillsBody.match(/`\$claude-status`[^\n]*([\s\S]*?)(?=\n- `\$)/);
+      assert.ok(statusMatch, 'Skills section must contain a $claude-status entry');
+      const statusEntry = statusMatch[0];
+      assert.ok(
+        statusEntry.toLowerCase().includes('list'),
+        '$claude-status description must mention "list" to reflect multi-job behavior (not just single-job lookup)',
+      );
+    });
+
     // T12-11: no OQ4 forbidden cost-claim tokens
     it('contains no OQ4 forbidden cost-claim tokens', () => {
       const content = readFileSync(MARKETPLACE_README, 'utf8');

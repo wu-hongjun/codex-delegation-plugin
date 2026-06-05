@@ -1,6 +1,6 @@
 ---
 name: claude-review
-description: Review a Claude job in the same Claude Code session.
+description: Review the output of a Claude job by reusing its existing Claude Code session (lightweight; same-session).
 ---
 
 You are the Codex skill wrapper for sending a structured review turn to an
@@ -35,3 +35,10 @@ This skill sends an additional prompt through Claude Code and may count toward y
 Note: By default, the review evaluates the latest completed non-review turn.
 Reviewing a review is allowed but not recommended; use a future explicit
 turn-selection feature if you need that workflow.
+
+### Next steps
+
+After a lightweight review, the user typically wants one of:
+
+- `$claude-adversarial-review` — get an independent second-opinion review
+- `$claude-result` — re-read the original job output

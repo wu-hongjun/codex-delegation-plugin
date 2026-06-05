@@ -17,10 +17,10 @@
       "Check my Claude jobs.",
       "Show the result of a Claude job.",
       "Stop a Claude job.",
-      "Send a follow-up instruction to a Claude job I started earlier.",
-      "Review a Claude job in the same session.",
-      "Run an adversarial (fresh-session) review of a Claude job.",
-      "Run a Claude Code dynamic workflow."
+      "Send a follow-up instruction to a running Claude job.",
+      "Review the output of a Claude job.",
+      "Get an independent second-opinion review of a Claude job.",
+      "Run a Claude Code dynamic workflow (multi-step, plan + execute)."
     ],
     "brandColor": "#D97706"
   }

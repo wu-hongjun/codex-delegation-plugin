@@ -466,6 +466,30 @@ describe('README.md mentions future plan numbers', () => {
   }
 });
 
+// ---------- 25. "What comes next" section includes Plans 0007 and 0008 (shipped) ----------
+
+describe('README.md "What comes next" section includes Plans 0007 and 0008 as shipped', () => {
+  it('"What comes next" section mentions Plan 0007 with (shipped) marker', () => {
+    const body = readReadme();
+    const section = extractSection(body, '## What comes next');
+    assert.ok(section !== null, 'Could not locate "## What comes next" section in README.md');
+    assert.ok(
+      section.includes('Plan 0007') && section.includes('(shipped)'),
+      '"What comes next" section must mention Plan 0007 with a (shipped) marker',
+    );
+  });
+
+  it('"What comes next" section mentions Plan 0008 with (shipped) marker', () => {
+    const body = readReadme();
+    const section = extractSection(body, '## What comes next');
+    assert.ok(section !== null, 'Could not locate "## What comes next" section in README.md');
+    assert.ok(
+      section.includes('Plan 0008') && section.includes('(shipped)'),
+      '"What comes next" section must mention Plan 0008 with a (shipped) marker',
+    );
+  });
+});
+
 // ==========================================================================
 // T13: plugin README updates for plan 0002 follow-up injection
 // ==========================================================================

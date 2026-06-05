@@ -15,3 +15,10 @@ Run:
 Return the dispatcher's stdout verbatim. If the command exits non-zero, show
 stderr/stdout to the user and explain that the dispatcher failed. Do not
 reimplement the command logic yourself.
+
+### Next steps
+
+Once setup reports success, the user typically wants to:
+
+- `$claude-delegate` — start the first background job
+- `$claude-status` — verify the daemon is running and see existing jobs

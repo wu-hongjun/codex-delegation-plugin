@@ -22,3 +22,12 @@ Behavior rules:
 - If the user did not provide one, ask for it.
 - Do not mark a job stopped yourself — the dispatcher must call the stop
   subcommand and update state.
+- Forward `--json` for machine-readable output when the user requests it.
+- Forward `--all` only if the user explicitly asks to stop jobs across all workspaces.
+
+### Next steps
+
+After stopping a job, the user typically wants one of:
+
+- `$claude-status` — verify the job is now stopped
+- `$claude-result` — read any partial output the job produced before stopping

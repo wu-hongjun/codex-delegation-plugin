@@ -66,8 +66,8 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
 - `$claude-delegate` — starts a Claude Code background session with
   the provided prompt and returns a job id you can use with the other
   skills.
-- `$claude-status` — reports the live state (working, needs-input,
-  idle, completed, failed, stopped) of a job by id or unique prefix.
+- `$claude-status` — lists all delegated jobs in the current workspace
+  with their live status; also accepts a single job id or prefix.
 - `$claude-result` — prints the final message + tool-use summary for
   a completed job.
 - `$claude-stop` — stops a running background session by id or

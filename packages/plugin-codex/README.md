@@ -613,3 +613,5 @@ Later plans are reserved for:
 - **Plan 0004** — benchmark harness and cost-savings measurement
 - **Plan 0005** — stop-time hook and review gate integration
 - **Plan 0006** — marketplace packaging and distribution polish
+- **Plan 0007** *(shipped)* — Claude Code w22+ parity (doctor probes for Opus 4.8 / dynamic workflows / `--bg --exec`; `--fallback-model` + `MessageDisplay` docs notes).
+- **Plan 0008** *(shipped)* — `$claude-workflow` skill (new dynamic-workflows skill; probe floor correction for Plan 0007's `workflows-supported`).

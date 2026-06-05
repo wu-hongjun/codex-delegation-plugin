@@ -20,3 +20,10 @@ Behavior rules:
 
 - Forward `--all` only if the user explicitly asks for jobs across all
   workspaces (not just the current one).
+
+### Next steps
+
+After checking status, the user typically wants one of:
+
+- `$claude-result` — read the output of a completed job
+- `$claude-followup` — continue a job that is awaiting a follow-up turn

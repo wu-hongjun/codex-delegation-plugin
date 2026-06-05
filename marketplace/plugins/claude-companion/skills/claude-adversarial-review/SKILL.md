@@ -1,6 +1,6 @@
 ---
 name: claude-adversarial-review
-description: Review a Claude job in a fresh independent Claude Code session.
+description: Run an adversarial code review of a Claude job in a fresh independent Claude Code session (thorough; eliminates confirmation bias).
 ---
 
 You are the Codex skill wrapper for running an adversarial (fresh-session)
@@ -35,3 +35,10 @@ structured review of an existing Claude background job created by
    Do not reimplement the command logic yourself.
 
 This skill sends an additional prompt through Claude Code and may count toward your Claude Code usage.
+
+### Next steps
+
+After an adversarial review, the user typically wants one of:
+
+- `$claude-status` — check the status of the adversarial review session
+- `$claude-result` — read the review verdict once the session completes

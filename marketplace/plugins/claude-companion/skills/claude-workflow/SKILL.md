@@ -11,7 +11,7 @@ Resolve `<plugin-root>` as the directory two levels above this `SKILL.md` file
 
 Run:
 
-    node "<plugin-root>/scripts/claude-companion.mjs" workflow "<prompt>"
+    node "<plugin-root>/scripts/claude-companion.mjs" workflow -- "<prompt>"
 
 Return the dispatcher's stdout verbatim. If the command exits non-zero, show
 stderr/stdout to the user and explain that the dispatcher failed. Do not
@@ -23,7 +23,7 @@ Behavior rules:
   prompt. If empty, ask the user for a prompt before running.
 - Forward only these flags **when the user explicitly requests them**:
   `--name`, `--model`, `--effort`, `--permission-mode`, `--add-dir`,
-  `--mcp-config`.
+  `--mcp-config`, `--json`.
 - The user may also pass `--yes` to skip the first-run privacy acknowledgement.
   Do NOT inject `--yes` automatically. If the dispatcher reports that an
   acknowledgement is required, surface that message to the user instead of
@@ -49,3 +49,11 @@ agents across all phases. Review the generated script before approving. If the
 scope looks larger than intended, choose "No" in the approval dialog — no
 subagents are spawned and no artifacts are written until the user explicitly
 approves.
+
+### Next steps
+
+Workflow sessions appear as standard background jobs; after starting one:
+
+- `$claude-status` — check live progress (workflow appears as a bg job)
+- `$claude-result` — read the final output once the workflow completes
+- `$claude-stop` — terminate the workflow early

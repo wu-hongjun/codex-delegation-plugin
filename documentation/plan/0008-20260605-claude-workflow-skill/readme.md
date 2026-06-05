@@ -1,11 +1,12 @@
 # Plan 0008 — `$claude-workflow` skill (cc-plugin-codex)
 
-**Status**: `reporting`
+**Status**: `complete`
 **Started**: 2026-06-05
 **Stage 1 approved**: 2026-06-05
 **Stage 2 complete**: 2026-06-05 (CI run `27027782640` success)
 **Stage 3 complete**: 2026-06-05
 **Stage 4 complete**: 2026-06-05
+**Stage 5 complete / Completed**: 2026-06-05 (CI run `27030342138` success on `0dcc32e` after a Stage 5 CI-only hotfix to a Plan 0008 T6 test that over-pinned CI environmental assumptions)
 **Last updated**: 2026-06-05
 
 ## Stages
@@ -16,7 +17,7 @@
 | 2 — Implement | `2-implement.md` | **complete pending CI 2026-06-05** — T1-T8 done; 1572 tests pass (mock 68 + runtime 172 + driver 187 + plugin 859 + attach 28 + bench 258); marketplace allowlist 19→20 (new `skills/claude-workflow/SKILL.md`); new `$claude-workflow` skill + dispatcher subcommand (Approach A shared helper); workflows-supported probe floor lowered 2.1.154→2.1.153; cost paragraph + plan-0004-pre-cutover + Plan 0005 deferred all preserved |
 | 3 — Audit | `3-audit.md` | **complete 2026-06-05** — verdict `ready-for-polish`; 5 findings (F-1 medium RELEASING.md "eight-skill"→"nine-skill"; F-2 medium marketplace-releasing.test.mjs SKILL_NAMES missing claude-workflow; F-3 medium --help flag descriptions omit workflow; F-4 nit docs-split.test.mjs comments; F-5 nit accept-as-is); 0 critical/high; auditor `oh-my-claudecode:critic` (Opus, fresh-context) |
 | 4 — Polish | `4-polish.md` | **complete 2026-06-05** — F-1 / F-2 / F-3 / F-4 fixed; F-5 accept-as-is; 2 stale Plan 0003 tests (N2-1c/N2-1f) relaxed to match F-3 wording; bundled in commit `244d3bb` with Stage 3 |
-| 5 — Report | `5-report.md` | **in progress 2026-06-05** — final report written; awaiting Stage 5 CI verification |
+| 5 — Report | `5-report.md` | **complete 2026-06-05** — final report committed at `57d57cc`; Stage 5 CI initially failed on all 4 legs because the Plan 0008 T6 test `workflows-supported warn message cites floor 2.1.153` over-pinned the local-with-claude `warn` path (CI has no claude binary, so the probe takes the `unparseable version` path which doesn't cite the floor); hotfix at `0dcc32e` refined the test to early-exit on that path; CI run `27030342138` on `0dcc32e` green across `ubuntu-latest + macos-latest × Node 20 + 22`; plugin version unchanged at `0.2.0`; no release tag |
 
 ## Summary
 

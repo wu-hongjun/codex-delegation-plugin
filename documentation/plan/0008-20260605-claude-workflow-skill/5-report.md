@@ -167,8 +167,9 @@ Test growth from Plan 0007 close to Plan 0008 close:
 
 Remote CI evidence:
 - **Stage 2 (`48dbb91`)** — run [`27027782640`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/27027782640): `success` on all 4 matrix legs.
-- **Stage 3 + Stage 4 (`244d3bb`)** — run recorded below after Stage 5 commit completes.
-- **Stage 5 (this commit)** — recorded in a follow-up log commit.
+- **Stage 3 + Stage 4 (`244d3bb`)** — run [`27029932783`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/27029932783): auto-cancelled by the Stage 5 push (default GitHub Actions concurrency).
+- **Stage 5 (`57d57cc`)** — run [`27030072374`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/27030072374): **failure** on all 4 matrix legs. Root cause: Plan 0008 T6's `setup-probes.test.mjs` Stage 4 test "workflows-supported warn message cites floor 2.1.153" early-exited only when the probe was `ok` (local case where `claude` is installed at ≥ 2.1.153), but in CI there is no `claude` binary so the probe took the "unparseable version" warn path — which does NOT cite the floor literal. The `assert.match(output, /2\.1\.153/)` then failed because the version string was never emitted. The test was an *over-pinning* of CI environmental assumptions.
+- **Stage 5 hotfix (`0dcc32e`)** — `Plan 0008 Stage 4 fix: setup-probes test handles CI no-claude path` — refined the test to match only the floor-citing warn message (`Dynamic workflows require Claude Code >= X`) and assert `X === '2.1.153'` when present; otherwise early-exit. Local 7/7 setup-probes tests pass. CI run [`27030342138`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/27030342138): **`success`** on all 4 matrix legs (ubuntu-latest + macos-latest × Node 20 + 22).
 
 ---
 

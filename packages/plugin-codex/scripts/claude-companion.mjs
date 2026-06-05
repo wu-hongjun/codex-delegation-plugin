@@ -74,6 +74,12 @@ try {
     case 'goal':
       await cmdGoal(flags, positional, useJson);
       break;
+    case 'fork':
+      await cmdFork(flags, positional, useJson);
+      break;
+    case 'batch':
+      await cmdBatch(flags, positional, useJson);
+      break;
     case 'status':
       await cmdStatus(flags, useJson);
       break;
@@ -314,6 +320,56 @@ async function cmdGoal(flags, positional, json) {
       'This is a Claude Code goal-condition request.',
       'The runtime tracks goal-completion automatically; attach via',
       '`claude attach <jobId>` to watch progress.',
+    ].join('\n'),
+  });
+}
+
+// ---------- fork ----------
+
+async function cmdFork(flags, positional, json) {
+  // --allow-edit is not applicable to fork; fork sessions spawn a subagent automatically.
+  if (flags['allow-edit'] !== undefined) {
+    process.stderr.write(
+      formatError(new Error('--allow-edit is not applicable to $claude-fork.'), 'fork', json) +
+        '\n',
+    );
+    process.exit(2);
+  }
+
+  await _runDelegateCore(flags, positional, json, {
+    commandName: 'fork',
+    promptTransformer: (p) => `/fork ${p}`,
+    extraOutput: [
+      '',
+      'This is a Claude Code fork request.',
+      'The runtime spawns a real subagent process to execute the directive.',
+      'Note: /fork directives consume 20-30k tokens even for trivial directives.',
+      'Attach via `claude attach <jobId>` to watch progress.',
+    ].join('\n'),
+  });
+}
+
+// ---------- batch ----------
+
+async function cmdBatch(flags, positional, json) {
+  // --allow-edit is not applicable to batch; batch sessions use the orchestration runtime.
+  if (flags['allow-edit'] !== undefined) {
+    process.stderr.write(
+      formatError(new Error('--allow-edit is not applicable to $claude-batch.'), 'batch', json) +
+        '\n',
+    );
+    process.exit(2);
+  }
+
+  await _runDelegateCore(flags, positional, json, {
+    commandName: 'batch',
+    promptTransformer: (p) => `/batch ${p}`,
+    extraOutput: [
+      '',
+      'This is a Claude Code batch request.',
+      'The runtime injects a "# Batch: Parallel Work Orchestration" system prompt.',
+      'Batch sessions can spawn multiple parallel tool-calls and subagents.',
+      'Attach via `claude attach <jobId>` to watch progress.',
     ].join('\n'),
   });
 }
@@ -1975,6 +2031,8 @@ function printUsage() {
       '  delegate [flags] -- <prompt>              Start a Claude background session',
       '  workflow [flags] -- <prompt>              Start a Claude Code dynamic workflow (triggers ultracode planning)',
       '  goal [flags] -- <condition>               Start a Claude Code background session with a /goal condition',
+      '  fork [flags] -- <directive>               Fork a Claude Code subagent for a directive',
+      '  batch [flags] -- <instruction>            Run a batch of parallel Claude Code instructions',
       '  status [--all] [--json]                   List jobs for current workspace',
       '  result <jobId> [--all] [--json]           Show final result of a completed job',
       '  stop <jobId> [--all] [--json]             Stop a running job',
@@ -1986,15 +2044,15 @@ function printUsage() {
       '                                            Fresh-session independent review of the latest non-review turn',
       '',
       'Flags:',
-      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal)',
-      '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/goal/followup/review/adversarial-review)',
-      '  --name <name>                Session name (delegate, workflow, goal)',
-      '  --model <model>              Model selection (delegate, workflow, goal, adversarial-review)',
-      '  --effort <effort>            Effort level (delegate, workflow, goal, adversarial-review)',
-      '  --permission-mode <mode>     Permission mode (delegate, workflow, goal, adversarial-review)',
-      '  --add-dir <dir>              Additional directory (delegate, workflow, goal; repeatable)',
-      '  --mcp-config <path>          MCP config file (delegate, workflow, goal)',
-      '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, workflow, and goal',
+      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch)',
+      '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/goal/fork/batch/followup/review/adversarial-review)',
+      '  --name <name>                Session name (delegate, workflow, goal, fork, batch)',
+      '  --model <model>              Model selection (delegate, workflow, goal, fork, batch, adversarial-review)',
+      '  --effort <effort>            Effort level (delegate, workflow, goal, fork, batch, adversarial-review)',
+      '  --permission-mode <mode>     Permission mode (delegate, workflow, goal, fork, batch, adversarial-review)',
+      '  --add-dir <dir>              Additional directory (delegate, workflow, goal, fork, batch; repeatable)',
+      '  --mcp-config <path>          MCP config file (delegate, workflow, goal, fork, batch)',
+      '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, workflow, goal, fork, and batch',
       '  --all                        Search all workspaces (status/result/stop/followup/review/adversarial-review)',
       '  --all-awaiting-followup      Bulk-stop all awaiting-followup jobs (stop only; combine with --all for every workspace)',
       '  --help                       Show this help',

@@ -1,0 +1,146 @@
+# Plan 0011 T1 — /batch via claude --bg probe
+
+## Environment
+claude --version: 2.1.165 (Claude Code)
+claude path: /Users/hongjunwu/.local/bin/claude
+Date: 2026-06-05
+Cwd at probe time: /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+## Probe 1: claude --bg "/batch respond with OK and stop. zero operations, just acknowledge."
+exit=0
+---STDOUT---
+backgrounded · bcca9c11
+  claude agents             list sessions
+  claude attach bcca9c11    open in this terminal
+  claude logs bcca9c11      show recent output
+  claude stop bcca9c11      stop this session
+
+---STDERR---
+(empty)
+
+## Probe 2 (sanity): claude --bg "respond with OK and stop"
+exit=0
+---STDOUT---
+backgrounded · 60a5e423
+  claude agents             list sessions
+  claude attach 60a5e423    open in this terminal
+  claude logs 60a5e423      show recent output
+  claude stop 60a5e423      stop this session
+
+---STDERR---
+(empty)
+
+## Side evidence
+
+### claude agents --json (relevant rows)
+
+Probe 1 session (bcca9c11):
+  {
+    "pid": 92700,
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+    "kind": "background",
+    "startedAt": 1780687824175,
+    "sessionId": "bcca9c11-6771-4b8e-a772-d736f08a92ec",
+    "name": "batch acknowledge null",
+    "status": "idle"
+  }
+
+  NOTE: The session name "batch acknowledge null" is an AI-generated title that reflects
+  the /batch command's semantic content — not the raw slash command string. This differs
+  from /fork (which preserved the raw slash text as name) and from probe-sanity (which
+  produced "respond with OK and stop"). The word "batch" in the title is derived from
+  the /batch command context injected into the session.
+
+Probe 2 session (60a5e423):
+  {
+    "pid": 92927,
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+    "kind": "background",
+    "startedAt": 1780687824779,
+    "sessionId": "60a5e423-3f6e-445c-9147-a906d732fc73",
+    "name": "respond with OK and stop",
+    "status": "idle"
+  }
+
+### ~/.claude/projects/<sanitized-cwd>/bcca9c11-6771-4b8e-a772-d736f08a92ec.jsonl (first 22 lines, redacted)
+
+L1:  type=last-prompt
+L2:  type=mode, mode="normal"
+L3:  type=permission-mode, permissionMode="default"
+L4:  type=file-history-snapshot
+L5:  type=attachment, atype=hook_success (SessionStart:startup)
+L6:  type=attachment, atype=hook_success (SessionStart:startup)
+L7:  type=attachment, atype=hook_additional_context
+L8:  type=file-history-snapshot
+L9:  type=user, content (full):
+     "<command-message>batch</command-message>
+     <command-name>/batch</command-name>
+     <command-args>respond with OK and stop. zero operations, just acknowledge.</command-args>"
+L10: type=user, content (first 600 chars):
+     "# Batch: Parallel Work Orchestration
+
+     You are orchestrating a large, parallelizable change across this codebase.
+
+     ## User Instruction
+
+     respond with OK and stop. zero operations, just acknowledge.
+
+     ## Phase 1: Research and Plan (Plan Mode)
+
+     Call the `EnterPlanMode` tool now to enter plan mode, then:
+
+     1. **Understand the scope.** Launch one or more subagents (in the foreground — you need
+     their results) to deeply research what this instruction touches. Find all the files,
+     patterns, and call sites that need to change. Understand the existing conventions so
+     the migration is consistent.
+
+     2. **Decomp[ose and create tasks...]"
+L11: type=attachment, atype=deferred_tools_delta
+L12: type=attachment, atype=mcp_instructions_delta
+L13: type=attachment, atype=skill_listing
+L14: type=attachment, atype=command_permissions, allowedTools=[]
+L15: type=assistant, content="OK"
+L16: type=attachment, atype=hook_success (Stop)
+L17: type=attachment, atype=hook_success (Stop)
+L18: type=attachment, atype=hook_success (Stop)
+L19: type=system
+L20: type=system
+L21: type=ai-title
+L22: type=agent-name
+
+### Key structural differences from probe-sanity (60a5e423)
+
+Probe-sanity (60a5e423) JSONL L14:
+  type=user, content="respond with OK and stop"
+  promptSource="typed"  — plain text user message
+
+Probe 1 (bcca9c11) JSONL L9-L10:
+  L9: XML-encoded slash command record with <command-name>/batch</command-name>
+      and <command-args>respond with OK and stop. zero operations, just acknowledge.</command-args>
+  L10: A full "# Batch: Parallel Work Orchestration" system prompt injected as a second
+       user message — setting up the model to orchestrate a parallelizable change.
+  L14: command_permissions attachment with allowedTools=[] (batch constrains tool access)
+
+These markers are absent from probe-sanity. The two sessions are structurally distinct.
+
+## Verdict
+
+**A** — `/batch` is parsed as a slash command via `claude --bg`; it injects a full
+orchestration system prompt, not a literal user message.
+
+The load-bearing evidence is JSONL L9: `<command-name>/batch</command-name>` with
+`<command-args>respond with OK and stop...</command-args>` — identical in structure to
+the `/goal` probe's `<command-name>/goal</command-name>` record from Plan 0010 T3a.
+L10 further shows the runtime injected a multi-paragraph `# Batch: Parallel Work
+Orchestration` system prompt that set up the model to orchestrate parallelizable work,
+and L14's `command_permissions` attachment with `allowedTools=[]` confirms /batch applies
+its own tool-access policy. The probe-sanity session has none of these markers; its
+prompt arrived as a plain `promptSource="typed"` user message. The session name "batch
+acknowledge null" (AI-generated, batch-aware) further distinguishes it from both the
+raw-prompt sanity session and the /fork session (which preserved the literal slash text).
+
+**Implication for Plan 0011 T2-T5**: implement `$claude-batch`. The prompt transformer
+is `p => '/batch ' + p`, mirroring `$claude-goal`. The instruction is the skill argument.
+Note: /batch injects an orchestration system prompt and sets allowedTools=[] — document
+the orchestration semantics in SKILL.md so users understand /batch is heavier-weight
+than /goal (it expects a multi-step parallelizable change, not a simple stop condition).

@@ -9,7 +9,7 @@
  *
  * Codex 0.136.0 exposes no documented non-interactive skill-invocation
  * interface, so this helper covers automated install/list/version
- * assertions only and prints the ten-skill manual checklist for the
+ * assertions only and prints the twelve-skill manual checklist for the
  * maintainer to run inside Codex. The smoke artifact under the
  * documentation/plan/0006-...-marketplace-packaging-distribution
  * artifacts/ folder records what the helper covered and what was
@@ -38,7 +38,7 @@
  *   7. Asserts the plugin appears as installed,enabled at the version
  *      declared in marketplace/plugins/claude-companion/.codex-plugin/plugin.json
  *      (single source of truth; not hard-coded in this script — see T10).
- *   8. Prints the ten-skill manual TUI checklist.
+ *   8. Prints the twelve-skill manual TUI checklist.
  *   9. Cleanup: codex plugin remove + codex plugin marketplace remove.
  *  10. rm -rf CODEX_HOME unless --keep-home.
  *
@@ -49,7 +49,7 @@
  * Not for CI: this script requires the real codex CLI on PATH. The CI
  * matrix never invokes this file. The static test
  * packages/plugin-codex/test/marketplace-smoke.test.mjs verifies the
- * script's shape (--help text, 10 skill names, isolation invariants,
+ * script's shape (--help text, 12 skill names, isolation invariants,
  * cleanup commands) without spawning codex.
  */
 
@@ -92,7 +92,7 @@ function deriveExpectedVersion(marketplaceRoot) {
   return version;
 }
 
-// All ten skills shipped by the cc-plugin-codex marketplace plugin. Order
+// All twelve skills shipped by the cc-plugin-codex marketplace plugin. Order
 // follows the natural delegate -> verify lifecycle so the maintainer can
 // walk the list inside Codex in a sensible sequence.
 const SKILL_NAMES = [
@@ -106,6 +106,8 @@ const SKILL_NAMES = [
   'claude-adversarial-review',
   'claude-workflow',
   'claude-goal',
+  'claude-fork',
+  'claude-batch',
 ];
 
 // ---------------------------------------------------------------------------
@@ -155,11 +157,11 @@ function printHelp() {
       'The helper runs against the real codex CLI on PATH. It creates an',
       'isolated CODEX_HOME under the OS tempdir so the real $HOME/.codex',
       'is never mutated. Codex 0.136.0 has no documented non-interactive',
-      'skill-invocation interface, so the ten-skill discovery check must',
+      'skill-invocation interface, so the twelve-skill discovery check must',
       'be run manually inside Codex. The helper prints the skill checklist',
       'after the automated install/list/version assertions pass.',
       '',
-      'Ten skills covered by the manual TUI checklist:',
+      'Twelve skills covered by the manual TUI checklist:',
       ...SKILL_NAMES.map((s) => `  - $${s}`),
       '',
     ].join('\n'),
@@ -393,7 +395,7 @@ logStep('STEP 6: manual Codex TUI skill checklist (operator-driven)');
 process.stdout.write(
   [
     'The helper cannot drive the Codex TUI. Open Codex with this isolated',
-    `CODEX_HOME and verify each of the 10 skills below is recognized.`,
+    `CODEX_HOME and verify each of the 12 skills below is recognized.`,
     '',
     `  CODEX_HOME=${codexHome} codex`,
     '',
@@ -402,7 +404,7 @@ process.stdout.write(
     '',
     'Pass criteria:',
     '  - $claude-setup returns an "ok" or "warn" aggregate.',
-    '  - The other 9 skills do not return "unknown skill" or',
+    '  - The other 11 skills do not return "unknown skill" or',
     '    "unrecognized skill" when invoked or shown in Codex skill',
     '    discovery. A skill that needs a job-id may stop at a usage',
     '    or error message; that still counts as recognized.',

@@ -1,8 +1,9 @@
 # Plan 0011 — Slash-command wrappers (`$claude-tasks` / `$claude-fork` / `$claude-batch`)
 
-**Status**: `implementing`
+**Status**: `auditing`
 **Started**: 2026-06-05
 **Stage 1 approved**: 2026-06-05
+**Stage 2 complete (pending CI)**: 2026-06-05
 **Last updated**: 2026-06-05
 
 ## Stages
@@ -10,7 +11,7 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-05** — Adaptive scope: T1 probes each of `/tasks`, `/fork`, `/batch`; T2-T5 implementation only for A-verdict commands |
-| 2 — Implement | `2-implement.md` | **in progress 2026-06-05** — T1 probes dispatching via single executor subagent; T2-T5 sequential after T1 returns |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-05** — T1 returned B/A/A (`/tasks` deferred); 2 new skills shipped (`$claude-fork` + `$claude-batch`); 1443 npm test + 28 attach + 258 bench = 1729 combined; CI run pending |
 | 3 — Audit | `3-audit.md` | not started — requires independent context |
 | 4 — Polish | `4-polish.md` | not started |
 | 5 — Report | `5-report.md` | not started |

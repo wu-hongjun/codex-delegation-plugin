@@ -6693,3 +6693,269 @@ describe('goal approval-flow note appended after job block', () => {
     );
   });
 });
+
+// ---------- fork subcommand tests (Plan 0011) ----------
+
+describe('--help mentions fork command', () => {
+  it('usage text includes "fork [flags] -- <directive>" as a listed command', () => {
+    const result = runDispatcher(['--help']);
+    assert.equal(result.status, 0, `--help should exit 0; got ${result.status}`);
+    assert.ok(
+      result.stdout.includes('fork'),
+      `expected "fork" in --help output; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('fork [flags] -- <directive>'),
+      `expected "fork [flags] -- <directive>" in --help output; got:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('fork --yes -- "test directive" (happy path)', () => {
+  it('exits 0, stdout contains job_* ID and fork approval note', () => {
+    const result = runDispatcher(['fork', '--yes', '--', 'respond with OK']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    assert.match(result.stdout, /job_[a-z0-9]+_[a-f0-9]{8}/, 'stdout should contain a jobId');
+    assert.ok(
+      result.stdout.includes('Claude job started') || result.stdout.includes('job_'),
+      `expected job output in stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('claude attach') || result.stdout.includes('fork'),
+      `expected fork-flavored note in stdout; got:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('fork prompt is prefixed with /fork ', () => {
+  it('the spawned session prompt starts with "/fork " (verified via mock state.json)', () => {
+    const userPrompt = 'my fork directive';
+    const result = runDispatcher(['fork', '--yes', '--', userPrompt]);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const statePath = join(MOCK_HOME, 'state.json');
+    assert.ok(existsSync(statePath), `expected mock state.json at ${statePath}`);
+    const state = JSON.parse(readFileSync(statePath, 'utf8'));
+    assert.ok(
+      Array.isArray(state.sessions) && state.sessions.length > 0,
+      'expected sessions in mock state',
+    );
+    const lastSession = state.sessions[state.sessions.length - 1];
+    assert.ok(
+      typeof lastSession.prompt === 'string' && lastSession.prompt.startsWith('/fork '),
+      `expected prompt to start with "/fork "; got: ${lastSession.prompt}`,
+    );
+    assert.ok(
+      lastSession.prompt.includes(userPrompt),
+      `expected prompt to include user text "${userPrompt}"; got: ${lastSession.prompt}`,
+    );
+  });
+});
+
+describe('fork without --yes (non-TTY stdin)', () => {
+  it('exits 1 and mentions privacy or --yes', () => {
+    const result = runDispatcher(['fork', '--', 'some directive']);
+    assert.notEqual(result.status, 0, 'expected non-zero exit when --yes is missing');
+    assert.equal(result.status, 1, `expected exit 1, got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.toLowerCase().includes('privacy') ||
+        combined.toLowerCase().includes('--yes') ||
+        combined.toLowerCase().includes('acknowledge'),
+      `expected mention of privacy or --yes; got:\n${combined}`,
+    );
+    assert.equal(listJobIds().length, 0, 'no job records should be created when --yes is absent');
+  });
+});
+
+describe('fork rejects --allow-edit', () => {
+  it('exits 2 and prints a clear error when --allow-edit is passed', () => {
+    const result = runDispatcher(['fork', '--yes', '--allow-edit', '--', 'some directive']);
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for --allow-edit rejection; got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('--allow-edit'),
+      `expected mention of "--allow-edit" in error output; got:\n${combined}`,
+    );
+  });
+});
+
+describe('fork accepts standard delegate flags', () => {
+  it('exits 0 when --model, --effort, and --permission-mode are supplied', () => {
+    const result = runDispatcher([
+      'fork',
+      '--yes',
+      '--model',
+      'claude-sonnet-4-5',
+      '--effort',
+      'normal',
+      '--permission-mode',
+      'default',
+      '--',
+      'respond with OK',
+    ]);
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 with standard delegate flags; stderr: ${result.stderr}`,
+    );
+    assert.match(result.stdout, /job_[a-z0-9]+_[a-f0-9]{8}/, 'stdout should contain a jobId');
+  });
+});
+
+describe('fork approval-flow note appended after job block', () => {
+  it('stdout contains both a job block and the fork-flavored note', () => {
+    const result = runDispatcher(['fork', '--yes', '--', 'fork directive for note test']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes('Claude job started') || result.stdout.includes('Job ID:'),
+      `expected standard job output in stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('fork') || result.stdout.includes('attach'),
+      `expected fork-specific note in stdout; got:\n${result.stdout}`,
+    );
+  });
+});
+
+// ---------- batch subcommand tests (Plan 0011) ----------
+
+describe('--help mentions batch command', () => {
+  it('usage text includes "batch [flags] -- <instruction>" as a listed command', () => {
+    const result = runDispatcher(['--help']);
+    assert.equal(result.status, 0, `--help should exit 0; got ${result.status}`);
+    assert.ok(
+      result.stdout.includes('batch'),
+      `expected "batch" in --help output; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('batch [flags] -- <instruction>'),
+      `expected "batch [flags] -- <instruction>" in --help output; got:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('batch --yes -- "test instruction" (happy path)', () => {
+  it('exits 0, stdout contains job_* ID and batch approval note', () => {
+    const result = runDispatcher(['batch', '--yes', '--', 'respond with OK']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    assert.match(result.stdout, /job_[a-z0-9]+_[a-f0-9]{8}/, 'stdout should contain a jobId');
+    assert.ok(
+      result.stdout.includes('Claude job started') || result.stdout.includes('job_'),
+      `expected job output in stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('claude attach') || result.stdout.includes('batch'),
+      `expected batch-flavored note in stdout; got:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('batch prompt is prefixed with /batch ', () => {
+  it('the spawned session prompt starts with "/batch " (verified via mock state.json)', () => {
+    const userPrompt = 'my batch instruction';
+    const result = runDispatcher(['batch', '--yes', '--', userPrompt]);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const statePath = join(MOCK_HOME, 'state.json');
+    assert.ok(existsSync(statePath), `expected mock state.json at ${statePath}`);
+    const state = JSON.parse(readFileSync(statePath, 'utf8'));
+    assert.ok(
+      Array.isArray(state.sessions) && state.sessions.length > 0,
+      'expected sessions in mock state',
+    );
+    const lastSession = state.sessions[state.sessions.length - 1];
+    assert.ok(
+      typeof lastSession.prompt === 'string' && lastSession.prompt.startsWith('/batch '),
+      `expected prompt to start with "/batch "; got: ${lastSession.prompt}`,
+    );
+    assert.ok(
+      lastSession.prompt.includes(userPrompt),
+      `expected prompt to include user text "${userPrompt}"; got: ${lastSession.prompt}`,
+    );
+  });
+});
+
+describe('batch without --yes (non-TTY stdin)', () => {
+  it('exits 1 and mentions privacy or --yes', () => {
+    const result = runDispatcher(['batch', '--', 'some instruction']);
+    assert.notEqual(result.status, 0, 'expected non-zero exit when --yes is missing');
+    assert.equal(result.status, 1, `expected exit 1, got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.toLowerCase().includes('privacy') ||
+        combined.toLowerCase().includes('--yes') ||
+        combined.toLowerCase().includes('acknowledge'),
+      `expected mention of privacy or --yes; got:\n${combined}`,
+    );
+    assert.equal(listJobIds().length, 0, 'no job records should be created when --yes is absent');
+  });
+});
+
+describe('batch rejects --allow-edit', () => {
+  it('exits 2 and prints a clear error when --allow-edit is passed', () => {
+    const result = runDispatcher(['batch', '--yes', '--allow-edit', '--', 'some instruction']);
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for --allow-edit rejection; got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('--allow-edit'),
+      `expected mention of "--allow-edit" in error output; got:\n${combined}`,
+    );
+  });
+});
+
+describe('batch accepts standard delegate flags', () => {
+  it('exits 0 when --model, --effort, and --permission-mode are supplied', () => {
+    const result = runDispatcher([
+      'batch',
+      '--yes',
+      '--model',
+      'claude-sonnet-4-5',
+      '--effort',
+      'normal',
+      '--permission-mode',
+      'default',
+      '--',
+      'respond with OK',
+    ]);
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 with standard delegate flags; stderr: ${result.stderr}`,
+    );
+    assert.match(result.stdout, /job_[a-z0-9]+_[a-f0-9]{8}/, 'stdout should contain a jobId');
+  });
+});
+
+describe('batch approval-flow note appended after job block', () => {
+  it('stdout contains both a job block and the batch-flavored note', () => {
+    const result = runDispatcher(['batch', '--yes', '--', 'batch instruction for note test']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes('Claude job started') || result.stdout.includes('Job ID:'),
+      `expected standard job output in stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('batch') || result.stdout.includes('attach'),
+      `expected batch-specific note in stdout; got:\n${result.stdout}`,
+    );
+  });
+});

@@ -138,7 +138,7 @@ node tools/package-marketplace.mjs --write
    (`packages/{runtime,driver-claude-code}/dist/`). Skip the build via
    `CC_PLUGIN_CODEX_SKIP_BUILD=1` only when the dist outputs are known
    to be current.
-2. Copy 21 source-derived files (T2-T5 allowlist) into the
+2. Copy 23 source-derived files (T2-T5 allowlist) into the
    marketplace tree byte-identically.
 3. Copy 64 bundled-dep files (T9.5 allowlist:
    `@cc-plugin-codex/runtime/dist/`,
@@ -161,7 +161,7 @@ node tools/package-marketplace.mjs --check
 
 `--check` enforces:
 
-- Source ↔ marketplace byte-identity for all 21 derived files
+- Source ↔ marketplace byte-identity for all 23 derived files
   (`marketplace/MANIFEST.md` allowlist).
 - No excluded categories appear under
   `marketplace/plugins/claude-companion/` (`marketplace/EXCLUSIONS.md`
@@ -172,7 +172,7 @@ node tools/package-marketplace.mjs --check
   `marketplace/.agents/plugins/marketplace.json` parses and has the
   expected `name`.
 
-Expected output: `check: OK — 21 derived files match source, 64
+Expected output: `check: OK — 23 derived files match source, 64
 bundled-dep files match source, 3 synthesized package.json files
 match canonical shape, 1 marketplace-owned files present, no
 unexpected files.`
@@ -232,7 +232,7 @@ check passes.
 ### Manual skill discovery
 
 Codex 0.136.0 does not expose a documented non-interactive
-skill-invocation interface, so the ten-skill discovery check must be
+skill-invocation interface, so the twelve-skill discovery check must be
 run manually inside the Codex TUI. With the smoke helper's isolated
 `CODEX_HOME` preserved (`--keep-home`), open Codex and verify each
 skill is recognized:
@@ -247,12 +247,14 @@ skill is recognized:
 - `$claude-adversarial-review`
 - `$claude-workflow`
 - `$claude-goal`
+- `$claude-fork`
+- `$claude-batch`
 
 Pass criteria:
 
 - `$claude-setup` is the gate skill: it must return an `ok` or `warn`
   aggregate status, not an unknown-skill error.
-- The other nine skills must not return `unknown skill` or
+- The other eleven skills must not return `unknown skill` or
   `unrecognized skill` when invoked or shown in Codex skill discovery.
 - A skill that requires a job-id may stop at its expected
   usage-or-error message. That still counts as recognized for smoke

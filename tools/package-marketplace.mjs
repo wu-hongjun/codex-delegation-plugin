@@ -68,6 +68,8 @@ const DERIVED_FILES = [
   'skills/claude-adversarial-review/SKILL.md',
   'skills/claude-workflow/SKILL.md',
   'skills/claude-goal/SKILL.md',
+  'skills/claude-fork/SKILL.md',
+  'skills/claude-batch/SKILL.md',
 ];
 
 /**

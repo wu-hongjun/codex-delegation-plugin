@@ -6,7 +6,7 @@
 
 ## Plugin-tree files (sourced from `packages/plugin-codex/`)
 
-The following 21 files are copied byte-for-byte from `packages/plugin-codex/` into `marketplace/plugins/claude-companion/`:
+The following 23 files are copied byte-for-byte from `packages/plugin-codex/` into `marketplace/plugins/claude-companion/`:
 
 - `.codex-plugin/plugin.json`
 - `scripts/claude-companion.mjs`
@@ -29,6 +29,8 @@ The following 21 files are copied byte-for-byte from `packages/plugin-codex/` in
 - `skills/claude-adversarial-review/SKILL.md`
 - `skills/claude-workflow/SKILL.md`
 - `skills/claude-goal/SKILL.md`
+- `skills/claude-fork/SKILL.md`
+- `skills/claude-batch/SKILL.md`
 
 Note: `scripts/claude-companion.mjs` is copied from source and the packaging script sets the user-executable bit (chmod 0755) on the marketplace copy unconditionally, since the source file has mode 644 but the marketplace copy must be executable.
 

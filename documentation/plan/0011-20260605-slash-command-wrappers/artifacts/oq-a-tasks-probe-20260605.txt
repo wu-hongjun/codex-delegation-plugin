@@ -1,0 +1,100 @@
+# Plan 0011 T1 — /tasks via claude --bg probe
+
+## Environment
+claude --version: 2.1.165 (Claude Code)
+claude path: /Users/hongjunwu/.local/bin/claude
+Date: 2026-06-05
+Cwd at probe time: /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+## Probe 1: claude --bg "/tasks"
+exit=0
+---STDOUT---
+backgrounded · 3a78ef70
+  claude agents             list sessions
+  claude attach 3a78ef70    open in this terminal
+  claude logs 3a78ef70      show recent output
+  claude stop 3a78ef70      stop this session
+
+---STDERR---
+(empty)
+
+## Probe 2 (sanity): claude --bg "respond with OK and stop"
+exit=0
+---STDOUT---
+backgrounded · 6d881374
+  claude agents             list sessions
+  claude attach 6d881374    open in this terminal
+  claude logs 6d881374      show recent output
+  claude stop 6d881374      stop this session
+
+---STDERR---
+(empty)
+
+## Side evidence
+
+### claude agents --json (relevant rows)
+
+Probe 1 session (3a78ef70):
+  {
+    "pid": 91136,
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+    "kind": "background",
+    "startedAt": 1780687815561,
+    "sessionId": "3a78ef70-595b-427d-af42-88239c566ca3",
+    "name": "/tasks",
+    "status": "waiting",
+    "waitingFor": "dialog open"
+  }
+
+  NOTE: "status": "waiting", "waitingFor": "dialog open" — the /tasks slash command
+  opened an interactive TUI dialog that is blocked waiting for user input. The session
+  name is the literal "/tasks" string (not an AI-generated title), which indicates the
+  session was named from the slash command text before any model turn.
+
+Probe 2 session (6d881374):
+  {
+    "pid": 92370,
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+    "kind": "background",
+    "startedAt": 1780687816049,
+    "sessionId": "6d881374-2782-4265-b4aa-0762b77b3ebc",
+    "name": "i'm ready to help create a label, but i...",
+    "status": "idle"
+  }
+
+### ~/.claude/projects/<sanitized-cwd>/<sessionId>.jsonl
+
+Probe 1 (3a78ef70):
+  NO JSONL FILE CREATED. The session directory for 3a78ef70 does not exist under
+  ~/.claude/projects/-Users-hongjunwu-Repositories-Git-cc-plugin-codex/.
+  Only the TUI process was launched; no conversation record was written because the
+  session never advanced past the dialog-open state.
+
+Probe 2 (6d881374) — key lines (redacted):
+  L14: type=user, content="respond with OK and stop"
+       (prompt treated as plain user text, promptSource="typed")
+  L19: type=assistant, content="OK" (model responded normally)
+  No slash-command markers, no command_permissions attachment, no command-name XML.
+
+### claude logs 3a78ef70 (ANSI output excerpt)
+  The TUI rendered the /tasks picker dialog (a "Background tasks" panel showing
+  "No tasks currently running") and waited for keyboard input. The ANSI stream
+  contained a fully rendered TUI with "↑/↓ to select · Enter to view · ←/Esc to close"
+  prompt. No model turn was initiated.
+
+## Verdict
+
+**B** — `/tasks` is a TUI-only interactive command; it cannot be driven via `claude --bg`.
+
+The load-bearing evidence is the `claude agents --json` record showing `"status": "waiting",
+"waitingFor": "dialog open"` for session 3a78ef70 — the command opened an interactive
+picker dialog and blocked indefinitely waiting for keyboard input. No JSONL conversation
+file was created (the session never progressed to a model turn), and the `claude logs`
+output confirmed a fully rendered TUI task-picker panel awaiting user interaction.
+By contrast, probe-2 (sanity) completed normally with the model responding "OK" in
+a standard conversation record. The two sessions are structurally distinct: probe 1 is
+a blocked TUI dialog; probe 2 is a completed background conversation.
+
+**Implication for Plan 0011 T2-T5**: `/tasks` is deferred. No SKILL.md, no dispatcher
+`case 'tasks':`, no count bumps for this command. Defer to Plan 0012+ with PTY-injection
+fallback design.

@@ -1,0 +1,127 @@
+# Plan 0011 T1 — /fork via claude --bg probe
+
+## Environment
+claude --version: 2.1.165 (Claude Code)
+claude path: /Users/hongjunwu/.local/bin/claude
+Date: 2026-06-05
+Cwd at probe time: /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+## Probe 1: claude --bg "/fork respond with the literal word OK and stop. one short turn, no file operations."
+exit=0
+---STDOUT---
+backgrounded · e9c77c92
+  claude agents             list sessions
+  claude attach e9c77c92    open in this terminal
+  claude logs e9c77c92      show recent output
+  claude stop e9c77c92      stop this session
+
+---STDERR---
+(empty)
+
+## Probe 2 (sanity): claude --bg "respond with OK and stop"
+exit=0
+---STDOUT---
+backgrounded · c5d5c5e4
+  claude agents             list sessions
+  claude attach c5d5c5e4    open in this terminal
+  claude logs c5d5c5e4      show recent output
+  claude stop c5d5c5e4      stop this session
+
+---STDERR---
+(empty)
+
+## Side evidence
+
+### claude agents --json (relevant rows)
+
+Probe 1 session (e9c77c92):
+  {
+    "pid": 92452,
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+    "kind": "background",
+    "startedAt": 1780687820010,
+    "sessionId": "e9c77c92-83ad-4650-a791-7e7e0495dc16",
+    "name": "/fork respond with the literal word OK and stop. one short turn, no file operations.",
+    "status": "busy"
+  }
+
+  NOTE: The session name is the literal slash command text (not an AI-generated title),
+  suggesting the session was named before any model turn processed it. Status was "busy"
+  at the time of the agents snapshot — a subagent was still completing.
+
+Probe 2 session (c5d5c5e4):
+  {
+    "pid": 92602,
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+    "kind": "background",
+    "startedAt": 1780687820536,
+    "sessionId": "c5d5c5e4-ecac-4018-9a35-0a4d94ceccfa",
+    "name": "i'm ready to help generate a label, but...",
+    "status": "idle"
+  }
+
+### ~/.claude/projects/<sanitized-cwd>/e9c77c92-83ad-4650-a791-7e7e0495dc16.jsonl (first 23 lines, redacted)
+
+L1:  type=last-prompt
+L2:  type=mode, mode="normal"
+L3:  type=permission-mode, permissionMode="default"
+L4:  type=file-history-snapshot
+L5:  type=attachment, atype=hook_success (SessionStart:startup)
+L6:  type=attachment, atype=hook_success (SessionStart:startup)
+L7:  type=attachment, atype=hook_additional_context
+L8:  type=system
+L9:  type=system
+L10: type=queue-operation
+L11: type=queue-operation
+L12: type=user, content (full):
+     "<task-notification>
+     <task-id>arespond-with-the-ccdae9dbf49fafdd</task-id>
+     <output-file>/private/tmp/claude-501/-Users-hongjunwu-Repositories-Git-cc-plugin-codex/
+       e9c77c92-83ad-4650-a791-7e7e0495dc16/tasks/arespond-with-the-ccdae9dbf49fafdd.output</output-file>
+     <status>completed</status>
+     <summary>Agent \"respond with the literal word OK and stop. one sh...\" completed</summary>
+     <result>OK</result>
+     <usage><subagent_tokens>30117</subagent_tokens><tool_uses>0</tool_uses><duration_ms>20990</duration_ms></usage>
+     </task-notification>"
+L13: type=attachment, atype=deferred_tools_delta
+L14: type=attachment, atype=mcp_instructions_delta
+L15: type=attachment, atype=skill_listing
+L16: type=assistant, content="OK"
+L17: type=attachment, atype=hook_success (Stop)
+L18: type=attachment, atype=hook_success (Stop)
+L19: type=attachment, atype=hook_success (Stop)
+L20: type=system
+L21: type=system
+L22: type=ai-title
+L23: type=agent-name
+
+### Subagents directory
+~/.claude/projects/-Users-hongjunwu-Repositories-Git-cc-plugin-codex/
+  e9c77c92-83ad-4650-a791-7e7e0495dc16/subagents/
+    agent-arespond-with-the-ccdae9dbf49fafdd.jsonl   (26310 bytes — full subagent conversation)
+    agent-arespond-with-the-ccdae9dbf49fafdd.meta.json
+
+  The subagents/ directory was created by /fork, proving the runtime spawned a real
+  subagent process (task-id "arespond-with-the-ccdae9dbf49fafdd"). The subagent ran for
+  20,990 ms, consumed 30,117 tokens, made 0 tool_uses, and returned result "OK".
+
+## Verdict
+
+**A** — `/fork` is parsed as a slash command via `claude --bg`; it spawns a real subagent.
+
+The load-bearing evidence is JSONL L12: a completed `<task-notification>` record with
+`<status>completed</status>`, `<result>OK</result>`, and a 20,990 ms subagent run that
+consumed 30,117 tokens — proving the runtime parsed `/fork <directive>` as a slash
+command and dispatched the directive to a new forked subagent process. The subagents/
+directory containing `agent-arespond-with-the-ccdae9dbf49fafdd.jsonl` independently
+confirms a full subagent conversation was written. The session name being the literal
+slash command string (not an AI title) is consistent with /goal's behavior. By contrast,
+probe-2 (sanity) produced a normal single-turn conversation with an AI-generated session
+name and no task-notification record.
+
+**Implication for Plan 0011 T2-T5**: implement `$claude-fork`. The prompt transformer
+is `p => '/fork ' + p`, mirroring `$claude-goal`. The directive is the skill argument.
+Note: subagent spawning is async — the parent session completes when the subagent
+finishes; `_runDelegateCore` should handle this the same way as `$claude-goal`.
+Token cost is higher than /goal (30k tokens for a trivial directive) — document in
+SKILL.md.

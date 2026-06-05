@@ -28,6 +28,8 @@ const SKILL_NAMES = [
   'claude-adversarial-review',
   'claude-workflow',
   'claude-goal',
+  'claude-fork',
+  'claude-batch',
 ];
 
 /** Subcommand each skill must reference in its body. */
@@ -42,6 +44,8 @@ const SKILL_SUBCOMMANDS = {
   'claude-adversarial-review': 'adversarial-review',
   'claude-workflow': 'workflow',
   'claude-goal': 'goal',
+  'claude-fork': 'fork',
+  'claude-batch': 'batch',
 };
 
 function skillPath(name) {
@@ -713,26 +717,26 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
     }
   });
 
-  it('has at least 10 entries after T4 additions', () => {
+  it('has at least 12 entries after T4 additions', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.ok(
-      dp.length >= 10,
-      `interface.defaultPrompt must have at least 10 entries after T4; got ${dp.length}`,
+      dp.length >= 12,
+      `interface.defaultPrompt must have at least 12 entries after T4; got ${dp.length}`,
     );
   });
 });
 
-describe('plugin.json.interface.defaultPrompt length is exactly 10 (v0.2.0 + claude-goal contract)', () => {
-  it('array length equals 10', () => {
+describe('plugin.json.interface.defaultPrompt length is exactly 12 (v0.2.0 + claude-fork + claude-batch contract)', () => {
+  it('array length equals 12', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      10,
-      `interface.defaultPrompt must have exactly 10 entries (v0.2.0 + claude-goal contract); got ${dp.length}`,
+      12,
+      `interface.defaultPrompt must have exactly 12 entries (v0.2.0 + claude-fork + claude-batch contract); got ${dp.length}`,
     );
   });
 });
@@ -833,14 +837,14 @@ describe('no unexpected review-adjacent skill directories exist', () => {
 // ---------- T6: OQ-C defaultPrompt rewrites (entries #6-#9) ----------
 
 describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)', () => {
-  it('array length is exactly 10', () => {
+  it('array length is exactly 12', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      10,
-      `interface.defaultPrompt must have exactly 10 entries; got ${dp.length}`,
+      12,
+      `interface.defaultPrompt must have exactly 12 entries; got ${dp.length}`,
     );
   });
 
@@ -925,7 +929,7 @@ describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)'
   });
 });
 
-// ---------- T1 (Plan 0009): cross-skill chaining hints — all 10 skills ----------
+// ---------- T1 (Plan 0009): cross-skill chaining hints — all 12 skills ----------
 
 describe('each SKILL.md ends with a "Next steps" subsection (T1 Plan 0009)', () => {
   for (const name of SKILL_NAMES) {
@@ -1145,6 +1149,201 @@ describe('plugin.json interface.defaultPrompt contains goal entry (T3b Plan 0010
     assert.ok(
       dp.includes('Set a goal condition for a Claude Code session.'),
       `interface.defaultPrompt must contain "Set a goal condition for a Claude Code session."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+});
+
+// ---------- Plan 0011: claude-fork skill guards ----------
+
+describe('claude-fork skill directory and SKILL.md exist (Plan 0011)', () => {
+  it('skills/claude-fork/ directory exists', () => {
+    assert.ok(
+      existsSync(join(PLUGIN_ROOT, 'skills', 'claude-fork')),
+      'skills/claude-fork/ directory must exist',
+    );
+  });
+
+  it('skills/claude-fork/SKILL.md exists', () => {
+    assert.ok(
+      existsSync(skillPath('claude-fork')),
+      `SKILL.md not found at ${skillPath('claude-fork')}`,
+    );
+  });
+});
+
+describe('claude-fork/SKILL.md: run line invokes dispatcher with "fork" subcommand (Plan 0011)', () => {
+  it('body contains "claude-companion.mjs" and "fork"', () => {
+    const body = readFileSync(skillPath('claude-fork'), 'utf8');
+    assert.ok(
+      body.includes('claude-companion.mjs'),
+      'claude-fork/SKILL.md must reference scripts/claude-companion.mjs',
+    );
+    assert.ok(body.includes('fork'), 'claude-fork/SKILL.md must reference the "fork" subcommand');
+  });
+
+  it('run line uses -- separator', () => {
+    const body = readFileSync(skillPath('claude-fork'), 'utf8');
+    assert.ok(
+      body.includes('fork -- "<'),
+      'claude-fork/SKILL.md run line does not use the "-- \\"<" separator convention',
+    );
+  });
+});
+
+describe('claude-fork/SKILL.md: --yes auto-injection guard (Plan 0011)', () => {
+  it('no dispatcher run line for "fork" subcommand contains " --yes"', () => {
+    const body = readFileSync(skillPath('claude-fork'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('claude-companion.mjs') && line.includes('fork'))
+      .filter((line) => line.includes(' --yes'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-fork/SKILL.md auto-injects "--yes" on a dispatcher run line, violating privacy-ack contract:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('claude-fork/SKILL.md: --allow-edit is not referenced in run lines (Plan 0011)', () => {
+  it('no dispatcher run line contains "--allow-edit"', () => {
+    const body = readFileSync(skillPath('claude-fork'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('claude-companion.mjs'))
+      .filter((line) => line.includes('--allow-edit'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-fork/SKILL.md references "--allow-edit" on a dispatcher run line, which is not applicable:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('plugin.json interface.defaultPrompt contains fork entry (Plan 0011)', () => {
+  it('includes "Fork a Claude Code subagent for a directive."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('Fork a Claude Code subagent for a directive.'),
+      `interface.defaultPrompt must contain "Fork a Claude Code subagent for a directive."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+});
+
+describe('claude-fork/SKILL.md: strict frontmatter parse (Plan 0011)', () => {
+  it('strict frontmatter parse does not throw and name/description are correct', () => {
+    const body = readFileSync(skillPath('claude-fork'), 'utf8');
+    let fm;
+    assert.doesNotThrow(() => {
+      fm = strictParseFrontmatter(body);
+    }, 'claude-fork/SKILL.md: strict YAML frontmatter parse failed');
+    assert.equal(fm.name, 'claude-fork', 'claude-fork: strict-parsed name should match directory');
+    assert.ok(
+      typeof fm.description === 'string' && fm.description.length > 0,
+      'claude-fork: strict-parsed description must be non-empty',
+    );
+  });
+});
+
+// ---------- Plan 0011: claude-batch skill guards ----------
+
+describe('claude-batch skill directory and SKILL.md exist (Plan 0011)', () => {
+  it('skills/claude-batch/ directory exists', () => {
+    assert.ok(
+      existsSync(join(PLUGIN_ROOT, 'skills', 'claude-batch')),
+      'skills/claude-batch/ directory must exist',
+    );
+  });
+
+  it('skills/claude-batch/SKILL.md exists', () => {
+    assert.ok(
+      existsSync(skillPath('claude-batch')),
+      `SKILL.md not found at ${skillPath('claude-batch')}`,
+    );
+  });
+});
+
+describe('claude-batch/SKILL.md: run line invokes dispatcher with "batch" subcommand (Plan 0011)', () => {
+  it('body contains "claude-companion.mjs" and "batch"', () => {
+    const body = readFileSync(skillPath('claude-batch'), 'utf8');
+    assert.ok(
+      body.includes('claude-companion.mjs'),
+      'claude-batch/SKILL.md must reference scripts/claude-companion.mjs',
+    );
+    assert.ok(
+      body.includes('batch'),
+      'claude-batch/SKILL.md must reference the "batch" subcommand',
+    );
+  });
+
+  it('run line uses -- separator', () => {
+    const body = readFileSync(skillPath('claude-batch'), 'utf8');
+    assert.ok(
+      body.includes('batch -- "<'),
+      'claude-batch/SKILL.md run line does not use the "-- \\"<" separator convention',
+    );
+  });
+});
+
+describe('claude-batch/SKILL.md: --yes auto-injection guard (Plan 0011)', () => {
+  it('no dispatcher run line for "batch" subcommand contains " --yes"', () => {
+    const body = readFileSync(skillPath('claude-batch'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('claude-companion.mjs') && line.includes('batch'))
+      .filter((line) => line.includes(' --yes'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-batch/SKILL.md auto-injects "--yes" on a dispatcher run line, violating privacy-ack contract:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('claude-batch/SKILL.md: --allow-edit is not referenced in run lines (Plan 0011)', () => {
+  it('no dispatcher run line contains "--allow-edit"', () => {
+    const body = readFileSync(skillPath('claude-batch'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('claude-companion.mjs'))
+      .filter((line) => line.includes('--allow-edit'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-batch/SKILL.md references "--allow-edit" on a dispatcher run line, which is not applicable:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('plugin.json interface.defaultPrompt contains batch entry (Plan 0011)', () => {
+  it('includes "Run a batch of parallel Claude Code instructions."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('Run a batch of parallel Claude Code instructions.'),
+      `interface.defaultPrompt must contain "Run a batch of parallel Claude Code instructions."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+});
+
+describe('claude-batch/SKILL.md: strict frontmatter parse (Plan 0011)', () => {
+  it('strict frontmatter parse does not throw and name/description are correct', () => {
+    const body = readFileSync(skillPath('claude-batch'), 'utf8');
+    let fm;
+    assert.doesNotThrow(() => {
+      fm = strictParseFrontmatter(body);
+    }, 'claude-batch/SKILL.md: strict YAML frontmatter parse failed');
+    assert.equal(
+      fm.name,
+      'claude-batch',
+      'claude-batch: strict-parsed name should match directory',
+    );
+    assert.ok(
+      typeof fm.description === 'string' && fm.description.length > 0,
+      'claude-batch: strict-parsed description must be non-empty',
     );
   });
 });

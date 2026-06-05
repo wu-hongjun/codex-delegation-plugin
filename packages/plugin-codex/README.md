@@ -8,7 +8,7 @@ Key design choice: this v1 uses Claude Code background sessions directly and doe
 
 ## Current v1 scope
 
-Ten skills are available:
+Twelve skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
 - **`$claude-delegate`** — start a new background session for a task
@@ -20,6 +20,8 @@ Ten skills are available:
 - **`$claude-adversarial-review`** — run a structured review in a fresh independent session (added in plan 0003)
 - **`$claude-workflow`** — trigger a Claude Code dynamic workflow and return a job ID for async result retrieval (added in plan 0008)
 - **`$claude-goal`** — set a goal condition for a Claude Code background session; the runtime tracks goal-completion automatically (added in plan 0010)
+- **`$claude-fork`** — fork a Claude Code subagent for a directive; spawns a real subagent process (added in plan 0011)
+- **`$claude-batch`** — run a batch of parallel Claude Code instructions via the Batch Parallel Work Orchestration runtime (added in plan 0011)
 
 Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
 
@@ -194,6 +196,84 @@ Direct dispatcher equivalent:
 node packages/plugin-codex/scripts/claude-companion.mjs goal -- "all unit tests in src/utils/ pass"
 ```
 
+### $claude-fork
+
+Fork a Claude Code subagent for a directive. The `/fork` slash command spawns a real subagent process that executes the directive independently.
+
+```bash
+$claude-fork "build a proof-of-concept for the new rate-limiter"
+```
+
+**Requires Claude Code v2.1.165+.** The `/fork` slash command is confirmed available on v2.1.165 per empirical probe evidence at `documentation/plan/0011-20260605-slash-command-wrappers/artifacts/oq-b-fork-probe-20260605.txt`.
+
+**Approval flow**: After `$claude-fork` starts the background session, the `/fork <directive>` slash command is injected as the prompt. The runtime spawns a real subagent; the parent session completes when the subagent finishes. To watch progress, run:
+
+```bash
+claude attach <jobId>
+```
+
+**Cost notice**: `/fork` directives spawn a full subagent — even a trivial directive can consume 20-30k tokens. Consider scope before delegating. Use `$claude-stop` to terminate a fork session early.
+
+Accepted flags (forwarded to the delegate path):
+
+- `--model` — model override for the fork session.
+- `--effort` — effort level.
+- `--permission-mode` — permission mode override.
+- `--add-dir` — additional directory to expose to Claude Code.
+- `--mcp-config` — MCP configuration file path.
+- `--name` — session name override.
+- `--yes` — record the privacy acknowledgement non-interactively.
+- `--json` — machine-readable output.
+
+Rejected at parse time:
+
+- `--allow-edit` — not accepted by `$claude-fork`. Fork sessions request their own permissions automatically; this flag is not applicable.
+
+Direct dispatcher equivalent:
+
+```bash
+node packages/plugin-codex/scripts/claude-companion.mjs fork -- "build a proof-of-concept for the new rate-limiter"
+```
+
+### $claude-batch
+
+Run a batch of parallel Claude Code instructions via the Batch Parallel Work Orchestration runtime. The `/batch` slash command injects a `# Batch: Parallel Work Orchestration` system prompt that drives research, planning, and parallel execution phases.
+
+```bash
+$claude-batch "migrate all usages of the old API to the new one"
+```
+
+**Requires Claude Code v2.1.165+.** The `/batch` slash command is confirmed available on v2.1.165 per empirical probe evidence at `documentation/plan/0011-20260605-slash-command-wrappers/artifacts/oq-c-batch-probe-20260605.txt`.
+
+**Approval flow**: After `$claude-batch` starts the background session, the `/batch <instruction>` slash command is injected as the prompt. The runtime injects the orchestration system prompt and sets its own tool-access policy. No interactive approval dialog is required. To watch progress, run:
+
+```bash
+claude attach <jobId>
+```
+
+**Cost notice**: Batch sessions can spawn multiple parallel tool-calls and subagents. Token usage scales with the number of affected files and the complexity of the instruction. Consider scoping instructions tightly. Use `$claude-stop` to terminate a batch session early.
+
+Accepted flags (forwarded to the delegate path):
+
+- `--model` — model override for the batch session.
+- `--effort` — effort level.
+- `--permission-mode` — permission mode override.
+- `--add-dir` — additional directory to expose to Claude Code.
+- `--mcp-config` — MCP configuration file path.
+- `--name` — session name override.
+- `--yes` — record the privacy acknowledgement non-interactively.
+- `--json` — machine-readable output.
+
+Rejected at parse time:
+
+- `--allow-edit` — not accepted by `$claude-batch`. Batch sessions use the orchestration runtime for permissions; this flag is not applicable.
+
+Direct dispatcher equivalent:
+
+```bash
+node packages/plugin-codex/scripts/claude-companion.mjs batch -- "migrate all usages of the old API to the new one"
+```
+
 ### $claude-status
 
 List all delegated jobs in the current workspace with their live status.
@@ -252,7 +332,7 @@ Optional cleanup. Not required before calling `result`.
 
 ## Direct dispatcher usage
 
-All ten commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All twelve commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-codex/scripts/claude-companion.mjs setup
@@ -265,6 +345,8 @@ node packages/plugin-codex/scripts/claude-companion.mjs review <jobId>
 node packages/plugin-codex/scripts/claude-companion.mjs adversarial-review <jobId>
 node packages/plugin-codex/scripts/claude-companion.mjs workflow "audit every fetch() call and propose a migration to HttpClient"
 node packages/plugin-codex/scripts/claude-companion.mjs goal -- "all unit tests pass"
+node packages/plugin-codex/scripts/claude-companion.mjs fork -- "build a proof-of-concept for the new rate-limiter"
+node packages/plugin-codex/scripts/claude-companion.mjs batch -- "migrate all usages of the old API to the new one"
 ```
 
 All commands support `--json` for machine-readable output. The `--yes` flag on `delegate` and `followup` skips the interactive privacy acknowledgement; `--allow-edit` is a policy/framing flag and does NOT bypass that acknowledgement.

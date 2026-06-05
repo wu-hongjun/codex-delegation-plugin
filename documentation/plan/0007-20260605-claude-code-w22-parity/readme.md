@@ -1,11 +1,12 @@
 # Plan 0007 — Claude Code w22+ parity (docs + doctor probe)
 
-**Status**: `reporting`
+**Status**: `complete`
 **Started**: 2026-06-05
 **Stage 1 approved**: 2026-06-05
 **Stage 2 complete**: 2026-06-05 (CI run `27020424248` success)
 **Stage 3 complete**: 2026-06-05
-**Stage 4 complete**: 2026-06-05
+**Stage 4 complete**: 2026-06-05 (CI run `27021167460` auto-cancelled by Stage 5 push)
+**Stage 5 complete / Completed**: 2026-06-05 (CI run `27021286516` success)
 **Last updated**: 2026-06-05
 
 ## Stages
@@ -16,7 +17,7 @@
 | 2 — Implement | `2-implement.md` | **complete pending CI 2026-06-05** — T1-T6 done; local gates green; 1527 tests pass (mock 68 + runtime 172 + driver 183 + plugin 818 + attach 28 + bench 258); marketplace allowlist 18→19 (new `scripts/lib/claude-version.mjs`); 3 new doctor probes (`opus-4-8-supported`, `workflows-supported`, `bg-exec-supported`) all `warn` on local v2.1.153; cost paragraph + plan-0004-pre-cutover tag + Plan 0005 deferred all preserved |
 | 3 — Audit | `3-audit.md` | **complete 2026-06-05** — verdict `ready-for-polish`; 3 findings (F-1 medium RELEASING.md L141 missed "18 source-derived" → "19"; F-2 medium 2-implement.md driver lane count 183 → 187 + combined 1527 → 1531; F-3 low 2-implement.md stale `.d.ts` entry); all 6 T-tasks PASS; safety invariants PASS; gates green; auditor `oh-my-claudecode:critic` (Opus, fresh-context) |
 | 4 — Polish | `4-polish.md` | **complete 2026-06-05** — F-1 / F-2 / F-3 fixes applied in commit `02f912c`; zero source / marketplace payload / test changes; all gates green |
-| 5 — Report | `5-report.md` | **in progress 2026-06-05** — final report written; awaiting Stage 5 CI verification before marking complete |
+| 5 — Report | `5-report.md` | **complete 2026-06-05** — final report committed at `241afbe`; Stage 5 CI run `27021286516` `success` on `ubuntu-latest + macos-latest × Node 20 + 22`; plugin version unchanged at `0.2.0`; no release tag cut (separate maintainer-driven step) |
 
 ## Summary
 

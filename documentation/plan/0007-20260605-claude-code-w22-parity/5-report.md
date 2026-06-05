@@ -136,8 +136,8 @@ Test growth from Plan 0006 close to Plan 0007 close:
 Remote CI evidence:
 
 - **Stage 2 (`9ac7742`)** — run [`27020424248`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/27020424248): `success` on all 4 matrix legs.
-- **Stage 3 + Stage 4 (`02f912c`)** — CI run recorded after Stage 5 commit completes.
-- **Stage 5 (this commit)** — CI run recorded in a follow-up log commit.
+- **Stage 3 + Stage 4 (`02f912c`)** — run [`27021167460`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/27021167460): **auto-cancelled** by GitHub Actions when the Stage 5 push superseded it (default workflow concurrency behaviour).
+- **Stage 5 (`241afbe`)** — run [`27021286516`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/27021286516): `success` on all 4 matrix legs (ubuntu-latest + macos-latest × Node 20 + 22). Since `241afbe` is a docs-only descendant of `02f912c`, this run covers Stage 3 + 4 + 5's source state.
 
 ---
 

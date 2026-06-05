@@ -66,7 +66,8 @@ Zero new tests. The 3 findings are documentation-only — no runtime contract to
 ## CI verification
 
 - **Stage 2 (`9ac7742`)**: CI run [`27020424248`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/27020424248) — `success` on all 4 matrix legs (ubuntu-latest / Node 20, ubuntu-latest / Node 22, macos-latest / Node 20, macos-latest / Node 22).
-- **Stage 4**: CI run on this commit will be recorded after the push.
+- **Stage 4 (`02f912c`)**: CI run [`27021167460`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/27021167460) was **auto-cancelled** by GitHub Actions when the Stage 5 commit (`241afbe`) was pushed while Stage 4 CI was still running. This is the default GitHub Actions concurrency behaviour for the workflow.
+- **Stage 5 (`241afbe`)**: CI run [`27021286516`](https://github.com/wu-hongjun/cc-plugin-codex/actions/runs/27021286516) — `success` on all 4 matrix legs. Since `241afbe` is a docs-only descendant of `02f912c` (only `5-report.md` + `readme.md` added; no source or test changes), the Stage 5 green effectively covers Stage 4's code. No re-run requested.
 
 ## Approval gate
 

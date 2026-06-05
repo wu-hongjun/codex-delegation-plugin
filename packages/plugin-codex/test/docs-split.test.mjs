@@ -155,8 +155,8 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
       }
     });
 
-    // T12-3: Skills section lists all 8 skills with $-prefix
-    it('Skills section enumerates all 8 skill names with $-prefix and a one-line description', () => {
+    // T12-3: Skills section lists all 9 skills with $-prefix
+    it('Skills section enumerates all 9 skill names with $-prefix and a one-line description', () => {
       const content = readFileSync(MARKETPLACE_README, 'utf8');
       // Extract the Skills section body.
       const match = content.match(/^## Skills\b[\s\S]*?(?=^## )/m);

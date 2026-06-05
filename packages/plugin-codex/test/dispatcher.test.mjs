@@ -6366,9 +6366,10 @@ describe('printUsage reflects review/adversarial-review accepted flags (Stage 4 
 
   it('N2-1c: --help describes --model as applying to adversarial-review', () => {
     const result = runDispatcher(['--help']);
+    const modelLine = result.stdout.split('\n').find((l) => l.includes('--model'));
     assert.ok(
-      result.stdout.includes('(delegate, adversarial-review)') && result.stdout.includes('--model'),
-      `--help --model flag description must include "(delegate, adversarial-review)"\nActual stdout:\n${result.stdout}`,
+      modelLine && modelLine.includes('adversarial-review'),
+      `--help --model flag description must include "adversarial-review"\nLine: ${modelLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,
     );
   });
 
@@ -6390,11 +6391,14 @@ describe('printUsage reflects review/adversarial-review accepted flags (Stage 4 
     );
   });
 
-  it('N2-1f: --help describes --allow-edit with "rejected by review and adversarial-review"', () => {
+  it('N2-1f: --help describes --allow-edit with rejection by review and adversarial-review', () => {
     const result = runDispatcher(['--help']);
+    const allowEditLine = result.stdout.split('\n').find((l) => l.includes('--allow-edit'));
     assert.ok(
-      result.stdout.includes('rejected by review and adversarial-review'),
-      `--help --allow-edit description must say "rejected by review and adversarial-review"\nActual stdout:\n${result.stdout}`,
+      allowEditLine &&
+        allowEditLine.includes('rejected by review') &&
+        allowEditLine.includes('adversarial-review'),
+      `--help --allow-edit description must indicate rejection by review and adversarial-review\nLine: ${allowEditLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,
     );
   });
 

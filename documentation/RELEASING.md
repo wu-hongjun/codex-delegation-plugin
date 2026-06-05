@@ -138,7 +138,7 @@ node tools/package-marketplace.mjs --write
    (`packages/{runtime,driver-claude-code}/dist/`). Skip the build via
    `CC_PLUGIN_CODEX_SKIP_BUILD=1` only when the dist outputs are known
    to be current.
-2. Copy 19 source-derived files (T2-T5 allowlist) into the
+2. Copy 20 source-derived files (T2-T5 allowlist) into the
    marketplace tree byte-identically.
 3. Copy 64 bundled-dep files (T9.5 allowlist:
    `@cc-plugin-codex/runtime/dist/`,
@@ -161,7 +161,7 @@ node tools/package-marketplace.mjs --check
 
 `--check` enforces:
 
-- Source ↔ marketplace byte-identity for all 19 derived files
+- Source ↔ marketplace byte-identity for all 20 derived files
   (`marketplace/MANIFEST.md` allowlist).
 - No excluded categories appear under
   `marketplace/plugins/claude-companion/` (`marketplace/EXCLUSIONS.md`
@@ -172,7 +172,7 @@ node tools/package-marketplace.mjs --check
   `marketplace/.agents/plugins/marketplace.json` parses and has the
   expected `name`.
 
-Expected output: `check: OK — 19 derived files match source, 64
+Expected output: `check: OK — 20 derived files match source, 64
 bundled-dep files match source, 3 synthesized package.json files
 match canonical shape, 1 marketplace-owned files present, no
 unexpected files.`
@@ -245,6 +245,7 @@ skill is recognized:
 - `$claude-followup`
 - `$claude-review`
 - `$claude-adversarial-review`
+- `$claude-workflow`
 
 Pass criteria:
 

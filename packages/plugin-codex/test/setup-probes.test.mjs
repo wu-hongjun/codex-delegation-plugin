@@ -56,4 +56,20 @@ describe('setup doctor — w22 version-floor probes (Plan 0007 T3)', () => {
   it('still emits the existing claude-version probe (regression guard for R6)', () => {
     assert.match(output, /claude-version/);
   });
+
+  // Plan 0008 T6: workflows floor lowered to 2.1.153; opus/bg-exec stay at 2.1.154.
+  it('workflows-supported warn message cites floor 2.1.153', () => {
+    // Only meaningful when claude is absent / below floor (warn path). If the probe
+    // emits 'ok' the floor string won't appear in the output — skip rather than fail.
+    if (!output.includes('workflows-supported') || output.match(/workflows-supported.*ok/)) return;
+    assert.match(output, /2\.1\.153/);
+  });
+
+  it('opus-4-8-supported and bg-exec-supported warn messages do NOT cite 2.1.153', () => {
+    // When those probes warn, they must cite 2.1.154, not 2.1.153.
+    const opusWarn = output.match(/Opus 4\.8 requires Claude Code >= (\S+)/);
+    if (opusWarn) assert.strictEqual(opusWarn[1], '2.1.154');
+    const bgWarn = output.match(/claude --bg --exec requires Claude Code >= (\S+)/);
+    if (bgWarn) assert.strictEqual(bgWarn[1], '2.1.154');
+  });
 });

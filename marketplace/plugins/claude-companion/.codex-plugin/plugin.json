@@ -19,7 +19,8 @@
       "Stop a Claude job.",
       "Send a follow-up instruction to a Claude job I started earlier.",
       "Review a Claude job in the same session.",
-      "Run an adversarial (fresh-session) review of a Claude job."
+      "Run an adversarial (fresh-session) review of a Claude job.",
+      "Run a Claude Code dynamic workflow."
     ],
     "brandColor": "#D97706"
   }

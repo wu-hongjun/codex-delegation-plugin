@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // claude-companion.mjs — user-facing CLI dispatcher for the cc-plugin-codex plugin.
 //
-// Subcommands: setup | delegate | status | result | stop
+// Subcommands: setup | delegate | workflow | status | result | stop
 // Exit codes: 0 success, 1 failure, 2 usage error
 
 import { createInterface } from 'node:readline/promises';
@@ -68,6 +68,9 @@ try {
     case 'delegate':
       await cmdDelegate(flags, positional, useJson);
       break;
+    case 'workflow':
+      await cmdWorkflow(flags, positional, useJson);
+      break;
     case 'status':
       await cmdStatus(flags, useJson);
       break;
@@ -106,9 +109,12 @@ async function cmdSetup(_flags, json) {
   // never imports node-pty directly — the driver supplies the probe via DI.
   //
   // Plan 0007 T3: also inject three version-floor probes that report feature availability
-  // based on the locally installed Claude Code version. All three use floor 2.1.154.
-  // They are informational only (capabilities: []) and never report 'fail'.
-  const VERSION_FLOOR = '2.1.154';
+  // based on the locally installed Claude Code version. Floors diverge per empirical
+  // evidence on Claude Code v2.1.153: workflows are available, but --bg --exec is
+  // silently dropped. Opus 4.8 is unverified at v2.1.153.
+  const FLOOR_OPUS_4_8 = '2.1.154';
+  const FLOOR_WORKFLOWS = '2.1.153';
+  const FLOOR_BG_EXEC = '2.1.154';
 
   /** @type {import('@cc-plugin-codex/runtime').DoctorExtraProbe} */
   const opus48Probe = {
@@ -136,7 +142,7 @@ async function cmdSetup(_flags, json) {
           detail: 'unparseable version',
         };
       }
-      if (meetsFloor(version, VERSION_FLOOR)) {
+      if (meetsFloor(version, FLOOR_OPUS_4_8)) {
         return {
           name: 'opus-4-8-supported',
           status: 'ok',
@@ -146,7 +152,7 @@ async function cmdSetup(_flags, json) {
       return {
         name: 'opus-4-8-supported',
         status: 'warn',
-        detail: `Opus 4.8 requires Claude Code >= ${VERSION_FLOOR} (current ${stdout})`,
+        detail: `Opus 4.8 requires Claude Code >= ${FLOOR_OPUS_4_8} (current ${stdout})`,
       };
     },
   };
@@ -177,7 +183,7 @@ async function cmdSetup(_flags, json) {
           detail: 'unparseable version',
         };
       }
-      if (meetsFloor(version, VERSION_FLOOR)) {
+      if (meetsFloor(version, FLOOR_WORKFLOWS)) {
         return {
           name: 'workflows-supported',
           status: 'ok',
@@ -187,7 +193,7 @@ async function cmdSetup(_flags, json) {
       return {
         name: 'workflows-supported',
         status: 'warn',
-        detail: `Dynamic workflows require Claude Code >= ${VERSION_FLOOR} (current ${stdout})`,
+        detail: `Dynamic workflows require Claude Code >= ${FLOOR_WORKFLOWS} (current ${stdout})`,
       };
     },
   };
@@ -218,7 +224,7 @@ async function cmdSetup(_flags, json) {
           detail: 'unparseable version',
         };
       }
-      if (meetsFloor(version, VERSION_FLOOR)) {
+      if (meetsFloor(version, FLOOR_BG_EXEC)) {
         return {
           name: 'bg-exec-supported',
           status: 'ok',
@@ -228,7 +234,7 @@ async function cmdSetup(_flags, json) {
       return {
         name: 'bg-exec-supported',
         status: 'warn',
-        detail: `claude --bg --exec requires Claude Code >= ${VERSION_FLOOR} (current ${stdout}); --exec is silently dropped on older versions`,
+        detail: `claude --bg --exec requires Claude Code >= ${FLOOR_BG_EXEC} (current ${stdout}); --exec is silently dropped on older versions`,
       };
     },
   };
@@ -245,18 +251,80 @@ async function cmdSetup(_flags, json) {
 // ---------- delegate ----------
 
 async function cmdDelegate(flags, positional, json) {
-  // 1. Collect prompt from positionals (after -- or all remaining).
-  const prompt = positional.join(' ').trim();
-  if (!prompt) {
+  // --allow-edit is accepted; no rejection here.
+  await _runDelegateCore(flags, positional, json, {
+    commandName: 'delegate',
+    promptTransformer: (p) => p,
+    extraOutput: null,
+  });
+}
+
+// ---------- workflow ----------
+
+async function cmdWorkflow(flags, positional, json) {
+  // --allow-edit is not applicable to workflow; workflows are planning sessions.
+  if (flags['allow-edit'] !== undefined) {
     process.stderr.write(
       formatError(
-        new Error('prompt is required: claude-companion delegate -- "<prompt>"'),
-        'delegate',
+        new Error('--allow-edit is not applicable to $claude-workflow.'),
+        'workflow',
         json,
       ) + '\n',
     );
     process.exit(2);
   }
+
+  await _runDelegateCore(flags, positional, json, {
+    commandName: 'workflow',
+    promptTransformer: (p) => `ultracode: ${p}`,
+    extraOutput: [
+      '',
+      'This is a Claude Code dynamic workflow request.',
+      'Workflows present an interactive approval dialog (Yes / View raw script / No)',
+      'inside the Claude Code TUI. To approve and start the workflow, attach:',
+      '',
+      '  claude attach <jobId>',
+      '',
+      'Workflows can spawn up to 16 concurrent agents and 1000 total per run. Token',
+      "usage scales with the workflow's complexity.",
+    ].join('\n'),
+  });
+}
+
+// ---------- _runDelegateCore (shared helper) ----------
+
+/**
+ * Shared implementation for cmdDelegate and cmdWorkflow.
+ *
+ * @param {Record<string, unknown>} flags
+ * @param {string[]} positional
+ * @param {boolean} json
+ * @param {{
+ *   commandName: string;
+ *   promptTransformer: (raw: string) => string;
+ *   extraOutput: string | null;
+ * }} opts
+ */
+async function _runDelegateCore(
+  flags,
+  positional,
+  json,
+  { commandName, promptTransformer, extraOutput },
+) {
+  // 1. Collect prompt from positionals (after -- or all remaining).
+  const rawPrompt = positional.join(' ').trim();
+  if (!rawPrompt) {
+    process.stderr.write(
+      formatError(
+        new Error(`prompt is required: claude-companion ${commandName} -- "<prompt>"`),
+        commandName,
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  const prompt = promptTransformer(rawPrompt);
 
   const workspace = process.cwd();
   const useYes = Boolean(flags['yes']);
@@ -274,7 +342,7 @@ async function cmdDelegate(flags, positional, json) {
         '',
         'Re-run with --yes to acknowledge and proceed.',
       ].join('\n');
-      process.stderr.write(formatError(new Error(msg), 'delegate', json) + '\n');
+      process.stderr.write(formatError(new Error(msg), commandName, json) + '\n');
       process.exit(1);
     }
     // TTY: interactive acknowledgement — record it and proceed.
@@ -300,7 +368,7 @@ async function cmdDelegate(flags, positional, json) {
       ...(!caps.agentsJson ? ['\n  - agentsJson: not supported'] : []),
       '\nRun: claude-companion setup',
     ].join('');
-    process.stderr.write(formatError(new Error(detail), 'delegate', json) + '\n');
+    process.stderr.write(formatError(new Error(detail), commandName, json) + '\n');
     process.exit(1);
   }
 
@@ -362,6 +430,11 @@ async function cmdDelegate(flags, positional, json) {
 
   // 10. Print summary.
   process.stdout.write(formatDelegate(finalJob, json) + '\n');
+
+  // 11. Workflow-specific note (appended after the standard job block).
+  if (extraOutput !== null && !json) {
+    process.stdout.write(extraOutput + '\n');
+  }
 }
 
 // ---------- status ----------
@@ -1873,6 +1946,7 @@ function printUsage() {
       'Commands:',
       '  setup                                     Run doctor probes and report status',
       '  delegate [flags] -- <prompt>              Start a Claude background session',
+      '  workflow [flags] -- <prompt>              Start a Claude Code dynamic workflow (triggers ultracode planning)',
       '  status [--all] [--json]                   List jobs for current workspace',
       '  result <jobId> [--all] [--json]           Show final result of a completed job',
       '  stop <jobId> [--all] [--json]             Stop a running job',

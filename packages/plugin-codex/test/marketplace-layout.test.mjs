@@ -63,6 +63,7 @@ const EXPECTED_SKILL_NAMES = [
   'claude-setup',
   'claude-status',
   'claude-stop',
+  'claude-workflow',
 ];
 
 // ---------- helpers ----------
@@ -215,7 +216,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   // Check 4: marketplace skills/ contains exactly the 8 expected directories
   // ========================================================================
 
-  it('marketplace skills/ contains exactly the 8 expected skill directories', () => {
+  it('marketplace skills/ contains exactly the 9 expected skill directories', () => {
     assert.ok(
       existsSync(MARKETPLACE_SKILLS_DIR),
       `marketplace skills/ directory not found at ${MARKETPLACE_SKILLS_DIR}`,
@@ -236,7 +237,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   // Check 5: each skill directory contains a non-empty SKILL.md
   // ========================================================================
 
-  it('each of the 8 skill directories contains a non-empty SKILL.md', () => {
+  it('each of the 9 skill directories contains a non-empty SKILL.md', () => {
     for (const skillName of EXPECTED_SKILL_NAMES) {
       const skillMdPath = join(MARKETPLACE_SKILLS_DIR, skillName, 'SKILL.md');
       assert.ok(
@@ -396,7 +397,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
 const MANIFEST_MD = resolve(MARKETPLACE_ROOT, 'MANIFEST.md');
 const PACKAGE_SCRIPT = resolve(REPO_ROOT, 'tools', 'package-marketplace.mjs');
 
-// Authoritative allowlist of the 19 derived files (relative to marketplace plugin root).
+// Authoritative allowlist of the 20 derived files (relative to marketplace plugin root).
 const DERIVED_FILES_ALLOWLIST = [
   '.codex-plugin/plugin.json',
   'scripts/claude-companion.mjs',
@@ -417,6 +418,7 @@ const DERIVED_FILES_ALLOWLIST = [
   'skills/claude-followup/SKILL.md',
   'skills/claude-review/SKILL.md',
   'skills/claude-adversarial-review/SKILL.md',
+  'skills/claude-workflow/SKILL.md',
 ];
 
 // Marketplace-owned files (present in plugin root but NOT derived from source).
@@ -538,10 +540,10 @@ describe('marketplace packaging procedure (Plan 0006 T4)', () => {
   });
 
   // ========================================================================
-  // T4-4: Source <-> marketplace byte-identity for all 19 derived files
+  // T4-4: Source <-> marketplace byte-identity for all 20 derived files
   // ========================================================================
 
-  it('all 19 derived files are byte-identical between source and marketplace', () => {
+  it('all 20 derived files are byte-identical between source and marketplace', () => {
     for (const rel of DERIVED_FILES_ALLOWLIST) {
       const srcPath = resolve(SOURCE_PLUGIN_ROOT, rel);
       const dstPath = resolve(MARKETPLACE_PLUGIN_ROOT, rel);

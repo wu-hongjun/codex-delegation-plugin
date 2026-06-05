@@ -57,7 +57,7 @@ If `$claude-setup` reports `ok` or `warn`, the install is complete.
 
 ## Skills
 
-After install, the plugin makes 8 skills available inside the Codex
+After install, the plugin makes 9 skills available inside the Codex
 TUI. Type the `$<name>` form at the Codex chat prompt.
 
 - `$claude-setup` — probes the local environment (Claude Code auth,
@@ -78,6 +78,25 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
 - `$claude-review` — runs a same-session review of a Claude Code job.
 - `$claude-adversarial-review` — runs a fresh-session adversarial
   review of a Claude Code job.
+- `$claude-workflow` — triggers a Claude Code dynamic workflow and
+  returns a job id for async result retrieval.
+
+### $claude-workflow
+
+Triggers a Claude Code dynamic workflow for multi-phase, multi-agent tasks.
+
+```
+$claude-workflow "audit every fetch() call and propose a migration to HttpClient"
+```
+
+**Approval flow**: After the skill starts, Claude Code presents a YES / View Script / NO
+dialog. The skill does NOT auto-approve. Run `claude attach <jobId>` to open the
+approval dialog and select `Yes` to proceed (or `No` to cancel cleanly).
+
+**Token-cost warning**: Workflows can spawn up to 16 concurrent and 1000 total
+subagents. Review the generated script before approving.
+
+Requires Claude Code v2.1.153+.
 
 Each skill prints a usage message when invoked without the arguments
 it needs (e.g., a job id). That usage message is normal behaviour —
@@ -137,10 +156,10 @@ do not block reinstall.
 
 Before release, run the smoke checklist in
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md).
-It verifies the local marketplace install and all 8 skill names
+It verifies the local marketplace install and all 9 skill names
 (`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`,
 `$claude-stop`, `$claude-followup`, `$claude-review`,
-`$claude-adversarial-review`) under an isolated `CODEX_HOME`.
+`$claude-adversarial-review`, `$claude-workflow`) under an isolated `CODEX_HOME`.
 
 ## Troubleshooting
 

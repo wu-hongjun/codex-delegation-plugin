@@ -8,7 +8,7 @@ Key design choice: this v1 uses Claude Code background sessions directly and doe
 
 ## Current v1 scope
 
-Eight skills are available:
+Nine skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
 - **`$claude-delegate`** — start a new background session for a task
@@ -18,6 +18,7 @@ Eight skills are available:
 - **`$claude-followup`** — send a follow-up instruction to an existing Claude background job (added in plan 0002)
 - **`$claude-review`** — send a structured review prompt into the same Claude Code session (added in plan 0003)
 - **`$claude-adversarial-review`** — run a structured review in a fresh independent session (added in plan 0003)
+- **`$claude-workflow`** — trigger a Claude Code dynamic workflow and return a job ID for async result retrieval (added in plan 0008)
 
 Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
 
@@ -113,6 +114,46 @@ Job ID from successful delegation: `job_mpt98g9g_b61e09f1` (shown in output as `
 
 Interactive privacy acknowledgement: on first delegation in a workspace, you will be asked to confirm that delegating may send repository contents, prompts, command output, and Claude Code context to Anthropic. This is interactive by default; you can skip the prompt with `--yes` if you have intentionally pre-approved the policy.
 
+### $claude-workflow
+
+Trigger a Claude Code dynamic workflow. Workflows use Claude Code's built-in workflow engine to plan and execute multi-phase, multi-agent tasks and return a job ID for async result retrieval via `$claude-result` and `$claude-status`.
+
+```bash
+$claude-workflow "audit every fetch() call and propose a migration to HttpClient"
+```
+
+**Requires Claude Code v2.1.153+.** Dynamic workflows were confirmed available on v2.1.153 in the empirical TUI smoke test at `documentation/research/20260604-claude-code-w22-audit/artifacts/workflow-tui-smoke-2-1-153-20260605.txt`.
+
+**Approval flow**: After `$claude-workflow` starts the background session, Claude Code presents an interactive YES / View Script / NO approval dialog inside its own TUI. The skill does NOT auto-approve. To approve, run:
+
+```bash
+claude attach <jobId>
+```
+
+and select `Yes` (or `View raw script`, then `Yes`) in the approval dialog. Selecting `No` cancels the workflow cleanly with no subagents spawned.
+
+**Token-cost warning**: Workflows can spawn up to 16 concurrent and 1000 total subagents. Token usage scales with the complexity of the requested task. Review the generated script before approving.
+
+Accepted flags (forwarded to the delegate path):
+
+- `--model` — model override for the workflow session.
+- `--effort` — effort level.
+- `--permission-mode` — permission mode override.
+- `--add-dir` — additional directory to expose to Claude Code.
+- `--mcp-config` — MCP configuration file path.
+- `--name` — session name override.
+- `--yes` — record the privacy acknowledgement non-interactively (does NOT auto-approve the workflow approval dialog).
+
+Rejected at parse time:
+
+- `--allow-edit` — not accepted by `$claude-workflow`. Workflows request their own permissions interactively at approval time; this flag is not applicable.
+
+Direct dispatcher equivalent:
+
+```bash
+node packages/plugin-codex/scripts/claude-companion.mjs workflow "audit every fetch() call and propose a migration to HttpClient"
+```
+
 ### $claude-status
 
 List all delegated jobs in the current workspace with their live status.
@@ -171,7 +212,7 @@ Optional cleanup. Not required before calling `result`.
 
 ## Direct dispatcher usage
 
-All eight commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All nine commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-codex/scripts/claude-companion.mjs setup
@@ -182,6 +223,7 @@ node packages/plugin-codex/scripts/claude-companion.mjs result <jobId>
 node packages/plugin-codex/scripts/claude-companion.mjs stop <jobId>
 node packages/plugin-codex/scripts/claude-companion.mjs review <jobId>
 node packages/plugin-codex/scripts/claude-companion.mjs adversarial-review <jobId>
+node packages/plugin-codex/scripts/claude-companion.mjs workflow "audit every fetch() call and propose a migration to HttpClient"
 ```
 
 All commands support `--json` for machine-readable output. The `--yes` flag on `delegate` and `followup` skips the interactive privacy acknowledgement; `--allow-edit` is a policy/framing flag and does NOT bypass that acknowledgement.

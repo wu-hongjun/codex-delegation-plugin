@@ -1,8 +1,9 @@
 # Plan 0008 — `$claude-workflow` skill (cc-plugin-codex)
 
-**Status**: `implementing`
+**Status**: `auditing`
 **Started**: 2026-06-05
 **Stage 1 approved**: 2026-06-05
+**Stage 2 complete (pending CI)**: 2026-06-05
 **Last updated**: 2026-06-05
 
 ## Stages
@@ -10,8 +11,8 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-05** — drafted from Plan 0007 follow-up empirical evidence; OQ-A and OQ-B resolved inline; OQ-C deferred to T1 in-stage probe; 8 T-tasks; +10-15 test target |
-| 2 — Implement | `2-implement.md` | **in progress 2026-06-05** — Stage 2 begins; T-tasks dispatching via subagent orchestration |
-| 3 — Audit | `3-audit.md` | not started — requires independent context |
+| 2 — Implement | `2-implement.md` | **complete pending CI 2026-06-05** — T1-T8 done; 1572 tests pass (mock 68 + runtime 172 + driver 187 + plugin 859 + attach 28 + bench 258); marketplace allowlist 19→20 (new `skills/claude-workflow/SKILL.md`); new `$claude-workflow` skill + dispatcher subcommand (Approach A shared helper); workflows-supported probe floor lowered 2.1.154→2.1.153; cost paragraph + plan-0004-pre-cutover + Plan 0005 deferred all preserved |
+| 3 — Audit | `3-audit.md` | not started — requires independent context (will be spawned after Stage 2 CI verification) |
 | 4 — Polish | `4-polish.md` | not started |
 | 5 — Report | `5-report.md` | not started |
 

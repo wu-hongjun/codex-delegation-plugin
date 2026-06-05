@@ -66,6 +66,7 @@ const SKILL_NAMES = [
   'claude-followup',
   'claude-review',
   'claude-adversarial-review',
+  'claude-workflow',
 ];
 
 // ---------- forbidden tokens for END-USER surfaces ----------
@@ -484,5 +485,109 @@ describe('docs polish — Stage 4 audit findings (Plan 0006 Stage 4)', () => {
         'Root README must mark Plan 0006 complete (Stage 5 closed; release tagged from this commit)',
       );
     });
+  });
+});
+
+// ==========================================================================
+// T5: $claude-workflow section present in both README surfaces (Plan 0008)
+// ==========================================================================
+
+describe('$claude-workflow documentation — plugin README (Plan 0008 T5)', () => {
+  it('plugin README contains "### $claude-workflow" heading', () => {
+    const content = readFileSync(PLUGIN_README, 'utf8');
+    assert.ok(
+      content.includes('### $claude-workflow'),
+      'plugin README must contain a "### $claude-workflow" section (Plan 0008 T5)',
+    );
+  });
+
+  it('plugin README $claude-workflow section mentions the approval flow ("claude attach")', () => {
+    const content = readFileSync(PLUGIN_README, 'utf8');
+    const idx = content.indexOf('### $claude-workflow');
+    assert.ok(idx !== -1, 'plugin README must contain a "### $claude-workflow" section');
+    const after = content.slice(idx);
+    const nextH3 = after.indexOf('\n### ', 1);
+    const section = nextH3 !== -1 ? after.slice(0, nextH3) : after;
+    assert.ok(
+      section.includes('claude attach'),
+      'plugin README $claude-workflow section must mention "claude attach" for the approval flow',
+    );
+  });
+
+  it('plugin README $claude-workflow section mentions the version floor (v2.1.153)', () => {
+    const content = readFileSync(PLUGIN_README, 'utf8');
+    const idx = content.indexOf('### $claude-workflow');
+    assert.ok(idx !== -1, 'plugin README must contain a "### $claude-workflow" section');
+    const after = content.slice(idx);
+    const nextH3 = after.indexOf('\n### ', 1);
+    const section = nextH3 !== -1 ? after.slice(0, nextH3) : after;
+    assert.ok(
+      section.includes('2.1.153'),
+      'plugin README $claude-workflow section must cite the v2.1.153 version floor',
+    );
+  });
+
+  it('plugin README Current v1 scope section says "Nine skills"', () => {
+    const content = readFileSync(PLUGIN_README, 'utf8');
+    const match = content.match(/^## Current v1 scope\b[\s\S]*?(?=^## )/m);
+    assert.ok(match, 'plugin README must have a "## Current v1 scope" section');
+    assert.ok(
+      match[0].includes('Nine skills'),
+      'plugin README ## Current v1 scope must say "Nine skills" (updated from Eight skills)',
+    );
+  });
+
+  it('plugin README Direct dispatcher usage section mentions the workflow subcommand', () => {
+    const content = readFileSync(PLUGIN_README, 'utf8');
+    assert.ok(
+      content.includes('claude-companion.mjs workflow'),
+      'plugin README must document "claude-companion.mjs workflow" in the Direct dispatcher usage section',
+    );
+  });
+});
+
+describe('$claude-workflow documentation — marketplace README (Plan 0008 T5)', () => {
+  it('marketplace README Skills section lists $claude-workflow', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    const match = content.match(/^## Skills\b[\s\S]*?(?=^## )/m);
+    assert.ok(match, 'marketplace README must have a "## Skills" section');
+    assert.ok(
+      match[0].includes('$claude-workflow'),
+      'marketplace README Skills section must list $claude-workflow',
+    );
+  });
+
+  it('marketplace README contains "### $claude-workflow" subsection', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes('### $claude-workflow'),
+      'marketplace README must contain a "### $claude-workflow" subsection',
+    );
+  });
+
+  it('marketplace README $claude-workflow subsection mentions approval flow ("claude attach")', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    const idx = content.indexOf('### $claude-workflow');
+    assert.ok(idx !== -1, 'marketplace README must contain a "### $claude-workflow" subsection');
+    const after = content.slice(idx);
+    const nextHeading = after.indexOf('\n## ', 1);
+    const section = nextHeading !== -1 ? after.slice(0, nextHeading) : after;
+    assert.ok(
+      section.includes('claude attach'),
+      'marketplace README $claude-workflow subsection must mention "claude attach" for the approval flow',
+    );
+  });
+
+  it('marketplace README $claude-workflow subsection mentions the version floor (v2.1.153)', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    const idx = content.indexOf('### $claude-workflow');
+    assert.ok(idx !== -1, 'marketplace README must contain a "### $claude-workflow" subsection');
+    const after = content.slice(idx);
+    const nextHeading = after.indexOf('\n## ', 1);
+    const section = nextHeading !== -1 ? after.slice(0, nextHeading) : after;
+    assert.ok(
+      section.includes('2.1.153'),
+      'marketplace README $claude-workflow subsection must cite the v2.1.153 version floor',
+    );
   });
 });

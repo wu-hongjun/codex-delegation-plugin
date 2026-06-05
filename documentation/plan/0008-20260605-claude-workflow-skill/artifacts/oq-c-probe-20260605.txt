@@ -1,0 +1,36 @@
+# Plan 0008 T1 — claude -p "ultracode:..." probe
+
+## Environment
+claude --version: 2.1.153 (Claude Code)
+Date: 2026-06-05
+Cwd at probe time: /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+## Probe input
+ultracode: respond with the literal word OK and stop. one phase only, one agent.
+
+(sent via stdin to: claude -p --output-format json)
+
+## Probe output
+exit=0
+elapsed ≈ 6.8s
+
+### stdout
+{"type":"result","subtype":"success","is_error":false,"api_error_status":null,"duration_ms":5732,"duration_api_ms":5441,"ttft_ms":5523,"num_turns":1,"result":"OK","stop_reason":"end_turn","session_id":"<REDACTED>","total_cost_usd":0.24706875000000003,"usage":{"input_tokens":5,"cache_creation_input_tokens":39503,"cache_read_input_tokens":0,"output_tokens":6,"server_tool_use":{"web_search_requests":0,"web_fetch_requests":0},"service_tier":"standard","cache_creation":{"ephemeral_1h_input_tokens":39503,"ephemeral_5m_input_tokens":0},"inference_geo":"not_available","iterations":[{"input_tokens":5,"output_tokens":6,"cache_read_input_tokens":0,"cache_creation_input_tokens":39503,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":39503},"type":"message"}],"speed":"standard"},"modelUsage":{"claude-opus-4-7[1m]":{"inputTokens":5,"outputTokens":6,"cacheReadInputTokens":0,"cacheCreationInputTokens":39503,"webSearchRequests":0,"costUSD":0.24706875000000003,"contextWindow":1000000,"maxOutputTokens":64000}},"permission_denials":[],"terminal_reason":"completed","fast_mode_state":"off","uuid":"<REDACTED>"}
+
+### stderr
+(empty)
+
+## Interpretation
+**Outcome B — no workflow, normal answer.**
+
+Evidence: `"num_turns":1`, `"result":"OK"`, `"output_tokens":6`. Claude returned the literal word "OK" in a single turn with no workflow planning, no multi-phase structure, and no approval dialog. The `ultracode:` prefix was treated as a plain text prompt prefix; no workflow engine was invoked.
+
+Supporting signals:
+- `fast_mode_state":"off"` — fast/workflow mode was not engaged
+- `"iterations"` array has exactly one entry (single model call, no subagents)
+- No workflow-related keys in the JSON (no `workflow_id`, no `phases`, no `agents`)
+- `output_tokens: 6` — the model literally just output the word "OK" plus stop token
+
+**Conclusion for Plan 0008**: `claude -p "ultracode: ..."` does NOT trigger workflow planning in print mode. The `ultracode:` keyword is a TUI-only trigger. The Plan 0008 design correctly uses `claude --bg` (not `claude -p`) for the `$claude-workflow` skill, which is the right path.
+
+**Backlog implication (per plan §8)**: A future `$claude-workflow --print` mode (non-interactive short workflows via `claude -p`) is NOT viable unless Claude Code adds explicit print-mode workflow support. The backlog item can be closed as "not feasible with current CLI."

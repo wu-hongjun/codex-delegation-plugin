@@ -26,6 +26,7 @@ const SKILL_NAMES = [
   'claude-followup',
   'claude-review',
   'claude-adversarial-review',
+  'claude-workflow',
 ];
 
 /** Subcommand each skill must reference in its body. */
@@ -38,6 +39,7 @@ const SKILL_SUBCOMMANDS = {
   'claude-followup': 'followup',
   'claude-review': 'review',
   'claude-adversarial-review': 'adversarial-review',
+  'claude-workflow': 'workflow',
 };
 
 function skillPath(name) {
@@ -709,26 +711,100 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
     }
   });
 
-  it('has at least 8 entries after T8 additions', () => {
+  it('has at least 9 entries after T4 additions', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.ok(
-      dp.length >= 8,
-      `interface.defaultPrompt must have at least 8 entries after T8; got ${dp.length}`,
+      dp.length >= 9,
+      `interface.defaultPrompt must have at least 9 entries after T4; got ${dp.length}`,
     );
   });
 });
 
-describe('plugin.json.interface.defaultPrompt length is exactly 8 (v0.2.0 contract)', () => {
-  it('array length equals 8', () => {
+describe('plugin.json.interface.defaultPrompt length is exactly 9 (v0.2.0 + claude-workflow contract)', () => {
+  it('array length equals 9', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      8,
-      `interface.defaultPrompt must have exactly 8 entries (v0.2.0 contract); got ${dp.length}`,
+      9,
+      `interface.defaultPrompt must have exactly 9 entries (v0.2.0 + claude-workflow contract); got ${dp.length}`,
+    );
+  });
+});
+
+// ---------- T4: claude-workflow skill guards ----------
+
+describe('claude-workflow skill directory and SKILL.md exist', () => {
+  it('skills/claude-workflow/ directory exists', () => {
+    assert.ok(
+      existsSync(join(PLUGIN_ROOT, 'skills', 'claude-workflow')),
+      'skills/claude-workflow/ directory must exist',
+    );
+  });
+
+  it('skills/claude-workflow/SKILL.md exists', () => {
+    assert.ok(
+      existsSync(skillPath('claude-workflow')),
+      `SKILL.md not found at ${skillPath('claude-workflow')}`,
+    );
+  });
+});
+
+describe('claude-workflow/SKILL.md: run line invokes dispatcher with "workflow" subcommand', () => {
+  it('body contains "claude-companion.mjs" and "workflow"', () => {
+    const body = readFileSync(skillPath('claude-workflow'), 'utf8');
+    assert.ok(
+      body.includes('claude-companion.mjs'),
+      'claude-workflow/SKILL.md must reference scripts/claude-companion.mjs',
+    );
+    assert.ok(
+      body.includes('workflow'),
+      'claude-workflow/SKILL.md must reference the "workflow" subcommand',
+    );
+  });
+});
+
+describe('claude-workflow/SKILL.md: --yes auto-injection guard', () => {
+  it('no dispatcher run line for "workflow" subcommand contains " --yes"', () => {
+    const body = readFileSync(skillPath('claude-workflow'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('claude-companion.mjs') && line.includes('workflow'))
+      .filter((line) => line.includes(' --yes'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-workflow/SKILL.md auto-injects "--yes" on a dispatcher run line, violating privacy-ack contract:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('claude-workflow/SKILL.md: --allow-edit is not referenced in run lines', () => {
+  it('no dispatcher run line contains "--allow-edit"', () => {
+    const body = readFileSync(skillPath('claude-workflow'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('claude-companion.mjs'))
+      .filter((line) => line.includes('--allow-edit'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-workflow/SKILL.md references "--allow-edit" on a dispatcher run line, which is not applicable:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('plugin.json interface.defaultPrompt contains workflow entry', () => {
+  it('includes "Run a Claude Code dynamic workflow."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('Run a Claude Code dynamic workflow.'),
+      `interface.defaultPrompt must contain "Run a Claude Code dynamic workflow."; got: ${JSON.stringify(dp)}`,
     );
   });
 });

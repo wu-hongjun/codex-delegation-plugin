@@ -44,6 +44,7 @@ import { makePromptMeta } from './lib/prompt-meta.mjs';
 import { SAME_SESSION_REVIEW_PROMPT, ADVERSARIAL_REVIEW_PROMPT } from './lib/review-prompts.mjs';
 import { parseReviewOutput } from './lib/review-parser.mjs';
 import { readTurnFinalMessageOrFallback } from './lib/review-result-source.mjs';
+import { parseClaudeVersion, meetsFloor } from './lib/claude-version.mjs';
 
 // ---------- main ----------
 
@@ -103,7 +104,138 @@ async function cmdSetup(_flags, json) {
   // Inject the driver-owned pty-build probe so the unified setup report covers both
   // Plan 0001 (delegate) and Plan 0002 (follow-up) capability groups. The runtime
   // never imports node-pty directly — the driver supplies the probe via DI.
-  const report = await runDoctor({ extraProbes: [ptyBuildExtraProbe] });
+  //
+  // Plan 0007 T3: also inject three version-floor probes that report feature availability
+  // based on the locally installed Claude Code version. All three use floor 2.1.154.
+  // They are informational only (capabilities: []) and never report 'fail'.
+  const VERSION_FLOOR = '2.1.154';
+
+  /** @type {import('@cc-plugin-codex/runtime').DoctorExtraProbe} */
+  const opus48Probe = {
+    name: 'opus-4-8-supported',
+    capabilities: [],
+    run: async (opts) => {
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execFileAsync = promisify(execFile);
+      let stdout = '';
+      try {
+        const r = await execFileAsync('claude', ['--version'], {
+          env: opts.env ?? process.env,
+          timeout: 5000,
+        });
+        stdout = r.stdout.trim();
+      } catch {
+        stdout = '';
+      }
+      const version = parseClaudeVersion(stdout);
+      if (version === null) {
+        return {
+          name: 'opus-4-8-supported',
+          status: 'warn',
+          detail: 'unparseable version',
+        };
+      }
+      if (meetsFloor(version, VERSION_FLOOR)) {
+        return {
+          name: 'opus-4-8-supported',
+          status: 'ok',
+          detail: 'Opus 4.8 supported (--model claude-opus-4-8 available)',
+        };
+      }
+      return {
+        name: 'opus-4-8-supported',
+        status: 'warn',
+        detail: `Opus 4.8 requires Claude Code >= ${VERSION_FLOOR} (current ${stdout})`,
+      };
+    },
+  };
+
+  /** @type {import('@cc-plugin-codex/runtime').DoctorExtraProbe} */
+  const workflowsProbe = {
+    name: 'workflows-supported',
+    capabilities: [],
+    run: async (opts) => {
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execFileAsync = promisify(execFile);
+      let stdout = '';
+      try {
+        const r = await execFileAsync('claude', ['--version'], {
+          env: opts.env ?? process.env,
+          timeout: 5000,
+        });
+        stdout = r.stdout.trim();
+      } catch {
+        stdout = '';
+      }
+      const version = parseClaudeVersion(stdout);
+      if (version === null) {
+        return {
+          name: 'workflows-supported',
+          status: 'warn',
+          detail: 'unparseable version',
+        };
+      }
+      if (meetsFloor(version, VERSION_FLOOR)) {
+        return {
+          name: 'workflows-supported',
+          status: 'ok',
+          detail: 'Dynamic workflows available via /workflows',
+        };
+      }
+      return {
+        name: 'workflows-supported',
+        status: 'warn',
+        detail: `Dynamic workflows require Claude Code >= ${VERSION_FLOOR} (current ${stdout})`,
+      };
+    },
+  };
+
+  /** @type {import('@cc-plugin-codex/runtime').DoctorExtraProbe} */
+  const bgExecProbe = {
+    name: 'bg-exec-supported',
+    capabilities: [],
+    run: async (opts) => {
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execFileAsync = promisify(execFile);
+      let stdout = '';
+      try {
+        const r = await execFileAsync('claude', ['--version'], {
+          env: opts.env ?? process.env,
+          timeout: 5000,
+        });
+        stdout = r.stdout.trim();
+      } catch {
+        stdout = '';
+      }
+      const version = parseClaudeVersion(stdout);
+      if (version === null) {
+        return {
+          name: 'bg-exec-supported',
+          status: 'warn',
+          detail: 'unparseable version',
+        };
+      }
+      if (meetsFloor(version, VERSION_FLOOR)) {
+        return {
+          name: 'bg-exec-supported',
+          status: 'ok',
+          detail: 'claude --bg --exec available',
+        };
+      }
+      return {
+        name: 'bg-exec-supported',
+        status: 'warn',
+        detail: `claude --bg --exec requires Claude Code >= ${VERSION_FLOOR} (current ${stdout}); --exec is silently dropped on older versions`,
+      };
+    },
+  };
+
+  const report = await runDoctor({
+    extraProbes: [ptyBuildExtraProbe, opus48Probe, workflowsProbe, bgExecProbe],
+  });
   process.stdout.write(formatSetup(report, json) + '\n');
   if (report.status === 'fail') {
     process.exit(1);

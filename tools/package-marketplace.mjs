@@ -52,6 +52,7 @@ const DERIVED_FILES = [
   'scripts/lib/ack.mjs',
   'scripts/lib/adapter.mjs',
   'scripts/lib/args.mjs',
+  'scripts/lib/claude-version.mjs',
   'scripts/lib/format.mjs',
   'scripts/lib/prompt-meta.mjs',
   'scripts/lib/review-parser.mjs',

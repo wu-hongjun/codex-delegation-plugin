@@ -193,6 +193,10 @@ will need to re-run `node tools/package-marketplace.mjs --write` and
 re-publish the marketplace tree (see
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md)).
 
+### `$claude-result` reads raw transcript, not the display layer
+
+`$claude-result` reads the session JSONL directly, not the text shown in the Claude Code TUI. If you have a `MessageDisplay` hook installed in Claude Code (v2.1.152+) that redacts assistant output, `$claude-result` will still return the un-redacted content. This is by design.
+
 ## Upgrade
 
 Codex 0.136.0 does not expose an in-place `codex plugin upgrade` or

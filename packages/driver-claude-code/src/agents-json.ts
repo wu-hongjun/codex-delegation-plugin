@@ -44,11 +44,23 @@ export interface AgentsJsonParseResult {
 
 // STATUS_MAP: maps real Claude status strings → normalized SessionStatusValue.
 // Real Claude 2.1.149 values observed: idle, busy, waiting.
+// Real Claude 2.1.153 values observed: waiting (maps to needs_input).
+// Real Claude 2.1.161+ values observed: working (maps to working).
 // Note: driver-level 'idle' is intentionally kept as-is; the T9 reconciler maps
 // driver-idle → job-running at the reconciler layer — do not change it here.
 const STATUS_MAP: Array<[readonly string[], SessionStatusValue]> = [
   [['working', 'running', 'active', 'in_progress', 'in-progress', 'busy'], 'working'],
-  [['needs_input', 'needs-input', 'waiting_for_input', 'blocked', 'waiting'], 'needs_input'],
+  [
+    [
+      'needs_input',
+      'needs-input',
+      'waiting_for_input',
+      'blocked',
+      'waiting',
+      'awaiting_followup', // internal job status; if ever emitted by claude agents --json, treat as needs_input
+    ],
+    'needs_input',
+  ],
   [['idle', 'ready'], 'idle'],
   [['completed', 'complete', 'done', 'finished'], 'completed'],
   [['failed', 'error', 'errored'], 'failed'],

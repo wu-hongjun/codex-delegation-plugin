@@ -1,8 +1,9 @@
 # Plan 0007 — Claude Code w22+ parity (docs + doctor probe)
 
-**Status**: `implementing`
+**Status**: `auditing`
 **Started**: 2026-06-05
 **Stage 1 approved**: 2026-06-05
+**Stage 2 complete (pending CI)**: 2026-06-05
 **Last updated**: 2026-06-05
 
 ## Stages
@@ -10,8 +11,8 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-05** — promoted from `documentation/research/20260604-claude-code-w22-audit/plan-0007-candidate.md`; OQ-A resolved via direct changelog read (v2.1.154 = workflows/Opus4.8/`--bg --exec`; v2.1.152 = `disallowed-tools`/`MessageDisplay`/`reloadSkills`; v2.1.133 = `--fallback-model`; v2.1.161 = `working` status; v2.1.162 = `waitingFor` field); OQ-B/C/D all resolved; 6 T-tasks; +14-18 test target |
-| 2 — Implement | `2-implement.md` | **in progress 2026-06-05** — T1-T4 dispatching in parallel via executor subagents |
-| 3 — Audit | `3-audit.md` | not started — requires independent context |
+| 2 — Implement | `2-implement.md` | **complete pending CI 2026-06-05** — T1-T6 done; local gates green; 1527 tests pass (mock 68 + runtime 172 + driver 183 + plugin 818 + attach 28 + bench 258); marketplace allowlist 18→19 (new `scripts/lib/claude-version.mjs`); 3 new doctor probes (`opus-4-8-supported`, `workflows-supported`, `bg-exec-supported`) all `warn` on local v2.1.153; cost paragraph + plan-0004-pre-cutover tag + Plan 0005 deferred all preserved |
+| 3 — Audit | `3-audit.md` | not started — requires independent context (will be spawned after Stage 2 CI verification) |
 | 4 — Polish | `4-polish.md` | not started |
 | 5 — Report | `5-report.md` | not started |
 

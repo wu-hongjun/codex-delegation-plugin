@@ -396,13 +396,14 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
 const MANIFEST_MD = resolve(MARKETPLACE_ROOT, 'MANIFEST.md');
 const PACKAGE_SCRIPT = resolve(REPO_ROOT, 'tools', 'package-marketplace.mjs');
 
-// Authoritative allowlist of the 18 derived files (relative to marketplace plugin root).
+// Authoritative allowlist of the 19 derived files (relative to marketplace plugin root).
 const DERIVED_FILES_ALLOWLIST = [
   '.codex-plugin/plugin.json',
   'scripts/claude-companion.mjs',
   'scripts/lib/ack.mjs',
   'scripts/lib/adapter.mjs',
   'scripts/lib/args.mjs',
+  'scripts/lib/claude-version.mjs',
   'scripts/lib/format.mjs',
   'scripts/lib/prompt-meta.mjs',
   'scripts/lib/review-parser.mjs',
@@ -537,10 +538,10 @@ describe('marketplace packaging procedure (Plan 0006 T4)', () => {
   });
 
   // ========================================================================
-  // T4-4: Source <-> marketplace byte-identity for all 18 derived files
+  // T4-4: Source <-> marketplace byte-identity for all 19 derived files
   // ========================================================================
 
-  it('all 18 derived files are byte-identical between source and marketplace', () => {
+  it('all 19 derived files are byte-identical between source and marketplace', () => {
     for (const rel of DERIVED_FILES_ALLOWLIST) {
       const srcPath = resolve(SOURCE_PLUGIN_ROOT, rel);
       const dstPath = resolve(MARKETPLACE_PLUGIN_ROOT, rel);

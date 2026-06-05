@@ -504,6 +504,18 @@ If a review returns a single `nit` finding whose description contains raw text, 
 - Run `$claude-followup` outside the multiplexer (e.g., in a plain terminal or a sub-shell that is not inside `tmux`/`screen`).
 - Configure the multiplexer to use a different escape key so that `Ctrl+Z` is forwarded to the child. For `tmux`, this is done by changing `prefix` in `~/.tmux.conf`. For GNU `screen`, set `escape` in `~/.screenrc`.
 
+### `--model` interaction with `--fallback-model`
+
+When `$claude-adversarial-review --model X` runs and model `X` is not installed in your Claude Code setup, Claude Code's `--fallback-model` setting (if configured) will silently take over for the rest of that session. The review will proceed on the fallback model without any warning in the skill output.
+
+To verify which model was actually used, run `$claude-result --json` after the review completes. The JSON output surfaces the `model` field from the session transcript, so you can confirm whether the intended model or a fallback handled the review.
+
+### `$claude-result` reads raw transcript, not the display layer
+
+`$claude-result` reads the session JSONL file and the sidecar at `~/.claude/jobs/<shortId>/state.json`. It does not read the text displayed in the Claude Code TUI.
+
+If you have a Claude Code `MessageDisplay` hook installed (available in Claude Code v2.1.152+) that redacts or transforms assistant output before display, `$claude-result` will still return the un-redacted content — the hook does not affect what is written to the session JSONL. This is not a bug; by design, the dispatcher reads from canonical storage rather than the display layer.
+
 ## Development
 
 ### Install dependencies

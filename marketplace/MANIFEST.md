@@ -6,13 +6,14 @@
 
 ## Plugin-tree files (sourced from `packages/plugin-codex/`)
 
-The following 18 files are copied byte-for-byte from `packages/plugin-codex/` into `marketplace/plugins/claude-companion/`:
+The following 19 files are copied byte-for-byte from `packages/plugin-codex/` into `marketplace/plugins/claude-companion/`:
 
 - `.codex-plugin/plugin.json`
 - `scripts/claude-companion.mjs`
 - `scripts/lib/ack.mjs`
 - `scripts/lib/adapter.mjs`
 - `scripts/lib/args.mjs`
+- `scripts/lib/claude-version.mjs`
 - `scripts/lib/format.mjs`
 - `scripts/lib/prompt-meta.mjs`
 - `scripts/lib/review-parser.mjs`

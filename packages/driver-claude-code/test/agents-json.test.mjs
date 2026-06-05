@@ -518,3 +518,63 @@ describe('findSessionStatus — matches by derived shortId (real-2.1.149 entries
     assert.equal(status.value, 'orphaned', 'should return orphaned, not match by cwd alone');
   });
 });
+
+// -----------------------------------------------------------------------
+// T2 — Status enum re-mapping (v2.1.161+ "working", v2.1.153 "waiting",
+//       "awaiting_followup" alias, and unknown-sentinel tests)
+// -----------------------------------------------------------------------
+
+describe('T2 status enum — "working" (v2.1.161+) is treated as active', () => {
+  it('maps raw status "working" to SessionStatusValue "working"', () => {
+    const { sessions } = parseAgentsJson(JSON.stringify([makeRealEntry({ status: 'working' })]));
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].value, 'working');
+  });
+});
+
+describe('T2 status enum — "waiting" (observed v2.1.153) is treated as needs_input', () => {
+  it('maps raw status "waiting" to SessionStatusValue "needs_input"', () => {
+    const { sessions } = parseAgentsJson(JSON.stringify([makeRealEntry({ status: 'waiting' })]));
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].value, 'needs_input');
+  });
+});
+
+describe('T2 status enum — "awaiting_followup" alias is treated as needs_input', () => {
+  it('maps raw status "awaiting_followup" to SessionStatusValue "needs_input"', () => {
+    const { sessions } = parseAgentsJson(
+      JSON.stringify([makeRealEntry({ status: 'awaiting_followup' })]),
+    );
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].value, 'needs_input');
+  });
+});
+
+describe('T2 status enum — unknown status maps to sentinel "unknown" without throwing', () => {
+  it('maps raw status "galaxy-brain" to SessionStatusValue "unknown" and does not throw', () => {
+    let sessions;
+    assert.doesNotThrow(() => {
+      ({ sessions } = parseAgentsJson(JSON.stringify([makeRealEntry({ status: 'galaxy-brain' })])));
+    });
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].value, 'unknown');
+  });
+});
+
+describe('T2 status enum — regression: all previously supported statuses still parse', () => {
+  const regressionCases = [
+    ['idle', 'idle'],
+    ['running', 'working'],
+    ['completed', 'completed'],
+    ['failed', 'failed'],
+    ['stopped', 'stopped'],
+  ];
+
+  for (const [input, expected] of regressionCases) {
+    it(`status "${input}" still maps to "${expected}"`, () => {
+      const { sessions } = parseAgentsJson(JSON.stringify([makeRealEntry({ status: input })]));
+      assert.equal(sessions.length, 1);
+      assert.equal(sessions[0].value, expected);
+    });
+  }
+});

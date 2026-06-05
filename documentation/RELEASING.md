@@ -161,7 +161,7 @@ node tools/package-marketplace.mjs --check
 
 `--check` enforces:
 
-- Source ↔ marketplace byte-identity for all 18 derived files
+- Source ↔ marketplace byte-identity for all 19 derived files
   (`marketplace/MANIFEST.md` allowlist).
 - No excluded categories appear under
   `marketplace/plugins/claude-companion/` (`marketplace/EXCLUSIONS.md`
@@ -172,7 +172,7 @@ node tools/package-marketplace.mjs --check
   `marketplace/.agents/plugins/marketplace.json` parses and has the
   expected `name`.
 
-Expected output: `check: OK — 18 derived files match source, 64
+Expected output: `check: OK — 19 derived files match source, 64
 bundled-dep files match source, 3 synthesized package.json files
 match canonical shape, 1 marketplace-owned files present, no
 unexpected files.`

@@ -1,9 +1,12 @@
 # Plan 0009 — Codex-UX polish (docs + skill frontmatter)
 
-**Status**: `auditing`
+**Status**: `complete`
 **Started**: 2026-06-05
 **Stage 1 approved**: 2026-06-05
-**Stage 2 complete (pending CI)**: 2026-06-05
+**Stage 2 complete**: 2026-06-05 (CI run `27032649329` success)
+**Stage 3 complete**: 2026-06-05 (verdict `ready-for-report`; ZERO findings)
+**Stage 4**: SKIPPED — audit verdict allowed direct progression to Stage 5
+**Stage 5 complete / Completed**: 2026-06-05
 **Last updated**: 2026-06-05
 
 ## Stages
@@ -11,10 +14,10 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-05** — drafted from a Codex-UX audit run via two parallel `oh-my-claudecode:code-reviewer` agents; OQ-A through OQ-E all resolved inline; 8 T-tasks; +15-20 test target |
-| 2 — Implement | `2-implement.md` | **complete pending CI 2026-06-05** — T1-T8 done; 1614 tests pass (mock 68 + runtime 172 + driver 187 + plugin 901 + attach 28 + bench 258); 25 files edited (9 SKILL.md + plugin.json + 2 READMEs + 3 test files + 9 derived marketplace files + RELEASING.md untouched); marketplace allowlist unchanged at 20 derived files; cost paragraph + plan-0004-pre-cutover + Plan 0005 deferred all preserved |
-| 3 — Audit | `3-audit.md` | not started — requires independent context (will be spawned after Stage 2 CI verification) |
-| 4 — Polish | `4-polish.md` | not started |
-| 5 — Report | `5-report.md` | not started |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-05** — T1-T8 done; 1614 tests pass; 25 files edited; CI run `27032649329` `success` on all 4 matrix legs |
+| 3 — Audit | `3-audit.md` | **complete 2026-06-05** — verdict `ready-for-report`; ZERO findings at any severity (first clean audit in this session); auditor `oh-my-claudecode:critic` (Opus, fresh-context) |
+| 4 — Polish | `4-polish.md` | **SKIPPED** — Stage 3 verdict was `ready-for-report` (no polish required) |
+| 5 — Report | `5-report.md` | **complete 2026-06-05** — final report; plan status flipped `auditing → reporting → complete` in one commit since Stage 4 skipped; no release tag created (plugin version unchanged at `0.2.0`) |
 
 ## Summary
 

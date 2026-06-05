@@ -1,0 +1,368 @@
+workflow-tui-smoke-20260605.txt
+Generated: 2026-06-05
+Purpose: One-shot empirical smoke test of Claude Code /workflows (dynamic workflows) feature
+Tester: QA agent (claude-sonnet-4-6)
+Repo: /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+================================================================================
+==> STEP 1: Create throwaway work directory
+================================================================================
++ WORK=$(mktemp -d /tmp/cc-workflow-smoke.XXXXXX) && echo $'line 1\nline 2\nline 3\n' > $WORK/README.md
+
+WORK=/tmp/cc-workflow-smoke.2uoW8q
+README.md contents:
+  line 1
+  line 2
+  line 3
+
+exit=0
+
+================================================================================
+==> STEP 2a: claude --version
+================================================================================
++ claude --version
+
+2.1.152 (Claude Code)
+exit=0
+
+NOTE: Version is 2.1.152. The /workflows dynamic-workflows feature was introduced
+in 2.1.154 per Plan 0006 smoke notes. This version may predate workflow support.
+
+================================================================================
+==> STEP 2b: Pre-state ~/.claude/projects/ listing
+================================================================================
++ ls -la ~/.claude/projects/ 2>/dev/null | head -20
+
+total 0
+drwx------@  31 hongjunwu  staff   992 Jun  4 10:37 -Users-hongjunwu
+drwxr-xr-x@   4 hongjunwu  staff   128 Jun  1 13:04 -Users-hongjunwu-Repositories-Git-DoubleBlack
+drwxr-xr-x@   3 hongjunwu  staff    96 May 22 17:26 -Users-hongjunwu-Repositories-Git-InstantBridge
+drwx------@   8 hongjunwu  staff   256 May 30 10:20 -Users-hongjunwu-Repositories-Git-InstantLink
+drwx------@   6 hongjunwu  staff   192 Mar 29 12:01 -Users-hongjunwu-Repositories-Git-OpenFilmAdvance
+drwxr-xr-x@  57 hongjunwu  staff  1824 Jun  4 12:56 -Users-hongjunwu-Repositories-Git-PredictionVogue
+drwx------@   3 hongjunwu  staff    96 May 28 18:41 -Users-hongjunwu-Repositories-Git-Whiteout
+drwx------@  45 hongjunwu  staff  1440 May 22 17:26 -Users-hongjunwu-Repositories-Git-beamsh
+drwx------@  11 hongjunwu  staff   352 Jun  2 22:11 -Users-hongjunwu-Repositories-Git-cc-plugin-codex
+drwxr-xr-x@   3 hongjunwu  staff    96 Mar 23 13:01 -Users-hongjunwu-Repositories-Git-lunar-ui
+drwxr-xr-x@   3 hongjunwu  staff    96 Apr 29 14:45 -Users-hongjunwu-Repositories-Git-magic-sensor
+drwx------@   4 hongjunwu  staff   128 Feb 21 20:19 -Users-hongjunwu-Repositories-Git-resume-hongjunwu-com
+drwx------@  48 hongjunwu  staff  1536 May 27 17:14 -Users-hongjunwu-Repositories-Git-riverps-accounts
+drwx------@  31 hongjunwu  staff   992 Jun  1 11:48 -Users-hongjunwu-Repositories-Git-riverps-terminal
+drwxr-xr-x@   3 hongjunwu  staff    96 May 22 17:26 -Users-hongjunwu-Repositories-Git-riverps-terminus
+drwxr-xr-x@   9 hongjunwu  staff   288 May 27 17:24 -Users-hongjunwu-Repositories-Git-riverps-trade
+drwxr-xr-x@   4 hongjunwu  staff   128 May  1 22:57 -Users-hongjunwu-Repositories-Git-riverps-vitae
+drwxr-xr-x@   4 hongjunwu  staff   128 Jun  1 11:48 -private-tmp-cc-plugin-codex-e2e-T1UTOe
+drwxr-xr-x@   5 hongjunwu  staff   160 Jun  1 13:04 -private-tmp-cc-plugin-codex-plan0002-e2e-MgCCEY
+exit=0
+
+================================================================================
+==> STEP 2c: Pre-existing workflows directories
+================================================================================
++ find ~/.claude/projects -name 'workflows' -type d 2>/dev/null | head -5
+
+(no output — no pre-existing workflows directories found)
+exit=0
+
+================================================================================
+==> STEP 3: Start tmux session running claude from $WORK
+================================================================================
++ tmux new-session -d -s qa-claude-wf-smoke-1780664557 -x 220 -y 50
++ tmux send-keys -t qa-claude-wf-smoke-1780664557 "cd /tmp/cc-workflow-smoke.2uoW8q && claude" Enter
+
+Session name: qa-claude-wf-smoke-1780664557
+Session started.
+
+Trust dialog appeared immediately:
+
+  ╭─── Claude Code v2.1.152 ───╮
+  │                            │
+  │  Accessing workspace:      │
+  │  /private/tmp/cc-workflow-smoke.2uoW8q │
+  │                            │
+  │  Quick safety check: Is this a project you created... │
+  │                            │
+  │  ❯ 1. Yes, I trust this folder │
+  │    2. No, exit             │
+  │                            │
+  │  Enter to confirm · Esc to cancel │
+  ╰────────────────────────────╯
+
+Pressed Enter to confirm trust.
+
+TUI ready state (after trust confirmation):
+
+  ╭─── Claude Code v2.1.152 ───────────────────────────────────────╮
+  │  Welcome back Bullpen!   │ Tips for getting started             │
+  │  Opus 4.7 (1M context)   │ Bug fixes and reliability improvements│
+  │  dev@<redacted>'s Org    │ Added /plugin list command...        │
+  │  /private/tmp/cc-workflow-smoke.2uoW8q                         │
+  ╰────────────────────────────────────────────────────────────────╯
+  ❯
+  [OMC#4.9.3] | ...
+  ← for agents                                      ◉ xhigh · /effort
+
+exit=0
+
+================================================================================
+==> STEP 4: Send workflow creation prompt
+================================================================================
++ tmux send-keys -t qa-claude-wf-smoke-1780664557 \
+  "create a tiny workflow that counts the lines in README.md. only one phase, only one agent." Enter
+
+NOTE: First Enter attempt sent prompt text to input box but model did not start
+processing. A second Enter was required to submit. This appears to be a timing
+issue with send-keys before the TUI fully settled.
+
+exit=0
+
+================================================================================
+==> STEP 5: Observe TUI response - WORKFLOW RUNTIME vs REGULAR REPLY
+================================================================================
+
+After second Enter, model began processing:
+
+  ⏺ Listing 1 directory… (ctrl+o to expand)
+    ⎿  $ ls /private/tmp/cc-workflow-smoke.2uoW8q/
+  ✶ Gallivanting… (4s · ↓ 160 tokens · thought for 1s)
+
+Model completed (22s total). Final response screen:
+
+  ❯ create a tiny workflow that counts the lines in README.md. only one phase, only one agent.
+
+    Read 1 file, listed 1 directory (ctrl+o to expand)
+
+  ⏺ Write(workflow.yaml)
+  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+   Create file
+   workflow.yaml
+  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+    1 name: count-readme-lines
+    2 description: Count the number of lines in README.md
+    3
+    4 phases:
+    5   - name: count
+    6     agent: line-counter
+    7     steps:
+    8       - run: wc -l README.md
+  ╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+   Do you want to create workflow.yaml?
+   ❯ 1. Yes
+     2. Yes, allow all edits during this session (shift+tab)
+     3. No
+
+   Esc to cancel · Tab to amend
+
+OBSERVATION: No "Dynamic workflow requested" indicator appeared. No workflow
+runtime UI. The model interpreted "create a workflow" as a request to author
+a YAML file, not to invoke the /workflows runtime. Claude wrote a static YAML
+file describing a hypothetical workflow schema.
+
+Pressed "1" to allow file creation (to capture the actual output).
+
+After file creation:
+
+  ⏺ Write(workflow.yaml)
+    ⎿  Wrote 8 lines to workflow.yaml
+        1 name: count-readme-lines
+        2 description: Count the number of lines in README.md
+        3
+        4 phases:
+        5   - name: count
+        6     agent: line-counter
+        7     steps:
+        8       - run: wc -l README.md
+
+  ⏺ Created workflow.yaml with one phase (count) and one agent (line-counter)
+    that runs wc -l README.md. Verified: README.md has 4 lines.
+
+  ✻ Sautéed for 22s
+
+exit=0
+
+================================================================================
+==> STEP 6: Issue /workflows slash command
+================================================================================
++ tmux send-keys -t qa-claude-wf-smoke-1780664557 "/workflows" Enter
+
+TUI response:
+
+  ⏺ Unknown command: /workflows
+
+exit=0
+
+OBSERVATION: /workflows is NOT a recognized slash command in Claude Code v2.1.152.
+The command returned "Unknown command: /workflows" immediately with no UI panel.
+
+================================================================================
+==> STEP 7: Save script option (/workflows TUI keybindings)
+================================================================================
+
+Not applicable — /workflows command does not exist in v2.1.152.
+No workflow TUI panel appeared; no keybindings were shown.
+No "save script" option was available.
+
+================================================================================
+==> STEP 8: Exit claude cleanly
+================================================================================
++ tmux send-keys -t qa-claude-wf-smoke-1780664557 "/quit" Enter
+
+/quit succeeded. Claude exited cleanly. Footer showed resume command:
+
+  Resume this session with:
+  claude --resume 8f54f4ba-170e-4192-9a22-98e576054b6b
+
+exit=0
+
+================================================================================
+==> STEP 9: claude --bg --exec sanity probe
+================================================================================
++ claude --bg --exec 'echo hello-from-exec'
+
+Output:
+  backgrounded · 86358868 (idle — send a prompt to start)
+    claude agents             list sessions
+    claude attach 86358868    open in this terminal
+    claude logs 86358868      show recent output
+    claude stop 86358868      stop this session
+exit=0
+
++ claude --exec 'echo hello-from-exec' (without --bg)
+
+Output:
+  error: unknown option '--exec'
+exit=0
+
++ claude --help | grep -iE "exec|bg|background|workflow"
+
+Output:
+  --bare  Minimal mode: skip hooks, LSP, plugin sync...
+  agents [options]  Manage background agents
+  (no --exec flag documented)
+
+OBSERVATION: --bg flag is recognized and creates an idle background session.
+--exec flag is NOT recognized ("unknown option '--exec'"). The --bg --exec
+combination silently ignores --exec and creates an idle session rather than
+erroring. The background session (id 86358868) was stopped with claude stop 86358868.
+
+================================================================================
+==> STEP 10: Post-state snapshot
+================================================================================
+
+New files under ~/.claude/projects since README.md creation:
+
+  ~/.claude/projects/-private-tmp-cc-workflow-smoke-2uoW8q/
+    8f54f4ba-170e-4192-9a22-98e576054b6b.jsonl   (57222 bytes, 59 lines)
+    memory/   (empty)
+
+Directory sanitization: /private/tmp/cc-workflow-smoke.2uoW8q
+  → -private-tmp-cc-workflow-smoke-2uoW8q
+  (leading slash stripped, all / replaced with -)
+
+Session JSONL head (first records):
+  {"type":"last-prompt","leafUuid":"ad29d09b-...","sessionId":"8f54f4ba-..."}
+  {"type":"mode","mode":"normal","sessionId":"8f54f4ba-..."}
+  {"type":"permission-mode","permissionMode":"default","sessionId":"8f54f4ba-..."}
+  (followed by hook_success records from SessionStart)
+
+.omc sidecar (written by oh-my-claudecode plugin, NOT Claude Code core):
+  /tmp/cc-workflow-smoke.2uoW8q/.omc/sessions/8f54f4ba-170e-4192-9a22-98e576054b6b.json
+  Contents:
+  {
+    "session_id": "8f54f4ba-170e-4192-9a22-98e576054b6b",
+    "ended_at": "2026-06-05T13:07:43.211Z",
+    "reason": "prompt_input_exit",
+    "agents_spawned": 0,
+    "agents_completed": 0,
+    "modes_used": []
+  }
+
+No workflows/ directories found anywhere under ~/.claude/projects.
+No *workflow* named files under ~/.claude/projects.
+
+workflow.yaml (written to $WORK by the model):
+  Path: /tmp/cc-workflow-smoke.2uoW8q/workflow.yaml
+  Type: ASCII text
+  Lines: 8
+  Contents:
+    name: count-readme-lines
+    description: Count the number of lines in README.md
+
+    phases:
+      - name: count
+        agent: line-counter
+        steps:
+          - run: wc -l README.md
+
+================================================================================
+==> STEP 11: Cleanup
+================================================================================
++ rm -rf /tmp/cc-workflow-smoke.2uoW8q
++ tmux kill-session -t qa-claude-wf-smoke-1780664557
+
+Work dir removed: YES
+tmux session killed: YES
+Background bg session (86358868) stopped: YES
+
+================================================================================
+## FINDINGS
+================================================================================
+
+F1. Did `claude` recognize the prompt as a workflow-shaped request?
+    NO. There was no "Dynamic workflow requested" indicator and no workflow
+    runtime UI. The model (Opus 4.7) interpreted "create a tiny workflow" as
+    a plain authoring task: it wrote a YAML file describing a workflow schema.
+    This is a regular model response, not the dynamic workflows runtime.
+    The /workflows slash command returned "Unknown command: /workflows",
+    confirming the feature is absent from v2.1.152.
+
+F2. What specific file path did the workflow script get written to?
+    The model wrote a plain YAML file to:
+      /private/tmp/cc-workflow-smoke.2uoW8q/workflow.yaml
+    This is NOT a workflow script in the sense of a /workflows runtime artifact.
+    It is a user-space file written by the model as a tool call (Write tool).
+    No script was placed under ~/.claude/ or any workflows/ subdirectory.
+
+F3. What file extension and shape?
+    .yaml (YAML), 8 lines. Schema appears to be a custom/invented format
+    (name, description, phases[].name/agent/steps[].run). This is NOT the
+    Claude Code dynamic workflows runtime format — it is model-hallucinated
+    YAML with no connection to any runtime system.
+
+F4. Is there any sidecar-style state file under ~/.claude/ tied to the workflow?
+    NO workflow-specific sidecar. The only new file under ~/.claude/projects
+    for this session is the standard session transcript JSONL:
+      ~/.claude/projects/-private-tmp-cc-workflow-smoke-2uoW8q/8f54f4ba-170e-4192-9a22-98e576054b6b.jsonl
+    There are no jobs/, workflows/, or state.json files resembling a workflow
+    execution record. The .omc/sessions/ sidecar in the work dir is from the
+    oh-my-claudecode plugin (not Claude Code core) and records session metadata
+    only (agents_spawned: 0).
+
+F5. Does `claude --bg --exec 'echo hello-from-exec'` work?
+    PARTIAL / NO. --bg is recognized (exit=0, creates an idle bg session).
+    --exec is NOT recognized as a standalone flag ("error: unknown option '--exec'",
+    exit=0 from error handler). When combined as --bg --exec, the --exec flag
+    is silently dropped and an idle background session is created (no exec behavior).
+    The v2.1.154 --exec feature is NOT present in v2.1.152.
+
+F6. List every keybinding the /workflows TUI showed on-screen.
+    NONE — the /workflows command does not exist in v2.1.152. The TUI returned
+    "Unknown command: /workflows" and showed no panel, footer, or keybinding list.
+
+================================================================================
+## IMPLICATIONS FOR CC-PLUGIN-CODEX
+================================================================================
+
+The dynamic workflows feature (/workflows, v2.1.154+) is NOT present on this
+machine (v2.1.152). Consequently:
+
+1. The Codex plugin CANNOT wrap workflows today without a version upgrade.
+2. The /workflows slash command is absent — no TUI panel, no keybindings,
+   no save-script flow to wrap.
+3. The --exec flag (also v2.1.154+) is absent — background execution of workflow
+   scripts is unavailable.
+4. The model will happily author workflow-shaped YAML files on request, but these
+   have no connection to a runtime — they are inert documents.
+5. Upgrade path: `brew upgrade claude-code` (the TUI itself advertises this update).
+   After upgrade to >= 2.1.154, re-run this smoke test to capture the actual
+   /workflows TUI, keybinding list, and script storage path.
+

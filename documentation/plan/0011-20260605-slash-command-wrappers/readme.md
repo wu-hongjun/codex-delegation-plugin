@@ -1,9 +1,12 @@
 # Plan 0011 — Slash-command wrappers (`$claude-tasks` / `$claude-fork` / `$claude-batch`)
 
-**Status**: `auditing`
+**Status**: `complete`
 **Started**: 2026-06-05
 **Stage 1 approved**: 2026-06-05
-**Stage 2 complete (pending CI)**: 2026-06-05
+**Stage 2 complete**: 2026-06-05 (CI run `27037662224` success on all 4 matrix legs)
+**Stage 3 complete**: 2026-06-05 (verdict `ready-for-report`; zero blocking/major findings; third clean audit in this session)
+**Stage 4**: SKIPPED — audit verdict allowed direct progression to Stage 5
+**Stage 5 complete / Completed**: 2026-06-05
 **Last updated**: 2026-06-05
 
 ## Stages
@@ -11,10 +14,10 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-05** — Adaptive scope: T1 probes each of `/tasks`, `/fork`, `/batch`; T2-T5 implementation only for A-verdict commands |
-| 2 — Implement | `2-implement.md` | **complete 2026-06-05** — T1 returned B/A/A (`/tasks` deferred); 2 new skills shipped (`$claude-fork` + `$claude-batch`); 1443 npm test + 28 attach + 258 bench = 1729 combined; CI run pending |
-| 3 — Audit | `3-audit.md` | not started — requires independent context |
-| 4 — Polish | `4-polish.md` | not started |
-| 5 — Report | `5-report.md` | not started |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-05** — T1 returned B/A/A (`/tasks` deferred); 2 new skills shipped (`$claude-fork` + `$claude-batch`); 1443 npm test + 28 attach + 258 bench = 1729 combined; CI run `27037662224` `success` |
+| 3 — Audit | `3-audit.md` | **complete 2026-06-05** — verdict `ready-for-report`; zero blocking/major findings; one pre-existing NIT (stale L3 dispatcher header comment, not introduced by Plan 0011); auditor `oh-my-claudecode:critic` (Opus, fresh-context) |
+| 4 — Polish | `4-polish.md` | **SKIPPED** — Stage 3 verdict was `ready-for-report` |
+| 5 — Report | `5-report.md` | **complete 2026-06-05** — final report; status flipped `auditing → reporting → complete`; no release tag (plugin version unchanged at `0.2.0`) |
 
 ## Summary
 

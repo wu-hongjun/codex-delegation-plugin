@@ -138,7 +138,7 @@ node tools/package-marketplace.mjs --write
    (`packages/{runtime,driver-claude-code}/dist/`). Skip the build via
    `CC_PLUGIN_CODEX_SKIP_BUILD=1` only when the dist outputs are known
    to be current.
-2. Copy 18 source-derived files (T2-T5 allowlist) into the
+2. Copy 19 source-derived files (T2-T5 allowlist) into the
    marketplace tree byte-identically.
 3. Copy 64 bundled-dep files (T9.5 allowlist:
    `@cc-plugin-codex/runtime/dist/`,

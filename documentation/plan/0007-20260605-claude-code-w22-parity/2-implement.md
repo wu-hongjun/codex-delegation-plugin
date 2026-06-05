@@ -135,12 +135,12 @@ warn  bg-exec-supported              claude --bg --exec requires Claude Code >= 
 | `npm run lint` | exit 0 (clean) |
 | `npm run typecheck` | exit 0 (clean) |
 | `npm run format` | exit 0 (clean after one prettier --write on claude-version.test.mjs) |
-| `npm test` (4 lanes) | **1241 tests** (mock 68 + runtime 172 + driver 183 + plugin 818), 0 fail |
+| `npm test` (4 lanes) | **1245 tests** (mock 68 + runtime 172 + driver 187 + plugin 818), 0 fail |
 | `npm run test:attach` | **28 tests**, 0 fail (verified after T5 resync) |
 | `npm run test:bench` | **258 tests**, 0 fail (verified after T5 resync) |
-| **Combined** | **1527 tests**, 0 fail |
+| **Combined** | **1531 tests**, 0 fail |
 
-Plan 0006 baseline was 1498. Plan 0007 net delta: **+29 tests** (plan target was +14-18; overshoot of +11-15).
+Plan 0006 close baseline was 1498 as recorded in Plan 0006 5-report.md. Plan 0007 net delta vs that baseline: **+33 tests**, of which +29 are Plan 0007 additions and +4 are driver-lane tests that landed between Plan 0006 close and Plan 0007 Stage 1 approval (per Stage 3 audit F-2). Plan target was +14-18; the Plan-0007 portion overshoot is +11-15.
 
 ### Test-count overshoot justification
 
@@ -181,8 +181,7 @@ Marketplace payload (derived, written by `--write`):
 - `marketplace/plugins/claude-companion/README.md` — sync of source change (T4)
 - `marketplace/plugins/claude-companion/scripts/claude-companion.mjs` — sync of source change (T3)
 - `marketplace/plugins/claude-companion/scripts/lib/claude-version.mjs` — NEW (T3)
-- `marketplace/plugins/claude-companion/node_modules/@cc-plugin-codex/driver-claude-code/dist/agents-json.js` — sync of source change (T2)
-- `marketplace/plugins/claude-companion/node_modules/@cc-plugin-codex/driver-claude-code/dist/agents-json.d.ts` — sync of source change (T2)
+- `marketplace/plugins/claude-companion/node_modules/@cc-plugin-codex/driver-claude-code/dist/agents-json.js` — sync of source change (T2; only the .js was modified — the .d.ts didn't change because STATUS_MAP is a private const)
 
 ## Safety invariants verified
 

@@ -1,9 +1,12 @@
 # Plan 0010 — Codex power-user surfaces ($claude-goal + subagent / workflow how-tos)
 
-**Status**: `auditing`
+**Status**: `complete`
 **Started**: 2026-06-05
 **Stage 1 approved**: 2026-06-05
-**Stage 2 complete (pending CI)**: 2026-06-05
+**Stage 2 complete**: 2026-06-05 (CI run `27034918547` success)
+**Stage 3 complete**: 2026-06-05 (verdict `ready-for-report`; ZERO findings — second clean audit in this session)
+**Stage 4**: SKIPPED — audit verdict allowed direct progression to Stage 5
+**Stage 5 complete / Completed**: 2026-06-05
 **Last updated**: 2026-06-05
 
 ## Stages
@@ -11,10 +14,10 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-05** — drafted from inline Plan 0009 close-out; OQ-B/C/D/E resolved inline; OQ-A deferred to T3a empirical probe; 4 T-tasks; +30-40 test target |
-| 2 — Implement | `2-implement.md` | **complete pending CI 2026-06-05** — T1+T2 (subagent guidelines + workflow how-to) + T3a (verdict A: `claude --bg "/goal X"` works) + T3b (new `$claude-goal` skill + dispatcher + 9→10 count bumps across 7 files) + T4 (gates) done; 1661 tests pass (mock 68 + runtime 172 + driver 187 + plugin 948 + attach 28 + bench 258); 21 derived files (was 20); cost paragraph + plan-0004-pre-cutover + Plan 0005 deferred all preserved |
-| 3 — Audit | `3-audit.md` | not started — requires independent context |
-| 4 — Polish | `4-polish.md` | not started |
-| 5 — Report | `5-report.md` | not started |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-05** — T1+T2+T3a+T3b+T4 done; 1661 tests pass; 21 derived files; CI run `27034918547` `success` on all 4 matrix legs |
+| 3 — Audit | `3-audit.md` | **complete 2026-06-05** — verdict `ready-for-polish` → upgraded to `ready-for-report`; ZERO findings (second clean audit in this session); auditor `oh-my-claudecode:critic` (Opus, fresh-context) |
+| 4 — Polish | `4-polish.md` | **SKIPPED** — Stage 3 verdict was `ready-for-report` |
+| 5 — Report | `5-report.md` | **complete 2026-06-05** — final report; status flipped `auditing → reporting → complete`; no release tag (plugin version unchanged at `0.2.0`) |
 
 ## Summary
 

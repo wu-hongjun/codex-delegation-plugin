@@ -1,0 +1,140 @@
+# Plan 0010 T3a — /goal via claude --bg probe
+
+## Environment
+claude --version: 2.1.153 (Claude Code)
+Date: 2026-06-05
+Cwd at probe time: /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+## Probe 1: claude --bg "/goal example: respond with the literal word OK and stop"
+exit=0
+---STDOUT---
+backgrounded · 06a1cf7e
+  claude agents             list sessions
+  claude attach 06a1cf7e    open in this terminal
+  claude logs 06a1cf7e      show recent output
+  claude stop 06a1cf7e      stop this session
+
+---STDERR---
+(empty)
+
+## Probe 2 (sanity): claude --bg "respond with OK and stop"
+exit=0
+---STDOUT---
+backgrounded · 04e45e39
+  claude agents             list sessions
+  claude attach 04e45e39    open in this terminal
+  claude logs 04e45e39      show recent output
+  claude stop 04e45e39      stop this session
+
+---STDERR---
+(empty)
+
+## Probe 3: claude --help (goal-related flags)
+No --goal or --condition flags exist in claude --help output.
+The full flag list was captured; no flag mentions "goal", "condition", or stop-condition.
+/goal is not a CLI flag — it is a slash command handled by the session runtime.
+
+## Side evidence
+
+### claude agents --json (relevant rows, sessionId truncated to first 8 chars)
+
+Probe 1 session (06a1cf7e):
+  {
+    "pid": 98850,
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+    "kind": "background",
+    "startedAt": 1780685232223,
+    "sessionId": "06a1cf7e...",
+    "name": "i'm ready to help, but i don't see a jo…",
+    "status": "idle"
+  }
+
+  NOTE: The name "i'm ready to help, but i don't see a jo…" is the model's response
+  AFTER the goal was achieved and the session went idle waiting for a new task.
+  The goal completion happened first; then the model produced that idle message.
+
+Probe 2 session (04e45e39):
+  {
+    "pid": 25941,
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+    "kind": "background",
+    "startedAt": 1780685232813,
+    "sessionId": "04e45e39...",
+    "name": "i'm ready to help create a label, but i…",
+    "status": "idle"
+  }
+
+### claude logs 06a1cf7e (ANSI-stripped key sequences, probe-1)
+
+The TUI log stream for probe-1 contained these plaintext segments embedded in ANSI escapes:
+
+  - "◎ /goal active"          — goal-mode banner displayed immediately after /goal was processed
+  - "Goal set: example: respond with the literal word OK and stop"
+                               — confirmation line from /goal slash-command handler
+  - "OK"                       — model's single-token response satisfying the condition
+  - "✔ Goal achieved (4s · 1 turn · 38 tokens)"
+                               — goal completion marker; session went idle
+
+The TUI log stream for probe-2 contained NO goal-mode markers; the model simply responded
+"OK" and the session name became "Respond with OK and stop" (literal prompt → ai-title).
+
+### ~/.claude/projects/-Users-hongjunwu-Repositories-Git-cc-plugin-codex/06a1cf7e-10d5-4e76-b036-80f518e6900e.jsonl (first 30 lines, redacted)
+
+Line 8 — attachment record (goal_status, sentinel=true, met=false at session start):
+  {
+    "type": "goal_status",
+    "met": false,
+    "sentinel": true,
+    "condition": "example: respond with the literal word OK and stop"
+  }
+
+Line 10 — user message (XML-encoded slash command injected by runtime):
+  <command-name>/goal</command-name>
+  <command-message>goal</command-message>
+  <command-args>example: respond with the literal word OK and stop</command-args>
+
+Line 11 — user message (local-command-stdout confirmation):
+  <local-command-stdout>Goal set: example: respond with the literal word OK and stop</local-command-stdout>
+
+Line 12 — user message (isMeta=true, session-scoped Stop hook injected by runtime):
+  "A session-scoped Stop hook is now active with condition: \"example: respond with the
+  literal word OK and stop\". Briefly acknowledge the goal, then immediately start (or
+  continue) working toward it — treat the condition itself as your directive and do not
+  pause to ask the user what to do. The hook will block stopping until the condition
+  holds. It auto-clears once the condition is met — do not tell the user to run `/goal
+  clear` after success; that's only for clearing a goal early."
+
+Line 13 — assistant response:
+  { "type": "assistant", "message": { "role": "assistant", "content": [{ "type": "text", "text": "OK" }] } }
+
+Line 19 — attachment record (goal_status, met=true, goal achieved):
+  {
+    "type": "goal_status",
+    "met": true,
+    "condition": "example: respond with the literal word OK and stop",
+    "reason": "The assistant responded with the literal word 'OK' in the last message: \"OK\"",
+    "iterations": 1,
+    "durationMs": 4434,
+    "tokens": 38
+  }
+
+## Verdict
+
+**A** — `claude --bg "/goal <condition>"` successfully sets the goal as a slash command.
+
+The load-bearing evidence is the JSONL record at line 8 of session 06a1cf7e: an
+attachment with `"type": "goal_status", "sentinel": true, "condition": "example: respond
+with the literal word OK and stop"` was written at session start, confirming that the
+runtime parsed `/goal example: respond with the literal word OK and stop` as a slash
+command and established the stop-condition before the first model call. Line 12 further
+confirms a session-scoped Stop hook was injected into the context with the condition
+text. By line 19, `"met": true` with `"iterations": 1` shows the goal completed in a
+single turn. The TUI log independently showed `◎ /goal active` and `✔ Goal achieved`
+banners. Probe 2 showed none of these markers — the positional prompt was simply treated
+as user text, with no goal_status attachment and no Stop hook. The two probes are
+structurally distinct: probe 1 entered goal mode; probe 2 did not.
+
+**Implication for T3b**: `$claude-goal <condition>` can be implemented as a thin wrapper
+that calls `claude --bg "/goal <condition>"` via `_runDelegateCore` with prompt
+transformer `p => '/goal ' + p`, exactly mirroring the `$claude-workflow` pattern. No
+PTY injection or `claude attach` flow is needed. This is Outcome A.

@@ -57,3 +57,26 @@ Workflow sessions appear as standard background jobs; after starting one:
 - `$claude-status` — check live progress (workflow appears as a bg job)
 - `$claude-result` — read the final output once the workflow completes
 - `$claude-stop` — terminate the workflow early
+
+### Script API reference and examples
+
+Workflow scripts are JavaScript/ESM. The ground-truth API shape (confirmed on Claude Code v2.1.153):
+
+```javascript
+export const meta = {
+  name: 'count-readme-lines',
+  description: 'Count lines in README.md',
+  phases: [{ title: 'Count', detail: 'one agent counts lines in README.md' }],
+}
+
+phase('Count')
+const result = await agent(
+  'Count the exact number of lines in README.md. Return ONLY the integer.',
+  { label: 'count-lines' }
+)
+return { lineCount: result }
+```
+
+Key primitives: `phase(title)` declares a phase barrier; `agent(prompt, opts?)` spawns a subagent and returns its output; `parallel(tasks)` fans out an array of agent calls concurrently within the current phase.
+
+For a full decision matrix (when to use `$claude-workflow` vs `$claude-delegate`), multi-phase migration and research examples, and cost/cancel/approval patterns, see the `## Dynamic workflows in depth` and `## Subagent fan-out patterns (Codex → Claude Code)` sections of the plugin README.

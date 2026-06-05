@@ -36,3 +36,7 @@ After delegating, the user typically wants one of:
 - `$claude-result` — read the final answer when the job completes
 - `$claude-followup` — send an additional instruction to the same job
 - `$claude-stop` — terminate the job early
+
+### Fan-out tip
+
+For large parallelizable tasks, phrase the prompt to request explicit parallel decomposition (e.g. "use parallel subagents, one per directory"). See the `## Subagent fan-out patterns (Codex → Claude Code)` section of the plugin README for a decision matrix and example prompts. If the task has multiple dependent phases, prefer `$claude-workflow` instead.

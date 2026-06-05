@@ -27,6 +27,7 @@ const SKILL_NAMES = [
   'claude-review',
   'claude-adversarial-review',
   'claude-workflow',
+  'claude-goal',
 ];
 
 /** Subcommand each skill must reference in its body. */
@@ -40,6 +41,7 @@ const SKILL_SUBCOMMANDS = {
   'claude-review': 'review',
   'claude-adversarial-review': 'adversarial-review',
   'claude-workflow': 'workflow',
+  'claude-goal': 'goal',
 };
 
 function skillPath(name) {
@@ -711,26 +713,26 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
     }
   });
 
-  it('has at least 9 entries after T4 additions', () => {
+  it('has at least 10 entries after T4 additions', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.ok(
-      dp.length >= 9,
-      `interface.defaultPrompt must have at least 9 entries after T4; got ${dp.length}`,
+      dp.length >= 10,
+      `interface.defaultPrompt must have at least 10 entries after T4; got ${dp.length}`,
     );
   });
 });
 
-describe('plugin.json.interface.defaultPrompt length is exactly 9 (v0.2.0 + claude-workflow contract)', () => {
-  it('array length equals 9', () => {
+describe('plugin.json.interface.defaultPrompt length is exactly 10 (v0.2.0 + claude-goal contract)', () => {
+  it('array length equals 10', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      9,
-      `interface.defaultPrompt must have exactly 9 entries (v0.2.0 + claude-workflow contract); got ${dp.length}`,
+      10,
+      `interface.defaultPrompt must have exactly 10 entries (v0.2.0 + claude-goal contract); got ${dp.length}`,
     );
   });
 });
@@ -831,14 +833,14 @@ describe('no unexpected review-adjacent skill directories exist', () => {
 // ---------- T6: OQ-C defaultPrompt rewrites (entries #6-#9) ----------
 
 describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)', () => {
-  it('array length is exactly 9', () => {
+  it('array length is exactly 10', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      9,
-      `interface.defaultPrompt must have exactly 9 entries; got ${dp.length}`,
+      10,
+      `interface.defaultPrompt must have exactly 10 entries; got ${dp.length}`,
     );
   });
 
@@ -923,7 +925,7 @@ describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)'
   });
 });
 
-// ---------- T1 (Plan 0009): cross-skill chaining hints — all 9 skills ----------
+// ---------- T1 (Plan 0009): cross-skill chaining hints — all 10 skills ----------
 
 describe('each SKILL.md ends with a "Next steps" subsection (T1 Plan 0009)', () => {
   for (const name of SKILL_NAMES) {
@@ -1065,5 +1067,84 @@ describe('claude-stop/SKILL.md: mentions --json and --all (T5 Plan 0009)', () =>
   it('body contains "--all"', () => {
     const body = readFileSync(skillPath('claude-stop'), 'utf8');
     assert.ok(body.includes('--all'), 'claude-stop/SKILL.md does not mention "--all"');
+  });
+});
+
+// ---------- T3b (Plan 0010): claude-goal skill guards ----------
+
+describe('claude-goal skill directory and SKILL.md exist (T3b Plan 0010)', () => {
+  it('skills/claude-goal/ directory exists', () => {
+    assert.ok(
+      existsSync(join(PLUGIN_ROOT, 'skills', 'claude-goal')),
+      'skills/claude-goal/ directory must exist',
+    );
+  });
+
+  it('skills/claude-goal/SKILL.md exists', () => {
+    assert.ok(
+      existsSync(skillPath('claude-goal')),
+      `SKILL.md not found at ${skillPath('claude-goal')}`,
+    );
+  });
+});
+
+describe('claude-goal/SKILL.md: run line invokes dispatcher with "goal" subcommand (T3b Plan 0010)', () => {
+  it('body contains "claude-companion.mjs" and "goal"', () => {
+    const body = readFileSync(skillPath('claude-goal'), 'utf8');
+    assert.ok(
+      body.includes('claude-companion.mjs'),
+      'claude-goal/SKILL.md must reference scripts/claude-companion.mjs',
+    );
+    assert.ok(body.includes('goal'), 'claude-goal/SKILL.md must reference the "goal" subcommand');
+  });
+
+  it('run line uses -- separator', () => {
+    const body = readFileSync(skillPath('claude-goal'), 'utf8');
+    assert.ok(
+      body.includes('goal -- "<'),
+      'claude-goal/SKILL.md run line does not use the "-- \\"<" separator convention',
+    );
+  });
+});
+
+describe('claude-goal/SKILL.md: --yes auto-injection guard (T3b Plan 0010)', () => {
+  it('no dispatcher run line for "goal" subcommand contains " --yes"', () => {
+    const body = readFileSync(skillPath('claude-goal'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('claude-companion.mjs') && line.includes('goal'))
+      .filter((line) => line.includes(' --yes'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-goal/SKILL.md auto-injects "--yes" on a dispatcher run line, violating privacy-ack contract:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('claude-goal/SKILL.md: --allow-edit is not referenced in run lines (T3b Plan 0010)', () => {
+  it('no dispatcher run line contains "--allow-edit"', () => {
+    const body = readFileSync(skillPath('claude-goal'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('claude-companion.mjs'))
+      .filter((line) => line.includes('--allow-edit'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-goal/SKILL.md references "--allow-edit" on a dispatcher run line, which is not applicable:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('plugin.json interface.defaultPrompt contains goal entry (T3b Plan 0010)', () => {
+  it('includes "Set a goal condition for a Claude Code session."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('Set a goal condition for a Claude Code session.'),
+      `interface.defaultPrompt must contain "Set a goal condition for a Claude Code session."; got: ${JSON.stringify(dp)}`,
+    );
   });
 });

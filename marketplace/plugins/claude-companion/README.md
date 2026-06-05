@@ -57,7 +57,7 @@ If `$claude-setup` reports `ok` or `warn`, the install is complete.
 
 ## Skills
 
-After install, the plugin makes 9 skills available inside the Codex
+After install, the plugin makes 10 skills available inside the Codex
 TUI. Type the `$<name>` form at the Codex chat prompt.
 
 - `$claude-setup` — probes the local environment (Claude Code auth,
@@ -80,6 +80,8 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
   review of a Claude Code job.
 - `$claude-workflow` — triggers a Claude Code dynamic workflow and
   returns a job id for async result retrieval.
+- `$claude-goal` — sets a goal condition for a Claude Code background
+  session; the runtime tracks goal-completion automatically.
 
 ### $claude-workflow
 
@@ -95,6 +97,25 @@ approval dialog and select `Yes` to proceed (or `No` to cancel cleanly).
 
 **Token-cost warning**: Workflows can spawn up to 16 concurrent and 1000 total
 subagents. Review the generated script before approving.
+
+Requires Claude Code v2.1.153+.
+
+### $claude-goal
+
+Sets a goal condition for a Claude Code background session. The runtime tracks
+goal-completion automatically — Claude Code keeps working until the stated
+condition is met or the session is stopped.
+
+```
+$claude-goal "all unit tests pass"
+```
+
+**Approval flow**: No interactive approval dialog is required. After the job ID
+is printed, run `claude attach <jobId>` to watch progress.
+
+**Token-cost notice**: Goal sessions iterate until the condition is satisfied.
+Scope conditions tightly to avoid open-ended run time. Use `$claude-stop` to
+terminate early.
 
 Requires Claude Code v2.1.153+.
 
@@ -156,10 +177,10 @@ do not block reinstall.
 
 Before release, run the smoke checklist in
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md).
-It verifies the local marketplace install and all 9 skill names
+It verifies the local marketplace install and all 10 skill names
 (`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`,
 `$claude-stop`, `$claude-followup`, `$claude-review`,
-`$claude-adversarial-review`, `$claude-workflow`) under an isolated `CODEX_HOME`.
+`$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`) under an isolated `CODEX_HOME`.
 
 ## Troubleshooting
 

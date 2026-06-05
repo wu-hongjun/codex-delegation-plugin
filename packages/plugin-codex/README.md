@@ -8,7 +8,7 @@ Key design choice: this v1 uses Claude Code background sessions directly and doe
 
 ## Current v1 scope
 
-Nine skills are available:
+Ten skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
 - **`$claude-delegate`** — start a new background session for a task
@@ -19,6 +19,7 @@ Nine skills are available:
 - **`$claude-review`** — send a structured review prompt into the same Claude Code session (added in plan 0003)
 - **`$claude-adversarial-review`** — run a structured review in a fresh independent session (added in plan 0003)
 - **`$claude-workflow`** — trigger a Claude Code dynamic workflow and return a job ID for async result retrieval (added in plan 0008)
+- **`$claude-goal`** — set a goal condition for a Claude Code background session; the runtime tracks goal-completion automatically (added in plan 0010)
 
 Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
 
@@ -154,6 +155,45 @@ Direct dispatcher equivalent:
 node packages/plugin-codex/scripts/claude-companion.mjs workflow "audit every fetch() call and propose a migration to HttpClient"
 ```
 
+### $claude-goal
+
+Set a goal condition for a Claude Code background session. The runtime tracks goal-completion automatically — Claude Code keeps working until the stated condition is met or the session is stopped.
+
+```bash
+$claude-goal "all unit tests in src/utils/ pass"
+```
+
+**Requires Claude Code v2.1.153+.** The `/goal` slash command is confirmed available on v2.1.153 per empirical probe evidence at `documentation/plan/0010-20260605-codex-power-user/artifacts/oq-a-probe-20260605.txt`.
+
+**Approval flow**: After `$claude-goal` starts the background session, the `/goal <condition>` slash command is injected as the prompt. The runtime tracks goal-completion automatically; no interactive approval dialog is required. To watch progress, run:
+
+```bash
+claude attach <jobId>
+```
+
+**Cost notice**: Goal sessions iterate until the condition is satisfied or stopped. Consider scoping conditions tightly to avoid open-ended run time. Use `$claude-stop` to terminate early.
+
+Accepted flags (forwarded to the delegate path):
+
+- `--model` — model override for the goal session.
+- `--effort` — effort level.
+- `--permission-mode` — permission mode override.
+- `--add-dir` — additional directory to expose to Claude Code.
+- `--mcp-config` — MCP configuration file path.
+- `--name` — session name override.
+- `--yes` — record the privacy acknowledgement non-interactively.
+- `--json` — machine-readable output.
+
+Rejected at parse time:
+
+- `--allow-edit` — not accepted by `$claude-goal`. Goal sessions request their own permissions automatically; this flag is not applicable.
+
+Direct dispatcher equivalent:
+
+```bash
+node packages/plugin-codex/scripts/claude-companion.mjs goal -- "all unit tests in src/utils/ pass"
+```
+
 ### $claude-status
 
 List all delegated jobs in the current workspace with their live status.
@@ -212,7 +252,7 @@ Optional cleanup. Not required before calling `result`.
 
 ## Direct dispatcher usage
 
-All nine commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All ten commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-codex/scripts/claude-companion.mjs setup
@@ -224,6 +264,7 @@ node packages/plugin-codex/scripts/claude-companion.mjs stop <jobId>
 node packages/plugin-codex/scripts/claude-companion.mjs review <jobId>
 node packages/plugin-codex/scripts/claude-companion.mjs adversarial-review <jobId>
 node packages/plugin-codex/scripts/claude-companion.mjs workflow "audit every fetch() call and propose a migration to HttpClient"
+node packages/plugin-codex/scripts/claude-companion.mjs goal -- "all unit tests pass"
 ```
 
 All commands support `--json` for machine-readable output. The `--yes` flag on `delegate` and `followup` skips the interactive privacy acknowledgement; `--allow-edit` is a policy/framing flag and does NOT bypass that acknowledgement.
@@ -377,6 +418,218 @@ With `--json`, the output includes `verdict`, `findingsCount`, per-severity coun
 ### Review target selection
 
 Review commands choose the latest completed non-review turn by default. They skip turns whose `prompt.summary` starts with `[review]` or `[adversarial-review]`. Reviewing a review is allowed but not the default workflow.
+
+## Subagent fan-out patterns (Codex → Claude Code)
+
+Codex CLI has its own limit on concurrent subagents per turn. When a task is large and parallelizable — for example, auditing every callsite of a function across a 500-file codebase — delegating to Claude Code via `$claude-delegate` or `$claude-workflow` makes more subagents available, because Claude Code's subagent ceiling is higher than Codex's per-turn cap.
+
+### When to delegate vs orchestrate yourself
+
+| Task shape | Recommended path |
+| --- | --- |
+| "Run command X, summarize output" | Codex does it directly — single-step, no parallel decomposition needed |
+| "Audit every X across the codebase" | `$claude-delegate "audit ..."` with explicit parallel-subagent guidance |
+| "Plan + execute a multi-phase migration" | `$claude-workflow "..."` — the workflow runtime auto-orchestrates phases |
+
+### How to phrase a fan-out-friendly `$claude-delegate` prompt
+
+Ask explicitly for parallel decomposition and specify how results should be aggregated:
+
+- **Request parallelism**: "Use parallel subagents to scan each directory independently."
+- **Specify decomposition**: "Split this task into N independent units of work, one per file."
+- **Specify aggregation**: "Have each subagent return a JSON object; the parent merges all results."
+
+**Example prompts with annotated behavior:**
+
+1. `$claude-delegate "Audit every usage of fetchData() across the codebase. Use parallel subagents — one per top-level directory. Each subagent should return a JSON array of {file, line, signature}. Merge into one report."`
+   — Fans out one agent per directory, merges JSON results.
+
+2. `$claude-delegate "Check every TypeScript file in src/ for missing return-type annotations. Use parallel subagents to process files in batches. Return a flat list of {file, line, function} objects."`
+   — Parallel scan with structured per-agent output.
+
+3. `$claude-delegate "Rename the config.host field to config.hostname across all files. Use parallel subagents — one per module directory — and return a list of files changed."`
+   — Parallel rename with change manifest per agent.
+
+4. `$claude-delegate "Summarize the test coverage gaps in each package under packages/. Spawn one subagent per package. Each subagent should return a markdown summary of untested paths."`
+   — One agent per package, markdown summaries aggregated by parent.
+
+5. `$claude-delegate "Verify that every exported function in lib/ has a corresponding entry in docs/api.md. Use parallel subagents — one per file — and return a list of undocumented exports."`
+   — Parallel documentation audit.
+
+### When `$claude-workflow` is structurally better than `$claude-delegate`
+
+`$claude-delegate` gives Claude Code a free-form prompt and lets it spawn subagents as it sees fit. This works well when the task is a single decomposable unit.
+
+`$claude-workflow` is better when the task has **clear phases that depend on each other** — for example:
+
+1. Discover all callsites of a function (phase 1)
+2. Transform each callsite independently (phase 2, fans out per site)
+3. Verify all transformations compile (phase 3, single aggregation agent)
+
+The workflow runtime's `phase()` + `agent()` API gives explicit barriers between phases. Phase 2 cannot start until phase 1 completes; phase 3 cannot start until all phase-2 agents finish. With `$claude-delegate`, you would have to describe those sequencing constraints in prose and rely on Claude to honor them. With `$claude-workflow`, the script structure enforces them.
+
+See `## Dynamic workflows in depth` below for the full script API and example scripts.
+
+## Dynamic workflows in depth
+
+A workflow is an orchestration script Claude writes for your task and runs across many subagents in the background. The user approves the generated script before any subagents are spawned.
+
+Use `$claude-workflow` when:
+
+| Scenario | Recommended skill |
+| --- | --- |
+| Single-turn task, one session | `$claude-delegate` |
+| Multi-phase orchestration with phase dependencies | `$claude-workflow` |
+| Cross-checked research with parallel angles | `$claude-workflow` (or `/deep-research` directly in Claude Code) |
+| Free-form exploration, uncertain structure | `$claude-delegate` — more flexible, less structured overhead |
+
+### The `meta` / `phase()` / `agent()` script API
+
+Workflow scripts are JavaScript/ESM modules. Claude generates them in-memory; the user reviews and approves the script in the TUI before execution begins.
+
+**`export const meta`** — required top-level export describing the workflow:
+
+```javascript
+export const meta = {
+  name: 'my-workflow',          // short identifier (kebab-case)
+  description: 'What it does', // shown in the TUI confirmation dialog
+  phases: [
+    { title: 'Phase name', detail: 'Optional longer description' },
+  ],
+}
+```
+
+**`phase(title)`** — declares a phase barrier. All `agent()` calls made after `phase('X')` and before the next `phase()` call belong to phase X. The runtime waits for all agents in the current phase to complete before advancing.
+
+**`agent(prompt, opts?)`** — spawns a subagent. Returns the subagent's final output as a string.
+
+```javascript
+const result = await agent(
+  'Count the exact number of lines in README.md. Return only the integer.',
+  { label: 'count-lines' }   // optional label shown in TUI progress view
+)
+```
+
+**`parallel(tasks)`** — helper that fans out an array of `agent()` calls concurrently within the current phase. Returns an array of results in the same order as the input.
+
+**`pipeline(stages)`** — chains phases: the output of each stage is passed as context to the next.
+
+Ground-truth script shape captured from an empirical TUI smoke test (Claude Code v2.1.153):
+
+```javascript
+export const meta = {
+  name: 'count-readme-lines',
+  description: 'Count lines in README.md',
+  phases: [{ title: 'Count', detail: 'one agent counts lines in README.md' }],
+}
+
+phase('Count')
+const result = await agent(
+  'Count the exact number of lines in the file README.md in the current ' +
+  'working directory. Use `wc -l README.md` via Bash. Return ONLY the ' +
+  'integer line count as your final answer — no prose.',
+  { label: 'count-lines' }
+)
+return { lineCount: result }
+```
+
+### Example workflow scripts
+
+**Cross-file audit** — one agent per file, results merged by parent:
+
+```javascript
+export const meta = {
+  name: 'audit-fetch-calls',
+  description: 'Audit every fetch() call across src/ and report usage patterns',
+  phases: [{ title: 'Audit', detail: 'one agent per source file' }],
+}
+
+phase('Audit')
+const files = await agent(
+  'List every .ts and .js file under src/. Return a JSON array of relative paths, no prose.',
+  { label: 'list-files' }
+)
+const paths = JSON.parse(files)
+const findings = await parallel(
+  paths.map(p => agent(
+    `Inspect ${p} for fetch() calls. Return a JSON array of {line, url, method} objects, ` +
+    'or an empty array if none. No prose.',
+    { label: `audit-${p}` }
+  ))
+)
+return { findings: findings.flat() }
+```
+
+**Migration** — two-phase: discover sites, then transform each independently:
+
+```javascript
+export const meta = {
+  name: 'migrate-http-client',
+  description: 'Migrate fetch() calls to HttpClient across the codebase',
+  phases: [
+    { title: 'Discover', detail: 'find all fetch() callsites' },
+    { title: 'Transform', detail: 'rewrite each callsite independently' },
+  ],
+}
+
+phase('Discover')
+const sitesJson = await agent(
+  'Find every file under src/ that calls fetch(). ' +
+  'Return a JSON array of {file, line} objects. No prose.',
+  { label: 'discover-sites' }
+)
+const sites = JSON.parse(sitesJson)
+
+phase('Transform')
+await parallel(
+  sites.map(s => agent(
+    `In ${s.file} at line ${s.line}, rewrite the fetch() call to use HttpClient. ` +
+    'Follow the existing HttpClient usage pattern in the file. Return the updated file content.',
+    { label: `transform-${s.file}` }
+  ))
+)
+return { transformed: sites.length }
+```
+
+**Research / deep-dive** — parallel angles within a single phase:
+
+```javascript
+export const meta = {
+  name: 'deep-dive-auth',
+  description: 'Research authentication approaches from multiple angles in parallel',
+  phases: [{ title: 'Research', detail: 'parallel research angles' }],
+}
+
+phase('Research')
+const [securityAnalysis, performanceAnalysis, uxAnalysis] = await parallel([
+  agent('Analyze the security tradeoffs of session tokens vs JWTs for this codebase. Return a markdown summary.', { label: 'security' }),
+  agent('Analyze the performance implications of the current auth middleware. Return a markdown summary.', { label: 'performance' }),
+  agent('Summarize the current user-facing auth flow and list friction points. Return a markdown summary.', { label: 'ux' }),
+])
+return { securityAnalysis, performanceAnalysis, uxAnalysis }
+```
+
+### Cost, cancel, and approval patterns
+
+**Cost**: Workflows can spawn up to 16 concurrent subagents and up to 1000 total subagents across all phases. Token usage scales with the number of agents and the complexity of each agent's task. Review the generated script before approving — if the scope looks larger than intended, choose `No` in the approval dialog.
+
+**Approval**: After `$claude-workflow` starts the background session, Claude Code presents an interactive `Yes` / `View raw script` / `No` dialog inside its TUI before any subagents are spawned. The skill does NOT auto-approve. To review and approve:
+
+```bash
+claude attach <jobId>
+```
+
+Select `View raw script` to inspect the generated JavaScript/ESM script before committing. Select `Yes` to proceed or `No` to cancel cleanly — no subagents are spawned and no artifacts are written until explicit approval.
+
+**Cancel**: To stop a running workflow from the Codex side:
+
+```bash
+$claude-stop <jobId>
+```
+
+This terminates the background session running the workflow. You can also cancel from inside the Claude Code TUI by running `/workflows` and selecting the active workflow.
+
+**Limits empirically confirmed**: 16 concurrent + 1000 total subagent limits confirmed via Plan 0008 T1 + T9.5 empirical testing. The `/workflows` slash command and `ultracode:` trigger keyword confirmed available on Claude Code v2.1.153 via TUI smoke test.
 
 ## Cost and prompt-cache wording
 

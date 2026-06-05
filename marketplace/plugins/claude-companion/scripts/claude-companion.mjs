@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // claude-companion.mjs — user-facing CLI dispatcher for the cc-plugin-codex plugin.
 //
-// Subcommands: setup | delegate | workflow | status | result | stop
+// Subcommands: setup | delegate | workflow | goal | status | result | stop
 // Exit codes: 0 success, 1 failure, 2 usage error
 
 import { createInterface } from 'node:readline/promises';
@@ -70,6 +70,9 @@ try {
       break;
     case 'workflow':
       await cmdWorkflow(flags, positional, useJson);
+      break;
+    case 'goal':
+      await cmdGoal(flags, positional, useJson);
       break;
     case 'status':
       await cmdStatus(flags, useJson);
@@ -287,6 +290,30 @@ async function cmdWorkflow(flags, positional, json) {
       '',
       'Workflows can spawn up to 16 concurrent agents and 1000 total per run. Token',
       "usage scales with the workflow's complexity.",
+    ].join('\n'),
+  });
+}
+
+// ---------- goal ----------
+
+async function cmdGoal(flags, positional, json) {
+  // --allow-edit is not applicable to goal; goal sessions track a condition automatically.
+  if (flags['allow-edit'] !== undefined) {
+    process.stderr.write(
+      formatError(new Error('--allow-edit is not applicable to $claude-goal.'), 'goal', json) +
+        '\n',
+    );
+    process.exit(2);
+  }
+
+  await _runDelegateCore(flags, positional, json, {
+    commandName: 'goal',
+    promptTransformer: (p) => `/goal ${p}`,
+    extraOutput: [
+      '',
+      'This is a Claude Code goal-condition request.',
+      'The runtime tracks goal-completion automatically; attach via',
+      '`claude attach <jobId>` to watch progress.',
     ].join('\n'),
   });
 }
@@ -1947,6 +1974,7 @@ function printUsage() {
       '  setup                                     Run doctor probes and report status',
       '  delegate [flags] -- <prompt>              Start a Claude background session',
       '  workflow [flags] -- <prompt>              Start a Claude Code dynamic workflow (triggers ultracode planning)',
+      '  goal [flags] -- <condition>               Start a Claude Code background session with a /goal condition',
       '  status [--all] [--json]                   List jobs for current workspace',
       '  result <jobId> [--all] [--json]           Show final result of a completed job',
       '  stop <jobId> [--all] [--json]             Stop a running job',
@@ -1958,15 +1986,15 @@ function printUsage() {
       '                                            Fresh-session independent review of the latest non-review turn',
       '',
       'Flags:',
-      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review)',
-      '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/followup/review/adversarial-review)',
-      '  --name <name>                Session name (delegate, workflow)',
-      '  --model <model>              Model selection (delegate, workflow, adversarial-review)',
-      '  --effort <effort>            Effort level (delegate, workflow, adversarial-review)',
-      '  --permission-mode <mode>     Permission mode (delegate, workflow, adversarial-review)',
-      '  --add-dir <dir>              Additional directory (delegate, workflow; repeatable)',
-      '  --mcp-config <path>          MCP config file (delegate, workflow)',
-      '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, and workflow',
+      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal)',
+      '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/goal/followup/review/adversarial-review)',
+      '  --name <name>                Session name (delegate, workflow, goal)',
+      '  --model <model>              Model selection (delegate, workflow, goal, adversarial-review)',
+      '  --effort <effort>            Effort level (delegate, workflow, goal, adversarial-review)',
+      '  --permission-mode <mode>     Permission mode (delegate, workflow, goal, adversarial-review)',
+      '  --add-dir <dir>              Additional directory (delegate, workflow, goal; repeatable)',
+      '  --mcp-config <path>          MCP config file (delegate, workflow, goal)',
+      '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, workflow, and goal',
       '  --all                        Search all workspaces (status/result/stop/followup/review/adversarial-review)',
       '  --all-awaiting-followup      Bulk-stop all awaiting-followup jobs (stop only; combine with --all for every workspace)',
       '  --help                       Show this help',

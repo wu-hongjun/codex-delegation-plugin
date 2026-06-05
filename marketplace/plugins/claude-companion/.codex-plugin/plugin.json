@@ -20,7 +20,8 @@
       "Send a follow-up instruction to a running Claude job.",
       "Review the output of a Claude job.",
       "Get an independent second-opinion review of a Claude job.",
-      "Run a Claude Code dynamic workflow (multi-step, plan + execute)."
+      "Run a Claude Code dynamic workflow (multi-step, plan + execute).",
+      "Set a goal condition for a Claude Code session."
     ],
     "brandColor": "#D97706"
   }

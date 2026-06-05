@@ -1281,27 +1281,27 @@ describe('README.md adversarial-review section uses neutral usage wording (T10-o
 
 // ---------- T10-optional-B. Direct dispatcher usage mentions eight commands ----------
 
-describe('README.md Direct dispatcher usage mentions nine commands (T10-optional-B)', () => {
-  it('contains "nine commands" or "All nine commands"', () => {
+describe('README.md Direct dispatcher usage mentions ten commands (T10-optional-B)', () => {
+  it('contains "ten commands" or "All ten commands"', () => {
     const body = readReadme();
     const lower = body.toLowerCase();
     assert.ok(
-      lower.includes('nine commands') || lower.includes('all nine commands'),
-      'README.md Direct dispatcher usage section must say "nine commands" (updated from eight)',
+      lower.includes('ten commands') || lower.includes('all ten commands'),
+      'README.md Direct dispatcher usage section must say "ten commands" (updated from nine)',
     );
   });
 });
 
-// ---------- T10-optional-C. Current v1 scope lists Eight skills ----------
+// ---------- T10-optional-C. Current v1 scope lists Ten skills ----------
 
-describe('README.md Current v1 scope lists Nine skills (T10-optional-C)', () => {
-  it('contains "Nine skills" in the Current v1 scope section', () => {
+describe('README.md Current v1 scope lists Ten skills (T10-optional-C)', () => {
+  it('contains "Ten skills" in the Current v1 scope section', () => {
     const body = readReadme();
     const section = extractSection(body, '## Current v1 scope');
     assert.ok(section !== null, 'README.md must have a ## Current v1 scope section');
     assert.ok(
-      section.includes('Nine skills'),
-      'README.md ## Current v1 scope must say "Nine skills" (updated from Eight skills)',
+      section.includes('Ten skills'),
+      'README.md ## Current v1 scope must say "Ten skills" (updated from Nine skills)',
     );
   });
 });
@@ -1439,5 +1439,175 @@ describe('README.md documents operator escape hatches (T10-27)', () => {
         `Tuning subsection matches forbidden cost pattern ${pattern}`,
       );
     }
+  });
+});
+
+// ==========================================================================
+// T1 (Plan 0010): Subagent fan-out patterns section
+// ==========================================================================
+
+// ---------- T1-1. Section exists ----------
+
+describe('README.md has ## Subagent fan-out patterns section (T1-1)', () => {
+  it('contains "## Subagent fan-out patterns (Codex → Claude Code)"', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('## Subagent fan-out patterns (Codex → Claude Code)'),
+      'README.md must contain the "## Subagent fan-out patterns (Codex → Claude Code)" section',
+    );
+  });
+});
+
+// ---------- T1-2. Section contains at least 3 example prompts ----------
+
+describe('README.md fan-out section contains at least 3 example prompts (T1-2)', () => {
+  it('fan-out section contains at least 3 numbered example prompts', () => {
+    const body = readReadme();
+    const fanOutIdx = body.indexOf('## Subagent fan-out patterns (Codex → Claude Code)');
+    assert.ok(fanOutIdx !== -1, 'Fan-out section must exist');
+    const nextH2 = body.indexOf('\n## ', fanOutIdx + 1);
+    const section = nextH2 !== -1 ? body.slice(fanOutIdx, nextH2) : body.slice(fanOutIdx);
+    // Count numbered example lines (1. 2. 3. etc.) or $claude-delegate example blocks
+    const delegateExamples = (section.match(/\$claude-delegate\s+"/g) || []).length;
+    assert.ok(
+      delegateExamples >= 3,
+      `Fan-out section must contain at least 3 $claude-delegate example prompts, found ${delegateExamples}`,
+    );
+  });
+});
+
+// ---------- T1-3. Section is BEFORE the cost paragraph ----------
+
+describe('README.md fan-out section appears before the cost paragraph (T1-3)', () => {
+  it('"## Subagent fan-out patterns" appears before "## Cost and prompt-cache wording"', () => {
+    const body = readReadme();
+    const fanOutIdx = body.indexOf('## Subagent fan-out patterns (Codex → Claude Code)');
+    const costIdx = body.indexOf('## Cost and prompt-cache wording');
+    assert.ok(fanOutIdx !== -1, 'Fan-out section must exist');
+    assert.ok(costIdx !== -1, 'Cost paragraph section must exist');
+    assert.ok(
+      fanOutIdx < costIdx,
+      `Fan-out section (pos ${fanOutIdx}) must appear before cost paragraph (pos ${costIdx})`,
+    );
+  });
+});
+
+// ---------- T1-4. claude-delegate SKILL.md references the new section ----------
+
+describe('claude-delegate SKILL.md references the fan-out section (T1-4)', () => {
+  it('claude-delegate/SKILL.md mentions "Subagent fan-out patterns"', () => {
+    const skillPath = resolve(PLUGIN_ROOT, 'skills', 'claude-delegate', 'SKILL.md');
+    assert.ok(existsSync(skillPath), `SKILL.md not found at ${skillPath}`);
+    const body = readFileSync(skillPath, 'utf8');
+    assert.ok(
+      body.includes('Subagent fan-out patterns'),
+      'claude-delegate/SKILL.md must reference the "Subagent fan-out patterns" section',
+    );
+  });
+});
+
+// ---------- T1-5. claude-workflow SKILL.md references the new section ----------
+
+describe('claude-workflow SKILL.md references the fan-out section (T1-5)', () => {
+  it('claude-workflow/SKILL.md mentions "Subagent fan-out patterns"', () => {
+    const skillPath = resolve(PLUGIN_ROOT, 'skills', 'claude-workflow', 'SKILL.md');
+    assert.ok(existsSync(skillPath), `SKILL.md not found at ${skillPath}`);
+    const body = readFileSync(skillPath, 'utf8');
+    assert.ok(
+      body.includes('Subagent fan-out patterns'),
+      'claude-workflow/SKILL.md must reference the "Subagent fan-out patterns" section',
+    );
+  });
+});
+
+// ==========================================================================
+// T2 (Plan 0010): Dynamic workflows in depth section
+// ==========================================================================
+
+/** Return the body of the '## Dynamic workflows in depth' section (heading to next ##). */
+function extractDynWorkflowsSection(body) {
+  // Use \n## to match only actual headings, not inline references
+  const headingMarker = '\n## Dynamic workflows in depth\n';
+  const startPos = body.indexOf(headingMarker);
+  if (startPos === -1) return null;
+  const contentStart = startPos + 1; // include the \n so we start at '## ...'
+  const nextH2 = body.indexOf('\n## ', contentStart + headingMarker.length - 1);
+  return nextH2 !== -1 ? body.slice(contentStart, nextH2) : body.slice(contentStart);
+}
+
+// ---------- T2-1. Section exists ----------
+
+describe('README.md has ## Dynamic workflows in depth section (T2-1)', () => {
+  it('contains "## Dynamic workflows in depth" as a standalone heading', () => {
+    const body = readReadme();
+    assert.ok(
+      extractDynWorkflowsSection(body) !== null,
+      'README.md must contain the "## Dynamic workflows in depth" section as a standalone heading',
+    );
+  });
+});
+
+// ---------- T2-2. Section contains at least 2 example workflow scripts ----------
+
+describe('README.md dynamic-workflows section contains at least 2 example scripts (T2-2)', () => {
+  it('dynamic-workflows section contains at least 2 phase() calls', () => {
+    const body = readReadme();
+    const section = extractDynWorkflowsSection(body);
+    assert.ok(section !== null, 'Dynamic workflows section must exist');
+    const phaseMatches = (section.match(/^phase\(/gm) || []).length;
+    assert.ok(
+      phaseMatches >= 2,
+      `Dynamic workflows section must contain at least 2 phase() calls (found ${phaseMatches})`,
+    );
+  });
+});
+
+// ---------- T2-3. Section mentions meta / phase() / agent() primitives ----------
+
+describe('README.md dynamic-workflows section documents meta/phase/agent primitives (T2-3)', () => {
+  for (const primitive of ['export const meta', 'phase(', 'agent(']) {
+    it(`dynamic-workflows section mentions "${primitive}"`, () => {
+      const body = readReadme();
+      const section = extractDynWorkflowsSection(body);
+      assert.ok(section !== null, 'Dynamic workflows section must exist');
+      assert.ok(
+        section.includes(primitive),
+        `Dynamic workflows section must mention "${primitive}"`,
+      );
+    });
+  }
+});
+
+// ---------- T2-4. Section mentions cost / cancel / approval keywords ----------
+
+describe('README.md dynamic-workflows section covers cost/cancel/approval (T2-4)', () => {
+  for (const keyword of ['cost', 'cancel', 'approval']) {
+    it(`dynamic-workflows section mentions "${keyword}"`, () => {
+      const body = readReadme();
+      const section = extractDynWorkflowsSection(body);
+      assert.ok(section !== null, 'Dynamic workflows section must exist');
+      assert.ok(
+        section.toLowerCase().includes(keyword.toLowerCase()),
+        `Dynamic workflows section must mention "${keyword}"`,
+      );
+    });
+  }
+});
+
+// ---------- T2-5. claude-workflow SKILL.md has an example script ----------
+
+describe('claude-workflow SKILL.md has an example workflow script (T2-5)', () => {
+  it('claude-workflow/SKILL.md contains "export const meta" and "phase("', () => {
+    const skillPath = resolve(PLUGIN_ROOT, 'skills', 'claude-workflow', 'SKILL.md');
+    assert.ok(existsSync(skillPath), `SKILL.md not found at ${skillPath}`);
+    const body = readFileSync(skillPath, 'utf8');
+    assert.ok(
+      body.includes('export const meta'),
+      'claude-workflow/SKILL.md must contain an example script with "export const meta"',
+    );
+    assert.ok(
+      body.includes('phase('),
+      'claude-workflow/SKILL.md must contain an example script with "phase("',
+    );
   });
 });

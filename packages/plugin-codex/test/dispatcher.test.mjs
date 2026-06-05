@@ -6559,3 +6559,137 @@ describe('workflow approval-flow note appended after job block', () => {
     );
   });
 });
+
+// ---------- goal subcommand tests (Plan 0010 T3b) ----------
+
+describe('--help mentions goal command', () => {
+  it('usage text includes "goal [flags] -- <condition>" as a listed command', () => {
+    const result = runDispatcher(['--help']);
+    assert.equal(result.status, 0, `--help should exit 0; got ${result.status}`);
+    assert.ok(
+      result.stdout.includes('goal'),
+      `expected "goal" in --help output; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('goal [flags] -- <condition>'),
+      `expected "goal [flags] -- <condition>" in --help output; got:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('goal --yes -- "test condition" (happy path)', () => {
+  it('exits 0, stdout contains job_* ID and goal approval note', () => {
+    const result = runDispatcher(['goal', '--yes', '--', 'all unit tests pass']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    assert.match(result.stdout, /job_[a-z0-9]+_[a-f0-9]{8}/, 'stdout should contain a jobId');
+    assert.ok(
+      result.stdout.includes('Claude job started') || result.stdout.includes('job_'),
+      `expected job output in stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('claude attach') || result.stdout.includes('goal'),
+      `expected goal-flavored note in stdout; got:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('goal prompt is prefixed with /goal ', () => {
+  it('the spawned session prompt starts with "/goal " (verified via mock state.json)', () => {
+    const userPrompt = 'my goal condition';
+    const result = runDispatcher(['goal', '--yes', '--', userPrompt]);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    // Read mock-claude state directly — sessions[] has a .prompt field.
+    const statePath = join(MOCK_HOME, 'state.json');
+    assert.ok(existsSync(statePath), `expected mock state.json at ${statePath}`);
+    const state = JSON.parse(readFileSync(statePath, 'utf8'));
+    assert.ok(
+      Array.isArray(state.sessions) && state.sessions.length > 0,
+      'expected sessions in mock state',
+    );
+    const lastSession = state.sessions[state.sessions.length - 1];
+    assert.ok(
+      typeof lastSession.prompt === 'string' && lastSession.prompt.startsWith('/goal '),
+      `expected prompt to start with "/goal "; got: ${lastSession.prompt}`,
+    );
+    assert.ok(
+      lastSession.prompt.includes(userPrompt),
+      `expected prompt to include user text "${userPrompt}"; got: ${lastSession.prompt}`,
+    );
+  });
+});
+
+describe('goal without --yes (non-TTY stdin)', () => {
+  it('exits 1 and mentions privacy or --yes', () => {
+    const result = runDispatcher(['goal', '--', 'some condition']);
+    assert.notEqual(result.status, 0, 'expected non-zero exit when --yes is missing');
+    assert.equal(result.status, 1, `expected exit 1, got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.toLowerCase().includes('privacy') ||
+        combined.toLowerCase().includes('--yes') ||
+        combined.toLowerCase().includes('acknowledge'),
+      `expected mention of privacy or --yes; got:\n${combined}`,
+    );
+    assert.equal(listJobIds().length, 0, 'no job records should be created when --yes is absent');
+  });
+});
+
+describe('goal rejects --allow-edit', () => {
+  it('exits 2 and prints a clear error when --allow-edit is passed', () => {
+    const result = runDispatcher(['goal', '--yes', '--allow-edit', '--', 'some condition']);
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for --allow-edit rejection; got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('--allow-edit'),
+      `expected mention of "--allow-edit" in error output; got:\n${combined}`,
+    );
+  });
+});
+
+describe('goal accepts standard delegate flags', () => {
+  it('exits 0 when --model, --effort, and --permission-mode are supplied', () => {
+    const result = runDispatcher([
+      'goal',
+      '--yes',
+      '--model',
+      'claude-sonnet-4-5',
+      '--effort',
+      'normal',
+      '--permission-mode',
+      'default',
+      '--',
+      'all tests green',
+    ]);
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 with standard delegate flags; stderr: ${result.stderr}`,
+    );
+    assert.match(result.stdout, /job_[a-z0-9]+_[a-f0-9]{8}/, 'stdout should contain a jobId');
+  });
+});
+
+describe('goal approval-flow note appended after job block', () => {
+  it('stdout contains both a job block and the goal-flavored note', () => {
+    const result = runDispatcher(['goal', '--yes', '--', 'goal condition for note test']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes('Claude job started') || result.stdout.includes('Job ID:'),
+      `expected standard job output in stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('goal') || result.stdout.includes('attach'),
+      `expected goal-specific note in stdout; got:\n${result.stdout}`,
+    );
+  });
+});

@@ -1,0 +1,73 @@
+---
+name: claude-deep-research
+description: "Run a Claude Code dynamic deep-research workflow on a question (multi-agent fan-out with WebSearch + cross-checked citations)."
+---
+
+You are the Codex skill wrapper for the Claude Companion dispatcher's
+deep-research subcommand.
+
+Resolve `<plugin-root>` as the directory two levels above this `SKILL.md` file
+(so `<plugin-root>/scripts/claude-companion.mjs` is the dispatcher).
+
+Run:
+
+    node "<plugin-root>/scripts/claude-companion.mjs" deep-research -- "<question>"
+
+Return the dispatcher's stdout verbatim. If the command exits non-zero, show
+stderr/stdout to the user and explain that the dispatcher failed. Do not
+reimplement the command logic yourself.
+
+Behavior rules:
+
+- Treat the user's remaining text after the skill invocation as the research
+  question. If empty, ask the user for a question before running.
+- Forward only these flags **when the user explicitly requests them**:
+  `--name`, `--model`, `--effort`, `--permission-mode`, `--add-dir`,
+  `--mcp-config`, `--json`.
+- The `--effort` flag accepts `low`, `medium`, `high`, `xhigh`, or `max` (Claude CLI valid set). The `ultracode` value is TUI-only and is silently ignored when passed via `--effort`. To trigger Claude Code's auto-orchestration workflow planning, use `$claude-workflow` instead — it injects the `ultracode:` keyword that activates the same behavior.
+- The user may also pass `--yes` to skip the first-run privacy acknowledgement.
+  Do NOT inject `--yes` automatically. If the dispatcher reports that an
+  acknowledgement is required, surface that message to the user instead of
+  retrying with `--yes`.
+- Do NOT forward `--allow-edit` — it is not applicable to this subcommand.
+
+Approval flow — important:
+
+This skill starts a Claude Code background session with `/deep-research <question>`
+injected as the opening slash command. The `/deep-research` slash command triggers
+Claude's bundled workflow runtime, which spawns multiple agents fanning out web
+searches, fetching sources, adversarially verifying claims, and synthesizing a
+cited report. No interactive approval dialog is required. After the job ID is
+printed, the user can run:
+
+    claude attach <jobId>
+
+inside a Claude Code session to watch progress.
+
+WebSearch requirement: the `/deep-research` workflow requires the `WebSearch`
+tool. This tool is auto-available in standard Claude Code background sessions
+(confirmed via Plan 0013 OQ-B empirical probe).
+
+Cost notice:
+
+Research-grade workflows use significant tokens. The `/deep-research` runtime
+can spawn multiple agents fanning out parallel web searches, per workflow limits
+of 16 concurrent agents and 1000 total agents per run. Recommend using narrow,
+specific questions over broad sweeps to contain cost. Use `$claude-stop` to
+terminate a deep-research session early.
+
+### When deep-research stalls
+
+If `$claude-status <jobId>` returns `needs_input` on the first poll and stays
+there, the `/deep-research` injection may have failed to reach the model. Stop
+the stalled session with `$claude-stop <jobId>` and re-run `$claude-deep-research`
+with the same question.
+
+### Next steps
+
+Deep-research sessions appear as standard background jobs; after starting one:
+
+- `$claude-status` — check live progress
+- `$claude-result` — read the final cited report once the session completes
+- `$claude-followup` — send an additional instruction mid-run
+- `$claude-stop` — terminate the deep-research session early

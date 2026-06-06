@@ -23,7 +23,8 @@
       "Run a Claude Code dynamic workflow (multi-step, plan + execute).",
       "Set a goal condition for a Claude Code session.",
       "Fork a Claude Code subagent for a directive.",
-      "Run a batch of parallel Claude Code instructions."
+      "Run a batch of parallel Claude Code instructions.",
+      "Run a Claude Code dynamic deep-research workflow on a question."
     ],
     "brandColor": "#D97706"
   }

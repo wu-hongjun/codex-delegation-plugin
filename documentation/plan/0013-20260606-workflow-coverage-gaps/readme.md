@@ -1,8 +1,9 @@
 # Plan 0013 — Workflow coverage gaps (`$claude-deep-research`, `--effort ultracode`, saved-workflow `args` docs)
 
-**Status**: `implementing`
+**Status**: `auditing`
 **Started**: 2026-06-06
 **Stage 1 approved**: 2026-06-06 (maintainer authorized full cycle)
+**Stage 2 complete (pending CI)**: 2026-06-06
 **Drafted from**: post-Plan-0012 coverage gap analysis against [Claude Code workflows docs](https://code.claude.com/docs/en/workflows)
 **Last updated**: 2026-06-06
 
@@ -11,7 +12,7 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-06** — Adaptive scope: 3 OQ probes condition T2-T3 implementation; T4 docs ship unconditionally |
-| 2 — Implement | `2-implement.md` | **in progress 2026-06-06** — T1 probes dispatching via single executor; T2-T6 sequential after verdicts |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1 returned A-partial/A/A; `$claude-deep-research` skill shipped (12→13); `--effort` valid-values docs (6 SKILL.md + README); saved-workflow + args docs; 1448 → 1485 npm test (+37); CI run pending |
 | 3 — Audit | `3-audit.md` | not started — requires independent context |
 | 4 — Polish | `4-polish.md` | not started |
 | 5 — Report | `5-report.md` | not started |

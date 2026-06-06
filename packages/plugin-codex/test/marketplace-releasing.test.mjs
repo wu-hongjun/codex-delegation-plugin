@@ -46,6 +46,7 @@ const SKILL_NAMES = [
   'claude-goal',
   'claude-fork',
   'claude-batch',
+  'claude-deep-research',
 ];
 
 // ---------- forbidden tokens (shared with T6/T7/T8/T9/T10) ----------
@@ -207,10 +208,10 @@ describe('consolidated release checklist (Plan 0006 T11)', () => {
   });
 
   // ========================================================================
-  // T11-6: Smoke Test section enumerates all 12 skills + gate criterion
+  // T11-6: Smoke Test section enumerates all 13 skills + gate criterion
   // ========================================================================
 
-  it('Smoke Test section enumerates all 12 skills with $claude-setup as gate (ok/warn)', () => {
+  it('Smoke Test section enumerates all 13 skills with $claude-setup as gate (ok/warn)', () => {
     const content = readFileSync(RELEASING_MD, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(content.includes(`$${name}`), `Smoke Test section must enumerate skill $${name}`);

@@ -6960,6 +6960,144 @@ describe('batch approval-flow note appended after job block', () => {
   });
 });
 
+// ---------- deep-research subcommand tests (Plan 0013) ----------
+
+describe('--help mentions deep-research command', () => {
+  it('usage text includes "deep-research [flags] -- <question>" as a listed command', () => {
+    const result = runDispatcher(['--help']);
+    assert.equal(result.status, 0, `--help should exit 0; got ${result.status}`);
+    assert.ok(
+      result.stdout.includes('deep-research'),
+      `expected "deep-research" in --help output; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('deep-research [flags] -- <question>'),
+      `expected "deep-research [flags] -- <question>" in --help output; got:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('deep-research --yes -- "test question" (happy path)', () => {
+  it('exits 0, stdout contains job_* ID and deep-research approval note', () => {
+    const result = runDispatcher(['deep-research', '--yes', '--', 'What is 2 plus 2?']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    assert.match(result.stdout, /job_[a-z0-9]+_[a-f0-9]{8}/, 'stdout should contain a jobId');
+    assert.ok(
+      result.stdout.includes('Claude job started') || result.stdout.includes('job_'),
+      `expected job output in stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('claude attach') || result.stdout.includes('deep-research'),
+      `expected deep-research-flavored note in stdout; got:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('deep-research prompt is prefixed with /deep-research ', () => {
+  it('the spawned session prompt starts with "/deep-research " (verified via mock state.json)', () => {
+    const userPrompt = 'my research question';
+    const result = runDispatcher(['deep-research', '--yes', '--', userPrompt]);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const statePath = join(MOCK_HOME, 'state.json');
+    assert.ok(existsSync(statePath), `expected mock state.json at ${statePath}`);
+    const state = JSON.parse(readFileSync(statePath, 'utf8'));
+    assert.ok(
+      Array.isArray(state.sessions) && state.sessions.length > 0,
+      'expected sessions in mock state',
+    );
+    const lastSession = state.sessions[state.sessions.length - 1];
+    assert.ok(
+      typeof lastSession.prompt === 'string' && lastSession.prompt.startsWith('/deep-research '),
+      `expected prompt to start with "/deep-research "; got: ${lastSession.prompt}`,
+    );
+    assert.ok(
+      lastSession.prompt.includes(userPrompt),
+      `expected prompt to include user text "${userPrompt}"; got: ${lastSession.prompt}`,
+    );
+  });
+});
+
+describe('deep-research without --yes (non-TTY stdin)', () => {
+  it('exits 1 and mentions privacy or --yes', () => {
+    const result = runDispatcher(['deep-research', '--', 'some question']);
+    assert.notEqual(result.status, 0, 'expected non-zero exit when --yes is missing');
+    assert.equal(result.status, 1, `expected exit 1, got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.toLowerCase().includes('privacy') ||
+        combined.toLowerCase().includes('--yes') ||
+        combined.toLowerCase().includes('acknowledge'),
+      `expected mention of privacy or --yes; got:\n${combined}`,
+    );
+    assert.equal(listJobIds().length, 0, 'no job records should be created when --yes is absent');
+  });
+});
+
+describe('deep-research rejects --allow-edit', () => {
+  it('exits 2 and prints a clear error when --allow-edit is passed', () => {
+    const result = runDispatcher(['deep-research', '--yes', '--allow-edit', '--', 'some question']);
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for --allow-edit rejection; got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('--allow-edit'),
+      `expected mention of "--allow-edit" in error output; got:\n${combined}`,
+    );
+  });
+});
+
+describe('deep-research accepts standard delegate flags', () => {
+  it('exits 0 when --model, --effort, and --permission-mode are supplied', () => {
+    const result = runDispatcher([
+      'deep-research',
+      '--yes',
+      '--model',
+      'claude-sonnet-4-5',
+      '--effort',
+      'normal',
+      '--permission-mode',
+      'default',
+      '--',
+      'What is 2 plus 2?',
+    ]);
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 with standard delegate flags; stderr: ${result.stderr}`,
+    );
+    assert.match(result.stdout, /job_[a-z0-9]+_[a-f0-9]{8}/, 'stdout should contain a jobId');
+  });
+});
+
+describe('deep-research approval-flow note appended after job block', () => {
+  it('stdout contains both a job block and the deep-research-flavored note', () => {
+    const result = runDispatcher([
+      'deep-research',
+      '--yes',
+      '--',
+      'deep research question for note test',
+    ]);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes('Claude job started') || result.stdout.includes('Job ID:'),
+      `expected standard job output in stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('deep-research') || result.stdout.includes('attach'),
+      `expected deep-research-specific note in stdout; got:\n${result.stdout}`,
+    );
+  });
+});
+
 // ---------- T7: version reporting consistency (Plan 0012) ----------
 
 describe('dispatcher pluginVersion matches .codex-plugin/plugin.json (Plan 0012 T7)', () => {

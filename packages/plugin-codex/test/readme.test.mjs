@@ -1281,27 +1281,27 @@ describe('README.md adversarial-review section uses neutral usage wording (T10-o
 
 // ---------- T10-optional-B. Direct dispatcher usage mentions eight commands ----------
 
-describe('README.md Direct dispatcher usage mentions twelve commands (T10-optional-B)', () => {
-  it('contains "twelve commands" or "All twelve commands"', () => {
+describe('README.md Direct dispatcher usage mentions thirteen commands (T10-optional-B)', () => {
+  it('contains "thirteen commands" or "All thirteen commands"', () => {
     const body = readReadme();
     const lower = body.toLowerCase();
     assert.ok(
-      lower.includes('twelve commands') || lower.includes('all twelve commands'),
-      'README.md Direct dispatcher usage section must say "twelve commands" (updated from ten)',
+      lower.includes('thirteen commands') || lower.includes('all thirteen commands'),
+      'README.md Direct dispatcher usage section must say "thirteen commands" (updated from twelve)',
     );
   });
 });
 
-// ---------- T10-optional-C. Current v1 scope lists Twelve skills ----------
+// ---------- T10-optional-C. Current v1 scope lists Thirteen skills ----------
 
-describe('README.md Current v1 scope lists Twelve skills (T10-optional-C)', () => {
-  it('contains "Twelve skills" in the Current v1 scope section', () => {
+describe('README.md Current v1 scope lists Thirteen skills (T10-optional-C)', () => {
+  it('contains "Thirteen skills" in the Current v1 scope section', () => {
     const body = readReadme();
     const section = extractSection(body, '## Current v1 scope');
     assert.ok(section !== null, 'README.md must have a ## Current v1 scope section');
     assert.ok(
-      section.includes('Twelve skills'),
-      'README.md ## Current v1 scope must say "Twelve skills" (updated from Ten skills)',
+      section.includes('Thirteen skills'),
+      'README.md ## Current v1 scope must say "Thirteen skills" (updated from Twelve skills)',
     );
   });
 });
@@ -1608,6 +1608,57 @@ describe('claude-workflow SKILL.md has an example workflow script (T2-5)', () =>
     assert.ok(
       body.includes('phase('),
       'claude-workflow/SKILL.md must contain an example script with "phase("',
+    );
+  });
+});
+
+// ---------- Plan 0013 T2: --effort clarification regression tests ----------
+
+describe('at least one skill SKILL.md contains the --effort ultracode clarification (Plan 0013 T2)', () => {
+  it('claude-workflow/SKILL.md contains the --effort valid-values note', () => {
+    const body = readFileSync(
+      resolve(PLUGIN_ROOT, 'skills', 'claude-workflow', 'SKILL.md'),
+      'utf8',
+    );
+    assert.ok(
+      body.includes('low') && body.includes('xhigh') && body.includes('max'),
+      'claude-workflow/SKILL.md must document valid --effort values (low, xhigh, max) per Plan 0013 T2',
+    );
+    assert.ok(
+      body.includes('ultracode') && body.includes('TUI-only'),
+      'claude-workflow/SKILL.md must note that ultracode is TUI-only per Plan 0013 T2',
+    );
+  });
+});
+
+// ---------- Plan 0013 T4: saved-workflow docs regression tests ----------
+
+describe('claude-workflow/SKILL.md contains the Saved workflows section (Plan 0013 T4)', () => {
+  it('claude-workflow/SKILL.md contains the phrase "Saved workflows"', () => {
+    const body = readFileSync(
+      resolve(PLUGIN_ROOT, 'skills', 'claude-workflow', 'SKILL.md'),
+      'utf8',
+    );
+    assert.ok(
+      body.includes('Saved workflows'),
+      'claude-workflow/SKILL.md must contain a "Saved workflows" section per Plan 0013 T4',
+    );
+  });
+});
+
+describe('claude-delegate/SKILL.md cross-references saved workflows (Plan 0013 T4)', () => {
+  it('claude-delegate/SKILL.md mentions saved workflows or cross-references $claude-workflow', () => {
+    const body = readFileSync(
+      resolve(PLUGIN_ROOT, 'skills', 'claude-delegate', 'SKILL.md'),
+      'utf8',
+    );
+    const mentionsSavedWorkflow =
+      body.toLowerCase().includes('saved workflow') ||
+      body.includes('$claude-workflow') ||
+      body.includes('saved-or-bundled-workflow');
+    assert.ok(
+      mentionsSavedWorkflow,
+      'claude-delegate/SKILL.md must cross-reference saved workflows or $claude-workflow per Plan 0013 T4',
     );
   });
 });

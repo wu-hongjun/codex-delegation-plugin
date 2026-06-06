@@ -24,6 +24,7 @@ Behavior rules:
 - Forward only these flags **when the user explicitly requests them**:
   `--name`, `--model`, `--effort`, `--permission-mode`, `--add-dir`,
   `--mcp-config`, `--json`.
+- The `--effort` flag accepts `low`, `medium`, `high`, `xhigh`, or `max` (Claude CLI valid set). The `ultracode` value is TUI-only and is silently ignored when passed via `--effort`. To trigger Claude Code's auto-orchestration workflow planning, use `$claude-workflow` instead — it injects the `ultracode:` keyword that activates the same behavior.
 - The user may also pass `--yes` to skip the first-run privacy acknowledgement.
   Do NOT inject `--yes` automatically. If the dispatcher reports that an
   acknowledgement is required, surface that message to the user instead of

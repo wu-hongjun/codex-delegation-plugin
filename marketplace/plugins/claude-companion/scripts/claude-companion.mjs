@@ -100,6 +100,9 @@ try {
     case 'batch':
       await cmdBatch(flags, positional, useJson);
       break;
+    case 'deep-research':
+      await cmdDeepResearch(flags, positional, useJson);
+      break;
     case 'status':
       await cmdStatus(flags, useJson);
       break;
@@ -389,6 +392,35 @@ async function cmdBatch(flags, positional, json) {
       'This is a Claude Code batch request.',
       'The runtime injects a "# Batch: Parallel Work Orchestration" system prompt.',
       'Batch sessions can spawn multiple parallel tool-calls and subagents.',
+      'Attach via `claude attach <jobId>` to watch progress.',
+    ].join('\n'),
+  });
+}
+
+// ---------- deep-research ----------
+
+async function cmdDeepResearch(flags, positional, json) {
+  // --allow-edit is not applicable to deep-research; workflow-runtime operations are session-init.
+  if (flags['allow-edit'] !== undefined) {
+    process.stderr.write(
+      formatError(
+        new Error('--allow-edit is not applicable to $claude-deep-research.'),
+        'deep-research',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  await _runDelegateCore(flags, positional, json, {
+    commandName: 'deep-research',
+    promptTransformer: (p) => `/deep-research ${p}`,
+    extraOutput: [
+      '',
+      'This is a Claude Code deep-research request.',
+      'The /deep-research runtime fans out parallel web searches, fetches sources,',
+      'adversarially verifies claims, and synthesizes a cited report.',
+      'WebSearch is auto-available in standard bg sessions.',
       'Attach via `claude attach <jobId>` to watch progress.',
     ].join('\n'),
   });
@@ -2081,6 +2113,7 @@ function printUsage() {
       '  goal [flags] -- <condition>               Start a Claude Code background session with a /goal condition',
       '  fork [flags] -- <directive>               Fork a Claude Code subagent for a directive',
       '  batch [flags] -- <instruction>            Run a batch of parallel Claude Code instructions',
+      '  deep-research [flags] -- <question>       Run a Claude Code /deep-research workflow (multi-agent fan-out with WebSearch)',
       '  status [--all] [--json]                   List jobs for current workspace',
       '  result <jobId> [--all] [--json]           Show final result of a completed job',
       '  stop <jobId> [--all] [--json]             Stop a running job',
@@ -2092,15 +2125,15 @@ function printUsage() {
       '                                            Fresh-session independent review of the latest non-review turn',
       '',
       'Flags:',
-      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch)',
-      '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/goal/fork/batch/followup/review/adversarial-review)',
-      '  --name <name>                Session name (delegate, workflow, goal, fork, batch)',
-      '  --model <model>              Model selection (delegate, workflow, goal, fork, batch, adversarial-review)',
-      '  --effort <effort>            Effort level (delegate, workflow, goal, fork, batch, adversarial-review)',
-      '  --permission-mode <mode>     Permission mode (delegate, workflow, goal, fork, batch, adversarial-review)',
-      '  --add-dir <dir>              Additional directory (delegate, workflow, goal, fork, batch; repeatable)',
-      '  --mcp-config <path>          MCP config file (delegate, workflow, goal, fork, batch)',
-      '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, workflow, goal, fork, and batch',
+      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch/deep-research)',
+      '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/goal/fork/batch/deep-research/followup/review/adversarial-review)',
+      '  --name <name>                Session name (delegate, workflow, goal, fork, batch, deep-research)',
+      '  --model <model>              Model selection (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
+      '  --effort <effort>            Effort level (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
+      '  --permission-mode <mode>     Permission mode (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
+      '  --add-dir <dir>              Additional directory (delegate, workflow, goal, fork, batch, deep-research; repeatable)',
+      '  --mcp-config <path>          MCP config file (delegate, workflow, goal, fork, batch, deep-research)',
+      '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, workflow, goal, fork, batch, and deep-research',
       '  --all                        Search all workspaces (status/result/stop/followup/review/adversarial-review)',
       '  --all-awaiting-followup      Bulk-stop all awaiting-followup jobs (stop only; combine with --all for every workspace)',
       '  --help                       Show this help',

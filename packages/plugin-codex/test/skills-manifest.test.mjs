@@ -30,6 +30,7 @@ const SKILL_NAMES = [
   'claude-goal',
   'claude-fork',
   'claude-batch',
+  'claude-deep-research',
 ];
 
 /** Subcommand each skill must reference in its body. */
@@ -46,6 +47,7 @@ const SKILL_SUBCOMMANDS = {
   'claude-goal': 'goal',
   'claude-fork': 'fork',
   'claude-batch': 'batch',
+  'claude-deep-research': 'deep-research',
 };
 
 function skillPath(name) {
@@ -717,26 +719,26 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
     }
   });
 
-  it('has at least 12 entries after T4 additions', () => {
+  it('has at least 13 entries after T4 additions', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.ok(
-      dp.length >= 12,
-      `interface.defaultPrompt must have at least 12 entries after T4; got ${dp.length}`,
+      dp.length >= 13,
+      `interface.defaultPrompt must have at least 13 entries after T4; got ${dp.length}`,
     );
   });
 });
 
-describe('plugin.json.interface.defaultPrompt length is exactly 12 (v0.2.0 + claude-fork + claude-batch contract)', () => {
-  it('array length equals 12', () => {
+describe('plugin.json.interface.defaultPrompt length is exactly 13 (v0.2.0 + claude-fork + claude-batch + claude-deep-research contract)', () => {
+  it('array length equals 13', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      12,
-      `interface.defaultPrompt must have exactly 12 entries (v0.2.0 + claude-fork + claude-batch contract); got ${dp.length}`,
+      13,
+      `interface.defaultPrompt must have exactly 13 entries (v0.2.0 + claude-fork + claude-batch + claude-deep-research contract); got ${dp.length}`,
     );
   });
 });
@@ -837,14 +839,14 @@ describe('no unexpected review-adjacent skill directories exist', () => {
 // ---------- T6: OQ-C defaultPrompt rewrites (entries #6-#9) ----------
 
 describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)', () => {
-  it('array length is exactly 12', () => {
+  it('array length is exactly 13', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      12,
-      `interface.defaultPrompt must have exactly 12 entries; got ${dp.length}`,
+      13,
+      `interface.defaultPrompt must have exactly 13 entries; got ${dp.length}`,
     );
   });
 
@@ -929,7 +931,7 @@ describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)'
   });
 });
 
-// ---------- T1 (Plan 0009): cross-skill chaining hints — all 12 skills ----------
+// ---------- T1 (Plan 0009): cross-skill chaining hints — all 13 skills ----------
 
 describe('each SKILL.md ends with a "Next steps" subsection (T1 Plan 0009)', () => {
   for (const name of SKILL_NAMES) {
@@ -1344,6 +1346,107 @@ describe('claude-batch/SKILL.md: strict frontmatter parse (Plan 0011)', () => {
     assert.ok(
       typeof fm.description === 'string' && fm.description.length > 0,
       'claude-batch: strict-parsed description must be non-empty',
+    );
+  });
+});
+
+// ---------- Plan 0013: claude-deep-research skill guards ----------
+
+describe('claude-deep-research skill directory and SKILL.md exist (Plan 0013)', () => {
+  it('skills/claude-deep-research/ directory exists', () => {
+    assert.ok(
+      existsSync(join(PLUGIN_ROOT, 'skills', 'claude-deep-research')),
+      'skills/claude-deep-research/ directory must exist',
+    );
+  });
+
+  it('skills/claude-deep-research/SKILL.md exists', () => {
+    assert.ok(
+      existsSync(skillPath('claude-deep-research')),
+      `SKILL.md not found at ${skillPath('claude-deep-research')}`,
+    );
+  });
+});
+
+describe('claude-deep-research/SKILL.md: run line invokes dispatcher with "deep-research" subcommand (Plan 0013)', () => {
+  it('body contains "claude-companion.mjs" and "deep-research"', () => {
+    const body = readFileSync(skillPath('claude-deep-research'), 'utf8');
+    assert.ok(
+      body.includes('claude-companion.mjs'),
+      'claude-deep-research/SKILL.md must reference scripts/claude-companion.mjs',
+    );
+    assert.ok(
+      body.includes('deep-research'),
+      'claude-deep-research/SKILL.md must reference the "deep-research" subcommand',
+    );
+  });
+
+  it('run line uses -- separator', () => {
+    const body = readFileSync(skillPath('claude-deep-research'), 'utf8');
+    assert.ok(
+      body.includes('deep-research -- "<'),
+      'claude-deep-research/SKILL.md run line does not use the "-- \\"<" separator convention',
+    );
+  });
+});
+
+describe('claude-deep-research/SKILL.md: --yes auto-injection guard (Plan 0013)', () => {
+  it('no dispatcher run line for "deep-research" subcommand contains " --yes"', () => {
+    const body = readFileSync(skillPath('claude-deep-research'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('claude-companion.mjs') && line.includes('deep-research'))
+      .filter((line) => line.includes(' --yes'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-deep-research/SKILL.md auto-injects "--yes" on a dispatcher run line, violating privacy-ack contract:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('claude-deep-research/SKILL.md: --allow-edit is not referenced in run lines (Plan 0013)', () => {
+  it('no dispatcher run line contains "--allow-edit"', () => {
+    const body = readFileSync(skillPath('claude-deep-research'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('claude-companion.mjs'))
+      .filter((line) => line.includes('--allow-edit'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-deep-research/SKILL.md references "--allow-edit" on a dispatcher run line, which is not applicable:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('plugin.json interface.defaultPrompt contains deep-research entry (Plan 0013)', () => {
+  it('includes "Run a Claude Code dynamic deep-research workflow on a question."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('Run a Claude Code dynamic deep-research workflow on a question.'),
+      `interface.defaultPrompt must contain "Run a Claude Code dynamic deep-research workflow on a question."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+});
+
+describe('claude-deep-research/SKILL.md: strict frontmatter parse (Plan 0013)', () => {
+  it('strict frontmatter parse does not throw and name/description are correct', () => {
+    const body = readFileSync(skillPath('claude-deep-research'), 'utf8');
+    let fm;
+    assert.doesNotThrow(() => {
+      fm = strictParseFrontmatter(body);
+    }, 'claude-deep-research/SKILL.md: strict YAML frontmatter parse failed');
+    assert.equal(
+      fm.name,
+      'claude-deep-research',
+      'claude-deep-research: strict-parsed name should match directory',
+    );
+    assert.ok(
+      typeof fm.description === 'string' && fm.description.length > 0,
+      'claude-deep-research: strict-parsed description must be non-empty',
     );
   });
 });

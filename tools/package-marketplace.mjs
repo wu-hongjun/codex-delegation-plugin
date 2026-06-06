@@ -70,6 +70,7 @@ const DERIVED_FILES = [
   'skills/claude-goal/SKILL.md',
   'skills/claude-fork/SKILL.md',
   'skills/claude-batch/SKILL.md',
+  'skills/claude-deep-research/SKILL.md',
 ];
 
 /**

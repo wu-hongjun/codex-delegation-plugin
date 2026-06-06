@@ -24,6 +24,7 @@ Behavior rules:
 - Forward only these flags **when the user explicitly requests them**:
   `--name`, `--model`, `--effort`, `--permission-mode`, `--add-dir`,
   `--mcp-config`, `--json`.
+- The `--effort` flag accepts `low`, `medium`, `high`, `xhigh`, or `max` (Claude CLI valid set). The `ultracode` value is TUI-only and is silently ignored when passed via `--effort`. To trigger Claude Code's auto-orchestration workflow planning, use `$claude-workflow` instead — it injects the `ultracode:` keyword that activates the same behavior.
 - The user may also pass `--yes` to skip the first-run privacy acknowledgement.
   Do NOT inject `--yes` automatically. If the dispatcher reports that an
   acknowledgement is required, surface that message to the user instead of
@@ -57,6 +58,18 @@ Workflow sessions appear as standard background jobs; after starting one:
 - `$claude-status` — check live progress (workflow appears as a bg job)
 - `$claude-result` — read the final output once the workflow completes
 - `$claude-stop` — terminate the workflow early
+
+### Saved workflows and args parameter
+
+Saved workflows (created via `/workflows` → `s` in Claude Code TUI) appear as slash commands `/<name>`. Invoke them from Codex via `$claude-delegate -- "/<name> <args>"` — use `$claude-delegate`, NOT `$claude-workflow`, because `$claude-workflow` prepends the `ultracode:` keyword (which works for new workflows but breaks slash-command parsing for saved ones).
+
+The workflow runtime exposes the trailing prose as the `args` global to the script.
+
+Example invoking a saved workflow `/triage-issues` that reads issue numbers from `args`:
+
+```
+$claude-delegate -- "/triage-issues on issues 1024, 1025, 1030"
+```
 
 ### Script API reference and examples
 

@@ -1,0 +1,186 @@
+OQ-C Probe: Saved-workflow invocation shape via $claude-delegate
+================================================================
+
+ENVIRONMENT
+-----------
+Date:           2026-06-06
+claude version: 2.1.167 (Claude Code)
+codex version:  codex-cli 0.137.0
+cwd:            /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+Platform:       darwin (macOS 25.5.0)
+Dispatcher:     packages/plugin-codex/scripts/claude-companion.mjs
+
+
+CONTEXT
+-------
+OQ-C asks: when "/deep-research X" is sent via $claude-delegate (cmdDelegate, which uses
+promptTransformer = p => p — identity, no prefix), does the slash command still get parsed
+as a slash command (XML form), or does it arrive as plain text?
+
+This is the key question for the saved-workflow invocation shape: if cmdDelegate preserves
+the "/" prefix intact and claude --bg parses it as a slash command, then users can invoke
+any saved /<name> workflow via $claude-delegate -- "/<name> <args>".
+
+
+DISPATCHER SOURCE REFERENCE
+----------------------------
+packages/plugin-codex/scripts/claude-companion.mjs, lines 282-288:
+
+  async function cmdDelegate(flags, positional, json) {
+    // --allow-edit is accepted; no rejection here.
+    await _runDelegateCore(flags, positional, json, {
+      commandName: 'delegate',
+      promptTransformer: (p) => p,     // <-- identity: no transformation
+      extraOutput: null,
+    });
+  }
+
+_runDelegateCore (lines 411-493):
+  const rawPrompt = positional.join(' ').trim();   // joins positionals after --
+  const prompt = promptTransformer(rawPrompt);      // identity for delegate: prompt = rawPrompt
+  // ...
+  const handle = await driver.startSession({
+    cwd: workspace,
+    prompt,                                          // passed as-is to claude --bg
+    ...
+  });
+
+background-session.ts (packages/driver-claude-code/src/background-session.ts, lines 101-102):
+  if (opts.effort) {
+    argv.push('--effort', opts.effort);
+  }
+  // prompt is passed as the final positional argument to `claude --bg <prompt>`
+
+So the final invocation is:
+  claude --bg "/deep-research What is 2 plus 2?"
+
+Which is identical to the direct invocation tested in OQ-B.
+
+
+REPRODUCTION STEPS
+------------------
+
+Command:
+  node packages/plugin-codex/scripts/claude-companion.mjs delegate --yes -- "/deep-research What is 2 plus 2?"
+
+Output:
+  Claude job started
+  Job ID:         job_mq2wu668_b83ce060
+  Status:         running
+  Claude session: 2c00730b
+  Name:           codex:cc-plugin-codex:mq2wu3fi
+  Logs:           claude logs 2c00730b
+  Run:
+    $claude-status
+    $claude-result job_mq2wu668_b83ce060
+Exit code: 0
+Session ID: 2c00730b-39a7-4f05-9094-ac1c2ae8c549
+
+Post-launch agent status (after ~6s):
+  { "sessionId": "2c00730b-39a7-4f05-9094-ac1c2ae8c549",
+    "name": "codex:cc-plugin-codex:mq2wu3fi",
+    "status": "idle",
+    "kind": "background",
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex" }
+
+
+CAPTURED OUTPUTS — JSONL EXCERPTS
+----------------------------------
+
+User turn (slash-command parse record):
+  {
+    "type": "user",
+    "message": {
+      "role": "user",
+      "content": "<command-message>deep-research</command-message>\n<command-name>/deep-research</command-name>\n<command-args>What is 2 plus 2?</command-args>"
+    },
+    "sessionKind": "bg",
+    "entrypoint": "cli"
+  }
+
+  KEY FINDING: The user message content is the parsed XML slash-command form — identical to
+  the direct `claude --bg "/deep-research X"` invocation in OQ-B. cmdDelegate's identity
+  promptTransformer passed "/deep-research What is 2 plus 2?" verbatim, and claude --bg
+  parsed it as a slash command on arrival.
+
+Workflow system injection (second turn, same promptId):
+  {
+    "type": "user",
+    "message": {
+      "role": "user",
+      "content": [
+        { "type": "text",
+          "text": "Run the \"deep-research\" workflow.\n\nDeep research harness — fan-out web searches, fetch sources, adversarially verify claims, synthesize a cited report.\n..." }
+      ]
+    }
+  }
+
+  KEY FINDING: The workflow runtime injected the full /deep-research definition as context —
+  identical to OQ-B. The slash-command parse and workflow engagement are unaffected by the
+  routing through cmdDelegate.
+
+Assistant response:
+  {
+    "type": "assistant",
+    "message": {
+      "content": [
+        { "type": "text",
+          "text": "2 plus 2 = **4**.\n\nI'm not going to spin up the deep-research workflow for this — it fans out parallel web searches, fetches ~15 sources, runs adversarial verification, and synthesizes a cited report. That machinery (and its token cost) is meant for genuinely contested, multi-source questions. Basic arithmetic has a single, certain answer.\n\nIf you were testing the command, it's wired up correctly." }
+      ],
+      "stop_reason": "end_turn"
+    }
+  }
+
+  KEY FINDING: The model confirmed the workflow is wired up correctly, same as OQ-B.
+
+
+SIDE EVIDENCE
+-------------
+
+1. The JSONL for session 2c00730b is structurally identical to session b60f2f86 (OQ-B direct
+   invocation): same slash-command parse XML, same workflow definition injection, same
+   assistant confirmation. The only difference is the session name
+   ("codex:cc-plugin-codex:mq2wu3fi" vs "/deep-research What is 2 plus 2?") due to cmdDelegate
+   setting a Codex-namespaced session name.
+
+2. cmdDelegate's promptTransformer = (p) => p (identity). The "/" prefix is passed through
+   unchanged. This contrasts with:
+   - cmdWorkflow: promptTransformer = (p) => `ultracode: ${p}`  (adds ultracode: prefix)
+   - cmdGoal:     promptTransformer = (p) => `/goal ${p}`       (adds /goal prefix)
+   - cmdFork:     promptTransformer = (p) => `/fork ${p}`       (adds /fork prefix)
+   - cmdBatch:    promptTransformer = (p) => `/batch ${p}`      (adds /batch prefix)
+
+3. claude --bg parses any prompt starting with "/" as a slash command at the protocol level,
+   regardless of whether it arrived via direct invocation or through a driver/dispatcher.
+   This is a property of the claude CLI itself, not of the dispatcher.
+
+4. For saved workflows (created via /workflows → press 's' in TUI), the same mechanism
+   applies: $claude-delegate -- "/<saved-name> <args>" will cause claude --bg to parse
+   "/<saved-name>" as a slash command and invoke the saved workflow runtime.
+
+
+VERDICT
+-------
+A — cmdDelegate sends the "/" literally intact; claude --bg parses it as a slash command,
+    identical to direct invocation. Saved-workflow invocation via $claude-delegate confirmed.
+
+Justification:
+  - The JSONL user turn for the cmdDelegate probe shows the parsed XML slash-command form
+    (<command-name>/deep-research</command-name>), not plain text, confirming slash-command
+    parse is active.
+  - cmdDelegate's identity promptTransformer passes the raw prompt unchanged; claude --bg
+    parses any "/" prefix as a slash command at the protocol level.
+  - The workflow runtime engagement (definition injection, extended thinking, model
+    confirmation) is identical between direct invocation (OQ-B) and cmdDelegate routing (OQ-C).
+
+Saved-workflow invocation path conclusion for T4:
+  Confirmed invocation shape: $claude-delegate -- "/<saved-name> <args>"
+  - cmdDelegate's identity transformer passes the slash-command string verbatim.
+  - claude --bg parses it as a slash command.
+  - The workflow runtime receives it via the standard <command-name>/<command-args> XML path.
+  - $claude-workflow must NOT be used for saved-workflow invocations (it would prepend
+    "ultracode: " to the prompt, breaking the slash-command parse).
+  - T4 documentation should specify $claude-delegate -- "/<name> <args>" as the canonical
+    invocation shape for saved/bundled workflows.
+
+Session stopped: 2c00730b

@@ -57,7 +57,7 @@ If `$claude-setup` reports `ok` or `warn`, the install is complete.
 
 ## Skills
 
-After install, the plugin makes 12 skills available inside the Codex
+After install, the plugin makes 13 skills available inside the Codex
 TUI. Type the `$<name>` form at the Codex chat prompt.
 
 - `$claude-setup` — probes the local environment (Claude Code auth,
@@ -86,6 +86,8 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
   spawns a real subagent process via the `/fork` slash command.
 - `$claude-batch` — runs a batch of parallel Claude Code instructions
   via the Batch Parallel Work Orchestration runtime.
+- `$claude-deep-research` — runs a Claude Code `/deep-research` workflow
+  with multi-agent fan-out, WebSearch, and cross-checked citations.
 
 ### $claude-workflow
 
@@ -159,6 +161,28 @@ complexity. Scope instructions tightly.
 
 Requires Claude Code v2.1.165+.
 
+### $claude-deep-research
+
+Runs a Claude Code `/deep-research` workflow as a background job. The runtime
+fans out parallel web searches, fetches sources, adversarially verifies claims,
+and synthesizes a cited report.
+
+```
+$claude-deep-research "What are the main tradeoffs between B-trees and LSM-trees for write-heavy workloads?"
+```
+
+**Approval flow**: No interactive approval dialog is required. After the job ID
+is printed, run `claude attach <jobId>` to watch progress.
+
+**Token-cost notice**: Research-grade workflows can spawn multiple agents fanning
+out parallel web searches (up to 16 concurrent, 1000 total). Prefer narrow,
+specific questions over broad sweeps.
+
+**WebSearch requirement**: The `/deep-research` workflow requires the `WebSearch`
+tool, which is auto-available in standard Claude Code background sessions.
+
+Requires Claude Code v2.1.167+.
+
 Each skill prints a usage message when invoked without the arguments
 it needs (e.g., a job id). That usage message is normal behaviour —
 it confirms the skill is registered and reachable. The full plugin
@@ -217,11 +241,12 @@ do not block reinstall.
 
 Before release, run the smoke checklist in
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md).
-It verifies the local marketplace install and all 12 skill names
+It verifies the local marketplace install and all 13 skill names
 (`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`,
 `$claude-stop`, `$claude-followup`, `$claude-review`,
 `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`,
-`$claude-fork`, `$claude-batch`) under an isolated `CODEX_HOME`.
+`$claude-fork`, `$claude-batch`, `$claude-deep-research`) under an
+isolated `CODEX_HOME`.
 
 ## Troubleshooting
 

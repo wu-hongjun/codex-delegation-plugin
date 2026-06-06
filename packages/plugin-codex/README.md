@@ -8,7 +8,7 @@ Key design choice: this v1 uses Claude Code background sessions directly and doe
 
 ## Current v1 scope
 
-Twelve skills are available:
+Thirteen skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
 - **`$claude-delegate`** — start a new background session for a task
@@ -22,6 +22,7 @@ Twelve skills are available:
 - **`$claude-goal`** — set a goal condition for a Claude Code background session; the runtime tracks goal-completion automatically (added in plan 0010)
 - **`$claude-fork`** — fork a Claude Code subagent for a directive; spawns a real subagent process (added in plan 0011)
 - **`$claude-batch`** — run a batch of parallel Claude Code instructions via the Batch Parallel Work Orchestration runtime (added in plan 0011)
+- **`$claude-deep-research`** — run a Claude Code `/deep-research` workflow with multi-agent fan-out, WebSearch, and cross-checked citations (added in plan 0013)
 
 Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
 
@@ -274,6 +275,47 @@ Direct dispatcher equivalent:
 node packages/plugin-codex/scripts/claude-companion.mjs batch -- "migrate all usages of the old API to the new one"
 ```
 
+### $claude-deep-research
+
+Run a Claude Code `/deep-research` workflow as a background job. The `/deep-research` slash command triggers Claude's bundled workflow runtime, which fans out parallel web searches, fetches sources, adversarially verifies claims, and synthesizes a cited report.
+
+```bash
+$claude-deep-research "What are the main tradeoffs between B-trees and LSM-trees for write-heavy workloads?"
+```
+
+**Requires Claude Code v2.1.167+.** The `/deep-research` slash command is confirmed available on v2.1.167 per empirical probe evidence at `documentation/plan/0013-20260606-workflow-coverage-gaps/artifacts/oq-b-deep-research-probe-20260606.txt`.
+
+**Approval flow**: After `$claude-deep-research` starts the background session, the `/deep-research <question>` slash command is injected as the prompt. The workflow runtime engages automatically — no interactive approval dialog is required. To watch progress, run:
+
+```bash
+claude attach <jobId>
+```
+
+**WebSearch requirement**: The `/deep-research` workflow requires the `WebSearch` tool. This tool is auto-available in standard Claude Code background sessions.
+
+**Cost notice**: Research-grade workflows use significant tokens. The runtime can spawn multiple agents fanning out parallel web searches, subject to limits of 16 concurrent agents and 1000 total agents per run. Recommend narrow, specific questions over broad sweeps. Use `$claude-stop` to terminate a deep-research session early.
+
+Accepted flags (forwarded to the delegate path):
+
+- `--model` — model override for the deep-research session.
+- `--effort` — effort level.
+- `--permission-mode` — permission mode override.
+- `--add-dir` — additional directory to expose to Claude Code.
+- `--mcp-config` — MCP configuration file path.
+- `--name` — session name override.
+- `--yes` — record the privacy acknowledgement non-interactively.
+- `--json` — machine-readable output.
+
+Rejected at parse time:
+
+- `--allow-edit` — not accepted by `$claude-deep-research`. Workflow-runtime operations are session-init, not single-turn delegations; this flag is not applicable.
+
+Direct dispatcher equivalent:
+
+```bash
+node packages/plugin-codex/scripts/claude-companion.mjs deep-research -- "What are the main tradeoffs between B-trees and LSM-trees for write-heavy workloads?"
+```
+
 ### $claude-status
 
 List all delegated jobs in the current workspace with their live status.
@@ -332,7 +374,7 @@ Optional cleanup. Not required before calling `result`.
 
 ## Direct dispatcher usage
 
-All twelve commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All thirteen commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-codex/scripts/claude-companion.mjs setup
@@ -347,6 +389,7 @@ node packages/plugin-codex/scripts/claude-companion.mjs workflow "audit every fe
 node packages/plugin-codex/scripts/claude-companion.mjs goal -- "all unit tests pass"
 node packages/plugin-codex/scripts/claude-companion.mjs fork -- "build a proof-of-concept for the new rate-limiter"
 node packages/plugin-codex/scripts/claude-companion.mjs batch -- "migrate all usages of the old API to the new one"
+node packages/plugin-codex/scripts/claude-companion.mjs deep-research -- "What are the main tradeoffs between B-trees and LSM-trees for write-heavy workloads?"
 ```
 
 All commands support `--json` for machine-readable output. The `--yes` flag on `delegate` and `followup` skips the interactive privacy acknowledgement; `--allow-edit` is a policy/framing flag and does NOT bypass that acknowledgement.
@@ -712,6 +755,8 @@ $claude-stop <jobId>
 This terminates the background session running the workflow. You can also cancel from inside the Claude Code TUI by running `/workflows` and selecting the active workflow.
 
 **Limits empirically confirmed**: 16 concurrent + 1000 total subagent limits confirmed via Plan 0008 T1 + T9.5 empirical testing. The `/workflows` slash command and `ultracode:` trigger keyword confirmed available on Claude Code v2.1.153 via TUI smoke test.
+
+**CLI vs TUI distinction**: The `--effort` CLI flag accepts `low`, `medium`, `high`, `xhigh`, or `max` only; the `ultracode` value is TUI-only (`/effort ultracode` slash command) and is silently ignored when passed as `--effort ultracode`. Use `$claude-workflow` to trigger the `ultracode:` planning path from Codex.
 
 ## Cost and prompt-cache wording
 

@@ -1,0 +1,124 @@
+OQ-A Probe: Does `claude --effort ultracode` work via CLI flag?
+==============================================================
+
+ENVIRONMENT
+-----------
+Date:           2026-06-06
+claude version: 2.1.167 (Claude Code)
+codex version:  codex-cli 0.137.0
+cwd:            /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+Platform:       darwin (macOS 25.5.0)
+
+
+REPRODUCTION STEPS
+------------------
+
+Probe A3 (sanity / --help):
+  Command:  claude --effort ultracode --help 2>&1 | grep -E "effort|ultracode|invalid|error|unknown"
+  Output:
+    Warning: Unknown --effort value 'ultracode' — ignoring it and using the default effort. Valid values: low, medium, high, xhigh, max.
+      --effort <level>                      Effort level for the current session
+                                            ...
+  Exit code: 0
+
+  Full --help excerpt for --effort flag:
+    --effort <level>   Effort level for the current session (low, medium, high, xhigh, max)
+
+Probe A1 (baseline — no --effort flag):
+  Command:  claude --bg "Print the literal text ULTRACODE-OK then stop."
+  Output:
+    backgrounded · acf36756
+      claude agents             list sessions
+      claude attach acf36756    open in this terminal
+      claude logs acf36756      show recent output
+      claude stop acf36756      stop this session
+  Exit code: 0
+  Session ID: acf36756-b1a9-4d0c-954b-82f5abc669b4
+  Status (post): idle
+
+Probe A2 (with --effort ultracode):
+  Command:  claude --bg --effort ultracode "Print the literal text ULTRACODE-OK then stop."
+  Output:
+    backgrounded · 9ee127ae
+      claude agents             list sessions
+      claude attach 9ee127ae    open in this terminal
+      claude logs 9ee127ae      show recent output
+      claude stop 9ee127ae      stop this session
+  Exit code: 0
+  Session ID: 9ee127ae-bf06-4b46-b617-7c7bca2c5a3f
+  Status (post): idle
+
+
+CAPTURED OUTPUTS — JSONL EXCERPTS
+----------------------------------
+
+A1 Baseline JSONL key records:
+  user message:
+    { "type": "user", "message": { "role": "user", "content": "Print the literal text ULTRACODE-OK then stop." },
+      "permissionMode": "default", "promptSource": "typed", "sessionKind": "bg", "entrypoint": "cli" }
+  assistant response:
+    { "type": "assistant", "message": { "model": "claude-opus-4-8", "content": [{ "type": "text", "text": "ULTRACODE-OK" }],
+      "stop_reason": "end_turn", "usage": { "input_tokens": 5406, "cache_creation_input_tokens": 24818, ... } } }
+  NO workflow planning records, NO phase() calls, NO multi-agent spawns.
+
+A2 --effort ultracode JSONL key records:
+  user message:
+    { "type": "user", "message": { "role": "user", "content": "Print the literal text ULTRACODE-OK then stop." },
+      "permissionMode": "default", "promptSource": "typed", "sessionKind": "bg", "entrypoint": "cli" }
+    NOTE: prompt arrives as plain text — identical shape to A1. No effort metadata visible in the user record.
+  assistant response:
+    { "type": "assistant", "message": { "model": "claude-opus-4-8",
+      "content": [{ "type": "text", "text": "ULTRACODE-OK" }],
+      "stop_reason": "end_turn", "usage": { "input_tokens": 5509, "cache_creation_input_tokens": 5930,
+        "cache_read_input_tokens": 18890, "output_tokens": 12, ... } } }
+  NO workflow planning records, NO phase() calls, NO multi-agent spawns — identical to baseline.
+
+
+SIDE EVIDENCE
+-------------
+
+1. claude --help explicitly lists valid --effort values: (low, medium, high, xhigh, max).
+   "ultracode" is absent from this list.
+
+2. When passed --effort ultracode, claude prints at startup:
+   "Warning: Unknown --effort value 'ultracode' — ignoring it and using the default effort."
+   The warning goes to stderr; the process exits 0 (not a fatal error).
+
+3. The driver (packages/driver-claude-code/src/background-session.ts lines 101-102) passes effort
+   directly: `argv.push('--effort', opts.effort)`. So the warning is emitted by claude itself, not
+   by the driver.
+
+4. JSONL comparison — A2 vs A1:
+   - Both sessions produced structurally identical JSONL: session-start hooks, plain user turn,
+     single assistant turn with end_turn stop.
+   - No records distinguishable as workflow planning in either.
+   - The only observable difference is slightly different token counts (5509 input_tokens vs 5406),
+     consistent with normal session-to-session variance, not with any effort change.
+
+5. The `/effort ultracode` TUI slash command is a separate code path (sets auto-orchestration mode
+   for the session interactively). The CLI --effort flag maps to a different, static effort level
+   enum that does NOT include "ultracode".
+
+
+VERDICT
+-------
+A-partial
+
+Justification:
+  - The CLI flag does NOT reject "ultracode" with a non-zero exit (so Verdict B is incorrect).
+  - The CLI flag does NOT activate auto-workflow planning when passed "ultracode" — the value is
+    silently ignored with a warning and the default effort is used.
+  - "ultracode" is not a valid value for --effort at all; it is only meaningful as a TUI slash
+    command keyword (/effort ultracode) or as the ultracode: <prompt> prefix for $claude-workflow.
+  - JSONL shows no distinguishing markers (no planning records, no phase tracking) in A2 vs A1.
+
+Implication for T2:
+  Verdict A-partial means `--effort ultracode` provides no capability beyond default effort. The
+  recommended valid values for --effort are low, medium, high, xhigh, max. For T2, the implementation
+  strategy is: document the valid --effort values (low/medium/high/xhigh/max) on existing skill
+  SKILL.md files; note that "ultracode" is a TUI-only mode and the closest CLI equivalent is xhigh
+  or max. No new $claude-effort skill is needed because the TUI /effort ultracode mode is not
+  reachable via CLI flag; the existing $claude-workflow skill (which uses the ultracode: prefix
+  transformer) is the correct skill for that use-case. T2 becomes a docs-only update.
+
+Sessions stopped: acf36756 (baseline), 9ee127ae (--effort ultracode)

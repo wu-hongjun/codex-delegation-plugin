@@ -25,6 +25,7 @@ structured review of an existing Claude background job created by
 
    Forward only these flags **when the user explicitly requests them**:
    `--all`, `--json`, `--yes`, `--model`, `--effort`, `--permission-mode`.
+   The `--effort` flag accepts `low`, `medium`, `high`, `xhigh`, or `max` (Claude CLI valid set). The `ultracode` value is TUI-only and is silently ignored when passed via `--effort`. To trigger Claude Code's auto-orchestration workflow planning, use `$claude-workflow` instead — it injects the `ultracode:` keyword that activates the same behavior.
    Do NOT forward `--allow-edit`, `--add-dir`, `--mcp-config`, or `--name` —
    they are not applicable to this subcommand. Do NOT inject `--yes`
    automatically. If the dispatcher reports that an acknowledgement is required,

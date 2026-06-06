@@ -1699,7 +1699,7 @@ async function cmdAdversarialReview(flags, positional, json) {
     // Hint for likely misuse: user may have passed a freeform prompt instead of a jobId.
     if (prefix.includes(' ') || prefix.length > 50 || !prefix.startsWith('job_')) {
       process.stderr.write(
-        '[review] Hint: $claude-review takes a <jobId-or-prefix> of an existing background job, not a freeform prompt. Did you mean $claude-delegate?\n',
+        '[adversarial-review] Hint: $claude-adversarial-review takes a <jobId-or-prefix> of an existing background job, not a freeform prompt. Did you mean $claude-delegate?\n',
       );
     }
     const msg =

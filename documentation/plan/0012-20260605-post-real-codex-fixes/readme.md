@@ -1,9 +1,12 @@
 # Plan 0012 — Post real-Codex-testing fixes
 
-**Status**: `auditing`
+**Status**: `complete`
 **Started**: 2026-06-05
 **Stage 1 approved**: 2026-06-06 (maintainer authorized full cycle)
-**Stage 2 complete (pending CI)**: 2026-06-06
+**Stage 2 complete**: 2026-06-06 (CI run `27063824610` success on all 4 matrix legs)
+**Stage 3 complete**: 2026-06-06 (verdict `ready-for-report` with one MINOR-1 cosmetic finding)
+**Stage 4 complete**: 2026-06-06 (MINOR-1 resolved + parallel regression test)
+**Stage 5 complete / Completed**: 2026-06-06
 **Drafted from**: real-Codex smoke-test findings at `documentation/testing/findings-20260605.md` (Codex executed all 12 skills via the dispatcher; surfaced 4 real plugin issues + LOW error-message gaps)
 **Last updated**: 2026-06-06
 
@@ -12,10 +15,10 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-06** — Adaptive scope: T1-T3 probe each HIGH/MEDIUM issue; T4-T6 implementation conditioned on verdicts |
-| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1-T3 returned C/B/C; T5 shipped real probe rewrite; T4/T6 docs-only; T7/T8 isolated fixes; 1443 → 1447 npm test (+4); CI run pending |
-| 3 — Audit | `3-audit.md` | not started — requires independent context |
-| 4 — Polish | `4-polish.md` | not started |
-| 5 — Report | `5-report.md` | not started |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1-T3 returned C/B/C; T5 shipped real probe rewrite; T4/T6 docs-only; T7/T8 isolated fixes; 1443 → 1447 npm test (+4); CI `27063824610` `success` |
+| 3 — Audit | `3-audit.md` | **complete 2026-06-06** — verdict `ready-for-report`; one MINOR-1 (adversarial-review hint label copy-paste) addressed in Stage 4; auditor `oh-my-claudecode:critic` (Opus, fresh-context) |
+| 4 — Polish | `4-polish.md` | **complete 2026-06-06** — MINOR-1 fixed (hint label + body text + parallel regression test); 1447 → 1448 npm test (+1) |
+| 5 — Report | `5-report.md` | **complete 2026-06-06** — final report; status flipped `auditing → polishing → reporting → complete`; no release tag (plugin version unchanged at `0.2.0`); v0.3.0 now a clean release candidate |
 
 ## Summary
 

@@ -7009,6 +7009,25 @@ describe('review with freeform prompt emits jobId hint (Plan 0012 T8)', () => {
   });
 });
 
+describe('adversarial-review with freeform prompt emits its own labeled jobId hint (Plan 0012 polish)', () => {
+  it('stderr contains the adversarial-review-labeled jobId hint when a space-containing string is passed', () => {
+    const result = runDispatcher([
+      'adversarial-review',
+      'please review my code and tell me what is wrong',
+    ]);
+    assert.equal(result.status, 1, `expected exit 1; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('[adversarial-review]'),
+      `expected [adversarial-review] label in hint; got:\n${combined}`,
+    );
+    assert.ok(
+      combined.includes('$claude-adversarial-review takes a <jobId-or-prefix>'),
+      `expected adversarial-review-specific hint text; got:\n${combined}`,
+    );
+  });
+});
+
 describe('stop bare --all emits bulk-stop hint (Plan 0012 T8)', () => {
   it('stderr contains the --all-awaiting-followup hint when bare --all is passed', () => {
     const result = runDispatcher(['stop', '--all']);

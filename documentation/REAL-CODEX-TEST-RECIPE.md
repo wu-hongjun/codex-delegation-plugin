@@ -64,6 +64,8 @@ If only 7 or 9 or 10 show, the install hit a stale cache — `codex plugin remov
 
 Run these in order in a Codex chat. Each builds on the previous one. **First time you delegate, you'll see a privacy disclosure prompt** — answer "yes" (or pass `--yes` to skip future prompts).
 
+**Terminal states for background jobs**: `complete`, `idle`, `awaiting_followup`, `failed`, `stopped`, `orphaned`. The most common terminal state for bg-flow skills (delegate / workflow / goal / fork / batch) is `awaiting_followup` — that means the model finished its turn and is waiting for either a followup or a stop. Poll until you hit one of these states (do NOT poll forever expecting `complete` or `idle` alone).
+
 ### 4.1 `$claude-setup` — environment probe
 
 ```
@@ -98,7 +100,7 @@ Expected: a status block with `state: running` (or `complete`), session info, an
 
 ### 4.4 `$claude-result` — fetch final output
 
-Wait until status shows `complete` (or `idle` after the model finishes). Then:
+Wait until status shows `complete`, `idle`, or `awaiting_followup` (see the terminal-state note above — `awaiting_followup` is the most common final state). Then:
 
 ```
 $claude-result job_<id>
@@ -114,29 +116,33 @@ $claude-followup job_<id> "Also list any files larger than 100 lines."
 
 Expected: confirmation that the followup was queued. `$claude-status` will show activity again. `$claude-result` will eventually include the new turn.
 
-### 4.6 `$claude-stop` — terminate session
+### 4.6 `$claude-review` — same-session review of a completed job
+
+**Important**: `$claude-review` takes a `<jobId-or-prefix>` of an existing background job (from delegate / workflow / goal / fork / batch), NOT a freeform prompt. It sends a review prompt INTO that job's existing Claude Code session and reviews the most recent non-review turn. Use the delegate job from steps 4.2-4.5:
 
 ```
-$claude-stop job_<id>
+$claude-review job_<id-from-4.2>
+```
+
+Expected: a same-session review of the delegate job's output. Status becomes `awaiting_followup` again once the review turn completes. Re-read with `$claude-result <jobId>`.
+
+### 4.7 `$claude-adversarial-review` — fresh-session second-opinion pass
+
+Same input shape as `$claude-review` — takes a `<jobId-or-prefix>`. Spawns a FRESH Claude Code session that reads the original job's transcript and reviews it independently. Heavier-weight model can be selected with `--model opus`.
+
+```
+$claude-adversarial-review job_<id-from-4.2>
+```
+
+Expected: a new job ID (the fresh adversarial-review session). Poll its status; `$claude-result` returns the independent verdict.
+
+### 4.8 `$claude-stop` — terminate the delegate session
+
+```
+$claude-stop job_<id-from-4.2>
 ```
 
 Expected: confirmation the session was stopped.
-
-### 4.7 `$claude-review` — single-turn review
-
-```
-$claude-review "Review the last 5 commits on this branch. Note any obvious issues."
-```
-
-Expected: a synchronous review output (NOT a background job — `$claude-review` is a single-turn skill). May take 30-60 seconds.
-
-### 4.8 `$claude-adversarial-review` — second-opinion pass
-
-```
-$claude-adversarial-review "Review the last 5 commits on this branch. Be skeptical."
-```
-
-Expected: similar to `$claude-review` but with an adversarial framing. Heavier-weight model can be selected with `--model opus`.
 
 ### 4.9 `$claude-workflow` — dynamic multi-agent workflow
 
@@ -178,7 +184,7 @@ Once the golden path works, try these to surface real issues:
 
 1. **`--allow-edit` rejection**: try `$claude-fork --allow-edit "anything"` — expected to be rejected with exit 2 ("not applicable to this subcommand"). Same for `workflow`, `goal`, `batch`, `review`, `adversarial-review`.
 2. **Multiple parallel delegations**: run `$claude-delegate "..."` three times rapidly. Verify each gets a distinct Job ID and `$claude-status --all` lists all three.
-3. **`$claude-stop --all`**: stops every running session in this workspace.
+3. **Bulk stop** — `$claude-stop --all-awaiting-followup` stops every `awaiting_followup` job in this workspace. Add `--all` for cross-workspace bulk-stop: `$claude-stop --all-awaiting-followup --all`. Note: a bare `$claude-stop --all` (without `--all-awaiting-followup`) is intentionally rejected — the dispatcher requires either a `<jobId>` or the explicit bulk-stop flag, to prevent accidentally killing every session.
 4. **Workspace isolation**: run delegations from two different workspaces. `$claude-status` in workspace A should NOT show workspace B's jobs unless you pass `--all`.
 5. **`$claude-result --json`**: machine-readable JSON output. Should be valid parseable JSON across all background-flow skills.
 6. **Non-TTY rejection**: pipe input into a skill (`echo "test" \| $claude-delegate`) — should be rejected cleanly, not silently misbehave.
@@ -186,7 +192,7 @@ Once the golden path works, try these to surface real issues:
 
 ## 6. Known caveats / not-bugs
 
-- **Plugin version reports `0.2.0`** even though code is at Plan 0011. This is intentional — the version bump is a deliberate release step (see `documentation/RELEASING.md` § "Version Bump"). The `marketplace --check` script enforces byte-identity of the committed marketplace tree, not the version string.
+- **Plugin version reporting is inconsistent** — `codex plugin list` shows `0.2.0` (the value in `.codex-plugin/plugin.json`); dispatcher / package metadata reports `0.0.0` (the workspace `package.json` is intentionally pinned to `0.0.0` per `documentation/RELEASING.md` § "Version Bump"). The `marketplace --check` script enforces byte-identity of the committed marketplace tree, not the version string. Plan 0012 candidate: surface `0.2.0` consistently across both report paths.
 - **`$claude-tasks` is intentionally not shipped** — Plan 0011 probed it (verdict B); `/tasks` opens a TUI dialog that blocks on keyboard input. Deferred to a future plan with PTY-injection fallback design.
 - **Fork token cost is high** (~30k tokens baseline for a trivial directive). This is `/fork`'s designed cost — it spawns a full subagent with its own context.
 - **Batch sessions can run for many minutes**. The `# Batch: Parallel Work Orchestration` system prompt drives multi-phase work. Stop early with `$claude-stop` if it goes off-rails.

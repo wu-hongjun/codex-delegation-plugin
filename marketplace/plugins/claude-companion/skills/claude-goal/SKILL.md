@@ -50,6 +50,10 @@ the condition. Consider scoping conditions tightly (e.g., "all unit tests in
 src/utils/ pass") to avoid open-ended run time. Use `$claude-stop` to
 terminate a goal session early.
 
+### When the goal stalls
+
+If `$claude-status <jobId>` returns `needs_input` on the FIRST poll and stays there, the `/goal` injection failed to reach the model. This is intermittent upstream behavior. Stop the stalled session with `$claude-stop <jobId>` and re-run `$claude-goal` with the same directive. Two consecutive failures with the same directive is unusual; if you see it, try rewording the directive to be more concrete (e.g., add an explicit "Emit the exact text DONE then stop" sentinel).
+
 ### Next steps
 
 Goal sessions appear as standard background jobs; after starting one:

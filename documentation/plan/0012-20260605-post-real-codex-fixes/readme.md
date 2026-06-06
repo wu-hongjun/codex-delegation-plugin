@@ -1,8 +1,9 @@
 # Plan 0012 — Post real-Codex-testing fixes
 
-**Status**: `implementing`
+**Status**: `auditing`
 **Started**: 2026-06-05
 **Stage 1 approved**: 2026-06-06 (maintainer authorized full cycle)
+**Stage 2 complete (pending CI)**: 2026-06-06
 **Drafted from**: real-Codex smoke-test findings at `documentation/testing/findings-20260605.md` (Codex executed all 12 skills via the dispatcher; surfaced 4 real plugin issues + LOW error-message gaps)
 **Last updated**: 2026-06-06
 
@@ -11,7 +12,7 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-06** — Adaptive scope: T1-T3 probe each HIGH/MEDIUM issue; T4-T6 implementation conditioned on verdicts |
-| 2 — Implement | `2-implement.md` | **in progress 2026-06-06** — T1-T3 probes dispatching via single executor; T4-T8 sequential after verdicts |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1-T3 returned C/B/C; T5 shipped real probe rewrite; T4/T6 docs-only; T7/T8 isolated fixes; 1443 → 1447 npm test (+4); CI run pending |
 | 3 — Audit | `3-audit.md` | not started — requires independent context |
 | 4 — Polish | `4-polish.md` | not started |
 | 5 — Report | `5-report.md` | not started |

@@ -290,15 +290,19 @@ describe('probeClaudeAttachHelp (plan 0002)', () => {
   });
 });
 
-describe('probeClaudeBgNoPrompt (plan 0002)', () => {
-  it('ok when `claude --bg --help` is recognized', async () => {
+describe('probeClaudeBgNoPrompt (plan 0002, version-floor strategy since plan 0012 T5)', () => {
+  it('ok when claude version is above the 2.1.149 floor (mock reports 2.1.999-mock)', async () => {
+    // Plan 0012 T5: probe now uses version-floor check, never spawns `claude --bg`.
+    // Mock reports "2.1.999-mock" which exceeds 2.1.149; probe must return ok.
     const r = await probeClaudeBgNoPrompt({ env: withMocksOnPath() });
     assert.equal(r.status, 'ok');
+    assert.match(r.detail, /version floor/i);
   });
 
-  it('still ok (best-effort) when mock flips bgNoPromptAvailable to non-zero exit', async () => {
-    // The probe's load-bearing signal is "the command shape was recognized" (no spawn / timeout
-    // failure). Non-zero exit with a usage-like stderr is still acceptable, by design.
+  it('ok regardless of bgNoPromptAvailable config (version-floor ignores that flag)', async () => {
+    // bgNoPromptAvailable was a subprocess-behavior flag for the old `claude --bg --help`
+    // strategy. The new version-floor probe never runs `claude --bg`, so flipping this
+    // config has no effect; probe still returns ok because version >= 2.1.149.
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', { bgNoPromptAvailable: false });
     const r = await probeClaudeBgNoPrompt({
       env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
@@ -309,6 +313,15 @@ describe('probeClaudeBgNoPrompt (plan 0002)', () => {
   it('fail when claude binary is missing entirely', async () => {
     const r = await probeClaudeBgNoPrompt({ env: { ...process.env, PATH: '/no/such/dir' } });
     assert.equal(r.status, 'fail');
+  });
+
+  it('regression (plan 0012 T5): ok under no-TTY subprocess context — version check is TTY-independent', async () => {
+    // The old `claude --bg --help` probe hung under piped stdio (no TTY), causing setup
+    // to FAIL under Codex sandbox. The new version-floor check uses `claude --version`
+    // which is TTY-independent. This test runs in a non-TTY context (node:test runner) and
+    // must still return ok for any claude >= 2.1.149.
+    const r = await probeClaudeBgNoPrompt({ env: withMocksOnPath() });
+    assert.equal(r.status, 'ok', `expected ok; got ${r.status}: ${r.detail}`);
   });
 });
 

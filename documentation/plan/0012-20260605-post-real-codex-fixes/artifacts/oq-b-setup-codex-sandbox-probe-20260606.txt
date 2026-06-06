@@ -1,0 +1,197 @@
+OQ-B PROBE: Setup FAIL under Codex sandbox
+Artifact: oq-b-setup-codex-sandbox-probe-20260606.txt
+Plan: 0012 Stage 1 T2
+Date: 2026-06-06
+
+================================================================================
+ENVIRONMENT
+================================================================================
+Date:           2026-06-06
+claude version: 2.1.166 (Claude Code)
+codex version:  codex-cli 0.137.0
+node version:   v25.8.2
+cwd:            /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+================================================================================
+PROBE SOURCE LOCATION
+================================================================================
+
+The claude-bg-no-prompt probe is defined at:
+  packages/runtime/src/doctor.ts:507-527
+
+Key implementation (verbatim from source):
+
+  export async function probeClaudeBgNoPrompt(opts: DoctorOptions = {}): Promise<DoctorProbeResult> {
+    // Strategy: run `claude --bg --help` which exists on real 2.1.149 and on the mock; both
+    // should accept it without starting a real session. Real Claude prints usage for --bg;
+    // the mock's --help-aware path returns the global help (which is sufficient for this probe).
+    const r = await runCommand('claude', ['--bg', '--help'], runOpts(opts));
+    if (r.spawnError || r.timedOut) {
+      return {
+        name: 'claude-bg-no-prompt',
+        status: 'fail',
+        detail: spawnFailureDetail('claude --bg --help', r),
+      };
+    }
+    // Real Claude exits 0; some mocks may exit non-zero if they don't special-case --bg --help.
+    // The probe accepts exit 0 OR non-zero with usage-like stdout/stderr; the load-bearing
+    // signal is "the command shape was recognized" (no spawn / timeout failure).
+    return {
+      name: 'claude-bg-no-prompt',
+      status: 'ok',
+      detail: 'claude --bg command shape is recognized by this binary',
+      evidence: { exitCode: r.exitCode, preview: preview(r.stdout || r.stderr) },
+    };
+  }
+
+runCommand is implemented at doctor.ts:81-127 using:
+  - node:child_process.spawn (NOT spawnSync)
+  - shell: false
+  - stdio: piped (default for spawn — inherits parent stdio unless overridden)
+  - DEFAULT_TIMEOUT_MS = 5000 (doctor.ts:65)
+
+================================================================================
+REPRODUCTION STEPS
+================================================================================
+
+Probe 1 — Direct shell invocation (TTY present)
+  Command:  time claude --bg --help
+  Exit:     0
+  Elapsed:  0.513s (user 0.18s sys 0.04s)
+  Output (first 100 chars):
+    "backgrounded · 1a2b8529 (idle — send a prompt to start)\n  claude agents    ..."
+  Finding: SUCCEEDED. But created an idle background session as a side effect.
+
+Probe 2 — node execSync with piped stdio (simulates Codex subprocess shape)
+  Command:  node -e "execSync('claude --bg --help', {timeout: 30000, stdio: ['pipe','pipe','pipe']})"
+  Exit:     0
+  Elapsed:  ~300ms
+  Output (first 200 chars):
+    "backgrounded · 2971185d (idle — send a prompt to start)\n  claude agents    ..."
+  Finding: SUCCEEDED with piped stdio when timeout=30000. Side effect: another idle session.
+
+Probe 3 — node execSync with /dev/null stdin
+  Command:  node -e "execSync('claude --bg --help < /dev/null', {shell: true, ...})"
+  Exit:     0
+  Elapsed:  ~300ms
+  Output:   same backgrounded idle-session message
+  Finding: SUCCEEDED.
+
+Probe 4 — spawnSync with shell:false, stdio:pipe, timeout:5000 (exact runtime shape)
+  Command:  node -e "
+    const result = spawnSync('claude', ['--bg', '--help'], {
+      timeout: 5000, stdio: ['pipe','pipe','pipe'], shell: false
+    });
+    console.log('exit:', result.status, 'signal:', result.signal,
+                'timedOut:', result.status===null && result.signal==='SIGTERM',
+                'elapsed ms:', elapsed);
+  "
+  Exit:     null
+  Signal:   SIGTERM
+  timedOut: true
+  Elapsed:  5006ms
+  stdout:   "" (empty)
+  stderr:   "" (empty)
+  Finding:  TIMED OUT at 5006ms with no output. Root cause confirmed.
+
+Probe 5 — claude --version via spawnSync (control test)
+  Exit:     0
+  Elapsed:  42ms
+  stdout:   "2.1.167 (Claude Code)"
+  Finding:  Confirms spawn itself works; the issue is specific to claude --bg.
+
+Probe 6 — Alternative probe shape: claude --help | grep --bg
+  Command:  claude --help 2>&1 | grep -c -- "--bg"
+  Result:   0 (grep found 0 matches)
+  Elapsed:  0.103s
+  Finding:  claude --help does NOT advertise --bg. Alternative probe unusable.
+
+================================================================================
+ROOT CAUSE ANALYSIS
+================================================================================
+
+BEHAVIOR OF claude --bg --help:
+When run in a shell with a TTY, `claude --bg --help` completes in ~0.5s and
+prints a "backgrounded · <shortId> (idle — send a prompt to start)" message.
+It CREATES an idle background session as a side effect (confirmed by 8 idle
+sessions accumulating during probing; 3 created by these probes).
+
+The critical behavior difference:
+- With TTY:        claude --bg responds immediately (0.5s), writing session info to stdout
+- Without TTY (piped stdio, spawnSync/spawn shell:false):
+    claude --bg does NOT flush any output within 5000ms → SIGTERM timeout
+
+The probe comment says "Real Claude prints usage for --bg" — but this is WRONG
+as of claude 2.1.166. `claude --bg --help` does NOT print help text; it
+CREATES a backgrounded idle session and prints the session handle. The `--help`
+flag is silently ignored when combined with `--bg`.
+
+Under piped stdio (no TTY), the session creation appears to block or delay
+output beyond the 5s DEFAULT_TIMEOUT_MS. The likely mechanism:
+  - claude --bg communicates with a daemon process over a socket/IPC channel
+  - The daemon handshake or session creation writes to the terminal, not stdout
+  - With piped stdio, the write buffer is not flushed within 5s
+  - OR: the daemon path detects no-TTY and defers the "backgrounded" output
+
+The Codex sandbox runs dispatcher commands as child processes with piped stdio
+(no TTY). This is exactly Probe 4's shape: spawn with shell:false, piped stdio,
+5s timeout. Result: SIGTERM at 5006ms.
+
+WHAT THE PROBE IS ACTUALLY TESTING:
+The probe was designed to test "claude --bg command shape is recognized" but
+the actual behavior is "claude --bg creates an idle session". The probe
+produces a false positive in TTY contexts (it succeeds) and a false negative
+in no-TTY contexts (it times out). The probe is testing the wrong thing.
+
+CORRECT ALTERNATIVE PROBE SHAPE:
+The probe should not run `claude --bg` at all. Instead it should test for
+the presence of --bg support without spawning an idle session. Options:
+
+  Option A (recommended): Test daemon availability via `claude daemon status`
+    - Already probed separately; always fast
+    - Indirectly confirms --bg sessions can be created
+
+  Option B: Parse `claude --version` and check version floor
+    - claude --version is fast (42ms) and TTY-independent
+    - --bg available >= 2.1.149 per existing version-floor logic
+
+  Option C: `claude agents --json` (already probed as claude-agents-json)
+    - Confirms agent infrastructure is running
+    - Fast and TTY-independent
+
+  Option D: Treat claude-bg-no-prompt as a version-floor check
+    - Same approach as the opus-4-8-supported, workflows-supported, bg-exec-supported
+      probes already in cmdSetup (lines 129-248 of claude-companion.mjs)
+    - Zero subprocess invocation; pure version comparison
+
+RECOMMENDED FIX:
+Replace the `claude --bg --help` subprocess call with a version-floor check
+(same pattern as bgExecProbe). If version >= 2.1.149 → ok. This eliminates
+the TTY dependency entirely and doesn't create idle side-effect sessions.
+
+Exact file + line range to fix:
+  packages/runtime/src/doctor.ts:507-527 (probeClaudeBgNoPrompt function)
+  packages/runtime/dist/doctor.js:421-446 (compiled output — must be rebuilt)
+
+================================================================================
+VERDICT
+================================================================================
+
+VERDICT B — TTY/buffering is the trigger.
+
+Justification:
+- Probe 1 (TTY present): exit 0, 0.513s — succeeds
+- Probe 4 (no TTY, piped stdio, 5s timeout): SIGTERM at 5006ms — matches the
+  Codex sandbox failure exactly
+- Probe 5 (claude --version, no TTY): 42ms — confirms spawn restriction is NOT
+  the issue; only claude --bg hangs under no-TTY
+
+The fix should replace the subprocess probe with a version-floor check to
+eliminate the TTY dependency. File: packages/runtime/src/doctor.ts:507-527.
+
+Proposed replacement probe shape:
+  - Call probeClaudeVersion (already runs) to get the version string
+  - Parse with parseClaudeVersion (already available in companion)
+  - If version >= '2.1.149': return ok 'claude --bg supported per version floor'
+  - Else: return warn 'claude --bg requires >= 2.1.149 (current X.Y.Z)'
+  - NEVER call spawn('claude', ['--bg', ...]) in the probe

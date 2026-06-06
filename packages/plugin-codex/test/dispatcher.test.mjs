@@ -6959,3 +6959,64 @@ describe('batch approval-flow note appended after job block', () => {
     );
   });
 });
+
+// ---------- T7: version reporting consistency (Plan 0012) ----------
+
+describe('dispatcher pluginVersion matches .codex-plugin/plugin.json (Plan 0012 T7)', () => {
+  it('job record written by delegate --yes contains the canonical plugin version, not 0.0.0', () => {
+    // Read the canonical version dynamically so this test survives future bumps.
+    const pluginJsonPath = join(
+      REPO_ROOT,
+      'packages',
+      'plugin-codex',
+      '.codex-plugin',
+      'plugin.json',
+    );
+    const canonicalVersion = JSON.parse(readFileSync(pluginJsonPath, 'utf8')).version;
+    assert.ok(
+      typeof canonicalVersion === 'string' && canonicalVersion !== '0.0.0',
+      `plugin.json should have a real version, got: ${canonicalVersion}`,
+    );
+
+    const result = runDispatcher(['delegate', '--yes', '--', 'emit OK']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const jobIds = listJobIds();
+    assert.equal(jobIds.length, 1, 'expected exactly one job to be created');
+
+    const jobPath = join(TMP_HOME, 'jobs', `${jobIds[0]}.json`);
+    const jobRecord = JSON.parse(readFileSync(jobPath, 'utf8'));
+    assert.equal(
+      jobRecord.codex.pluginVersion,
+      canonicalVersion,
+      `expected pluginVersion "${canonicalVersion}", got "${jobRecord.codex.pluginVersion}"`,
+    );
+  });
+});
+
+// ---------- T8: error-message hints (Plan 0012) ----------
+
+describe('review with freeform prompt emits jobId hint (Plan 0012 T8)', () => {
+  it('stderr contains the jobId hint when a space-containing string is passed to review', () => {
+    const result = runDispatcher(['review', 'please review my code and tell me what is wrong']);
+    assert.equal(result.status, 1, `expected exit 1; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('$claude-review takes a <jobId-or-prefix>') ||
+        combined.includes('Did you mean $claude-delegate'),
+      `expected jobId hint in output; got:\n${combined}`,
+    );
+  });
+});
+
+describe('stop bare --all emits bulk-stop hint (Plan 0012 T8)', () => {
+  it('stderr contains the --all-awaiting-followup hint when bare --all is passed', () => {
+    const result = runDispatcher(['stop', '--all']);
+    assert.equal(result.status, 2, `expected exit 2; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('--all-awaiting-followup'),
+      `expected --all-awaiting-followup hint in output; got:\n${combined}`,
+    );
+  });
+});

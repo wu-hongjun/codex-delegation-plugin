@@ -1,0 +1,209 @@
+OQ-C PROBE: Goal directive non-resolution
+Artifact: oq-c-goal-non-resolution-probe-20260606.txt
+Plan: 0012 Stage 1 T3
+Date: 2026-06-06
+
+================================================================================
+ENVIRONMENT
+================================================================================
+Date:           2026-06-06
+claude version: 2.1.166 (Claude Code)
+codex version:  codex-cli 0.137.0
+node version:   v25.8.2
+cwd:            /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+================================================================================
+REPRO 1 — GOAL RESOLVES (intermittent success)
+================================================================================
+
+Step 1 — Start goal job
+  Command:  node packages/plugin-codex/scripts/claude-companion.mjs goal --yes -- \
+              "Read documentation/REAL-CODEX-TEST-RECIPE.md and tell me how many sections it has. Stop once you've answered."
+  Exit:     0
+  Job ID:   job_mq29zf7q_2e8cc6c9
+  Claude session: cf028bae
+  Output:
+    Claude job started
+    Job ID:         job_mq29zf7q_2e8cc6c9
+    Status:         running
+    Claude session: cf028bae
+    ...
+    This is a Claude Code goal-condition request.
+
+Step 2 — Poll status
+  First poll (immediate):  awaiting_followup ← resolved fast
+
+Step 3 — Get result
+  Command:  node packages/plugin-codex/scripts/claude-companion.mjs result job_mq29zf7q_2e8cc6c9
+  Exit:     0
+  Output:
+    Job:        job_mq29zf7q_2e8cc6c9
+    Status:     awaiting_followup
+    Transcript: (none)
+
+    The file has **8 top-level sections** (the `##` headings, numbered 1–8):
+    1. Prerequisites on the test machine
+    2. Install (4 commands)
+    3. First-time skill discovery sanity check
+    4. Golden-path test sequence
+    5. Edge cases worth probing
+    6. Known caveats / not-bugs
+    7. How to report findings back
+    8. After testing
+
+    Section 4 additionally contains 12 `###` subsections (4.1–4.12, one per skill).
+    So: **8 sections**, or **20 headings** total if you count those subsections.
+
+JSONL path: ~/.claude/projects/-Users-hongjunwu-Repositories-Git-cc-plugin-codex/
+            cf028bae-6096-42d8-89ff-fb5ee760b6ef.jsonl
+
+JSONL summary (43 entries):
+  [11] type=user  msg="<command-name>/goal</command-name> ... <command-args>Read documentation/..."
+  [12] type=user  msg="<local-command-stdout>Goal set: Read documentation/REAL-CODEX-TEST-RECIPE.md..."
+  [13] type=user  msg="A session-scoped Stop hook is now active with condition: ..."
+  [14] type=assistant  msg=""                  ← empty (ack turn)
+  [15] type=assistant  msg="I'll read the file and count its sections."
+  [16] type=assistant  msg="[tool_use: Read]"
+  [19] type=user  msg="[tool_result]"
+  [30] type=assistant  msg=""
+  [31] type=assistant  msg="The file has **8 top-level sections**..."  ← final answer
+  [32-34] attachments
+  [36-37] system entries
+
+Cleanup: job_mq29zf7q_2e8cc6c9 stopped (exit 0)
+
+================================================================================
+REPRO 2 — GOAL STAYS needs_input (failure case, matches smoke test)
+================================================================================
+
+Step 1 — Start second goal job (same prompt)
+  Command:  node packages/plugin-codex/scripts/claude-companion.mjs goal --yes -- \
+              "Read documentation/REAL-CODEX-TEST-RECIPE.md and tell me how many sections it has. Stop once you've answered."
+  Exit:     0
+  Job ID:   job_mq2a1s6w_490caef9
+  Claude session: 613865c4
+
+Step 2 — Poll status at T+20s
+  Status:   needs_input
+
+Step 3 — Poll status at T+50s
+  Status:   needs_input
+
+(Job stayed needs_input; stopped after ~2 min)
+
+JSONL path: ~/.claude/projects/-Users-hongjunwu-Repositories-Git-cc-plugin-codex/
+            613865c4-5374-44bb-94a3-aec20c9147c7.jsonl
+
+JSONL summary (14 entries — NO assistant reply):
+  [0-10]   metadata (last-prompt, custom-title, agent-name, mode, permission-mode,
+            file-history-snapshot, attachments)
+  [11] type=user  msg='<command-name>/goal</command-name>\n  <command-message>goal</command-message>\n
+                       <command-args>Read documentation/REAL-CODEX-TEST-RECIPE.md and tell me how
+                       many sections it has. Stop once you\'ve answered.</command-args>'
+  [12] type=user  msg='<local-command-stdout>Goal set: Read documentation/REAL-CODEX-TEST-RECIPE.md
+                       and tell me how many sections it has. Stop once you\'ve answered.</local-command-stdout>'
+  [13] type=user  msg='A session-scoped Stop hook is now active with condition: "Read documentation/
+                       REAL-CODEX-TEST-RECIPE.md and tell me how many sections it has. Stop once
+                       you\'ve answered.". Briefly acknowledge the goal, then immediately start (or
+                       continue) working toward it — treat the condition itself as your directive
+                       and do not pause to ask the user what to do. The hook will block stopping
+                       until the co...'
+  (NO entry [14] — no assistant reply at all)
+
+Full content of entry [11] (promptId + uuid redacted):
+  {
+    "type": "user",
+    "message": {
+      "role": "user",
+      "content": "<command-name>/goal</command-name>\n  <command-message>goal</command-message>\n
+                  <command-args>Read documentation/REAL-CODEX-TEST-RECIPE.md and tell me how many
+                  sections it has. Stop once you've answered.</command-args>"
+    },
+    "sessionKind": "bg",
+    "userType": "external",
+    "entrypoint": "cli",
+    "timestamp": "2026-06-06T11:36:02.695Z"
+  }
+
+Cleanup: job_mq2a1s6w_490caef9 stopped (exit 0)
+
+================================================================================
+ANALYSIS
+================================================================================
+
+WHAT HAPPENED IN REPRO 1 (success):
+- The /goal slash command was injected into a fresh bg session
+- Claude processed the three user messages (command, stdout, stop-hook directive)
+- Claude replied (entry [14]: ack), then used the Read tool, then answered
+- Session reached awaiting_followup (Stop hook fired after goal was satisfied)
+- result.md was written; cmdResult returned the answer
+
+WHAT HAPPENED IN REPRO 2 (failure — matches smoke test):
+- The /goal slash command was injected into a fresh bg session
+- Three user messages were written to JSONL (same as repro 1)
+- NO assistant reply appeared — the session sat idle
+- Reconciler mapped the idle bg session to needs_input status
+- The session never processed the injected prompt
+
+COMPARISON OF THE TWO SESSIONS:
+  Repro 1 (cf028bae): 43 JSONL entries — model executed normally
+  Repro 2 (613865c4): 14 JSONL entries — model never responded
+
+This is intermittent non-deterministic behavior in Claude Code's bg session
+processing of injected /goal commands. The plugin's injection mechanism
+(driver.send injects the /goal text into the session) appears to work — the
+JSONL confirms entries [11-13] were written — but the model's async processing
+of those entries is not guaranteed.
+
+POSSIBLE ROOT CAUSES:
+1. Race condition in bg session message delivery: the session may not have
+   fully initialized before the prompt was injected, causing the message to
+   be lost or ignored
+2. Claude daemon's internal queue dropped the message during high load
+3. The /goal command's Stop hook registration (entry [13]) sometimes fails
+   to trigger the model to respond
+
+CRITICAL OBSERVATION — Not a plugin-side sentinel detection bug:
+The failing session's JSONL has NO assistant entries at all. This rules out
+the hypothesis that "goal_status sentinel detection is brittle" (which would
+require an assistant entry to be present but unparsed). The model simply
+never replied. This is upstream behavior in the Claude bg session runtime.
+
+YESTERDAY'S SMOKE TEST:
+The smoke test ran the goal command and got needs_input for all 16 polls.
+The JSONL for that session (73cd5d3f) was not examined here, but based on
+today's evidence, the most likely explanation is the same: a fresh bg session
+that received the /goal injection but the model never picked it up.
+
+================================================================================
+VERDICT
+================================================================================
+
+VERDICT C — upstream /goal brittleness in bg sessions; no plugin-side fix applicable.
+
+Justification:
+- Repro 1 demonstrates the goal flow works correctly when the bg session picks
+  up the injected command (43 JSONL entries, correct result)
+- Repro 2 demonstrates intermittent failure where the model never responds to
+  the injected /goal prompt (14 JSONL entries, no assistant reply)
+- The failure is non-deterministic: same prompt, same env, same claude version,
+  different outcomes on consecutive runs
+- The plugin's injection mechanism is correct (entries [11-13] written in both)
+- The model's non-response is upstream behavior in the Claude bg daemon
+
+WORKAROUND TO SHIP (per plan §4 T6 Verdict C guidance):
+Update $claude-goal/SKILL.md to recommend:
+  1. Use explicit, short, concrete directives — avoid multi-clause sentences
+  2. Include a fallback polling pattern with a retry: if needs_input after
+     first poll, stop and re-delegate (bg session failed to pick up the goal)
+  3. Recommend: "Stop once you've answered." is sufficient; longer preambles
+     may compete with the Stop hook directive in entry [13]
+
+WHAT WOULD UNBLOCK A FUTURE VERDICT A:
+- Examine the Claude daemon logs for the failing session during injection
+  (requires claude daemon log access not available in this probe context)
+- Compare timing: repro 1 had driver.send inject before the bg session was
+  fully ready; check if a startup delay between session creation and prompt
+  injection would improve reliability
+- Test with `claude --bg -- "/goal <directive>"` as startup prompt instead of
+  post-hoc injection via driver.send

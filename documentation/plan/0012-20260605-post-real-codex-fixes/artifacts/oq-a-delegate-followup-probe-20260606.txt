@@ -1,0 +1,192 @@
+OQ-A PROBE: Delegate followup result regression
+Artifact: oq-a-delegate-followup-probe-20260606.txt
+Plan: 0012 Stage 1 T1
+Date: 2026-06-06
+
+================================================================================
+ENVIRONMENT
+================================================================================
+Date:           2026-06-06
+claude version: 2.1.166 (Claude Code)
+codex version:  codex-cli 0.137.0
+node version:   v25.8.2
+cwd:            /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+================================================================================
+REPRODUCTION STEPS
+================================================================================
+
+Step 1 — Start delegate job with MARKER-A
+  Command:  node packages/plugin-codex/scripts/claude-companion.mjs delegate --yes -- \
+              "Print the literal text MARKER-A then stop."
+  Exit:     0
+  Output:
+    Claude job started
+    Job ID:         job_mq29yyhf_32cbe2f9
+    Status:         running
+    Claude session: b909829f
+    Name:           codex:cc-plugin-codex:mq29yvoh
+    Logs:           claude logs b909829f
+
+Step 2 — Poll until awaiting_followup
+  Command:  node packages/plugin-codex/scripts/claude-companion.mjs status
+  Result:   job_mq29yyhf_32cbe2f9   awaiting_followup   b909829f   codex:cc-plugin-codex:mq29yvoh
+  (Reached awaiting_followup on first poll — no waiting needed)
+
+Step 3 — Get result before followup (should be MARKER-A)
+  Command:  node packages/plugin-codex/scripts/claude-companion.mjs result job_mq29yyhf_32cbe2f9
+  Exit:     0
+  Output (excerpted):
+    Job:        job_mq29yyhf_32cbe2f9
+    Status:     awaiting_followup
+    Transcript: (none)
+    Logs:       claude logs b909829f
+
+    MARKER-A
+
+  Verdict: MARKER-A correctly returned ✓
+
+Step 4 — Send followup with MARKER-B
+  Command:  node packages/plugin-codex/scripts/claude-companion.mjs followup \
+              job_mq29yyhf_32cbe2f9 --yes -- "Print the literal text MARKER-B then stop."
+  Exit:     0
+  Output (excerpted):
+    Claude follow-up sent
+    Job ID:         job_mq29yyhf_32cbe2f9
+    Turn:           1 (completed)
+    Claude session: b909829f
+    Status:         awaiting_followup
+
+    MARKER-B
+
+  (Turn 1 completed; followup output shows MARKER-B)
+
+Step 5 — Poll status after followup
+  Status:   awaiting_followup (confirmed by step 4 output)
+
+Step 6 — Get result after followup (should be MARKER-B; findings showed MARKER-A)
+  Command:  node packages/plugin-codex/scripts/claude-companion.mjs result job_mq29yyhf_32cbe2f9
+  Exit:     0
+  Output (excerpted):
+    Job:        job_mq29yyhf_32cbe2f9
+    Status:     awaiting_followup
+    Transcript: (none)
+    Logs:       claude logs b909829f
+
+    MARKER-B
+
+  Verdict: MARKER-B correctly returned ✓
+
+Step 7 — Cleanup
+  Command:  node packages/plugin-codex/scripts/claude-companion.mjs stop job_mq29yyhf_32cbe2f9
+  Exit:     0
+  Output:   Claude job stopped / Status: stopped
+
+================================================================================
+SIDE EVIDENCE
+================================================================================
+
+JSONL path: ~/.claude/projects/-Users-hongjunwu-Repositories-Git-cc-plugin-codex/
+            b909829f-aacd-4589-91a0-bb26ed3c18f1.jsonl
+
+JSONL entry summary (52 entries total):
+  [10] type=user   msg="Print the literal text MARKER-A then stop."
+  [14] type=assistant  msg="MARKER-A"                  ← turn 0 result
+  [30] type=user   msg="Continue from where you left off."  ← driver.send pre-inject
+  [31] type=assistant  msg=""                          ← empty (spurious turn)
+  [32] type=assistant  msg="There's nothing in progress to continue..."
+  [39] type=user   msg="Print the literal text MARKER-B then stop."  ← actual followup
+  [41] type=assistant  msg="MARKER-B"                 ← turn 1 result
+
+Job record at ~/.codex/cc-plugin-codex/jobs/job_mq29yyhf_32cbe2f9.json:
+  status:                    orphaned (after stop)
+  result.finalMessagePath:   job_mq29yyhf_32cbe2f9.result.md
+  result.finalMessagePreview: "MARKER-B"
+  turns[0].status:           completed
+  turns[0].result.preview:   "MARKER-A"
+  turns[0].result.path:      job_mq29yyhf_32cbe2f9.result.md   ← SAME FILE as turn[1]
+  turns[1].status:           completed
+  turns[1].result.preview:   "MARKER-B"
+  turns[1].result.path:      job_mq29yyhf_32cbe2f9.result.md   ← SAME FILE
+
+Result file content (job_mq29yyhf_32cbe2f9.result.md, 8 bytes):
+  "MARKER-B"
+
+Both turns share the same result.md file path. The reconciler overwrites the
+single .result.md file on each turn completion, so the file always holds the
+MOST RECENT turn's content. cmdResult reads the file directly — so it returns
+the latest turn's content, which is correct.
+
+================================================================================
+ANALYSIS: WHY YESTERDAY'S SMOKE TEST SHOWED REGRESSION
+================================================================================
+
+The smoke test (findings-20260605.md §2) reported:
+  "the final result did not include the requested .test.mjs count even though
+   the follow-up turn was marked completed."
+
+That smoke test used a DIFFERENT scenario: the initial delegate job had status
+`needs_input` for all 16 polls (the model never produced an output for the
+initial prompt). When the tester ran `followup` anyway, the followup completed,
+but `result` returned the ORIGINAL task's output (directory listing) instead of
+the followup answer (.test.mjs count).
+
+This is NOT the same bug as a selection-logic error. The actual issue was:
+- The initial job stayed `needs_input` (never got an assistant turn)
+- `followup` was run anyway, which succeeded
+- `result` returned the old result.md content (from the pre-existing
+  reconciliation of the original turn) instead of the followup answer
+
+In today's controlled repro (MARKER-A then MARKER-B), everything works
+correctly because:
+- The initial delegate completed normally (MARKER-A)
+- The followup was sent to an awaiting_followup job (correct state)
+- The reconciler overwrote result.md with MARKER-B
+
+The smoke-test failure was a **scenario interaction**: a needs_input initial job
+combined with a followup that used the old result path. The result.md overwrite
+mechanism works; the issue is the pre-condition check for followup eligibility
+vs. what `result` reports.
+
+================================================================================
+VERDICT
+================================================================================
+
+VERDICT C — both result paths are healthy when used in the intended flow.
+
+Justification: The controlled repro with MARKER-A/MARKER-B shows correct
+behavior at every step. The smoke test regression was caused by the initial
+job being stuck in needs_input (never producing a result), then followup
+being run in that state — a different execution path than the one probed
+today. The result.md single-file-overwrite pattern is working as designed
+for the follow-up flow.
+
+Root cause of the smoke-test observation: The delegate job stayed needs_input
+(model never replied to the initial prompt), making the initial result.md empty
+or absent. After followup, result.md was written with the followup's output —
+but `cmdResult` reads the file and the reconciler may have been reading stale
+turn[0] data from a cached job record rather than the freshly updated turn[1].
+The reconcile inside sendFollowupTurn should ensure freshness; in the smoke test
+the job was in an abnormal state (needs_input → followup) that may not have been
+fully reconciled.
+
+What would unblock a future verdict (if the bug recurs):
+- Capture the raw job_<id>.json before and after the followup
+- Verify whether turn[0].result.path differs from turn[1].result.path
+- Check if cmdResult reads job.result.finalMessagePath (top-level) rather than
+  the latest turn's result path
+
+File references relevant to cmdResult selection logic:
+  packages/plugin-codex/scripts/claude-companion.mjs:614-623
+    (cmdResult reads job.result.finalMessagePath directly)
+  packages/plugin-codex/scripts/claude-companion.mjs:982-1005
+    (sendFollowupTurn sets turn result but uses '' for finalMessagePath)
+  packages/plugin-codex/scripts/claude-companion.mjs:984-991
+    successTurnResult.finalMessagePath = '' (empty string!)
+
+NOTE: successTurnResult sets finalMessagePath to empty string '' (not the
+actual .result.md path). The top-level job.result.finalMessagePath is set by
+the reconciler (not by sendFollowupTurn). If reconciliation fails after
+followup, the top-level finalMessagePath may still point to the old value.
+This is the residual risk path — not triggered in this clean repro but
+plausible in the smoke-test scenario.

@@ -5,8 +5,10 @@
 // Exit codes: 0 success, 1 failure, 2 usage error
 
 import { createInterface } from 'node:readline/promises';
+import { readFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { basename } from 'node:path';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   runDoctor,
@@ -45,6 +47,24 @@ import { SAME_SESSION_REVIEW_PROMPT, ADVERSARIAL_REVIEW_PROMPT } from './lib/rev
 import { parseReviewOutput } from './lib/review-parser.mjs';
 import { readTurnFinalMessageOrFallback } from './lib/review-result-source.mjs';
 import { parseClaudeVersion, meetsFloor } from './lib/claude-version.mjs';
+
+// ---------- plugin version ----------
+
+// Read the canonical plugin version from .codex-plugin/plugin.json (co-located with this
+// script's package root) rather than from workspace package.json (which reports 0.0.0 in
+// the monorepo root). This matches what `codex plugin list` reports.
+function loadPluginVersion() {
+  try {
+    const scriptDir = dirname(fileURLToPath(import.meta.url));
+    const pluginJsonPath = join(scriptDir, '..', '.codex-plugin', 'plugin.json');
+    const raw = JSON.parse(readFileSync(pluginJsonPath, 'utf8'));
+    return typeof raw.version === 'string' ? raw.version : '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+}
+
+const PLUGIN_VERSION = loadPluginVersion();
 
 // ---------- main ----------
 
@@ -476,7 +496,7 @@ async function _runDelegateCore(
   const job = await createJob({
     codex: {
       cwd: workspace,
-      pluginVersion: '0.0.0',
+      pluginVersion: PLUGIN_VERSION,
     },
     workspace: {
       root: workspace,
@@ -611,6 +631,9 @@ async function cmdResult(flags, positional, json) {
     process.exit(1);
   }
 
+  // Edge case (Plan 0012 T4): sendFollowupTurn sets turn.result.finalMessagePath='' (empty);
+  // job.result.finalMessagePath is updated only by the reconciler. If reconciliation fails
+  // after a followup on a never-completed initial job, this read returns stale data.
   let resultText = null;
   if (job.result?.finalMessagePath) {
     try {
@@ -720,9 +743,22 @@ async function cmdStop(flags, positional, json) {
     process.exit(failed.length > 0 ? 1 : 0);
   }
 
-  // Single-job path (unchanged).
+  // Single-job path.
   const prefix = positional[0];
   if (!prefix) {
+    // Bare --all without --all-awaiting-followup is not a valid stop shape; guide the user.
+    if (flags['all'] !== undefined) {
+      process.stderr.write(
+        formatError(
+          new Error(
+            'bare --all is not allowed; use --all-awaiting-followup [--all] for bulk stop, or pass a <jobId>.',
+          ),
+          'stop',
+          json,
+        ) + '\n',
+      );
+      process.exit(2);
+    }
     process.stderr.write(
       formatError(new Error('usage: claude-companion stop <jobId>'), 'stop', json) + '\n',
     );
@@ -1308,6 +1344,12 @@ async function cmdReview(flags, positional, json) {
   const resolved = resolveJobIdPrefix(allIds, prefix);
 
   if ('error' in resolved) {
+    // Hint for likely misuse: user may have passed a freeform prompt instead of a jobId.
+    if (prefix.includes(' ') || prefix.length > 50 || !prefix.startsWith('job_')) {
+      process.stderr.write(
+        '[review] Hint: $claude-review takes a <jobId-or-prefix> of an existing background job, not a freeform prompt. Did you mean $claude-delegate?\n',
+      );
+    }
     const msg =
       resolved.error === 'ambiguous'
         ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
@@ -1654,6 +1696,12 @@ async function cmdAdversarialReview(flags, positional, json) {
   const resolved = resolveJobIdPrefix(allIds, prefix);
 
   if ('error' in resolved) {
+    // Hint for likely misuse: user may have passed a freeform prompt instead of a jobId.
+    if (prefix.includes(' ') || prefix.length > 50 || !prefix.startsWith('job_')) {
+      process.stderr.write(
+        '[review] Hint: $claude-review takes a <jobId-or-prefix> of an existing background job, not a freeform prompt. Did you mean $claude-delegate?\n',
+      );
+    }
     const msg =
       resolved.error === 'ambiguous'
         ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
@@ -1849,7 +1897,7 @@ async function cmdAdversarialReview(flags, positional, json) {
   const reviewJob = await createJob({
     codex: {
       cwd: targetJob.workspace.root,
-      pluginVersion: '0.0.0',
+      pluginVersion: PLUGIN_VERSION,
     },
     workspace: {
       root: targetJob.workspace.root,

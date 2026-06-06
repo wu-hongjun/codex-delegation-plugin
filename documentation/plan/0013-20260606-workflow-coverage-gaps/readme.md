@@ -1,9 +1,12 @@
 # Plan 0013 — Workflow coverage gaps (`$claude-deep-research`, `--effort ultracode`, saved-workflow `args` docs)
 
-**Status**: `auditing`
+**Status**: `complete`
 **Started**: 2026-06-06
 **Stage 1 approved**: 2026-06-06 (maintainer authorized full cycle)
-**Stage 2 complete (pending CI)**: 2026-06-06
+**Stage 2 complete**: 2026-06-06 (CI run `27077084697` success on all 4 matrix legs)
+**Stage 3 complete**: 2026-06-06 (verdict `ready-for-report`; zero findings; fifth clean audit pattern in this session)
+**Stage 4**: SKIPPED — audit verdict allowed direct progression to Stage 5
+**Stage 5 complete / Completed**: 2026-06-06
 **Drafted from**: post-Plan-0012 coverage gap analysis against [Claude Code workflows docs](https://code.claude.com/docs/en/workflows)
 **Last updated**: 2026-06-06
 
@@ -12,10 +15,10 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-06** — Adaptive scope: 3 OQ probes condition T2-T3 implementation; T4 docs ship unconditionally |
-| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1 returned A-partial/A/A; `$claude-deep-research` skill shipped (12→13); `--effort` valid-values docs (6 SKILL.md + README); saved-workflow + args docs; 1448 → 1485 npm test (+37); CI run pending |
-| 3 — Audit | `3-audit.md` | not started — requires independent context |
-| 4 — Polish | `4-polish.md` | not started |
-| 5 — Report | `5-report.md` | not started |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1 returned A-partial/A/A; `$claude-deep-research` skill shipped (12→13); `--effort` valid-values docs (6 SKILL.md + README); saved-workflow + args docs; 1448 → 1485 npm test (+37); CI `27077084697` `success` |
+| 3 — Audit | `3-audit.md` | **complete 2026-06-06** — verdict `ready-for-report`; zero findings at any severity; auditor `oh-my-claudecode:critic` (Opus, fresh-context) |
+| 4 — Polish | `4-polish.md` | **SKIPPED** — Stage 3 verdict was `ready-for-report` |
+| 5 — Report | `5-report.md` | **complete 2026-06-06** — final report; status flipped `auditing → reporting → complete`; no release tag (plugin version unchanged at `0.2.0`); v0.3.0 still a clean release candidate |
 
 ## Summary
 

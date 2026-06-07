@@ -96,7 +96,7 @@ export async function inspectWorkflow(jobId) {
     );
   }
 
-  const sessionId = job.sessionId ?? '';
+  const sessionId = _sessionId(job);
   const cwd = job.workspace?.root ?? job.codex?.cwd ?? process.cwd();
   const projectDir = _resolveProjectDir(cwd);
 
@@ -106,7 +106,7 @@ export async function inspectWorkflow(jobId) {
   return {
     jobId: job.jobId,
     sessionId,
-    name: job.sessionName ?? '',
+    name: _sessionName(job),
     status: job.status ?? 'unknown',
     cwd,
     startedAt: job.createdAt ?? null,
@@ -129,16 +129,36 @@ function _isWorkflowJob(job) {
 }
 
 /**
+ * Resolve the Claude session id from a job record. The driver stores it under
+ * `job.claude.sessionId`; older/forward-compat records may carry a top-level
+ * `job.sessionId`. Returns '' when neither is present.
+ * @param {any} job
+ */
+function _sessionId(job) {
+  return job?.claude?.sessionId ?? job?.sessionId ?? '';
+}
+
+/**
+ * Resolve the Claude session name from a job record (`job.claude.sessionName`,
+ * with a top-level `job.sessionName` fallback). Returns '' when neither exists.
+ * @param {any} job
+ */
+function _sessionName(job) {
+  return job?.claude?.sessionName ?? job?.sessionName ?? '';
+}
+
+/**
  * Map a JobRecord to a WorkflowSession summary.
  * @param {any} job
  * @returns {WorkflowSession}
  */
 function _toWorkflowSession(job) {
+  const sessionId = _sessionId(job);
   return {
     jobId: job.jobId ?? '',
-    sessionId: job.sessionId ?? '',
-    shortId: _shortId(job.sessionId ?? job.jobId ?? ''),
-    name: job.sessionName ?? '',
+    sessionId,
+    shortId: _shortId(sessionId || job.jobId || ''),
+    name: _sessionName(job),
     status: job.status ?? 'unknown',
     cwd: job.workspace?.root ?? job.codex?.cwd ?? '',
     startedAt: job.createdAt ?? null,

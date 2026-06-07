@@ -350,9 +350,12 @@ export function formatReviewHuman({ review, job, turn }) {
   const { verdict, findings } = review;
   const verdictLabel = verdict.toUpperCase().replace(/_/g, ' ');
 
-  if (verdict === 'pass' && findings.length === 0) {
+  // No findings → render clean output regardless of the raw verdict label.
+  // Guards against a mid-stream read yielding `pass_with_findings` with an
+  // empty findings array, which otherwise prints "PASS WITH FINDINGS (0 findings: )".
+  if (findings.length === 0) {
     return [
-      `Review verdict: PASS`,
+      `Review verdict: ${verdict === 'fail' ? 'FAIL' : 'PASS'}`,
       `Job ID:  ${job.jobId}`,
       `Turn:    ${turn.index} (${turn.status})`,
       '',

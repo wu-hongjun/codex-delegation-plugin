@@ -86,10 +86,16 @@ function makeJobRecord(jobId, fields = {}) {
       root: fields.workspaceRoot ?? WORK_DIR,
     },
     driver: { name: 'claude-background', version: '0.0.0' },
-    claude: { binaryPath: '/usr/local/bin/claude', version: '2.1.168' },
-    sessionId:
-      fields.sessionId ?? `${jobId.slice(4, 12).padEnd(8, '0')}-aaaa-bbbb-cccc-dddddddddddd`,
-    sessionName: fields.sessionName ?? `codex:test:${jobId}`,
+    // Session identity lives under `claude.*` in real job records — NOT at the
+    // top level. The v0.3.0 pre-release audit caught a regression where the
+    // inspector read the (always-null) top-level fields and surfaced blanks.
+    claude: {
+      binaryPath: '/usr/local/bin/claude',
+      version: '2.1.168',
+      sessionId:
+        fields.sessionId ?? `${jobId.slice(4, 12).padEnd(8, '0')}-aaaa-bbbb-cccc-dddddddddddd`,
+      sessionName: fields.sessionName ?? `codex:test:${jobId}`,
+    },
     prompt: promptObj,
     turns: [
       {
@@ -275,6 +281,49 @@ describe('workflows <jobId>: drill-in succeeds for workflow jobs', () => {
     assert.ok(
       result.stdout.includes('Workflow session') || result.stdout.includes('Status'),
       `expected workflow detail output; got:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('workflows <jobId>: drill-in surfaces claude.sessionId / claude.sessionName (v0.3.0 audit fix)', () => {
+  it('shows the non-blank session id and name from the job record claude block', () => {
+    makeJobRecord('job_drill07_eeeeeeee', {
+      promptSummary: 'ultracode: drill metadata target',
+      sessionId: '99999999-2222-3333-4444-555555555555',
+      sessionName: 'codex:cc:metadatacheck',
+      status: 'awaiting_followup',
+    });
+    const result = runDispatcher(['workflows', 'job_drill07_eeeeeeee']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    // Regression: these were blank when the inspector read top-level
+    // job.sessionId / job.sessionName instead of job.claude.sessionId/Name.
+    assert.ok(
+      result.stdout.includes('99999999-2222-3333-4444-555555555555'),
+      `drill-in must surface the claude.sessionId; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('codex:cc:metadatacheck'),
+      `drill-in must surface the claude.sessionName; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      !/Workflow session:\s*$/m.test(result.stdout),
+      `"Workflow session:" line must not be blank; got:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('workflows list: shortId comes from claude.sessionId (v0.3.0 audit fix)', () => {
+  it('uses the 8-char Claude session prefix, not the job id, as shortId', () => {
+    makeJobRecord('job_listid8_ffffffff', {
+      promptSummary: 'ultracode: list shortId target',
+      sessionId: 'abcd1234-2222-3333-4444-555555555555',
+      sessionName: 'codex:cc:listcheck',
+    });
+    const result = runDispatcher(['workflows', '--all']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes('abcd1234'),
+      `list shortId must be the Claude session prefix; got:\n${result.stdout}`,
     );
   });
 });

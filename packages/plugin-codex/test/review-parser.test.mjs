@@ -21,8 +21,10 @@ import { fileURLToPath } from 'node:url';
 
 const here = fileURLToPath(import.meta.url);
 const LIB = resolve(here, '..', '..', 'scripts', 'lib', 'review-parser.mjs');
+const FORMAT_LIB = resolve(here, '..', '..', 'scripts', 'lib', 'format.mjs');
 
 const { parseReviewOutput } = await import(LIB);
+const { formatReviewHuman } = await import(FORMAT_LIB);
 
 // ---------- canonical fixtures ----------
 
@@ -857,5 +859,60 @@ describe('parseReviewOutput is a pure function with no side effects', () => {
         `parseReviewOutput must not throw for input: ${JSON.stringify(input)}`,
       );
     }
+  });
+});
+
+// ---------- formatReviewHuman empty-findings labeling (v0.3.0 audit fix) ----------
+
+describe('formatReviewHuman renders clean output for empty findings regardless of verdict', () => {
+  const job = { jobId: 'job_fmt01aa_aaaaaaaa' };
+  const turn = { index: 0, status: 'running' };
+
+  it('pass_with_findings + [] renders "PASS" / "No findings." (never "0 findings: ")', () => {
+    const out = formatReviewHuman({
+      review: { verdict: 'pass_with_findings', findings: [] },
+      job,
+      turn,
+    });
+    assert.ok(out.includes('Review verdict: PASS'), `expected clean PASS; got:\n${out}`);
+    assert.ok(out.includes('No findings.'), `expected "No findings."; got:\n${out}`);
+    assert.ok(
+      !out.includes('WITH FINDINGS'),
+      `must not print "WITH FINDINGS" for an empty list; got:\n${out}`,
+    );
+    assert.ok(!out.includes('0 findings'), `must not print "0 findings"; got:\n${out}`);
+  });
+
+  it('plain pass + [] still renders clean PASS', () => {
+    const out = formatReviewHuman({
+      review: { verdict: 'pass', findings: [] },
+      job,
+      turn,
+    });
+    assert.ok(out.includes('Review verdict: PASS'));
+    assert.ok(out.includes('No findings.'));
+  });
+
+  it('fail + [] renders FAIL with no findings block', () => {
+    const out = formatReviewHuman({
+      review: { verdict: 'fail', findings: [] },
+      job,
+      turn,
+    });
+    assert.ok(out.includes('Review verdict: FAIL'), `expected FAIL; got:\n${out}`);
+    assert.ok(out.includes('No findings.'));
+  });
+
+  it('pass_with_findings + 1 finding still shows the count summary', () => {
+    const out = formatReviewHuman({
+      review: {
+        verdict: 'pass_with_findings',
+        findings: [{ severity: 'low', description: 'something minor' }],
+      },
+      job,
+      turn,
+    });
+    assert.ok(out.includes('1 finding'), `expected the count summary; got:\n${out}`);
+    assert.ok(out.includes('something minor'));
   });
 });

@@ -182,3 +182,85 @@ describe('workflows: handles invalid JSON from claude agents gracefully', () => 
     );
   });
 });
+
+// ---------- Plan 0016 Stage 4 polish: regression tests for MAJOR-1 and MAJOR-2 ----------
+
+describe('_sanitizeCwd: preserves leading hyphen to match Claude project dir format', async () => {
+  // Import the internal helper for direct testing.
+  const { _sanitizeCwd } = await import(
+    resolve(REPO_ROOT, 'packages/plugin-codex/scripts/lib/workflows-inspector.mjs')
+  );
+  it('produces -Users-foo-bar (with leading hyphen) for /Users/foo/bar', () => {
+    assert.equal(_sanitizeCwd('/Users/foo/bar'), '-Users-foo-bar');
+  });
+  it('produces -tmp for /tmp', () => {
+    assert.equal(_sanitizeCwd('/tmp'), '-tmp');
+  });
+  it('produces empty string for empty input', () => {
+    assert.equal(_sanitizeCwd(''), '');
+  });
+});
+
+describe('workflows --all: includes sessions from other cwds (Plan 0016 polish MAJOR-2)', () => {
+  it('with --all, lists workflow sessions whose cwd does NOT match process.cwd()', () => {
+    const agentRows = [
+      {
+        sessionId: 'aaa-1111',
+        name: 'ultracode: local workflow',
+        status: 'running',
+        cwd: WORK_DIR,
+        startedAt: 1000000,
+      },
+      {
+        sessionId: 'bbb-2222',
+        name: 'ultracode: remote workspace workflow',
+        status: 'running',
+        cwd: '/some/other/workspace',
+        startedAt: 1000001,
+      },
+    ];
+    makeClaudeStub(BIN_DIR, JSON.stringify(agentRows));
+    const result = runDispatcher(['workflows', '--all']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes('aaa-1111'),
+      `--all should include local workflow; stdout:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('bbb-2222'),
+      `--all should include cross-workspace workflow; stdout:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('workflows: excludes sessions from other cwds without --all (Plan 0016 polish)', () => {
+  it('without --all, filters out workflow sessions whose cwd does NOT match process.cwd()', () => {
+    const agentRows = [
+      {
+        sessionId: 'aaa-1111',
+        name: 'ultracode: local workflow',
+        status: 'running',
+        cwd: WORK_DIR,
+        startedAt: 1000000,
+      },
+      {
+        sessionId: 'bbb-2222',
+        name: 'ultracode: remote workspace workflow',
+        status: 'running',
+        cwd: '/some/other/workspace',
+        startedAt: 1000001,
+      },
+    ];
+    makeClaudeStub(BIN_DIR, JSON.stringify(agentRows));
+    const result = runDispatcher(['workflows']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes('aaa-1111'),
+      `local workflow should appear; stdout:\n${result.stdout}`,
+    );
+    assert.ok(
+      !result.stdout.includes('bbb-2222'),
+      `cross-workspace workflow should NOT appear without --all; stdout:\n${result.stdout}`,
+    );
+  });
+});

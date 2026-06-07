@@ -2155,7 +2155,8 @@ async function cmdWorkflows(flags, positional, json) {
     }
   } else {
     // List path: enumerate workflow sessions.
-    const { sessions } = await listWorkflows({ env: process.env });
+    const showAll = Boolean(flags['all']);
+    const { sessions } = await listWorkflows({ all: showAll, env: process.env });
     if (json) {
       process.stdout.write(JSON.stringify({ sessions }, null, 2) + '\n');
     } else {

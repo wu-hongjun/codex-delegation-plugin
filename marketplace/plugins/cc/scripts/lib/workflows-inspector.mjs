@@ -20,7 +20,7 @@
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
@@ -36,15 +36,20 @@ const execFileAsync = promisify(execFile);
  * A session is identified as a workflow session when its `name` field starts
  * with `"ultracode:"` — the prompt prefix cc.mjs injects for $claude-workflow.
  *
- * @param {{ all?: boolean; env?: NodeJS.ProcessEnv }} opts
+ * @param {{ all?: boolean; cwd?: string; env?: NodeJS.ProcessEnv }} opts
  * @returns {Promise<{ sessions: WorkflowSession[] }>}
  */
-export async function listWorkflows({ all: _all = false, env = process.env } = {}) {
+export async function listWorkflows({ all = false, cwd, env = process.env } = {}) {
   const agentRows = await _runAgentsJson(env);
+  const currentCwd = _normalizePath(cwd ?? process.cwd());
 
-  // Filter to workflow sessions only.
+  // Filter to workflow sessions only. When `all` is false (default), also
+  // filter by matching cwd so results scope to the current workspace.
+  // Paths are normalized via realpathSync to handle macOS /private/var/folders
+  // ↔ /var/folders symlinks (and similar) so the comparison is robust.
   const sessions = agentRows
     .filter((row) => _isWorkflowSession(row))
+    .filter((row) => all || _normalizePath(row.cwd) === currentCwd)
     .map((row) => _toWorkflowSession(row));
 
   return { sessions };
@@ -173,12 +178,30 @@ function _shortId(sessionId) {
 }
 
 /**
- * Sanitize a cwd path to the format Claude uses for project directories:
- *   /Users/foo/bar  →  -Users-foo-bar
+ * Normalize a filesystem path for equality comparison.
+ * Resolves symlinks (e.g. macOS /var/folders → /private/var/folders) so
+ * paths produced by different processes can match reliably.
+ * Falls back to the input string if the path does not exist on disk.
+ * @param {string|undefined} p
+ */
+function _normalizePath(p) {
+  if (!p) return '';
+  try {
+    return realpathSync(p);
+  } catch {
+    return p;
+  }
+}
+
+/**
+ * Sanitize a cwd path to the format Claude uses for project directories.
+ *   /Users/foo/bar  →  -Users-foo-bar  (leading hyphen preserved)
+ * Matches the actual on-disk format under ~/.claude/projects/, where each
+ * directory begins with a hyphen reflecting the leading slash of the cwd.
  * @param {string} cwd
  */
-function _sanitizeCwd(cwd) {
-  return cwd.replace(/\//g, '-').replace(/^-/, '');
+export function _sanitizeCwd(cwd) {
+  return cwd.replace(/\//g, '-');
 }
 
 /**

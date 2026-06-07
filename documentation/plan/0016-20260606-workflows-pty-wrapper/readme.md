@@ -1,22 +1,25 @@
 # Plan 0016 — `/workflows` PTY-injection wrapper (read-only `$claude-workflows` skill)
 
-**Status**: `auditing`
+**Status**: `complete`
 **Started**: 2026-06-06
 **Stage 1 approved**: 2026-06-06 (maintainer authorized full cycle)
-**Stage 2 complete (pending CI)**: 2026-06-06
+**Stage 2 complete**: 2026-06-06 (CI run `27081819765` success)
+**Stage 3 complete**: 2026-06-06 (verdict `ready-for-polish` with 2 MAJOR findings)
+**Stage 4 complete**: 2026-06-07 (both MAJOR findings + macOS realpath issue fixed; +5 regression tests)
+**Stage 5 complete / Completed**: 2026-06-07
 **Drafted from**: Plan 0015 OQ-C handoff. Adaptive scope from Plan 0015 returned: `/workflows` requires PTY (31% CLI coverage); node-pty available; `attach.ts` provides 70% of harness pattern; ~150-200 LOC estimated.
 **Critical pivot at T1**: `/workflows` is session-scoped TUI-only — would NOT expose users' `cc workflow --bg` jobs. Pivoted to CLI-only architecture (no PTY).
-**Last updated**: 2026-06-06
+**Last updated**: 2026-06-07
 
 ## Stages
 
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-06** — Adaptive scope: T1 ANSI capture + architectural sketch; T2-T5 ship per verdict |
-| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1 returned A-partial with critical session-scoped-TUI pivot; T2-T5 implemented CLI-only `$claude-workflows` skill (no PTY, no driver/runtime touches); 1488 → 1528 npm test (+40); 1774 → 1814 combined; CI run pending |
-| 3 — Audit | `3-audit.md` | not started — requires independent context |
-| 4 — Polish | `4-polish.md` | not started |
-| 5 — Report | `5-report.md` | not started |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1 returned A-partial with critical session-scoped-TUI pivot; T2-T5 implemented CLI-only `$claude-workflows` skill (no PTY, no driver/runtime touches); 1488 → 1528 npm test (+40); 1774 → 1814 combined; CI `27081819765` `success` |
+| 3 — Audit | `3-audit.md` | **complete 2026-06-06** — verdict `ready-for-polish` with 2 MAJOR findings (cwd sanitization stripped leading hyphen breaking drill-in enrichment; `--all` flag documented but never wired); 4 MINOR notes |
+| 4 — Polish | `4-polish.md` | **complete 2026-06-07** — both MAJOR findings fixed; macOS `/var/folders` realpath path-normalization issue surfaced and fixed; +5 regression tests; 1528 → 1533 npm test (+5) |
+| 5 — Report | `5-report.md` | **complete 2026-06-07** — final report; status flipped `auditing → polishing → reporting → complete`; no release tag (plugin version unchanged at `0.2.0`); v0.3.0 remains a clean release candidate after Plans 0013 + 0014 + 0015 + 0016 |
 
 ## Summary
 

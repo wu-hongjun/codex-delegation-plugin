@@ -372,10 +372,10 @@ describe('marketplace upgrade procedure docs (Plan 0006 T7)', () => {
   });
 
   // ========================================================================
-  // T7-9: README mentions version 0.2.0 in upgrade verification
+  // T7-9: README mentions the current plugin version in upgrade verification
   // ========================================================================
 
-  it('README mentions version 0.2.0 in upgrade verification', () => {
+  it('README mentions the current plugin version in upgrade verification', () => {
     const content = readFileSync(MARKETPLACE_README, 'utf8');
     assert.ok(
       content.includes(UPGRADE_VERSION_STRING),

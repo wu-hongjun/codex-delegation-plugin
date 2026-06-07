@@ -63,7 +63,7 @@ The cc-plugin-codex plugin follows semver `0.x.y`. Versioning rules:
   metadata, not the shipped plugin version. Do not bump them as part
   of a plugin release.
 - **Bundled `node_modules/@cc-plugin-codex/*` use the `<plugin-version>-bundled`
-  marker** (e.g., `0.2.0-bundled` while the shipped plugin is `0.2.0`).
+  marker** (e.g., `0.3.0-bundled` while the shipped plugin is `0.3.0`).
   `tools/package-marketplace.mjs --write` synthesizes this marker from
   the source plugin version. Do not edit those synthesized
   `package.json` files by hand.
@@ -71,7 +71,7 @@ The cc-plugin-codex plugin follows semver `0.x.y`. Versioning rules:
 ### Procedure to bump the shipped plugin version
 
 Replace `0.x.y` below with the new semver string. The current shipped
-version is `0.2.0` (set by Plan 0006 T3).
+version is `0.3.0` (bumped in Plan 0018 for the v0.3.0 release).
 
 1. Edit `packages/plugin-codex/.codex-plugin/plugin.json` and bump the
    `version` field to `0.x.y`. This is the only manual edit.
@@ -316,7 +316,7 @@ hard-coded version literals) without invoking it.
 ## Tagging
 
 Tag the release using semver `v0.x.y`. Example for the current shipped
-version: `v0.2.0`.
+version: `v0.3.0`.
 
 ```bash
 git tag v0.x.y
@@ -328,7 +328,7 @@ Rules:
 - Tag only **after** the smoke test passes **and** all four CI matrix
   legs are green. Both gates are mandatory.
 - Tag format: lowercase `v` prefix + semver. The example tag for the
-  current shipped version is `v0.2.0`.
+  current shipped version is `v0.3.0`.
 - Legacy verification tags from earlier plans use distinct schemes
   and must not be retagged as part of a plugin release.
 - Do not move or delete a published tag. If a regression is
@@ -433,7 +433,7 @@ codex plugin list
 
 After either flow, `codex plugin list` should report
 `cc@cc-plugin-codex-local` with the current version
-(`0.2.0` as of Plan 0006 T3), `installed, enabled`. See
+(`0.3.0` as of Plan 0018), `installed, enabled`. See
 [`marketplace/plugins/cc/README.md`](../marketplace/plugins/cc/README.md)
 for the user-facing upgrade section.
 

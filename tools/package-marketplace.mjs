@@ -138,13 +138,13 @@ const NODEPTY_INCLUDE_FILES = ['LICENSE', 'README.md'];
 /**
  * Synthesised `package.json` bodies for the two workspace packages.
  *
- * Version marker: `0.2.0-bundled`. The workspace source stays at `0.0.0` so
+ * Version marker: `0.3.0-bundled`. The workspace source stays at `0.0.0` so
  * `npm` keeps recognising it as the in-tree workspace; the `-bundled` suffix
  * exists only on the marketplace cache copy to make inspection unambiguous.
  */
 const SYNTH_RUNTIME_PKG = {
   name: '@cc-plugin-codex/runtime',
-  version: '0.2.0-bundled',
+  version: '0.3.0-bundled',
   type: 'module',
   main: './dist/index.js',
   types: './dist/index.d.ts',
@@ -159,7 +159,7 @@ const SYNTH_RUNTIME_PKG = {
 
 const SYNTH_DRIVER_PKG = {
   name: '@cc-plugin-codex/driver-claude-code',
-  version: '0.2.0-bundled',
+  version: '0.3.0-bundled',
   type: 'module',
   main: './dist/index.js',
   types: './dist/index.d.ts',
@@ -170,7 +170,7 @@ const SYNTH_DRIVER_PKG = {
     },
   },
   dependencies: {
-    '@cc-plugin-codex/runtime': '0.2.0-bundled',
+    '@cc-plugin-codex/runtime': '0.3.0-bundled',
     'node-pty': '1.2.0-beta.13',
   },
   engines: { node: '>=20' },

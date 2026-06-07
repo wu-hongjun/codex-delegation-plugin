@@ -58,6 +58,7 @@ const DERIVED_FILES = [
   'scripts/lib/review-parser.mjs',
   'scripts/lib/review-prompts.mjs',
   'scripts/lib/review-result-source.mjs',
+  'scripts/lib/workflows-inspector.mjs',
   'skills/claude-setup/SKILL.md',
   'skills/claude-delegate/SKILL.md',
   'skills/claude-status/SKILL.md',
@@ -71,6 +72,7 @@ const DERIVED_FILES = [
   'skills/claude-fork/SKILL.md',
   'skills/claude-batch/SKILL.md',
   'skills/claude-deep-research/SKILL.md',
+  'skills/claude-workflows/SKILL.md',
 ];
 
 /**

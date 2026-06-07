@@ -1,9 +1,11 @@
 # Plan 0016 — `/workflows` PTY-injection wrapper (read-only `$claude-workflows` skill)
 
-**Status**: `implementing`
+**Status**: `auditing`
 **Started**: 2026-06-06
 **Stage 1 approved**: 2026-06-06 (maintainer authorized full cycle)
+**Stage 2 complete (pending CI)**: 2026-06-06
 **Drafted from**: Plan 0015 OQ-C handoff. Adaptive scope from Plan 0015 returned: `/workflows` requires PTY (31% CLI coverage); node-pty available; `attach.ts` provides 70% of harness pattern; ~150-200 LOC estimated.
+**Critical pivot at T1**: `/workflows` is session-scoped TUI-only — would NOT expose users' `cc workflow --bg` jobs. Pivoted to CLI-only architecture (no PTY).
 **Last updated**: 2026-06-06
 
 ## Stages
@@ -11,7 +13,7 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-06** — Adaptive scope: T1 ANSI capture + architectural sketch; T2-T5 ship per verdict |
-| 2 — Implement | `2-implement.md` | **in progress 2026-06-06** — T1 dispatching via single executor |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1 returned A-partial with critical session-scoped-TUI pivot; T2-T5 implemented CLI-only `$claude-workflows` skill (no PTY, no driver/runtime touches); 1488 → 1528 npm test (+40); 1774 → 1814 combined; CI run pending |
 | 3 — Audit | `3-audit.md` | not started — requires independent context |
 | 4 — Polish | `4-polish.md` | not started |
 | 5 — Report | `5-report.md` | not started |

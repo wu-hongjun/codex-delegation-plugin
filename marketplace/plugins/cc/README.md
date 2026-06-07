@@ -57,7 +57,7 @@ If `$claude-setup` reports `ok` or `warn`, the install is complete.
 
 ## Skills
 
-After install, the plugin makes 13 skills available inside the Codex
+After install, the plugin makes 14 skills available inside the Codex
 TUI. Type the `$<name>` form at the Codex chat prompt.
 
 - `$claude-setup` — probes the local environment (Claude Code auth,
@@ -88,6 +88,8 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
   via the Batch Parallel Work Orchestration runtime.
 - `$claude-deep-research` — runs a Claude Code `/deep-research` workflow
   with multi-agent fan-out, WebSearch, and cross-checked citations.
+- `$claude-workflows` — lists and inspects Claude Code workflow
+  background sessions started via `$claude-workflow`.
 
 ### $claude-workflow
 
@@ -183,6 +185,20 @@ tool, which is auto-available in standard Claude Code background sessions.
 
 Requires Claude Code v2.1.167+.
 
+### $claude-workflows
+
+Lists and inspects Claude Code workflow background sessions started via
+`$claude-workflow`. Read-only — no subprocess is spawned.
+
+```
+$claude-workflows
+$claude-workflows <jobId>
+```
+
+**Scope note**: This skill surfaces `$claude-workflow`-started background
+sessions (sessions whose name begins with `ultracode:`). The Claude Code
+`/workflows` TUI panel is session-scoped TUI-only and is a distinct surface.
+
 Each skill prints a usage message when invoked without the arguments
 it needs (e.g., a job id). That usage message is normal behaviour —
 it confirms the skill is registered and reachable. The full plugin
@@ -241,12 +257,12 @@ do not block reinstall.
 
 Before release, run the smoke checklist in
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md).
-It verifies the local marketplace install and all 13 skill names
+It verifies the local marketplace install and all 14 skill names
 (`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`,
 `$claude-stop`, `$claude-followup`, `$claude-review`,
 `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`,
-`$claude-fork`, `$claude-batch`, `$claude-deep-research`) under an
-isolated `CODEX_HOME`.
+`$claude-fork`, `$claude-batch`, `$claude-deep-research`,
+`$claude-workflows`) under an isolated `CODEX_HOME`.
 
 ## Troubleshooting
 

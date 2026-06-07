@@ -8,7 +8,7 @@ Key design choice: this v1 uses Claude Code background sessions directly and doe
 
 ## Current v1 scope
 
-Thirteen skills are available:
+Fourteen skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
 - **`$claude-delegate`** — start a new background session for a task
@@ -23,6 +23,7 @@ Thirteen skills are available:
 - **`$claude-fork`** — fork a Claude Code subagent for a directive; spawns a real subagent process (added in plan 0011)
 - **`$claude-batch`** — run a batch of parallel Claude Code instructions via the Batch Parallel Work Orchestration runtime (added in plan 0011)
 - **`$claude-deep-research`** — run a Claude Code `/deep-research` workflow with multi-agent fan-out, WebSearch, and cross-checked citations (added in plan 0013)
+- **`$claude-workflows`** — list and inspect Claude Code workflow background sessions started via `$claude-workflow` (added in plan 0016)
 
 Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
 
@@ -372,9 +373,42 @@ $claude-stop job_mpt98g9g_b61e09f1
 
 Optional cleanup. Not required before calling `result`.
 
+### $claude-workflows
+
+List and inspect Claude Code workflow background sessions started via `$claude-workflow`.
+
+```bash
+$claude-workflows
+```
+
+With a job ID, drill into a single workflow session for subagent metadata and phase records:
+
+```bash
+$claude-workflows <jobId>
+```
+
+**Important scope note**: This skill covers `$claude-workflow`-started background sessions only (sessions whose name begins with `ultracode:`). The Claude Code `/workflows` TUI panel is session-scoped TUI-only — it shows workflows from a Claude TUI session, not the background sessions this skill surfaces. The two are distinct surfaces (empirically confirmed in Plan 0016 OQ-A artifact).
+
+**Cost notice**: Zero subprocesses started by this skill; reads are disk-only from `~/.claude/projects/` and `claude agents --json`. No Claude Code session is spawned.
+
+Accepted flags:
+
+- `--all` — list workflow sessions from all workspaces (not just current).
+- `--json` — machine-readable JSON output.
+
+Rejected at parse time (exit 2):
+
+- `--allow-edit` — not applicable; this skill is read-only.
+
+Direct dispatcher equivalent:
+
+```bash
+node packages/plugin-codex/scripts/cc.mjs workflows
+```
+
 ## Direct dispatcher usage
 
-All thirteen commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All fourteen commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-codex/scripts/cc.mjs setup
@@ -390,6 +424,7 @@ node packages/plugin-codex/scripts/cc.mjs goal -- "all unit tests pass"
 node packages/plugin-codex/scripts/cc.mjs fork -- "build a proof-of-concept for the new rate-limiter"
 node packages/plugin-codex/scripts/cc.mjs batch -- "migrate all usages of the old API to the new one"
 node packages/plugin-codex/scripts/cc.mjs deep-research -- "What are the main tradeoffs between B-trees and LSM-trees for write-heavy workloads?"
+node packages/plugin-codex/scripts/cc.mjs workflows
 ```
 
 All commands support `--json` for machine-readable output. The `--yes` flag on `delegate` and `followup` skips the interactive privacy acknowledgement; `--allow-edit` is a policy/framing flag and does NOT bypass that acknowledgement.

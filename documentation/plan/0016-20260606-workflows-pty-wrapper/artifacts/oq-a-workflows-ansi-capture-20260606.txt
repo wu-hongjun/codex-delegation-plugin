@@ -1,0 +1,244 @@
+OQ-A: /workflows Panel Empirical ANSI Capture
+=============================================
+
+Date:           2026-06-06
+claude version: 2.1.168
+Node:           v20 (darwin-arm64)
+node-pty:       bundled at marketplace/plugins/cc/node_modules/node-pty/
+PTY dimensions: 120 cols × 40 rows  (xterm-256color)
+Capture method: node-pty spawn 'claude' (bare), inject ultracode: prompt, approve
+                workflow, then inject /workflows\r once "Running in background" appears.
+
+KEY DISCOVERY (architectural): /workflows only shows workflows from the CURRENT
+interactive TUI session. Background sessions started via cc workflow (--bg flag)
+do NOT appear in this panel. To populate the panel, the workflow must be triggered
+from within the same PTY session using the 'ultracode:' prompt prefix.
+
+APPROVAL FLOW OBSERVED:
+  1. Send: ultracode: <multi-agent prompt> via bracketed-paste + CR
+  2. Claude shows approval dialog (within ~10-15s of thinking):
+       "Run a dynamic workflow? ... following phases: ..."
+       ❯ 1. Yes, run it
+         2. View raw script
+         3. No
+       Esc to cancel · Tab to amend · ctrl+g to edit script in $EDITOR
+  3. Press Enter (option 1 selected) → workflow starts in background
+  4. Claude responds: "Running in background · /workflows to monitor and save"
+  5. Send: /workflows\r → panel renders inline (no separate screen)
+
+
+════════════════════════════════════════════════════════════════
+SECTION 1: LIST VIEW (workflow running, 0/3 agents done)
+════════════════════════════════════════════════════════════════
+
+Raw byte excerpt (escaped, 500 chars starting at panel nav):
+------------------------------------------------------------------------
+\x1b[92G\x1b[38;2;153;153;153m↑/↓ to select · Enter to view\r\x1b[1B  ◯ survey-three-areas\x1b[25GSurvey three codebase metrics in parallel\x1b[101G0/0 agents done · 0s\r\x1b[1B\x1b[39m\x1b[K\r\x1b[1B\x1b[K\r\x1b[1B\x1b[K\r\x1b[1B\x1b[K\r\x1b[1B\x1b[K\r\x1b[1B\x1b[K\r\x1b[1B\x1b[K\r\x1b[1B\x1b[K\r\x1b[1B\x1b[K\r\x1b[8A
+------------------------------------------------------------------------
+
+Additional list view row (second capture, same session at 0/3 agents):
+------------------------------------------------------------------------
+\x1b[38;2;153;153;153m ◯ survey-three-areas\x1b[25GSurvey three independent codebase facts in parallel\x1b[101G0/3 agents done · 0s\r
+------------------------------------------------------------------------
+
+Also seen in context just before panel opens (in chat output):
+------------------------------------------------------------------------
+\x1b[38;2;78;186;101m⏺\r\x1b[1B\x1b[38;2;153;153;153m  ⎿ \xa0Running in background · \x1b[38;2;177;185;249m/workflows\x1b[38;2;153;153;153m to monitor and save
+------------------------------------------------------------------------
+
+Human-rendered interpretation (LIST VIEW):
+---------------------------------------------------------------------------
+  Status bar:        ↑/↓ to select · Enter to view          (right-aligned)
+
+  Row layout (single workflow):
+    col  1- 2:  space (indent)
+    col  3:     ◯  (status indicator — hollow circle = running/not-done)
+    col  5-23:  workflow-name   (e.g. "survey-three-areas")
+    col 25-...: description     (e.g. "Survey three codebase metrics in parallel")
+    col 101-..: "0/3 agents done · 0s"  (agent progress + elapsed)
+
+  Footer row:        [empty - panel fills remaining rows with \x1b[K clears]
+
+  Color coding observed:
+    \x1b[38;2;153;153;153m  = rgb(153,153,153) gray — used for nav hint + description
+    \x1b[38;2;177;185;249m  = rgb(177,185,249) light-blue — used for /workflows hint in chat
+    \x1b[38;2;78;186;101m  = rgb(78,186,101)  green bullet ⏺ — workflow started OK
+    ◯ = hollow circle (U+25EF) — status indicator for running/pending workflow
+---------------------------------------------------------------------------
+
+Structural analysis (LIST VIEW):
+  - Panel is INLINE in the main TUI scroll area (not a separate alternate screen)
+  - Header:    "Dynamic workflows" (bold) + teal/cyan separator line
+               \x1b[38;2;0;204;204m (rgb 0,204,204 = teal) for the header separator
+  - Nav bar:   "↑/↓ to select · Enter to view" right-aligned at col 92+
+  - Data rows: one row per workflow, fixed column layout:
+               col  3    = status symbol (◯ running, ✓ complete, etc.)
+               col  5    = workflow name (slug, no spaces)
+               col 25    = description (prose, truncated)
+               col 101   = "N/M agents done · Xs" (absolute column position)
+  - Footer:    "Esc to close" (italic, gray)
+  - After close: "Dynamic workflows dialog dismissed" appears in chat transcript
+  - Blank rows cleared with \x1b[K after last workflow row
+  - Cursor moves: \x1b[8A (up 8) after the data rows — panel scrolls the cursor
+    back to its original position; panel is NOT a full-screen takeover
+  - ANSI patterns: column-absolute positioning via \x1b[<col>G (not fixed-width padding)
+    e.g. \x1b[101G moves to column 101 for the agent-count field
+  - Panel re-renders on each agent completion (token counter ticks in background)
+
+
+════════════════════════════════════════════════════════════════
+SECTION 2: DRILL-IN VIEW (Enter on a row)
+════════════════════════════════════════════════════════════════
+
+Note: Full drill-in of a running workflow (agent-level breakdown view) was NOT
+captured in this session because the Enter keystroke timing was consumed by an
+in-progress workflow response before the panel focus could be transferred. The
+panel continued showing the list view with updated agent counts (0/3 → 0/3 done).
+
+What WAS captured from the approval dialog "View raw script" equivalent:
+------------------------------------------------------------------------
+Run a dynamic workflow?
+
+  Survey three independent codebase facts in parallel
+
+  This dynamic workflow will spin up multiple subagents across the following phases:
+
+  1. Survey — three parallel readers
+     · "In the repo at /Users/hongjunwu/Repositories/Git/cc-plugin-…"
+     · "In the repo at /Users/hongjunwu/Repositories/Git/cc-plugin-…"
+     +1 more
+------------------------------------------------------------------------
+
+Raw bytes for phases section (from approval dialog):
+------------------------------------------------------------------------
+\x1b[1mRun a dynamic workflow?\r\x1b[1B\x1b[22m\x1b[39m\x1b[K\r\x1b[1B  \x1b[1mSurvey three independent codebase facts in parallel\r\x1b[1B\x1b[22m\x1b[K\r\x1b[2C\x1b[1BThis dynamic workflow will spin up multiple subagents across\x1b[64Gthe\x1b[68Gfollowing\x1b[78Gphases:\x1b[100G\x1b[K\r\r\n
+\x1b[5G1.\x1b[8GSurvey\x1b[38;2;153;153;153m —\x1b[17Gthree\x1b[23Gparallel\x1b[32Greaders\x1b[39m\r\r\n
+\x1b[3G\x1b[38;2;153;153;153m \x1b[8G·\x1b[10G"In\x1b[14Gthe\x1b[18Grepo\x1b[23Gat\x1b[26G/Users/…" · "In the repo at /Users/…" +1 more
+------------------------------------------------------------------------
+
+Human-rendered interpretation (PRE-APPROVAL DRILL-IN / phase preview):
+  - Title: workflow name (bold)
+  - Description: prose (bold)
+  - Phases block: numbered list, each phase has:
+      Phase number + name — agent-description
+      Bullet points: truncated cwd paths for each agent
+      "+N more" if truncated
+  - Warning: "Dynamic workflows can use a lot of tokens quickly..."
+  - Options: ❯ 1. Yes, run it / 2. View raw script / 3. No
+  - Footer: "Esc to cancel · Tab to amend · ctrl+g to edit script in $EDITOR"
+
+POST-APPROVAL panel list update (0/3 agents):
+  - Same list view row but "0/3 agents done · 0s"
+  - Agent count increments as sub-agents complete
+
+
+════════════════════════════════════════════════════════════════
+SECTION 3: EMPTY STATE (/workflows with no active workflows)
+════════════════════════════════════════════════════════════════
+
+Raw byte excerpt (full panel, 400 chars):
+------------------------------------------------------------------------
+\x1b[2C\x1b[1B\x1b[1mDynamic workflows\x1b[22m\x1b[39m\x1b[K\r\r\n
+\r\r\n
+\x1b[3G\x1b[38;2;255;255;255m✢\x1b[5G\x1b[38;2;153;153;153m Loading\x1b[14Gdynamic\x1b[22Gworkflow\x1b[31Ghistory…\x1b[39m\r\r\n
+\r\r\n
+\x1b[3G\x1b[38;2;153;153;153m\x1b[3mEsc\x1b[7Gto\x1b[10Gclose\x1b[23m\x1b[39m\r\r\n
+\x1b[?2026l\x1b[?2026h\r\x1b[2C\x1b[3A\x1b[38;2;153;153;153mNo\x1b[6Gdynamic\x1b[14Gworkflows in this session.\x1b[39m
+------------------------------------------------------------------------
+
+Human-rendered interpretation (EMPTY STATE):
+---------------------------------------------------------------------------
+  Header:   "Dynamic workflows"  (bold)
+  Body:     [spinner ✢ white] Loading dynamic workflow history…
+  Footer:   [italic] Esc to close
+
+  After brief loading delay (~200ms), body replaces with:
+  Body:     "No dynamic workflows in this session."  (gray)
+
+  Note: "in this session" is critical — the panel scope is session-scoped,
+  not global. Background sessions started via 'cc workflow' (--bg flag) are
+  NOT visible here.
+---------------------------------------------------------------------------
+
+Structural analysis (EMPTY STATE):
+  - Header identical to list view: "Dynamic workflows" bold, teal separator
+  - Brief "Loading..." spinner (✢ white spinning char) then text update
+  - Update via cursor-up \x1b[3A and overwrite (not full re-render)
+  - Empty message: "No dynamic workflows in this session."
+  - Session-scoped: only workflows started from THIS interactive TUI session appear
+  - ANSI mode flag \x1b[?2026l / \x1b[?2026h toggles around the update
+    (this is the "in-band synchronous update" protocol — indicates atomic redraw)
+
+
+════════════════════════════════════════════════════════════════
+SECTION 4: ANSI STRUCTURE SUMMARY
+════════════════════════════════════════════════════════════════
+
+Escape sequences observed in /workflows panel:
+  \x1b[38;2;R;G;Bm     24-bit RGB foreground color (truecolor)
+  \x1b[48;2;R;G;Bm     24-bit RGB background color
+  \x1b[<col>G           Move cursor to absolute column (key for column layout)
+  \x1b[<n>A/B/C/D       Relative cursor move (used for panel scroll-back)
+  \x1b[K                Erase to end of line (used to clear blank rows below data)
+  \x1b[1m / \x1b[22m    Bold on/off (workflow name in header)
+  \x1b[3m / \x1b[23m    Italic on/off (footer "Esc to close")
+  \x1b[?2026l/h         Synchronized output protocol (atomic redraws)
+  \x1b[?25h/l           Cursor show/hide
+
+Column layout (list view row, 120-col terminal):
+  Col  1- 2:  indent/padding (spaces)
+  Col  3:     status symbol (◯ = running, expected: ✓ = complete, ✗ = failed)
+  Col  5-24:  workflow slug (truncated if >19 chars)
+  Col 25-100: description prose (wraps or truncates at col 100)
+  Col 101-120: "N/M agents done · Xs"  (right-side metrics)
+
+Key color meanings:
+  rgb(0,204,204)   = teal     — panel header separator line
+  rgb(153,153,153) = gray     — secondary text (description, nav hints, counts)
+  rgb(177,185,249) = lavender — /workflows link hint in chat output
+  rgb(78,186,101)  = green    — success bullet ⏺ in chat
+  rgb(255,255,255) = white    — loading spinner ✢
+  rgb(255,193,7)   = amber    — warning text (token usage warning)
+  rgb(177,185,249) = blue     — selected row highlight (❯ indicator)
+
+Stability assessment:
+  - Column positions (via \x1b[<col>G) are FIXED at specific column numbers
+    (col 25, col 101, col 92 for nav) regardless of content length
+  - Workflow name is NOT padded — it ends where it ends, then cursor jumps to col 25
+  - Re-renders are incremental: only changed cells updated (agent count ticks)
+  - The panel does NOT use alternate screen (\x1b[?1049h) — it is inline
+  - Two captures of the same session (0/0 then 0/3) show the row structure is stable
+
+
+════════════════════════════════════════════════════════════════
+VERDICT
+════════════════════════════════════════════════════════════════
+
+Verdict: A-partial
+
+Justification:
+  The /workflows panel has a CLEAN, PARSEABLE structure for the list view. Column
+  positions are fixed via \x1b[<col>G absolute positioning:
+    - Workflow name at col 5
+    - Description at col 25
+    - Agent progress at col 101
+
+  Parsing strategy: regex per row using column-anchored patterns after ANSI-strip
+  (strip ANSI codes, split on \r\n, match lines with ◯/✓/✗ at col 3). Reliable.
+
+  The "A-partial" (not full A) is for two reasons:
+  1. The drill-in view (Enter on a row to see per-agent breakdown) was NOT fully
+     captured. The panel's second level (per-agent rows with phase/tool details)
+     requires a slower workflow that stays in the running state longer (the test
+     workflows completed within 0s before Enter could be processed). The list view
+     is fully captured and parseable; the agent-level drill-in is structurally
+     plausible but empirically unverified.
+  2. Session scope constraint: /workflows only shows current-session workflows.
+     The $claude-workflows skill must spawn claude (bare) AND trigger a workflow
+     within that same PTY session (or attach to a session that has active workflows).
+     This is a significant architectural constraint beyond what attach.ts handles —
+     attach.ts attaches to EXISTING background sessions, whereas $claude-workflows
+     requires an interactive TUI session with in-session workflow execution.
+
+  Given the clean list-view structure, T2 harness + parser CAN ship for the list
+  view. Drill-in parser is deferred to a follow-up capture with a slower workflow.

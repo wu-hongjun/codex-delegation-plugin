@@ -1,0 +1,352 @@
+OQ-B: Architectural Sketch — /workflows PTY Harness
+=====================================================
+
+Date:           2026-06-06
+claude version: 2.1.168
+Based on:       OQ-A empirical capture (A-partial verdict)
+Prior art:      packages/driver-claude-code/src/attach.ts
+                packages/driver-claude-code/src/pty-probe.ts
+
+
+════════════════════════════════════════════════════════════════
+1. PLACEMENT DECISION: packages/plugin-codex/scripts/lib/workflows-panel.mjs
+════════════════════════════════════════════════════════════════
+
+Decision: Option 2 — new file in packages/plugin-codex/scripts/lib/ (NOT driver).
+
+Justification (2 sentences):
+  The /workflows harness must trigger a workflow from WITHIN the TUI session
+  (session-scoped panel), which is a fundamentally different spawn target from
+  attach.ts (which attaches to an EXISTING background session) — reuse is ~30%,
+  not the ~70% estimated before the empirical capture. Keeping the new code in
+  plugin-codex/scripts/lib/ avoids touching driver-claude-code (a documented
+  exception per Plan 0012 T5 precedent) and reduces blast radius for T2.
+
+Consequence: the new file imports node-pty via the bundled path
+  (marketplace/plugins/cc/node_modules/node-pty) using require() from a dynamic
+  createRequire(import.meta.url) — same pattern as pty-probe.ts but in .mjs.
+
+EXCEPTION NOTE: If T2 implementer determines that TypeScript type safety in the
+  driver is strongly preferred, Option 1 (driver placement) remains valid with
+  this documented justification for the driver-change exception.
+
+
+════════════════════════════════════════════════════════════════
+2. ATTACH.TS REUSE MAP (line citations)
+════════════════════════════════════════════════════════════════
+
+attach.ts line 268:   dynamic import('node-pty') inside try/catch → reuse for
+  the same try/catch pattern in openWorkflowsPanel(). New: resolve from bundled
+  path via createRequire since we are in an .mjs file, not a TypeScript module.
+
+attach.ts line 276-282: pty.spawn('claude', [...], { name:'xterm-256color',
+  cols:120, rows:40, cwd, env }) → reuse spawn shape EXCEPT args differ.
+  attach.ts uses ['attach', shortId]; new code uses [] (bare claude, no args).
+  cols/rows identical. Same env passthrough.
+
+attach.ts line 285-290: ring buffer: term.onData(chunk => { buf += chunk;
+  if (buf.length > LIMIT) buf = buf.slice(...) }) → reuse verbatim. The panel
+  output is much smaller than a full attach session so RING_BUFFER_LIMIT of
+  attach.ts (2MB) is fine; we may reduce to 256KB for the panel harness.
+
+attach.ts line 314-320: warmup delay guard: if (warmupMs > 0) await sleep(warmupMs)
+  → reuse the same configurable warmup pattern. Default warmup 2000ms (same as
+  attach.ts). New: we need a second wait (captureMs ~2000ms) after injecting
+  /workflows. attach.ts has a single warmup; our harness needs two waits.
+
+attach.ts line 332: term.write('\x1b[200~' + input + '\x1b[201~\r')
+  bracketed-paste injection → reuse EXACTLY for all three injections:
+  (a) the ultracode: workflow prompt, (b) the Enter approval '\r', (c) /workflows.
+
+New code NOT in attach.ts (requires fresh implementation):
+  - waitFor(str, timeoutMs): polling rawOutput for ANSI-stripped text match
+  - stripAnsi(s): regex-based ANSI escape removal for text matching
+  - parseWorkflowsList(ansiText): row parser for list view
+  - parseWorkflowDrillIn(ansiText): row parser for drill-in (T2 follow-up)
+  - Session-scope constraint documentation in JSDoc
+
+
+════════════════════════════════════════════════════════════════
+3. PSEUDOCODE — workflows-panel.mjs (~45 lines core)
+════════════════════════════════════════════════════════════════
+
+// ── packages/plugin-codex/scripts/lib/workflows-panel.mjs ──────────────────
+//
+// Read-only PTY harness for the /workflows TUI panel.
+// Session scope: spawns a new 'claude' bare process; the panel only shows
+// workflows started WITHIN that session (not --bg background sessions).
+//
+// IMPORTANT: to populate the panel, the caller must either:
+//   (a) pass a pre-existing session attachment (not yet supported), or
+//   (b) trigger a workflow from within the session before calling
+//       captureWorkflowsList() — this is the current approach for local dev.
+//
+// For $claude-workflows skill usage, the panel is ONLY useful if a workflow
+// is already running in the current claude session. In practice the skill
+// calls claude agents --json (CLI path) and falls back to PTY capture only
+// if the CLI returns incomplete data. See cmdWorkflows() in cc.mjs.
+
+import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import path from 'path';
+
+const PTY_PATH = new URL(
+  '../../../marketplace/plugins/cc/node_modules/node-pty/index.js',
+  import.meta.url
+).pathname;                                           // bundled node-pty path
+
+const WARMUP_MS    = 2000;   // TUI startup banner (same as attach.ts:314)
+const CAPTURE_MS   = 3000;   // panel render settle time
+const SIGKILL_MS   = 2000;   // kill grace period (same as attach.ts pattern)
+const RING_LIMIT   = 256 * 1024;  // 256KB ring buffer (smaller than attach.ts 2MB)
+
+// ── ANSI strip (for text matching; not for output — output preserves raw bytes)
+const ANSI_RE = /\x1b\[[0-9;?]*[mGKHFABCDJrslh]|\x1b\[[>][0-9;]*[qm]|\x1b\][^\x07]*\x07|\x1b[)(][AB]|\x1b[78]/g;
+function stripAnsi(s) { return s.replace(ANSI_RE, '').replace(/\r/g, ''); }
+
+// ── Main capture function
+export async function captureWorkflowsList(opts = {}) {
+  // 1. Dynamic import — bundled path (attach.ts:268 pattern, adapted for .mjs)
+  const require2 = createRequire(import.meta.url);
+  let pty;
+  try { pty = require2(PTY_PATH); }
+  catch (err) { throw new Error('node-pty load failed: ' + err.message); }
+
+  // 2. Spawn bare claude (NOT 'claude attach <id>') — attach.ts:276-282 shape
+  const term = pty.spawn('claude', [], {
+    name: 'xterm-256color',
+    cols: opts.cols ?? 120,
+    rows: opts.rows ?? 40,
+    cwd:  opts.cwd  ?? process.cwd(),
+    env:  opts.env  ?? process.env,
+  });
+
+  // 3. Ring buffer — attach.ts:285-290 pattern
+  let buf = '';
+  term.onData(chunk => {
+    buf += chunk;
+    if (buf.length > RING_LIMIT) buf = buf.slice(buf.length - RING_LIMIT);
+  });
+
+  // 4. Hard kill timer (attach.ts pattern; Plan 0016 uses 2s grace)
+  let killed = false;
+  const killTimer = setTimeout(() => {
+    killed = true;
+    try { term.kill('SIGKILL'); } catch (_) {}
+  }, (opts.timeoutMs ?? 30_000) + SIGKILL_MS);
+
+  try {
+    // 5. Warmup — attach.ts:314-320: wait for TUI startup banner
+    await sleep(opts.warmupMs ?? WARMUP_MS);
+
+    // 6. Inject /workflows command — attach.ts:332 bracketed-paste pattern
+    term.write('\x1b[200~/workflows\x1b[201~\r');
+
+    // 7. Wait for panel to render (poll for "to select" nav hint or "No dynamic")
+    const panelReady = await waitFor(
+      () => buf.includes('to select') || buf.includes('No dynamic'),
+      opts.captureMs ?? CAPTURE_MS
+    );
+
+    // 8. Capture snapshot
+    const rawSnapshot = buf;
+
+    // 9. Exit cleanly: Esc x3 to close panel, Ctrl+C to exit TUI
+    term.write('\x1b\x1b\x1b');
+    await sleep(200);
+    term.write('\x03');
+    await sleep(300);
+
+    // 10. Parse and return
+    return parseWorkflowsList(rawSnapshot);
+
+  } finally {
+    clearTimeout(killTimer);
+    if (!killed) { try { term.kill(); } catch (_) {} }
+  }
+}
+
+// ── parseWorkflowsList: parse list view into structured data
+export function parseWorkflowsList(ansiText) {
+  // STRATEGY: regex per row after ANSI-strip (see §4 Parser Strategy below).
+  // Column layout confirmed empirically:
+  //   col  3  = status symbol (◯ running, expected ✓ done)
+  //   col  5  = workflow name (slug)
+  //   col 25  = description prose
+  //   col 101 = "N/M agents done · Xs"
+  //
+  // After ANSI-strip, \x1b[<col>G codes are removed; the remaining text has
+  // words at their column positions separated by spaces. We match by pattern:
+  //   /^\s+([◯✓✗])\s+(\S+)\s+(.+?)\s+(\d+\/\d+)\s+agents\s+done\s+·\s+(\d+)s/
+
+  const plain = stripAnsi(ansiText);
+  const empty = plain.includes('No dynamic workflows');
+  if (empty) return { empty: true, workflows: [] };
+
+  const ROW_RE = /\s+([◯✓✗⊗])\s+(\S+)\s{2,}(.+?)\s{2,}(\d+)\/(\d+)\s+agents\s+done\s+·\s+(\d+)s/g;
+  const workflows = [];
+  let m;
+  while ((m = ROW_RE.exec(plain)) !== null) {
+    workflows.push({
+      statusSymbol:  m[1],
+      status:        m[1] === '◯' ? 'running' : m[1] === '✓' ? 'complete' : 'failed',
+      name:          m[2],
+      description:   m[3].trim(),
+      agentsDone:    parseInt(m[4], 10),
+      agentsTotal:   parseInt(m[5], 10),
+      elapsedSecs:   parseInt(m[6], 10),
+    });
+  }
+  return { empty: workflows.length === 0, workflows };
+}
+
+// ── parseWorkflowDrillIn: parse drill-in view (DEFERRED — T2 follow-up)
+// Drill-in panel was not fully captured in T1 (workflow completed too quickly).
+// Placeholder returns raw ANSI text for caller to inspect.
+export function parseWorkflowDrillIn(ansiText) {
+  // TODO (T2 follow-up): empirically capture with a slower workflow.
+  // Expected structure based on pre-approval dialog:
+  //   - Phase list: "1. PhaseName — N parallel agents"
+  //   - Agent rows: bullet points with cwd/prompt previews
+  //   - Status per agent: running/done/failed
+  return { raw: ansiText, parsed: null, note: 'drill-in parser deferred to T2' };
+}
+
+// ── openWorkflowsPanel / closeWorkflowsPanel: for harness lifecycle management
+// (Used by cmdWorkflows in cc.mjs — not exposed to skill callers directly)
+export async function openWorkflowsPanel(term) {
+  term.write('\x1b[200~/workflows\x1b[201~\r');           // attach.ts:332 pattern
+}
+
+export async function closeWorkflowsPanel(term) {
+  term.write('\x1b\x1b\x1b');  // Esc x3
+  await sleep(200);
+  term.write('\x03');           // Ctrl+C to exit TUI
+}
+
+// ── Helpers
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+async function waitFor(pred, timeoutMs) {
+  const end = Date.now() + timeoutMs;
+  while (!pred()) { if (Date.now() > end) return false; await sleep(150); }
+  return true;
+}
+// ── END workflows-panel.mjs ─────────────────────────────────────────────────
+
+
+════════════════════════════════════════════════════════════════
+4. PARSER STRATEGY
+════════════════════════════════════════════════════════════════
+
+Choice: regex per row (after ANSI-strip).
+
+Justification (1 sentence): The /workflows list view uses absolute column
+positioning (\x1b[<col>G) which, after ANSI removal, leaves consistent
+multi-space separators between fields — a single regex with \s{2,} separators
+reliably extracts name, description, and N/M counts without needing a table
+parser or AST.
+
+Alternatives rejected:
+  - Table parser (split on fixed column offsets): fragile if terminal width
+    changes (cols=120 assumed; different widths shift col 101 breakpoint).
+  - AST/tree parser: overkill for a flat one-row-per-workflow list.
+  - Line-by-line split on \r\n: the ANSI stream has cursor-repositioning codes
+    that overwrite earlier content; working on the raw byte stream is cleaner
+    than trying to reconstruct a 2D terminal grid.
+
+Regex anchors:
+  The row regex anchors on ◯/✓/✗/⊗ status symbol (confirms it's a data row,
+  not a header or footer) then captures name (non-space token) and the
+  "N/M agents done · Xs" suffix (numeric anchors). Description is the loose
+  middle capture (.+?) between two \s{2,} separators.
+
+
+════════════════════════════════════════════════════════════════
+5. EMPTY-STATE HANDLING
+════════════════════════════════════════════════════════════════
+
+Approach:
+  1. After /workflows is injected, the panel always shows "Loading dynamic
+     workflow history…" briefly, then either:
+       (a) "No dynamic workflows in this session."  → empty state
+       (b) "↑/↓ to select · Enter to view" + data rows → list view
+  2. parseWorkflowsList() checks for "No dynamic workflows" BEFORE regex matching.
+     If found, returns { empty: true, workflows: [] } immediately.
+  3. The PTY harness polls for EITHER "to select" OR "No dynamic" to know when
+     the panel has settled — handles both empty and non-empty cases.
+  4. Session-scope note: callers should check empty: true and surface a helpful
+     message: "$claude-workflows only shows workflows from the current session.
+     Use $claude-status to list background sessions."
+
+Timing: empty-state renders faster (~200ms loading spinner) than list view
+  (~500ms to populate rows). The waitFor timeout of 3000ms covers both cases.
+
+
+════════════════════════════════════════════════════════════════
+6. TEST FIXTURE FORMAT
+════════════════════════════════════════════════════════════════
+
+Parser unit tests use captured ANSI string fixtures (deterministic — no PTY).
+Fixture format: .txt files containing raw ANSI output from the panel, stored at:
+  packages/plugin-codex/test/fixtures/workflows-list-view.ansi
+  packages/plugin-codex/test/fixtures/workflows-list-view-multi.ansi
+  packages/plugin-codex/test/fixtures/workflows-empty-state.ansi
+  packages/plugin-codex/test/fixtures/workflows-drill-in.ansi       (T2)
+
+Each fixture is the raw PTY output (with escape codes intact, as captured by
+the node-pty onData handler). Tests call parseWorkflowsList(fixture) and assert:
+  - workflows[0].name === 'survey-three-areas'
+  - workflows[0].status === 'running'
+  - workflows[0].agentsTotal === 3
+  - workflows[0].elapsedSecs === 0
+  - empty === false
+
+For empty state:
+  - empty === true
+  - workflows.length === 0
+
+Fixture provenance: sourced from the oq-a-workflows-ansi-capture-20260606.txt
+  raw byte excerpts (this T1 artifact). CI does NOT run PTY — tests use fixtures.
+
+Live PTY tests (local dev only, gated behind RUN_PTY_TESTS=1 env var):
+  - Spawn claude bare, inject /workflows, assert parseWorkflowsList output shape
+  - Not committed to CI matrix (no Claude binary in CI)
+
+
+════════════════════════════════════════════════════════════════
+7. UNEXPECTED DISCOVERIES
+════════════════════════════════════════════════════════════════
+
+D1 — SESSION SCOPE (major): /workflows is session-scoped. Background sessions
+     started via 'claude --bg' (i.e., cc workflow) do NOT appear. The $claude-
+     workflows skill's primary path must be claude agents --json (CLI), not PTY.
+     PTY capture is a supplementary path for in-session monitoring only.
+     Impact: the skill architecture in T3 needs to be redesigned — CLI first,
+     PTY as an optional enhancement for the running-session use case.
+
+D2 — NO APPROVAL NEEDED (in some cases): When the prompt is too trivial,
+     Claude skips orchestration entirely ("Skipped multi-agent orchestration —
+     the task is trivial.") and answers directly. The approval dialog only appears
+     for genuinely multi-step parallel tasks. This is relevant for test fixture
+     creation — fixture prompts must be complex enough to trigger the dialog.
+
+D3 — INLINE PANEL (not alternate screen): The /workflows panel renders inline
+     in the main scrollback area (not \x1b[?1049h alternate screen). This means
+     the panel output is intermixed with the ongoing chat output in the ring
+     buffer. The parser must handle prefix chat content before the panel header.
+
+D4 — CURSOR-REPOSITIONING REDRAWS: The panel re-renders by moving the cursor
+     up (\x1b[8A etc.) and overwriting cells. This means a naive "last 500 chars"
+     tail may not contain the final panel state — the entire ring buffer must be
+     processed to reconstruct the terminal's visual state. OR, poll until the
+     panel stop-condition ("to select" or "No dynamic") is stable.
+
+D5 — TAB/CTRL+G AMEND: The approval dialog exposes ctrl+g to edit the workflow
+     script in $EDITOR. This is an interactive escape that the PTY harness must
+     NOT accidentally trigger. Confirmed: only Enter (approve) and Esc (cancel)
+     are safe keystroke paths.
+
+D6 — RICH APPROVAL DIALOG: The pre-approval dialog already shows the full
+     phase breakdown (phase name, agent count, cwd previews). This could be
+     parsed to provide a "dry run" / "preview" mode in $claude-workflows before
+     approval — an additive feature for Plan 0017+.

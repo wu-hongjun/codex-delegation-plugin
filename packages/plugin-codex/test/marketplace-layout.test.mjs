@@ -68,6 +68,7 @@ const EXPECTED_SKILL_NAMES = [
   'claude-status',
   'claude-stop',
   'claude-workflow',
+  'claude-workflows',
 ];
 
 // ---------- helpers ----------
@@ -220,7 +221,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   // Check 4: marketplace skills/ contains exactly the 8 expected directories
   // ========================================================================
 
-  it('marketplace skills/ contains exactly the 13 expected skill directories', () => {
+  it('marketplace skills/ contains exactly the 14 expected skill directories', () => {
     assert.ok(
       existsSync(MARKETPLACE_SKILLS_DIR),
       `marketplace skills/ directory not found at ${MARKETPLACE_SKILLS_DIR}`,
@@ -241,7 +242,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   // Check 5: each skill directory contains a non-empty SKILL.md
   // ========================================================================
 
-  it('each of the 13 skill directories contains a non-empty SKILL.md', () => {
+  it('each of the 14 skill directories contains a non-empty SKILL.md', () => {
     for (const skillName of EXPECTED_SKILL_NAMES) {
       const skillMdPath = join(MARKETPLACE_SKILLS_DIR, skillName, 'SKILL.md');
       assert.ok(
@@ -401,7 +402,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
 const MANIFEST_MD = resolve(MARKETPLACE_ROOT, 'MANIFEST.md');
 const PACKAGE_SCRIPT = resolve(REPO_ROOT, 'tools', 'package-marketplace.mjs');
 
-// Authoritative allowlist of the 24 derived files (relative to marketplace plugin root).
+// Authoritative allowlist of the 26 derived files (relative to marketplace plugin root).
 const DERIVED_FILES_ALLOWLIST = [
   '.codex-plugin/plugin.json',
   'scripts/cc.mjs',
@@ -414,6 +415,7 @@ const DERIVED_FILES_ALLOWLIST = [
   'scripts/lib/review-parser.mjs',
   'scripts/lib/review-prompts.mjs',
   'scripts/lib/review-result-source.mjs',
+  'scripts/lib/workflows-inspector.mjs',
   'skills/claude-setup/SKILL.md',
   'skills/claude-delegate/SKILL.md',
   'skills/claude-status/SKILL.md',
@@ -427,6 +429,7 @@ const DERIVED_FILES_ALLOWLIST = [
   'skills/claude-fork/SKILL.md',
   'skills/claude-batch/SKILL.md',
   'skills/claude-deep-research/SKILL.md',
+  'skills/claude-workflows/SKILL.md',
 ];
 
 // Marketplace-owned files (present in plugin root but NOT derived from source).
@@ -548,10 +551,10 @@ describe('marketplace packaging procedure (Plan 0006 T4)', () => {
   });
 
   // ========================================================================
-  // T4-4: Source <-> marketplace byte-identity for all 24 derived files
+  // T4-4: Source <-> marketplace byte-identity for all 26 derived files
   // ========================================================================
 
-  it('all 24 derived files are byte-identical between source and marketplace', () => {
+  it('all 26 derived files are byte-identical between source and marketplace', () => {
     for (const rel of DERIVED_FILES_ALLOWLIST) {
       const srcPath = resolve(SOURCE_PLUGIN_ROOT, rel);
       const dstPath = resolve(MARKETPLACE_PLUGIN_ROOT, rel);

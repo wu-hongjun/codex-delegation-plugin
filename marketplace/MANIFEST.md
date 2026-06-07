@@ -6,7 +6,7 @@
 
 ## Plugin-tree files (sourced from `packages/plugin-codex/`)
 
-The following 24 files are copied byte-for-byte from `packages/plugin-codex/` into `marketplace/plugins/cc/`:
+The following 26 files are copied byte-for-byte from `packages/plugin-codex/` into `marketplace/plugins/cc/`:
 
 - `.codex-plugin/plugin.json`
 - `scripts/cc.mjs`
@@ -19,6 +19,7 @@ The following 24 files are copied byte-for-byte from `packages/plugin-codex/` in
 - `scripts/lib/review-parser.mjs`
 - `scripts/lib/review-prompts.mjs`
 - `scripts/lib/review-result-source.mjs`
+- `scripts/lib/workflows-inspector.mjs`
 - `skills/claude-setup/SKILL.md`
 - `skills/claude-delegate/SKILL.md`
 - `skills/claude-status/SKILL.md`
@@ -32,6 +33,7 @@ The following 24 files are copied byte-for-byte from `packages/plugin-codex/` in
 - `skills/claude-fork/SKILL.md`
 - `skills/claude-batch/SKILL.md`
 - `skills/claude-deep-research/SKILL.md`
+- `skills/claude-workflows/SKILL.md`
 
 Note: `scripts/cc.mjs` is copied from source and the packaging script sets the user-executable bit (chmod 0755) on the marketplace copy unconditionally, since the source file has mode 644 but the marketplace copy must be executable.
 

@@ -7098,6 +7098,102 @@ describe('deep-research approval-flow note appended after job block', () => {
   });
 });
 
+// ---------- workflows subcommand tests (Plan 0016) ----------
+
+describe('--help mentions workflows command', () => {
+  it('usage text includes "workflows [<jobId>] [--all] [--json]" as a listed command', () => {
+    const result = runDispatcher(['--help']);
+    assert.equal(result.status, 0, `--help should exit 0; got ${result.status}`);
+    assert.ok(
+      result.stdout.includes('workflows'),
+      `expected "workflows" in --help output; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('workflows [<jobId>] [--all] [--json]'),
+      `expected "workflows [<jobId>] [--all] [--json]" in --help output; got:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('workflows with no args (happy path — no sessions running)', () => {
+  it('exits 0 and prints a "No workflow sessions found" message or a sessions list', () => {
+    const result = runDispatcher(['workflows']);
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0, got ${result.status}; stderr: ${result.stderr}`,
+    );
+    // Either "No workflow sessions found" (empty) or a sessions header is acceptable.
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('workflow') || combined.includes('session'),
+      `expected workflow-related output; got:\n${combined}`,
+    );
+  });
+});
+
+describe('workflows <jobId> (unknown id — exits non-zero)', () => {
+  it('exits 1 when the jobId does not match any session', () => {
+    const result = runDispatcher(['workflows', 'nonexistent-job-id-xyz']);
+    assert.notEqual(result.status, 0, 'expected non-zero exit for unknown jobId');
+    assert.equal(result.status, 1, `expected exit 1, got ${result.status}`);
+  });
+});
+
+describe('workflows --json flag produces parseable JSON', () => {
+  it('exits 0 and stdout is valid JSON with a "sessions" array', () => {
+    const result = runDispatcher(['workflows', '--json']);
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 with --json; got ${result.status}; stderr: ${result.stderr}`,
+    );
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = JSON.parse(result.stdout);
+    }, `workflows --json stdout must be valid JSON; got:\n${result.stdout}`);
+    assert.ok(
+      parsed !== null && typeof parsed === 'object' && Array.isArray(parsed.sessions),
+      `workflows --json output must have a "sessions" array; got: ${JSON.stringify(parsed)}`,
+    );
+  });
+});
+
+describe('workflows rejects --allow-edit', () => {
+  it('exits 2 and prints a clear error when --allow-edit is passed', () => {
+    const result = runDispatcher(['workflows', '--allow-edit']);
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for --allow-edit rejection; got ${result.status}; stderr: ${result.stderr}`,
+    );
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('--allow-edit'),
+      `expected mention of "--allow-edit" in error output; got:\n${combined}`,
+    );
+  });
+});
+
+describe('workflows with extra positional arg (no match) exits 1', () => {
+  it('exits 1 when a non-matching positional arg is given', () => {
+    const result = runDispatcher(['workflows', 'definitely-no-such-job-id-xyz123']);
+    assert.notEqual(result.status, 0, 'expected non-zero exit for unknown jobId');
+    assert.equal(result.status, 1, `expected exit 1, got ${result.status}`);
+  });
+});
+
+describe('workflows does not require --yes (read-only, no privacy ack needed)', () => {
+  it('exits 0 without --yes (no delegation, no ack required)', () => {
+    const result = runDispatcher(['workflows']);
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 for workflows (read-only, no --yes required); got ${result.status}; stderr: ${result.stderr}`,
+    );
+  });
+});
+
 // ---------- T7: version reporting consistency (Plan 0012) ----------
 
 describe('dispatcher pluginVersion matches .codex-plugin/plugin.json (Plan 0012 T7)', () => {

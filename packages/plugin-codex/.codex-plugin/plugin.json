@@ -24,7 +24,8 @@
       "Set a goal condition for a Claude Code session.",
       "Fork a Claude Code subagent for a directive.",
       "Run a batch of parallel Claude Code instructions.",
-      "Run a Claude Code dynamic deep-research workflow on a question."
+      "Run a Claude Code dynamic deep-research workflow on a question.",
+      "List my Claude Code workflow sessions."
     ],
     "brandColor": "#D97706"
   }

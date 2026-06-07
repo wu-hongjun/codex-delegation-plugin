@@ -31,6 +31,7 @@ const SKILL_NAMES = [
   'claude-fork',
   'claude-batch',
   'claude-deep-research',
+  'claude-workflows',
 ];
 
 /** Subcommand each skill must reference in its body. */
@@ -48,6 +49,7 @@ const SKILL_SUBCOMMANDS = {
   'claude-fork': 'fork',
   'claude-batch': 'batch',
   'claude-deep-research': 'deep-research',
+  'claude-workflows': 'workflows',
 };
 
 function skillPath(name) {
@@ -711,26 +713,26 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
     }
   });
 
-  it('has at least 13 entries after T4 additions', () => {
+  it('has at least 14 entries after T4 additions', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.ok(
-      dp.length >= 13,
-      `interface.defaultPrompt must have at least 13 entries after T4; got ${dp.length}`,
+      dp.length >= 14,
+      `interface.defaultPrompt must have at least 14 entries after T4; got ${dp.length}`,
     );
   });
 });
 
-describe('plugin.json.interface.defaultPrompt length is exactly 13 (v0.2.0 + claude-fork + claude-batch + claude-deep-research contract)', () => {
-  it('array length equals 13', () => {
+describe('plugin.json.interface.defaultPrompt length is exactly 14 (v0.2.0 + claude-fork + claude-batch + claude-deep-research + claude-workflows contract)', () => {
+  it('array length equals 14', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      13,
-      `interface.defaultPrompt must have exactly 13 entries (v0.2.0 + claude-fork + claude-batch + claude-deep-research contract); got ${dp.length}`,
+      14,
+      `interface.defaultPrompt must have exactly 14 entries (v0.2.0 + claude-fork + claude-batch + claude-deep-research + claude-workflows contract); got ${dp.length}`,
     );
   });
 });
@@ -828,14 +830,14 @@ describe('no unexpected review-adjacent skill directories exist', () => {
 // ---------- T6: OQ-C defaultPrompt rewrites (entries #6-#9) ----------
 
 describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)', () => {
-  it('array length is exactly 13', () => {
+  it('array length is exactly 14', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      13,
-      `interface.defaultPrompt must have exactly 13 entries; got ${dp.length}`,
+      14,
+      `interface.defaultPrompt must have exactly 14 entries; got ${dp.length}`,
     );
   });
 
@@ -920,7 +922,7 @@ describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)'
   });
 });
 
-// ---------- T1 (Plan 0009): cross-skill chaining hints — all 13 skills ----------
+// ---------- T1 (Plan 0009): cross-skill chaining hints — all 14 skills ----------
 
 describe('each SKILL.md ends with a "Next steps" subsection (T1 Plan 0009)', () => {
   for (const name of SKILL_NAMES) {
@@ -1427,6 +1429,112 @@ describe('claude-deep-research/SKILL.md: strict frontmatter parse (Plan 0013)', 
     assert.ok(
       typeof fm.description === 'string' && fm.description.length > 0,
       'claude-deep-research: strict-parsed description must be non-empty',
+    );
+  });
+});
+
+// ---------- Plan 0016: claude-workflows skill guards ----------
+
+describe('claude-workflows skill directory and SKILL.md exist (Plan 0016)', () => {
+  it('skills/claude-workflows/ directory exists', () => {
+    assert.ok(
+      existsSync(join(PLUGIN_ROOT, 'skills', 'claude-workflows')),
+      'skills/claude-workflows/ directory must exist',
+    );
+  });
+
+  it('skills/claude-workflows/SKILL.md exists', () => {
+    assert.ok(
+      existsSync(skillPath('claude-workflows')),
+      `SKILL.md not found at ${skillPath('claude-workflows')}`,
+    );
+  });
+});
+
+describe('claude-workflows/SKILL.md: run line invokes dispatcher with "workflows" subcommand (Plan 0016)', () => {
+  it('body contains "cc.mjs" and "workflows"', () => {
+    const body = readFileSync(skillPath('claude-workflows'), 'utf8');
+    assert.ok(body.includes('cc.mjs'), 'claude-workflows/SKILL.md must reference scripts/cc.mjs');
+    assert.ok(
+      body.includes('workflows'),
+      'claude-workflows/SKILL.md must reference the "workflows" subcommand',
+    );
+  });
+});
+
+describe('claude-workflows/SKILL.md: no --yes auto-injection (Plan 0016)', () => {
+  it('no dispatcher run line contains " --yes"', () => {
+    const body = readFileSync(skillPath('claude-workflows'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('cc.mjs') && line.includes('workflows'))
+      .filter((line) => line.includes(' --yes'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-workflows/SKILL.md auto-injects "--yes" on a dispatcher run line:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('claude-workflows/SKILL.md: --allow-edit is not referenced in run lines (Plan 0016)', () => {
+  it('no dispatcher run line contains "--allow-edit"', () => {
+    const body = readFileSync(skillPath('claude-workflows'), 'utf8');
+    const offendingLines = body
+      .split('\n')
+      .filter((line) => line.includes('cc.mjs'))
+      .filter((line) => line.includes('--allow-edit'));
+    assert.equal(
+      offendingLines.length,
+      0,
+      `claude-workflows/SKILL.md references "--allow-edit" on a dispatcher run line:\n${offendingLines.join('\n')}`,
+    );
+  });
+});
+
+describe('plugin.json interface.defaultPrompt contains workflows entry (Plan 0016)', () => {
+  it('includes "List my Claude Code workflow sessions."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('List my Claude Code workflow sessions.'),
+      `interface.defaultPrompt must contain "List my Claude Code workflow sessions."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+});
+
+describe('claude-workflows/SKILL.md: strict frontmatter parse (Plan 0016)', () => {
+  it('strict frontmatter parse does not throw and name/description are correct', () => {
+    const body = readFileSync(skillPath('claude-workflows'), 'utf8');
+    let fm;
+    assert.doesNotThrow(() => {
+      fm = strictParseFrontmatter(body);
+    }, 'claude-workflows/SKILL.md: strict YAML frontmatter parse failed');
+    assert.equal(
+      fm.name,
+      'claude-workflows',
+      'claude-workflows: strict-parsed name should match directory',
+    );
+    assert.ok(
+      typeof fm.description === 'string' && fm.description.length > 0,
+      'claude-workflows: strict-parsed description must be non-empty',
+    );
+  });
+});
+
+describe('claude-workflows/SKILL.md: Next steps subsection references $claude-status (Plan 0016)', () => {
+  it('body contains "### Next steps" and mentions $claude-status', () => {
+    const body = readFileSync(skillPath('claude-workflows'), 'utf8');
+    assert.ok(
+      body.includes('### Next steps'),
+      'claude-workflows/SKILL.md is missing the "### Next steps" subsection',
+    );
+    const nextStepsIdx = body.indexOf('### Next steps');
+    const afterNextSteps = body.slice(nextStepsIdx);
+    assert.ok(
+      afterNextSteps.includes('$claude-status'),
+      'claude-workflows/SKILL.md "### Next steps" section does not reference $claude-status',
     );
   });
 });

@@ -27,6 +27,7 @@ import {
 } from '@cc-plugin-codex/driver-claude-code';
 
 import { parseArgs, resolveJobIdPrefix } from './lib/args.mjs';
+import { listWorkflows, inspectWorkflow } from './lib/workflows-inspector.mjs';
 import {
   formatSetup,
   formatDelegate,
@@ -120,6 +121,9 @@ try {
       break;
     case 'adversarial-review':
       await cmdAdversarialReview(flags, positional, useJson);
+      break;
+    case 'workflows':
+      await cmdWorkflows(flags, positional, useJson);
       break;
     default:
       process.stderr.write(
@@ -2095,6 +2099,87 @@ async function cmdAdversarialReview(flags, positional, json) {
 
 // ---------- usage ----------
 
+// ---------- workflows ----------
+
+async function cmdWorkflows(flags, positional, json) {
+  // --allow-edit is not applicable; this command is read-only.
+  if (flags['allow-edit'] !== undefined) {
+    process.stderr.write(
+      formatError(
+        new Error('--allow-edit is not applicable to $claude-workflows.'),
+        'workflows',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  const jobId = positional[0];
+
+  if (jobId) {
+    // Drill-in path: inspect a single workflow session.
+    const detail = await inspectWorkflow(jobId, { env: process.env });
+    if (json) {
+      process.stdout.write(JSON.stringify(detail, null, 2) + '\n');
+    } else {
+      const lines = [
+        `Workflow session: ${detail.sessionId}`,
+        `  Name:      ${detail.name}`,
+        `  Status:    ${detail.status}`,
+        `  CWD:       ${detail.cwd}`,
+        `  StartedAt: ${detail.startedAt ? new Date(detail.startedAt).toISOString() : 'unknown'}`,
+      ];
+      if (detail.subagents.length > 0) {
+        lines.push('', `  Subagents (${detail.subagents.length}):`);
+        for (const sa of detail.subagents) {
+          const parts = [`    - ${sa.agentId}`];
+          if (sa.status) parts.push(`status=${sa.status}`);
+          if (sa.tokens != null) parts.push(`tokens=${sa.tokens}`);
+          if (sa.duration_ms != null) parts.push(`duration=${sa.duration_ms}ms`);
+          if (sa.tool_uses != null) parts.push(`tool_uses=${sa.tool_uses}`);
+          lines.push(parts.join(' '));
+        }
+      } else {
+        lines.push('', '  Subagents: none recorded');
+      }
+      if (detail.phaseRecords.length > 0) {
+        lines.push('', `  Phase records (first ${detail.phaseRecords.length} JSONL lines):`);
+        for (const rec of detail.phaseRecords.slice(0, 5)) {
+          lines.push(`    ${JSON.stringify(rec)}`);
+        }
+        if (detail.phaseRecords.length > 5) {
+          lines.push(`    ... (${detail.phaseRecords.length - 5} more)`);
+        }
+      }
+      process.stdout.write(lines.join('\n') + '\n');
+    }
+  } else {
+    // List path: enumerate workflow sessions.
+    const { sessions } = await listWorkflows({ env: process.env });
+    if (json) {
+      process.stdout.write(JSON.stringify({ sessions }, null, 2) + '\n');
+    } else {
+      if (sessions.length === 0) {
+        process.stdout.write(
+          [
+            'No workflow sessions found.',
+            '',
+            'Workflow sessions are background jobs started via $claude-workflow.',
+            'Use `cc status` to list all background sessions.',
+          ].join('\n') + '\n',
+        );
+      } else {
+        const lines = [`Workflow sessions (${sessions.length}):`];
+        for (const s of sessions) {
+          lines.push(`  ${s.shortId}  ${s.status.padEnd(10)}  ${s.name.slice(0, 60)}`);
+        }
+        lines.push('', 'Run `cc workflows <sessionId>` to drill into a session.');
+        process.stdout.write(lines.join('\n') + '\n');
+      }
+    }
+  }
+}
+
 function printUsage() {
   process.stdout.write(
     [
@@ -2117,9 +2202,10 @@ function printUsage() {
       '                                            Same-session structured review of the latest non-review turn',
       '  adversarial-review <jobId-or-prefix> [--all] [--json] [--yes] [--model <model>] [--effort <effort>] [--permission-mode <mode>]',
       '                                            Fresh-session independent review of the latest non-review turn',
+      '  workflows [<jobId>] [--all] [--json]      List workflow sessions or drill into one (read-only; no subprocess spawned)',
       '',
       'Flags:',
-      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch/deep-research)',
+      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch/deep-research/workflows)',
       '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/goal/fork/batch/deep-research/followup/review/adversarial-review)',
       '  --name <name>                Session name (delegate, workflow, goal, fork, batch, deep-research)',
       '  --model <model>              Model selection (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
@@ -2127,7 +2213,7 @@ function printUsage() {
       '  --permission-mode <mode>     Permission mode (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
       '  --add-dir <dir>              Additional directory (delegate, workflow, goal, fork, batch, deep-research; repeatable)',
       '  --mcp-config <path>          MCP config file (delegate, workflow, goal, fork, batch, deep-research)',
-      '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, workflow, goal, fork, batch, and deep-research',
+      '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, workflow, goal, fork, batch, deep-research, and workflows',
       '  --all                        Search all workspaces (status/result/stop/followup/review/adversarial-review)',
       '  --all-awaiting-followup      Bulk-stop all awaiting-followup jobs (stop only; combine with --all for every workspace)',
       '  --help                       Show this help',

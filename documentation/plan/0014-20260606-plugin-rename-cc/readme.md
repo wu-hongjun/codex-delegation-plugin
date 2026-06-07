@@ -1,9 +1,12 @@
 # Plan 0014 — Plugin rename: `claude-companion` → `cc`
 
-**Status**: `auditing`
+**Status**: `complete`
 **Started**: 2026-06-06
 **Stage 1 approved**: 2026-06-06 (maintainer authorized full cycle)
-**Stage 2 complete (pending CI)**: 2026-06-06
+**Stage 2 complete**: 2026-06-06 (CI run `27079120844` — recorded in 5-report once complete)
+**Stage 3 complete**: 2026-06-06 (verdict `ready-for-report` with 1 LOW-severity MINOR + 1 NIT; auditor `oh-my-claudecode:critic` Opus fresh-context)
+**Stage 4 complete**: 2026-06-06 (MINOR-1 resolved as doc clarification; no source/test changes)
+**Stage 5 complete / Completed**: 2026-06-06
 **Authorized scope (per maintainer AskUserQuestion 2026-06-06)**: full rename. Plugin ID + directory + script file all become `cc`. Script name `claude-companion.mjs` → `cc.mjs`.
 **Last updated**: 2026-06-06
 
@@ -12,10 +15,10 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-06** — Full rename across 826 occurrences in 124 files; documented runtime exception for doctor.ts regex |
-| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1 inventory + T2 rename executed; doctor regex `/plugins\."cc/`; 1771 tests unchanged from Plan 0013 (rename behavior-neutral); cost paragraph byte-identical; CI run pending |
-| 3 — Audit | `3-audit.md` | not started — requires independent context |
-| 4 — Polish | `4-polish.md` | not started |
-| 5 — Report | `5-report.md` | not started |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1 inventory + T2 rename executed; doctor regex `/plugins\."cc/`; 1771 tests unchanged from Plan 0013 (rename behavior-neutral); cost paragraph byte-identical |
+| 3 — Audit | `3-audit.md` | **complete 2026-06-06** — verdict `ready-for-report`; 1 LOW MINOR (2-implement.md display-name doc-accuracy) + 1 NIT (doctor regex theoretical false-positive); MINOR addressed in Stage 4 |
+| 4 — Polish | `4-polish.md` | **complete 2026-06-06** — MINOR-1 resolved as doc clarification; no source/test/manifest change |
+| 5 — Report | `5-report.md` | **complete 2026-06-06** — final report; status flipped `auditing → polishing → reporting → complete`; no release tag (plugin version unchanged at `0.2.0`); v0.3.0 a clean release candidate after Plans 0013 + 0014 |
 
 ## Summary
 

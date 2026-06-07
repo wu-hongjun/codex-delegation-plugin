@@ -78,7 +78,7 @@ Marketplace metadata:
 - `marketplace/EXCLUSIONS.md`
 
 Documentation:
-- `packages/plugin-codex/README.md`: install/uninstall commands, dispatcher path references, "Claude Companion" → "CC". **Cost paragraph byte-identical (verified: `grep -c` returns 1 before AND after).**
+- `packages/plugin-codex/README.md`: install/uninstall commands; dispatcher path references; hyphenated `claude-companion` ID strings updated to `cc`. **Cost paragraph byte-identical (verified: `grep -c` returns 1 before AND after).** *Note*: the prose product name "Claude Companion" (heading + description) was **deliberately retained** — tests at `readme.test.mjs:23` and `docs-split.test.mjs:137` assert the heading, codifying this as intentional. Only the manifest `displayName` field was renamed to "CC". A future display-name-only pass could harmonize prose if desired.
 - `marketplace/plugins/cc/README.md` (post-2b rename): install commands, plugin display
 - `documentation/RELEASING.md`: all path/command references + T3 migration callout
 - `documentation/REAL-CODEX-TEST-RECIPE.md`: all install references + T3 migration paragraph in §2

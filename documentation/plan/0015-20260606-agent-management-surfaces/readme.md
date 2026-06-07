@@ -1,9 +1,12 @@
 # Plan 0015 — Agent management surfaces (`/workflows` panel + `/tasks` panel coverage)
 
-**Status**: `auditing`
+**Status**: `complete`
 **Started**: 2026-06-06
 **Stage 1 approved**: 2026-06-06 (maintainer authorized full cycle)
-**Stage 2 complete (pending CI)**: 2026-06-06
+**Stage 2 complete**: 2026-06-06 (CI run `27079972098` to be recorded post-completion)
+**Stage 3 complete**: 2026-06-06 (verdict `ready-for-report`; zero findings; sixth zero-finding audit pattern in this session)
+**Stage 4**: SKIPPED — audit verdict allowed direct progression to Stage 5
+**Stage 5 complete / Completed**: 2026-06-06
 **Drafted from**: maintainer's "/workflows TUI panel wrapper + /tasks PTY-injection design" direction. Both are TUI-blocked-on-input commands; share the same architectural class.
 **Last updated**: 2026-06-06
 
@@ -12,10 +15,10 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-06** — Adaptive scope: 3 OQs (CLI-coverage probe + PTY-feasibility); T2 ships per verdicts |
-| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1 returned B/A/feasible; T2 docs-only update to `$claude-status` SKILL.md documenting `/tasks` equivalence + `/workflows` deferral to Plan 0016; +3 regression tests; 1485 → 1488 npm test (+3); CI run pending |
-| 3 — Audit | `3-audit.md` | not started — requires independent context |
-| 4 — Polish | `4-polish.md` | not started |
-| 5 — Report | `5-report.md` | not started |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1 returned B/A/feasible; T2 docs-only update to `$claude-status` SKILL.md documenting `/tasks` equivalence + `/workflows` deferral to Plan 0016; +3 regression tests; 1485 → 1488 npm test (+3) |
+| 3 — Audit | `3-audit.md` | **complete 2026-06-06** — verdict `ready-for-report`; zero findings at any severity; auditor `oh-my-claudecode:critic` (Opus, fresh-context) |
+| 4 — Polish | `4-polish.md` | **SKIPPED** — Stage 3 verdict was `ready-for-report` |
+| 5 — Report | `5-report.md` | **complete 2026-06-06** — final report; status flipped `auditing → reporting → complete`; no release tag (plugin version unchanged at `0.2.0`); Plan 0016 design constraints handed off |
 
 ## Summary
 

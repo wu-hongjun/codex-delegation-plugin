@@ -83,8 +83,7 @@ export async function inspectWorkflow(jobId) {
   const jobs = result.jobs ?? [];
 
   const job = jobs.find(
-    (j) =>
-      j.jobId === jobId || (typeof j.jobId === 'string' && j.jobId.startsWith(jobId)),
+    (j) => j.jobId === jobId || (typeof j.jobId === 'string' && j.jobId.startsWith(jobId)),
   );
 
   if (!job) {
@@ -231,7 +230,10 @@ function _readPhaseRecords(projectDir, sessionId, maxLines) {
 
   try {
     const raw = readFileSync(jsonlPath, 'utf8');
-    const lines = raw.split('\n').filter((l) => l.trim().length > 0).slice(0, maxLines);
+    const lines = raw
+      .split('\n')
+      .filter((l) => l.trim().length > 0)
+      .slice(0, maxLines);
     const records = [];
     for (const line of lines) {
       try {

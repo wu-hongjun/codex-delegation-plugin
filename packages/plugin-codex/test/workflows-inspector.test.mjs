@@ -88,8 +88,7 @@ function makeJobRecord(jobId, fields = {}) {
     driver: { name: 'claude-background', version: '0.0.0' },
     claude: { binaryPath: '/usr/local/bin/claude', version: '2.1.168' },
     sessionId:
-      fields.sessionId ??
-      `${jobId.slice(4, 12).padEnd(8, '0')}-aaaa-bbbb-cccc-dddddddddddd`,
+      fields.sessionId ?? `${jobId.slice(4, 12).padEnd(8, '0')}-aaaa-bbbb-cccc-dddddddddddd`,
     sessionName: fields.sessionName ?? `codex:test:${jobId}`,
     prompt: promptObj,
     turns: [

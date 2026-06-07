@@ -2118,7 +2118,7 @@ async function cmdWorkflows(flags, positional, json) {
 
   if (jobId) {
     // Drill-in path: inspect a single workflow session.
-    const detail = await inspectWorkflow(jobId, { env: process.env });
+    const detail = await inspectWorkflow(jobId);
     if (json) {
       process.stdout.write(JSON.stringify(detail, null, 2) + '\n');
     } else {
@@ -2156,7 +2156,7 @@ async function cmdWorkflows(flags, positional, json) {
   } else {
     // List path: enumerate workflow sessions.
     const showAll = Boolean(flags['all']);
-    const { sessions } = await listWorkflows({ all: showAll, env: process.env });
+    const { sessions } = await listWorkflows({ all: showAll });
     if (json) {
       process.stdout.write(JSON.stringify({ sessions }, null, 2) + '\n');
     } else {

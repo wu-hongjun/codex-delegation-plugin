@@ -1,56 +1,64 @@
 // workflows-inspector.mjs — CLI-only inspector for Claude Code workflow sessions.
 //
-// Architecture note (Plan 0016 T2 pivot):
+// Architecture note (Plan 0016 T2 pivot + Plan 0017 hotfix):
 //   The Claude Code /workflows TUI panel is SESSION-SCOPED — it shows only
 //   workflows started within the current interactive TUI session, NOT background
 //   sessions started via 'cc workflow' (--bg). See Plan 0016 OQ-A artifact
 //   (oq-a-workflows-ansi-capture-20260606.txt) for the empirical evidence.
 //
-//   This module uses the CLI path instead: 'claude agents --json' to list
-//   sessions, plus ~/.claude/projects/*/sessionId.jsonl and
-//   ~/.claude/projects/*/sessionId/subagents/*.meta.json for enrichment.
+//   This module reads from the local cc-plugin-codex job store at
+//   ~/.codex/cc-plugin-codex/jobs/*.json (resolved via the runtime's
+//   getJobsDir helper, which honors CC_PLUGIN_CODEX_HOME for tests). The
+//   `prompt.summary` field of each job record reveals which jobs were
+//   triggered as workflows (those start with "ultracode: " — the prefix
+//   that cmdWorkflow injects in cc.mjs).
+//
+//   Per-subagent / phase enrichment still reads
+//   ~/.claude/projects/<sanitized-cwd>/<sessionId>/subagents/*.meta.json and
+//   the corresponding session JSONL.
 //
 // Public API (pure data, no console output):
-//   listWorkflows({ all, env })         → { sessions: WorkflowSession[] }
-//   inspectWorkflow(jobId, { env })     → WorkflowDetail
-//
-// Workflow session identification heuristic:
-//   A session qualifies as a workflow session when its name starts with
-//   "ultracode:" (the prompt prefix injected by cmdWorkflow in cc.mjs).
+//   listWorkflows({ all, cwd })             → { sessions: WorkflowSession[] }
+//   inspectWorkflow(jobId)                  → WorkflowDetail
 
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { existsSync, readdirSync, readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-const execFileAsync = promisify(execFile);
+import { listJobs } from '@cc-plugin-codex/runtime';
+
+const ULTRACODE_PREFIX = 'ultracode: ';
 
 // ---------------------------------------------------------------------------
 // listWorkflows
 // ---------------------------------------------------------------------------
 
 /**
- * List all Claude Code background sessions that are workflow sessions.
+ * List all cc-plugin-codex background jobs that were started as workflows.
  *
- * A session is identified as a workflow session when its `name` field starts
- * with `"ultracode:"` — the prompt prefix cc.mjs injects for $claude-workflow.
+ * A job qualifies as a workflow job when its `prompt.summary` field starts
+ * with "ultracode: " — the prefix that cmdWorkflow injects before the
+ * user's text. The session NAME field is unreliable for this filter because
+ * the driver sets it to "codex:<workspace>:<id>".
  *
- * @param {{ all?: boolean; cwd?: string; env?: NodeJS.ProcessEnv }} opts
+ * @param {{ all?: boolean; cwd?: string }} opts
  * @returns {Promise<{ sessions: WorkflowSession[] }>}
  */
-export async function listWorkflows({ all = false, cwd, env = process.env } = {}) {
-  const agentRows = await _runAgentsJson(env);
+export async function listWorkflows({ all = false, cwd } = {}) {
   const currentCwd = _normalizePath(cwd ?? process.cwd());
 
-  // Filter to workflow sessions only. When `all` is false (default), also
-  // filter by matching cwd so results scope to the current workspace.
-  // Paths are normalized via realpathSync to handle macOS /private/var/folders
-  // ↔ /var/folders symlinks (and similar) so the comparison is robust.
-  const sessions = agentRows
-    .filter((row) => _isWorkflowSession(row))
-    .filter((row) => all || _normalizePath(row.cwd) === currentCwd)
-    .map((row) => _toWorkflowSession(row));
+  const result = await listJobs();
+  const jobs = result.jobs ?? [];
+
+  // Filter to workflow jobs and, when `all` is false (default), scope to
+  // the current workspace via realpath-normalized comparison. This mirrors
+  // the macOS /var/folders ↔ /private/var/folders behavior — the job
+  // record's stored workspace.root may differ syntactically from
+  // process.cwd() even when they reference the same directory.
+  const sessions = jobs
+    .filter(_isWorkflowJob)
+    .filter((job) => all || _normalizePath(job.workspace?.root) === currentCwd)
+    .map(_toWorkflowSession);
 
   return { sessions };
 }
@@ -60,54 +68,49 @@ export async function listWorkflows({ all = false, cwd, env = process.env } = {}
 // ---------------------------------------------------------------------------
 
 /**
- * Drill into a single workflow session by jobId (short id or full session id).
+ * Drill into a single workflow job by jobId (full id or short prefix).
  *
  * Reads:
- *   - claude agents --json for the session record
+ *   - The local job record at ~/.codex/cc-plugin-codex/jobs/<jobId>.json
  *   - ~/.claude/projects/<sanitized-cwd>/<sessionId>/subagents/*.meta.json
  *   - ~/.claude/projects/<sanitized-cwd>/<sessionId>.jsonl (first 30 lines)
  *
- * @param {string} jobId  Short id prefix or full session UUID.
- * @param {{ env?: NodeJS.ProcessEnv }} opts
+ * @param {string} jobId  Full id or prefix.
  * @returns {Promise<WorkflowDetail>}
  */
-export async function inspectWorkflow(jobId, { env = process.env } = {}) {
-  const agentRows = await _runAgentsJson(env);
+export async function inspectWorkflow(jobId) {
+  const result = await listJobs();
+  const jobs = result.jobs ?? [];
 
-  const row = agentRows.find(
-    (r) =>
-      r.sessionId === jobId || (typeof r.sessionId === 'string' && r.sessionId.startsWith(jobId)),
+  const job = jobs.find(
+    (j) =>
+      j.jobId === jobId || (typeof j.jobId === 'string' && j.jobId.startsWith(jobId)),
   );
 
-  if (!row) {
-    throw new Error(`No session found matching jobId "${jobId}"`);
+  if (!job) {
+    throw new Error(`No job found matching jobId "${jobId}"`);
   }
 
-  if (!_isWorkflowSession(row)) {
+  if (!_isWorkflowJob(job)) {
     throw new Error(
-      `Session "${row.sessionId}" is not a workflow session (name does not start with "ultracode:").`,
+      `Job "${job.jobId}" is not a workflow job (prompt does not begin with "ultracode: ").`,
     );
   }
 
-  const sessionId = row.sessionId;
-  const cwd = row.cwd ?? process.cwd();
-
-  // Resolve the project directory under ~/.claude/projects/
+  const sessionId = job.sessionId ?? '';
+  const cwd = job.workspace?.root ?? job.codex?.cwd ?? process.cwd();
   const projectDir = _resolveProjectDir(cwd);
 
-  // Read subagents/*.meta.json
   const subagents = _readSubagentMeta(projectDir, sessionId);
-
-  // Read first 30 lines of the session JSONL for phase records.
   const phaseRecords = _readPhaseRecords(projectDir, sessionId, 30);
 
   return {
-    jobId,
+    jobId: job.jobId,
     sessionId,
-    name: row.name ?? '',
-    status: row.status ?? 'unknown',
+    name: job.sessionName ?? '',
+    status: job.status ?? 'unknown',
     cwd,
-    startedAt: row.startedAt ?? null,
+    startedAt: job.createdAt ?? null,
     subagents,
     phaseRecords,
   };
@@ -118,69 +121,42 @@ export async function inspectWorkflow(jobId, { env = process.env } = {}) {
 // ---------------------------------------------------------------------------
 
 /**
- * Run `claude agents --json` and return the parsed array.
- * Returns [] on any failure (missing binary, empty output, parse error).
- *
- * @param {NodeJS.ProcessEnv} env
- * @returns {Promise<AgentRow[]>}
+ * A job is a workflow job when its prompt.summary starts with the ultracode prefix.
+ * @param {any} job
  */
-async function _runAgentsJson(env) {
-  let stdout = '';
-  try {
-    const result = await execFileAsync('claude', ['agents', '--json'], {
-      env,
-      timeout: 10_000,
-    });
-    stdout = result.stdout.trim();
-  } catch {
-    return [];
-  }
-  if (!stdout) return [];
-  try {
-    const parsed = JSON.parse(stdout);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function _isWorkflowJob(job) {
+  const summary = job?.prompt?.summary;
+  return typeof summary === 'string' && summary.startsWith(ULTRACODE_PREFIX);
 }
 
 /**
- * A session is a workflow session when its name starts with "ultracode:".
- * @param {AgentRow} row
- */
-function _isWorkflowSession(row) {
-  return typeof row.name === 'string' && row.name.startsWith('ultracode:');
-}
-
-/**
- * Map an AgentRow to a WorkflowSession summary.
- * @param {AgentRow} row
+ * Map a JobRecord to a WorkflowSession summary.
+ * @param {any} job
  * @returns {WorkflowSession}
  */
-function _toWorkflowSession(row) {
+function _toWorkflowSession(job) {
   return {
-    sessionId: row.sessionId ?? '',
-    shortId: _shortId(row.sessionId ?? ''),
-    name: row.name ?? '',
-    status: row.status ?? 'unknown',
-    cwd: row.cwd ?? '',
-    startedAt: row.startedAt ?? null,
-    pid: row.pid ?? null,
+    jobId: job.jobId ?? '',
+    sessionId: job.sessionId ?? '',
+    shortId: _shortId(job.sessionId ?? job.jobId ?? ''),
+    name: job.sessionName ?? '',
+    status: job.status ?? 'unknown',
+    cwd: job.workspace?.root ?? job.codex?.cwd ?? '',
+    startedAt: job.createdAt ?? null,
+    promptSummary: job.prompt?.summary ?? '',
   };
 }
 
 /**
- * Return first 8 chars of a UUID-shaped sessionId (the short id Claude uses).
- * @param {string} sessionId
+ * Return first 8 chars of a UUID-shaped id.
+ * @param {string} id
  */
-function _shortId(sessionId) {
-  return sessionId.slice(0, 8);
+function _shortId(id) {
+  return id.slice(0, 8);
 }
 
 /**
  * Normalize a filesystem path for equality comparison.
- * Resolves symlinks (e.g. macOS /var/folders → /private/var/folders) so
- * paths produced by different processes can match reliably.
  * Falls back to the input string if the path does not exist on disk.
  * @param {string|undefined} p
  */
@@ -196,8 +172,7 @@ function _normalizePath(p) {
 /**
  * Sanitize a cwd path to the format Claude uses for project directories.
  *   /Users/foo/bar  →  -Users-foo-bar  (leading hyphen preserved)
- * Matches the actual on-disk format under ~/.claude/projects/, where each
- * directory begins with a hyphen reflecting the leading slash of the cwd.
+ * Matches the actual on-disk format under ~/.claude/projects/.
  * @param {string} cwd
  */
 export function _sanitizeCwd(cwd) {
@@ -206,7 +181,6 @@ export function _sanitizeCwd(cwd) {
 
 /**
  * Resolve the per-project directory under ~/.claude/projects/.
- * Falls back to the home-relative path if the directory does not exist.
  * @param {string} cwd
  */
 function _resolveProjectDir(cwd) {
@@ -219,80 +193,55 @@ function _resolveProjectDir(cwd) {
  * Returns [] if the subagents directory does not exist.
  * @param {string} projectDir
  * @param {string} sessionId
- * @returns {SubagentMeta[]}
  */
 function _readSubagentMeta(projectDir, sessionId) {
   const subagentsDir = join(projectDir, sessionId, 'subagents');
   if (!existsSync(subagentsDir)) return [];
 
-  let entries;
-  try {
-    entries = readdirSync(subagentsDir);
-  } catch {
-    return [];
-  }
-
-  const metas = [];
+  const entries = readdirSync(subagentsDir).filter((f) => f.endsWith('.meta.json'));
+  const subagents = [];
   for (const entry of entries) {
-    if (!entry.endsWith('.meta.json')) continue;
-    const filePath = join(subagentsDir, entry);
     try {
-      const raw = readFileSync(filePath, 'utf8');
-      const parsed = JSON.parse(raw);
-      metas.push({
-        agentId: parsed.agentId ?? entry.replace('.meta.json', ''),
-        name: parsed.name ?? '',
-        tokens: parsed.tokens ?? null,
-        duration_ms: parsed.duration_ms ?? null,
-        tool_uses: parsed.tool_uses ?? null,
-        result: parsed.result ?? null,
-        status: parsed.status ?? 'unknown',
+      const raw = readFileSync(join(subagentsDir, entry), 'utf8');
+      const meta = JSON.parse(raw);
+      subagents.push({
+        agentId: meta.agentId ?? entry.replace(/\.meta\.json$/, ''),
+        status: meta.status ?? null,
+        tokens: meta.tokens ?? null,
+        duration_ms: meta.duration_ms ?? null,
+        tool_uses: meta.tool_uses ?? null,
+        result: meta.result ?? null,
       });
     } catch {
-      // Skip unreadable or malformed meta files.
+      // Skip unparseable meta files.
     }
   }
-  return metas;
+  return subagents;
 }
 
 /**
- * Read the first `limit` lines of a session JSONL file and parse each line.
- * Returns [] if the file does not exist or is unreadable.
+ * Read the first N lines of the session JSONL for phase records.
  * @param {string} projectDir
  * @param {string} sessionId
- * @param {number} limit
- * @returns {object[]}
+ * @param {number} maxLines
  */
-function _readPhaseRecords(projectDir, sessionId, limit) {
+function _readPhaseRecords(projectDir, sessionId, maxLines) {
   const jsonlPath = join(projectDir, `${sessionId}.jsonl`);
   if (!existsSync(jsonlPath)) return [];
 
-  let raw = '';
   try {
-    raw = readFileSync(jsonlPath, 'utf8');
+    const raw = readFileSync(jsonlPath, 'utf8');
+    const lines = raw.split('\n').filter((l) => l.trim().length > 0).slice(0, maxLines);
+    const records = [];
+    for (const line of lines) {
+      try {
+        records.push(JSON.parse(line));
+      } catch {
+        // Skip unparseable lines.
+      }
+    }
+    return records;
   } catch {
     return [];
   }
-
-  const lines = raw.split('\n').filter((l) => l.trim().length > 0);
-  const records = [];
-  for (const line of lines.slice(0, limit)) {
-    try {
-      records.push(JSON.parse(line));
-    } catch {
-      // Skip malformed JSONL lines.
-    }
-  }
-  return records;
 }
-
-// ---------------------------------------------------------------------------
-// JSDoc typedefs (not exported at runtime; used only for type documentation)
-// ---------------------------------------------------------------------------
-
-/**
- * @typedef {{ sessionId?: string; name?: string; status?: string; cwd?: string; startedAt?: number | null; pid?: number | null; kind?: string }} AgentRow
- * @typedef {{ sessionId: string; shortId: string; name: string; status: string; cwd: string; startedAt: number | null; pid: number | null }} WorkflowSession
- * @typedef {{ jobId: string; sessionId: string; name: string; status: string; cwd: string; startedAt: number | null; subagents: SubagentMeta[]; phaseRecords: object[] }} WorkflowDetail
- * @typedef {{ agentId: string; name: string; tokens: number | null; duration_ms: number | null; tool_uses: number | null; result: string | null; status: string }} SubagentMeta
- */

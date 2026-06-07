@@ -1,10 +1,16 @@
-// Unit tests for scripts/lib/workflows-inspector.mjs — Plan 0016 T5
+// Unit tests for scripts/lib/workflows-inspector.mjs — Plan 0017 hotfix
 //
-// These tests verify the workflows inspector by spawning cc.mjs with a stub
-// `claude` binary on PATH, which controls what `claude agents --json` returns.
-// This mirrors the dispatcher.test.mjs pattern (spawnSync + mock PATH).
+// These tests verify the workflows inspector by writing job-store records
+// to a temp CC_PLUGIN_CODEX_HOME directory and spawning cc.mjs with that
+// env var set. The inspector reads from the job store (via the runtime
+// listJobs / listJobsForWorkspace helpers); no `claude` binary is needed.
 //
-// No real `claude` binary is needed. No network calls are made.
+// Pre-Plan-0017 these tests stubbed `claude agents --json`, but the
+// inspector no longer reads from there — the smoke-test bug (findings-
+// 20260607.md) revealed that the session NAME field is set to
+// `codex:<workspace>:<id>` by the driver, not to `ultracode:...`. The
+// correct discriminator is `prompt.summary.startsWith('ultracode: ')`,
+// stored in the local job record.
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -23,17 +29,16 @@ const SCRIPT = join(REPO_ROOT, 'packages', 'plugin-codex', 'scripts', 'cc.mjs');
 // ---------- per-test temp dirs ----------
 
 let TMP_DIR;
-let BIN_DIR;
 let TMP_HOME;
+let JOBS_DIR;
 let WORK_DIR;
 
 beforeEach(() => {
   TMP_DIR = mkdtempSync(join(tmpdir(), 'wf-inspector-test-'));
-  BIN_DIR = join(TMP_DIR, 'bin');
-  TMP_HOME = join(TMP_DIR, 'home');
+  TMP_HOME = join(TMP_DIR, 'cc-plugin-codex');
+  JOBS_DIR = join(TMP_HOME, 'jobs');
   WORK_DIR = join(TMP_DIR, 'work');
-  mkdirSync(BIN_DIR, { recursive: true });
-  mkdirSync(TMP_HOME, { recursive: true });
+  mkdirSync(JOBS_DIR, { recursive: true });
   mkdirSync(WORK_DIR, { recursive: true });
 });
 
@@ -46,28 +51,64 @@ afterEach(() => {
 // ---------- helpers ----------
 
 /**
- * Write a stub `claude` script that responds to `claude agents --json` with the given JSON.
- * All other subcommands exit 0 silently.
+ * Write a fixture job record to JOBS_DIR.
+ *
+ * @param {string} jobId
+ * @param {object} fields
+ *   - promptSummary: string (defaults to a workflow-flagged prompt)
+ *   - workspaceRoot: string (defaults to WORK_DIR)
+ *   - sessionId, sessionName, status, createdAt: optional
  */
-function makeClaudeStub(binDir, agentsJson) {
-  const stubPath = join(binDir, 'claude');
-  const escaped = agentsJson.replace(/\\/g, '\\\\').replace(/'/g, "'\\''");
-  writeFileSync(
-    stubPath,
-    `#!/bin/sh\n` +
-      `if [ "$1" = "agents" ] && [ "$2" = "--json" ]; then\n` +
-      `  printf '%s\\n' '${escaped}';\n` +
-      `fi\n`,
-  );
-  spawnSync('chmod', ['+x', stubPath]);
+function makeJobRecord(jobId, fields = {}) {
+  // sha256 must be valid hex. Derive a unique hex string from the jobId
+  // by replacing the (non-hex) prefix letters with 'f'.
+  const sha256Hex = jobId
+    .toLowerCase()
+    .replace(/[^a-f0-9]/g, 'f')
+    .padEnd(64, '0')
+    .slice(0, 64);
+  const promptObj = {
+    summary: fields.promptSummary ?? `ultracode: ${jobId} test prompt`,
+    sha256: sha256Hex,
+    bytesLen: 100,
+  };
+  const record = {
+    jobId,
+    schemaVersion: 2,
+    createdAt: fields.createdAt ?? '2026-06-07T00:00:00.000Z',
+    updatedAt: '2026-06-07T00:00:00.000Z',
+    status: fields.status ?? 'running',
+    codex: {
+      cwd: fields.workspaceRoot ?? WORK_DIR,
+      pluginVersion: '0.2.0',
+    },
+    workspace: {
+      root: fields.workspaceRoot ?? WORK_DIR,
+    },
+    driver: { name: 'claude-background', version: '0.0.0' },
+    claude: { binaryPath: '/usr/local/bin/claude', version: '2.1.168' },
+    sessionId:
+      fields.sessionId ??
+      `${jobId.slice(4, 12).padEnd(8, '0')}-aaaa-bbbb-cccc-dddddddddddd`,
+    sessionName: fields.sessionName ?? `codex:test:${jobId}`,
+    prompt: promptObj,
+    turns: [
+      {
+        turnId: 'turn-0',
+        prompt: promptObj,
+        startedAt: fields.createdAt ?? '2026-06-07T00:00:00.000Z',
+      },
+    ],
+  };
+  writeFileSync(join(JOBS_DIR, `${jobId}.json`), JSON.stringify(record, null, 2));
 }
 
 /**
- * Run cc.mjs with given args and mock environment.
+ * Run cc.mjs with given args and the test home env var set.
  */
 function runDispatcher(args, overrideEnv = {}) {
   const env = {
-    PATH: `${BIN_DIR}:${process.env.PATH}`,
+    PATH: process.env.PATH,
     HOME: TMP_HOME,
     CC_PLUGIN_CODEX_HOME: TMP_HOME,
     ...overrideEnv,
@@ -81,56 +122,43 @@ function runDispatcher(args, overrideEnv = {}) {
 
 // ---------- tests ----------
 
-describe('workflows: no sessions (claude agents returns [])', () => {
-  it('exits 0 and reports no workflow sessions found', () => {
-    makeClaudeStub(BIN_DIR, '[]');
+describe('workflows: no sessions when jobs dir is empty', () => {
+  it('exits 0 and prints "No workflow sessions found"', () => {
     const result = runDispatcher(['workflows']);
     assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
     const combined = result.stdout + result.stderr;
     assert.ok(
-      combined.includes('No workflow sessions found') || combined.includes('workflow'),
+      combined.includes('No workflow sessions') || combined.includes('workflow'),
       `expected workflow-related output; got:\n${combined}`,
     );
   });
 });
 
-describe('workflows: filters to ultracode: sessions only', () => {
-  it('exits 0 and only lists sessions with name starting with "ultracode:"', () => {
-    const agentRows = [
-      {
-        sessionId: 'aaa-1111',
-        name: 'ultracode: audit fetch calls',
-        status: 'running',
-        cwd: WORK_DIR,
-        startedAt: 1000000,
-      },
-      {
-        sessionId: 'bbb-2222',
-        name: 'regular delegate session',
-        status: 'running',
-        cwd: WORK_DIR,
-        startedAt: 1000001,
-      },
-    ];
-    makeClaudeStub(BIN_DIR, JSON.stringify(agentRows));
+describe('workflows: filters to ultracode: prompt jobs only', () => {
+  it('exits 0 and only lists jobs whose prompt.summary starts with "ultracode: "', () => {
+    makeJobRecord('job_test01aa_aaaaaaaa', {
+      promptSummary: 'ultracode: audit fetch calls',
+      sessionName: 'codex:wflow:a1111111',
+    });
+    makeJobRecord('job_test02bb_bbbbbbbb', {
+      promptSummary: 'Regular delegate prompt',
+      sessionName: 'codex:nonwf:b2222222',
+    });
     const result = runDispatcher(['workflows']);
     assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
-    // The regular session must NOT appear
     assert.ok(
-      !result.stdout.includes('regular delegate session'),
-      `non-workflow session should not appear in output; stdout:\n${result.stdout}`,
+      result.stdout.includes('codex:wflow:a1111111') || result.stdout.includes('test01aa'),
+      `workflow job should appear in output; stdout:\n${result.stdout}`,
     );
-    // The workflow session should appear
     assert.ok(
-      result.stdout.includes('aaa-1111') || result.stdout.includes('ultracode'),
-      `workflow session should appear in output; stdout:\n${result.stdout}`,
+      !result.stdout.includes('codex:nonwf:b2222222'),
+      `non-workflow job should NOT appear; stdout:\n${result.stdout}`,
     );
   });
 });
 
 describe('workflows <unknown-jobId>: exits 1', () => {
-  it('exits 1 when the jobId does not match any session', () => {
-    makeClaudeStub(BIN_DIR, '[]');
+  it('exits 1 when the jobId does not match any job record', () => {
     const result = runDispatcher(['workflows', 'nonexistent-job-id-xyz']);
     assert.notEqual(result.status, 0, 'expected non-zero exit for unknown jobId');
     assert.equal(result.status, 1, `expected exit 1; got ${result.status}`);
@@ -139,7 +167,6 @@ describe('workflows <unknown-jobId>: exits 1', () => {
 
 describe('workflows --json: produces parseable JSON with sessions array', () => {
   it('exits 0 and stdout is valid JSON with a "sessions" array', () => {
-    makeClaudeStub(BIN_DIR, '[]');
     const result = runDispatcher(['workflows', '--json']);
     assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
     let parsed;
@@ -155,7 +182,6 @@ describe('workflows --json: produces parseable JSON with sessions array', () => 
 
 describe('workflows --allow-edit: exits 2 with error mentioning --allow-edit', () => {
   it('exits 2 and prints error mentioning --allow-edit', () => {
-    makeClaudeStub(BIN_DIR, '[]');
     const result = runDispatcher(['workflows', '--allow-edit']);
     assert.equal(
       result.status,
@@ -170,23 +196,9 @@ describe('workflows --allow-edit: exits 2 with error mentioning --allow-edit', (
   });
 });
 
-describe('workflows: handles invalid JSON from claude agents gracefully', () => {
-  it('exits 0 and shows no workflow sessions when claude returns garbage', () => {
-    makeClaudeStub(BIN_DIR, 'not valid json {{{{');
-    const result = runDispatcher(['workflows']);
-    assert.equal(result.status, 0, `expected exit 0 on parse error; stderr: ${result.stderr}`);
-    const combined = result.stdout + result.stderr;
-    assert.ok(
-      combined.includes('No workflow sessions') || combined.includes('workflow'),
-      `expected graceful fallback output; got:\n${combined}`,
-    );
-  });
-});
-
-// ---------- Plan 0016 Stage 4 polish: regression tests for MAJOR-1 and MAJOR-2 ----------
+// ---------- Plan 0017 hotfix regression tests ----------
 
 describe('_sanitizeCwd: preserves leading hyphen to match Claude project dir format', async () => {
-  // Import the internal helper for direct testing.
   const { _sanitizeCwd } = await import(
     resolve(REPO_ROOT, 'packages/plugin-codex/scripts/lib/workflows-inspector.mjs')
   );
@@ -201,66 +213,85 @@ describe('_sanitizeCwd: preserves leading hyphen to match Claude project dir for
   });
 });
 
-describe('workflows --all: includes sessions from other cwds (Plan 0016 polish MAJOR-2)', () => {
-  it('with --all, lists workflow sessions whose cwd does NOT match process.cwd()', () => {
-    const agentRows = [
-      {
-        sessionId: 'aaa-1111',
-        name: 'ultracode: local workflow',
-        status: 'running',
-        cwd: WORK_DIR,
-        startedAt: 1000000,
-      },
-      {
-        sessionId: 'bbb-2222',
-        name: 'ultracode: remote workspace workflow',
-        status: 'running',
-        cwd: '/some/other/workspace',
-        startedAt: 1000001,
-      },
-    ];
-    makeClaudeStub(BIN_DIR, JSON.stringify(agentRows));
+describe('workflows --all: includes workflow jobs from other workspaces (Plan 0017)', () => {
+  it('with --all, lists workflow jobs whose workspace.root does NOT match cwd', () => {
+    makeJobRecord('job_local03_aaaaaaaa', {
+      promptSummary: 'ultracode: local workflow',
+      workspaceRoot: WORK_DIR,
+      sessionName: 'codex:localwflow:aa',
+    });
+    makeJobRecord('job_other04_bbbbbbbb', {
+      promptSummary: 'ultracode: other-workspace workflow',
+      workspaceRoot: '/some/other/workspace',
+      sessionName: 'codex:otherwflow:bb',
+    });
     const result = runDispatcher(['workflows', '--all']);
     assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
     assert.ok(
-      result.stdout.includes('aaa-1111'),
+      result.stdout.includes('codex:localwflow:aa') || result.stdout.includes('local03'),
       `--all should include local workflow; stdout:\n${result.stdout}`,
     );
     assert.ok(
-      result.stdout.includes('bbb-2222'),
+      result.stdout.includes('codex:otherwflow:bb') || result.stdout.includes('other04'),
       `--all should include cross-workspace workflow; stdout:\n${result.stdout}`,
     );
   });
 });
 
-describe('workflows: excludes sessions from other cwds without --all (Plan 0016 polish)', () => {
-  it('without --all, filters out workflow sessions whose cwd does NOT match process.cwd()', () => {
-    const agentRows = [
-      {
-        sessionId: 'aaa-1111',
-        name: 'ultracode: local workflow',
-        status: 'running',
-        cwd: WORK_DIR,
-        startedAt: 1000000,
-      },
-      {
-        sessionId: 'bbb-2222',
-        name: 'ultracode: remote workspace workflow',
-        status: 'running',
-        cwd: '/some/other/workspace',
-        startedAt: 1000001,
-      },
-    ];
-    makeClaudeStub(BIN_DIR, JSON.stringify(agentRows));
+describe('workflows: excludes jobs from other workspaces without --all (Plan 0017)', () => {
+  it('without --all, filters out workflow jobs whose workspace.root does NOT match cwd', () => {
+    makeJobRecord('job_local03_aaaaaaaa', {
+      promptSummary: 'ultracode: local workflow',
+      workspaceRoot: WORK_DIR,
+      sessionName: 'codex:localwflow:aa',
+    });
+    makeJobRecord('job_other04_bbbbbbbb', {
+      promptSummary: 'ultracode: other-workspace workflow',
+      workspaceRoot: '/some/other/workspace',
+      sessionName: 'codex:otherwflow:bb',
+    });
     const result = runDispatcher(['workflows']);
     assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
     assert.ok(
-      result.stdout.includes('aaa-1111'),
+      result.stdout.includes('codex:localwflow:aa') || result.stdout.includes('local03'),
       `local workflow should appear; stdout:\n${result.stdout}`,
     );
     assert.ok(
-      !result.stdout.includes('bbb-2222'),
+      !result.stdout.includes('codex:otherwflow:bb') && !result.stdout.includes('other04'),
       `cross-workspace workflow should NOT appear without --all; stdout:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('workflows <jobId>: drill-in succeeds for workflow jobs', () => {
+  it('exits 0 and shows the workflow detail for a known workflow job', () => {
+    makeJobRecord('job_drill05_cccccccc', {
+      promptSummary: 'ultracode: drill target',
+      sessionId: '11111111-2222-3333-4444-555555555555',
+      sessionName: 'codex:test:drill',
+      status: 'awaiting_followup',
+    });
+    const result = runDispatcher(['workflows', 'job_drill05_cccccccc']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes('Workflow session') || result.stdout.includes('Status'),
+      `expected workflow detail output; got:\n${result.stdout}`,
+    );
+  });
+});
+
+describe('workflows <jobId>: drill-in rejects non-workflow jobs', () => {
+  it('exits 1 with a clear error when the matched job is not a workflow', () => {
+    makeJobRecord('job_nonwf06_dddddddd', {
+      promptSummary: 'Regular delegate prompt',
+      sessionName: 'codex:test:nonwf',
+    });
+    const result = runDispatcher(['workflows', 'job_nonwf06_dddddddd']);
+    assert.equal(result.status, 1, `expected exit 1; got ${result.status}`);
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('not a workflow') || combined.includes('ultracode'),
+      `expected error mentioning the non-workflow reason; got:\n${combined}`,
     );
   });
 });

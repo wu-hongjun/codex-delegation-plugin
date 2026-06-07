@@ -40,6 +40,16 @@ The pre-release audit (14 skills + edge cases) returned **mostly pass** with a s
 
 ## Outcome
 
-2 real bugs fixed; both have regression tests. 3 non-bugs documented. v0.3.0 unblocked pending a focused re-smoke of Test 3 (drill-in metadata) and confirmation the cosmetic label is gone.
+2 real bugs fixed; both have regression tests. 3 non-bugs documented. Test 3 fix live-verified against real job records (drill-in now shows full session id + name); cosmetic label confirmed gone.
 
-Skill count: 14 (unchanged). Marketplace allowlist: 26 (unchanged). Plugin version field: bumped to `0.3.0` (the release this plan unblocks).
+Skill count: 14 (unchanged). Marketplace allowlist: 26 (unchanged). Plugin version field: bumped to `0.3.0`.
+
+## Release — v0.3.0 SHIPPED (2026-06-07)
+
+- Commit 1 (audit fixes): `b3b4208` (shipped at version 0.2.0)
+- Commit 2 (version bump): `54adf05` — see `3-release-bump.md`
+- CI run `27095819575` on `54adf05`: **success** (ubuntu + macOS × Node 20 + 22)
+- Tag `v0.3.0` → commit `54adf05` (annotated, pushed)
+- GitHub release: https://github.com/wu-hongjun/cc-plugin-codex/releases/tag/v0.3.0
+- `v0.2.0` tag preserved immutable at `ea595e1`
+- Local install migrated to `cc@cc-plugin-codex-local 0.3.0` and audited green (14 skills)

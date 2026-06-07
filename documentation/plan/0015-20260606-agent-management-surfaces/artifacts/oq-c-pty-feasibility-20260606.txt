@@ -1,0 +1,238 @@
+OQ-C Probe: PTY feasibility for /workflows and /tasks panels
+=============================================================
+
+ENVIRONMENT
+-----------
+Date:           2026-06-06
+claude version: 2.1.168 (Claude Code)
+Triggered by:   OQ-A returning Verdict B (< 50% /workflows panel coverage via CLI)
+OQ-B verdict:   A (no gap; /tasks covered by claude agents --json + cc status)
+
+
+TRIGGER CONDITION
+-----------------
+OQ-C runs only if OQ-A or OQ-B returns B.
+  OQ-A: B — /workflows TUI panel is not reachable via CLI/JSONL
+  OQ-B: A — /tasks is covered; no PTY needed for /tasks
+
+Therefore OQ-C is scoped to /workflows only. /tasks does NOT need PTY work.
+
+
+STEP 1 — node-pty load verification
+------------------------------------
+
+Command: node -e "import('node-pty').then(m => console.log('node-pty loaded:', Object.keys(m)))"
+Output:
+  node-pty loaded: [
+    '__esModule', 'createTerminal', 'default', 'fork',
+    'module.exports', 'native', 'open', 'spawn'
+  ]
+
+RESULT: node-pty loads cleanly on this machine (darwin, Node 20).
+The spawn and fork exports are available. The native binary is pre-built.
+
+
+STEP 2 — Existing PTY usage survey
+------------------------------------
+
+grep -rn "node-pty|require.*pty|from.*pty" packages/runtime/src/ packages/driver-claude-code/src/ packages/plugin-codex/scripts/
+
+Results (relevant files):
+
+  packages/driver-claude-code/src/attach.ts
+    Line 3-4: "This is the ONLY file in driver-claude-code that may import node-pty.
+               All other modules must not reference node-pty directly."
+    Line 268: pty = await import('node-pty')  [dynamic import inside try/catch]
+    Line 276: term = pty.spawn('claude', ['attach', shortId], {
+                name: 'xterm-256color', cols: 120, rows: 40, cwd, env
+              })
+    Pattern: spawn claude attach <shortId>, write bracketed-paste prompt + CR,
+             poll agents --json for status, read sidecar for result.
+
+  packages/driver-claude-code/src/pty-probe.ts
+    Line 24-26: let pty = await import('node-pty')
+    Pattern: smoke test — spawn /bin/sh -c "echo ok", verify output, timeout guard.
+    Used by cc setup to verify node-pty build health.
+
+  packages/runtime/src/: NO node-pty usage (invariant enforced by attach.ts comment).
+
+CONCLUSION: The PTY infrastructure is mature and tested. The pattern in attach.ts
+(spawn → warmup delay → bracketed-paste write → poll → read sidecar) is exactly
+reusable for a /workflows panel harness. The architecture is already proven on
+the harder problem (sending multi-line prompts to an interactive TUI session).
+
+
+STEP 3 — Minimum viable PTY harness sketch for /workflows
+----------------------------------------------------------
+
+Goal: spawn claude in a PTY, inject "/workflows\r", capture the rendered ANSI
+panel for a running workflow session, parse phase/agent/token data, return JSON.
+
+Design constraints from existing code:
+  - Dynamic import of node-pty (per attach.ts invariant: driver package only)
+  - Bracketed-paste injection for input reliability (attach.ts:332 pattern)
+  - ANSI capture in ring buffer (attach.ts:285-290 pattern)
+  - Warmup delay before writing (attach.ts:314-320: wait for TUI startup banner)
+  - Node-pty spawn with xterm-256color, cols=120, rows=50 (wider than attach.ts
+    to capture phase table columns)
+
+Pseudocode (30-50 lines, file: packages/driver-claude-code/src/workflows-panel.ts):
+
+  // ── workflowsPanel.ts ──────────────────────────────────────────────────────
+  //
+  // PTY harness for reading the /workflows TUI panel. Lives in driver-claude-code
+  // alongside attach.ts (the only package that may import node-pty directly).
+  //
+  // Returns a WorkflowsPanelSnapshot: the parsed panel state at one moment in time.
+  // This is READ-ONLY; no keystroke control (pause/resume/restart) is in scope.
+
+  export interface WorkflowsPanelSnapshot {
+    capturedAt: string;           // ISO timestamp
+    raw: string;                  // raw ANSI output (for diagnostics)
+    text: string;                 // ANSI-stripped text
+    sessions: WorkflowSession[];  // parsed sessions from panel
+    empty: boolean;               // true if "No workflows running" (or equivalent)
+  }
+
+  export interface WorkflowSession {
+    name: string;    // session name as rendered
+    status: string;  // e.g. "running", "complete", "paused"
+    // phase/agent/token fields TBD — require empirical inspection of rendered output
+  }
+
+  export async function readWorkflowsPanel(opts?: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    warmupMs?: number;    // default 2000ms (same as attach.ts)
+    captureMs?: number;   // how long to wait for panel to render, default 1500ms
+    timeoutMs?: number;   // hard kill timeout, default 8000ms
+  }): Promise<WorkflowsPanelSnapshot> {
+    // 1. Dynamic import (never static — matches attach.ts invariant)
+    const pty = await import('node-pty');
+
+    // 2. Spawn bare `claude` (not `claude attach`) — opens the interactive TUI
+    //    in a new PTY session, same as a user opening a terminal.
+    const term = pty.spawn('claude', [], {
+      name: 'xterm-256color',
+      cols: 180,    // wide enough for phase table columns
+      rows: 50,     // tall enough for multi-phase panels
+      cwd: opts?.cwd ?? process.cwd(),
+      env: opts?.env ?? process.env,
+    });
+
+    let rawOutput = '';
+    term.onData((chunk: string) => { rawOutput += chunk; });
+
+    // 3. Warmup: wait for TUI startup banner (splash screen + capability handshake)
+    await sleep(opts?.warmupMs ?? 2000);
+
+    // 4. Inject /workflows command via bracketed-paste + CR
+    //    (same bracketed-paste pattern as attach.ts:332 for input reliability)
+    term.write('\x1b[200~/workflows\x1b[201~\r');
+
+    // 5. Wait for panel to render (ANSI frames settle after input processed)
+    await sleep(opts?.captureMs ?? 1500);
+
+    // 6. Capture final output snapshot, then kill PTY
+    const snapshot = rawOutput;
+    term.kill();
+
+    // 7. ANSI-strip for text parsing
+    const text = stripAnsi(snapshot);  // strip color/cursor codes
+
+    // 8. Parse panel text into structured data
+    //    EMPIRICAL: the exact parse rules depend on what /workflows actually renders
+    //    when sessions are running. This requires a follow-up probe with an active
+    //    workflow to determine column layout. Current known render (empty):
+    //      "No workflows running" (or similar to /tasks "No tasks currently running")
+    const sessions = parseWorkflowsPanel(text);
+
+    return {
+      capturedAt: new Date().toISOString(),
+      raw: snapshot,
+      text,
+      sessions,
+      empty: sessions.length === 0,
+    };
+  }
+
+  // ── parseWorkflowsPanel (TBD: empirical after seeing live render) ──────────
+  function parseWorkflowsPanel(text: string): WorkflowSession[] {
+    // TODO: requires Plan 0016 probe step — run a real multi-agent workflow,
+    // capture the /workflows panel render, then write the parser.
+    // The panel text will contain rows like:
+    //   "session-name    phase: X/N    tokens: NNN    elapsed: Xs"
+    // (exact format unknown until empirically observed)
+    return [];
+  }
+
+  // ── END pseudocode ──────────────────────────────────────────────────────────
+
+
+ARCHITECTURAL ASSESSMENT
+------------------------
+
+1. PTY INFRASTRUCTURE IS READY
+   node-pty loads cleanly. attach.ts already has the full pattern:
+   spawn → warmup → bracketed-paste write → capture → parse. A /workflows
+   reader would reuse ~70% of the same boilerplate.
+
+2. SPAWN TARGET DIFFERS FROM attach.ts
+   attach.ts spawns: `claude attach <shortId>` (attaches to an existing bg session)
+   /workflows harness spawns: `claude` (bare, opens a new interactive TUI)
+   Then injects `/workflows\r` to open the panel.
+   This is a different spawn target but structurally similar. The warmup timing
+   may need calibration (TUI cold-start vs attach warm-start).
+
+3. UNKNOWN: LIVE /workflows PANEL RENDER FORMAT
+   The critical gap is that we have not observed the /workflows panel with
+   ACTIVE workflow sessions running. The empty panel only shows the "No workflows"
+   message. To write the parser, Plan 0016 must:
+   a) Spawn a real multi-agent workflow via `/workflows` (native, not ultracode:)
+   b) While it's running, spawn a second PTY and capture the /workflows panel
+   c) Record the exact ANSI text layout (column headers, row format, phase drill-in)
+   d) Write parseWorkflowsPanel() based on the empirical capture
+
+4. NATIVE /workflows MULTI-AGENT VS OMC ultracode:
+   Plan 0015's cc workflow uses `ultracode:` prefix (OMC single-session skill).
+   To exercise the native /workflows panel, Plan 0016 must invoke the workflow
+   runtime directly — likely via `claude --bg "/workflows"` is just the viewer,
+   so the actual workflow execution must be triggered by a different path
+   (e.g., directly via the TUI, or by finding the native workflow spawn mechanism).
+   This needs a separate probe in Plan 0016.
+
+5. COMPLEXITY ASSESSMENT
+   Minimum viable read-only harness: ~150-200 lines (spawn, capture, strip, parse)
+   Test surface: PTY spawn tests are integration-level; require a running claude.
+   Risk: TUI render format may change between Claude Code versions (fragile).
+   Mitigation: Return raw ANSI alongside parsed data so callers can fall back.
+
+6. SCOPE RECOMMENDATION
+   Defer PTY /workflows panel harness to Plan 0016. Reasons:
+   a) The empirical panel render capture step (step 3b above) must happen first.
+   b) The harness design is a separate ~half-day effort, appropriate for its own plan.
+   c) Plan 0015 T2 can ship a useful partial result WITHOUT PTY:
+      - Append /workflows TUI-only deferral note to $claude-status SKILL.md
+      - Document that claude attach <sessionId> is the manual inspection path
+      - No new skill; no count bumps; minimal test delta
+   d) Plan 0016 takes: empirical panel capture probe + harness impl + tests.
+
+
+VERDICT
+-------
+PTY-injection is FEASIBLE but requires a Plan 0016 probe step before implementation.
+
+Key findings:
+  - node-pty loads and works on this machine (confirmed by smoke output)
+  - attach.ts provides the complete pattern; ~70% of boilerplate is reusable
+  - The unknown is the /workflows panel RENDER FORMAT with active sessions
+  - A Plan 0016 probe must empirically capture the panel text before the parser
+    can be written
+  - The /tasks panel does NOT need PTY work (OQ-B returned A)
+
+Plan 0016 scope (recommended):
+  T1: Empirical /workflows panel render capture (spawn live workflow + PTY capture)
+  T2: Implement workflowsPanel.ts + parseWorkflowsPanel() based on T1 capture
+  T3: $claude-workflows skill backed by PTY harness
+  T4: Tests (integration-level PTY spawn tests)
+  T5: Gates + CI

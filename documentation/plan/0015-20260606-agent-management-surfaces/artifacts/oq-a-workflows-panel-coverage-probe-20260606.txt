@@ -1,0 +1,182 @@
+OQ-A Probe: /workflows panel coverage via CLI/JSONL
+====================================================
+
+ENVIRONMENT
+-----------
+Date:           2026-06-06
+claude version: 2.1.168 (Claude Code)
+Plugin id:      cc (post-Plan-0014)
+Dispatcher:     packages/plugin-codex/scripts/cc.mjs
+cwd:            /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+
+CRITICAL DISAMBIGUATION
+-----------------------
+There are TWO distinct things called "workflow" in this repo:
+
+1. **Claude Code native /workflows TUI panel** — a TUI-only interactive viewer
+   opened by the `/workflows` slash command. Shows running workflow sessions
+   with phase view, per-agent token usage, drill-down on agent tool calls + result.
+   Controlled by keystrokes (p/x/r/s). Documented at code.claude.com/docs/en/workflows.
+
+2. **cc workflow subcommand** — `node packages/plugin-codex/scripts/cc.mjs workflow`
+   implemented at cc.mjs:309 as:
+     promptTransformer: (p) => `ultracode: ${p}`
+   This prepends `ultracode:` to the prompt, invoking the OMC `ultracode` skill
+   (a single-session high-effort reasoning run), NOT the native /workflows panel.
+
+This probe covers BOTH. The native /workflows TUI panel is what Plan 0015 asks about.
+The cc workflow subcommand result is included as context.
+
+
+PROBE 1 — Native /workflows slash command via claude --bg
+---------------------------------------------------------
+
+Command: claude --bg "/workflows"
+Output:
+  backgrounded · e09c6967
+    claude agents             list sessions
+    claude attach e09c6967    open in this terminal
+    claude logs e09c6967      show recent output
+    claude stop e09c6967      stop this session
+
+Session e09c6967 in claude agents --json (after 3s):
+  {
+    "pid": 75016,
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+    "kind": "background",
+    "startedAt": 1780797465773,
+    "sessionId": "e09c6967-b873-4651-ae9e-608cca556123",
+    "name": "/workflows",
+    "status": "waiting",
+    "waitingFor": "dialog open"
+  }
+
+KEY FINDING: "status": "waiting", "waitingFor": "dialog open" — identical pattern
+to /tasks (Plan 0011 Verdict B). The /workflows slash command opens an interactive
+TUI panel and blocks indefinitely waiting for keyboard input. No JSONL conversation
+file is created; no model turn is initiated.
+
+No subagents/ directory exists for this session.
+The session name is the literal "/workflows" string (named from the slash command
+text before any model turn — same as /tasks showed "/tasks").
+
+claude logs e09c6967 output (ANSI-stripped excerpt):
+  Shows Claude Code TUI splash screen ("Feature of the week: /loop"), but the
+  /workflows panel itself rendered no visible workflow sessions (empty panel, same
+  as /tasks showed "No tasks currently running" when empty).
+
+
+PROBE 2 — cc workflow subcommand (ultracode: prefix path)
+---------------------------------------------------------
+
+Command:
+  node packages/plugin-codex/scripts/cc.mjs workflow --yes -- \
+    "Survey packages/plugin-codex/scripts/cc.mjs L1-L100 and explain the
+     dispatch switch in 3 short bullets. Be very brief."
+
+Session: job_mq34spc3_13a8537a / Claude session 46153ea7
+
+JSONL analysis (35 lines total):
+
+  LINE 11 (user turn): prompt content = "ultracode: Survey packages/..."
+    → The `ultracode:` prefix was injected by promptTransformer at cc.mjs:311.
+    → This is NOT a /workflows slash command parse. promptSource="typed".
+    → No <command-name>/workflows</command-name> XML record exists.
+
+  LINE 15 (attachment): type="workflow_keyword_request"
+    → OMC-side attachment; NOT a Claude Code phase marker.
+    → This signals the OMC runtime detected the "ultracode:" keyword and
+      prepared to load the ultracode skill context.
+
+  LINE 17 (assistant): Single tool_use (Read cc.mjs), then end_turn
+    usage: {
+      input_tokens: 5496, cache_creation_input_tokens: 24850,
+      cache_read_input_tokens: 0, output_tokens: 460
+    }
+    → Single-agent, single-turn reasoning. NO phase structure. NO TaskCreate.
+    → NO subagent spawn records. NO per-phase token breakdown.
+
+  LINE 29-30 (final assistant turn):
+    usage: {
+      input_tokens: 1279, cache_creation_input_tokens: 7597,
+      cache_read_input_tokens: 24850, output_tokens: 313
+    }
+    → Second turn with cache hit (24850 tokens read from cache from turn 1).
+
+  NO records of type:
+    - phase_start / phase_end
+    - agent_spawn / subagent_create
+    - TaskCreate / TaskList / TaskOutput
+    - workflow_phase_update
+    - per-phase token totals
+
+  NO subagents/ directory: ~/.claude/projects/<sanitized>/<sessionId>/ does not exist.
+
+SUMMARY: cc workflow is a single-session ultracode run. It has nothing to do
+with Claude Code's /workflows TUI panel. The "workflow" in cc workflow refers to
+the OMC ultracode skill workflow (high-effort multi-step reasoning in one session),
+not Claude Code's native multi-agent workflow runtime.
+
+
+FIELD COVERAGE MAPPING — /workflows TUI panel fields
+-----------------------------------------------------
+
+Per code.claude.com/docs/en/workflows §Watch-the-run:
+
+  Panel field                          CLI/JSONL source           Coverage
+  -----------------------------------  -------------------------  --------
+  Phase list (phase names)             NOT in claude agents       TUI-ONLY
+  Per-phase agent count                NOT in claude agents       TUI-ONLY
+  Per-phase token total                NOT in claude agents       TUI-ONLY
+  Per-phase elapsed time               NOT in claude agents       TUI-ONLY
+  Drill-in: agent list per phase       NOT in claude agents       TUI-ONLY
+  Per-agent: prompt text               NOT in claude agents       TUI-ONLY
+  Per-agent: recent tool calls         NOT in claude agents       TUI-ONLY
+  Per-agent: result text               NOT in claude agents       TUI-ONLY
+  Keystroke controls (p/x/r/s)         NOT reachable via CLI      TUI-ONLY
+  Session-level status (running/done)  claude agents --json       CLI-COVERED
+  Session name                         claude agents --json       CLI-COVERED
+  Session cwd                          claude agents --json       CLI-COVERED
+  Session pid                          claude agents --json       CLI-COVERED
+
+  CLI-COVERED: 4 fields (session-level metadata only)
+  TUI-ONLY:    9 fields (all workflow-specific structure)
+  PARTIAL:     0 fields
+
+  Coverage: 4/13 = 31% via CLI. Well below the 80% threshold for Verdict A.
+
+
+ADDITIONAL NOTE — subagents/*.meta.json
+---------------------------------------
+The plan specifies checking ~/.claude/projects/<sessionId>/subagents/*.meta.json.
+No subagents/ directory was found for any spawned session (cc workflow, /workflows
+bg session, cc delegate, cc fork). The subagents/ path does not appear to be
+populated for bg sessions in this Claude Code version (2.1.168). If native /workflows
+multi-agent runs DO create subagent directories, they would only be accessible by
+attaching to the TUI and waiting for the workflow to execute — not by the CLI path.
+
+
+VERDICT
+-------
+B — <50% of /workflows panel fields reachable via CLI/JSONL (31% covered).
+
+Load-bearing evidence:
+1. Native /workflows slash command: "status": "waiting", "waitingFor": "dialog open"
+   — identical TUI-blocked pattern to /tasks (Plan 0011). The panel opens an
+   interactive TUI viewer and blocks indefinitely on keyboard input.
+2. The cc workflow subcommand is NOT a /workflows panel driver — it prepends
+   "ultracode:" and runs a single-session OMC skill. No phase structure, no
+   subagent records, no per-phase token data in JSONL.
+3. claude agents --json exposes only session-level metadata (pid/cwd/sessionId/
+   name/status/kind). All workflow-specific fields (phases, per-agent data,
+   token breakdown, keystrokes) are TUI-only.
+
+Implication for T2:
+  Scope B applies. No $claude-workflows skill can be shipped based on CLI/JSONL
+  data alone. PTY-injection (Plan 0016) is required to expose the /workflows panel
+  fields. T2 ships only the OQ-A deferral documentation (append section to
+  $claude-status SKILL.md noting /workflows is TUI-only; direct users to
+  claude attach for live inspection).
+
+Sessions stopped: job_mq34spc3_13a8537a (46153ea7), e09c6967, a163b004

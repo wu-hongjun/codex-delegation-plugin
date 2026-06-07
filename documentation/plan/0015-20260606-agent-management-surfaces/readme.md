@@ -1,8 +1,9 @@
 # Plan 0015 — Agent management surfaces (`/workflows` panel + `/tasks` panel coverage)
 
-**Status**: `implementing`
+**Status**: `auditing`
 **Started**: 2026-06-06
 **Stage 1 approved**: 2026-06-06 (maintainer authorized full cycle)
+**Stage 2 complete (pending CI)**: 2026-06-06
 **Drafted from**: maintainer's "/workflows TUI panel wrapper + /tasks PTY-injection design" direction. Both are TUI-blocked-on-input commands; share the same architectural class.
 **Last updated**: 2026-06-06
 
@@ -11,7 +12,7 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-06** — Adaptive scope: 3 OQs (CLI-coverage probe + PTY-feasibility); T2 ships per verdicts |
-| 2 — Implement | `2-implement.md` | **in progress 2026-06-06** — T1 probes dispatching via single executor |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1 returned B/A/feasible; T2 docs-only update to `$claude-status` SKILL.md documenting `/tasks` equivalence + `/workflows` deferral to Plan 0016; +3 regression tests; 1485 → 1488 npm test (+3); CI run pending |
 | 3 — Audit | `3-audit.md` | not started — requires independent context |
 | 4 — Polish | `4-polish.md` | not started |
 | 5 — Report | `5-report.md` | not started |

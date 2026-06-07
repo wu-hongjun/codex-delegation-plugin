@@ -1659,3 +1659,43 @@ describe('claude-delegate/SKILL.md cross-references saved workflows (Plan 0013 T
     );
   });
 });
+
+// ---------- Plan 0015 T2: /tasks and /workflows panel coverage notes ----------
+
+describe('claude-status/SKILL.md documents /tasks panel equivalence (Plan 0015 T2)', () => {
+  it('claude-status/SKILL.md mentions /tasks equivalence with claude agents --json', () => {
+    const body = readFileSync(resolve(PLUGIN_ROOT, 'skills', 'claude-status', 'SKILL.md'), 'utf8');
+    assert.ok(
+      body.includes('/tasks'),
+      'claude-status/SKILL.md must mention /tasks per Plan 0015 T2',
+    );
+    assert.ok(
+      body.includes('claude agents --json') || body.includes('claude agents'),
+      'claude-status/SKILL.md must explain the data source (claude agents --json) per Plan 0015 T2',
+    );
+  });
+});
+
+describe('claude-status/SKILL.md notes /workflows panel deferral (Plan 0015 T2)', () => {
+  it('claude-status/SKILL.md mentions /workflows panel and the deferral to Plan 0016', () => {
+    const body = readFileSync(resolve(PLUGIN_ROOT, 'skills', 'claude-status', 'SKILL.md'), 'utf8');
+    assert.ok(
+      body.includes('/workflows'),
+      'claude-status/SKILL.md must mention /workflows per Plan 0015 T2',
+    );
+    assert.ok(
+      body.includes('Plan 0016') || body.includes('PTY-injection'),
+      'claude-status/SKILL.md must note the deferral to Plan 0016 or PTY-injection per Plan 0015 T2',
+    );
+  });
+});
+
+describe('claude-status/SKILL.md documents claude attach interactive path (Plan 0015 T2)', () => {
+  it('claude-status/SKILL.md mentions claude attach for interactive session inspection', () => {
+    const body = readFileSync(resolve(PLUGIN_ROOT, 'skills', 'claude-status', 'SKILL.md'), 'utf8');
+    assert.ok(
+      body.includes('claude attach'),
+      'claude-status/SKILL.md must mention claude attach as the interactive path per Plan 0015 T2',
+    );
+  });
+});

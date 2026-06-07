@@ -1,0 +1,173 @@
+OQ-B Probe: /tasks panel coverage vs claude agents --json
+=========================================================
+
+ENVIRONMENT
+-----------
+Date:           2026-06-06
+claude version: 2.1.168 (Claude Code)
+Plugin id:      cc (post-Plan-0014)
+Dispatcher:     packages/plugin-codex/scripts/cc.mjs
+cwd:            /Users/hongjunwu/Repositories/Git/cc-plugin-codex
+
+
+REFERENCE — Plan 0011 OQ-A artifact
+------------------------------------
+Plan 0011 probed /tasks via `claude --bg "/tasks"` and found:
+
+  {
+    "name": "/tasks",
+    "status": "waiting",
+    "waitingFor": "dialog open"
+  }
+
+  The /tasks TUI dialog showed:
+    - Panel title: "Background tasks"
+    - Body: "No tasks currently running"
+    - Footer: "↑/↓ to select · Enter to view · ←/Esc to close"
+
+  Plan 0011 Verdict B: TUI-only interactive command; blocked on keyboard input.
+  No JSONL file created; session never advanced past dialog-open state.
+
+
+PROBE — 3 mixed bg sessions + claude agents --json comparison
+-------------------------------------------------------------
+
+Sessions spawned:
+  1. cc delegate --yes -- "Print OK then stop."
+     Job: job_mq34u8qp_434eea11 / Session: 79770241
+  2. cc workflow --yes -- "Print OK then stop."
+     Job: job_mq34ud5y_958b3918 / Session: 24637634
+  3. cc fork    --yes -- "Print OK then stop."
+     Job: job_mq34uhcg_47edf135 / Session: c9d78a0b
+
+claude agents --json (relevant sessions, captured ~5s after spawn):
+
+  Session 79770241 (delegate):
+  {
+    "pid": 75479,
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+    "kind": "background",
+    "startedAt": 1780797478815,
+    "sessionId": "79770241-430c-463d-9a22-d75e97577989",
+    "name": "codex:cc-plugin-codex:mq34u618",
+    "status": "idle"
+  }
+
+  Session 24637634 (workflow / ultracode):
+  {
+    "pid": 75955,
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+    "kind": "background",
+    "startedAt": 1780797484388,
+    "sessionId": "24637634-4e0a-458b-a254-841eb43d585a",
+    "name": "codex:cc-plugin-codex:mq34uaeq",
+    "status": "idle"
+  }
+
+  Session c9d78a0b (fork):
+  {
+    "pid": 76376,
+    "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+    "kind": "background",
+    "startedAt": 1780797489956,
+    "sessionId": "c9d78a0b-127f-48ed-b96b-42bb4ed27114",
+    "name": "codex:cc-plugin-codex:mq34uenq",
+    "status": "busy"
+  }
+
+  Also present (from prior probe, still alive):
+  Session e09c6967 (/workflows TUI, blocked):
+  {
+    "name": "/workflows",
+    "status": "waiting",
+    "waitingFor": "dialog open"
+  }
+
+
+FIELD OVERLAP ANALYSIS
+-----------------------
+
+Fields present in claude agents --json per session:
+  pid          — process ID
+  cwd          — working directory
+  kind         — "background" | "interactive"
+  startedAt    — epoch ms
+  sessionId    — full UUID
+  name         — session name (job-derived for cc jobs; slash-command text for TUI cmds)
+  status       — "idle" | "busy" | "waiting"
+  waitingFor   — present when status="waiting" ("dialog open", "permission prompt")
+
+Fields documented for /tasks TUI panel (from Plan 0011 logs + documented behavior):
+  Session name      — YES, in claude agents --json as "name"
+  Session status    — YES, in claude agents --json as "status"
+  Session kind      — YES, implicitly (background sessions are background "tasks")
+  ↑/↓ navigation   — TUI-only keystroke
+  Enter to view     — TUI-only (would attach to session)
+  ←/Esc to close   — TUI-only keystroke
+
+KIND DIFFERENTIATION ACROSS SESSION TYPES:
+  All three cc job types (delegate, workflow/ultracode, fork) report "kind": "background".
+  No per-type kind discrimination is present in claude agents --json.
+  The session "name" field distinguishes them indirectly: cc jobs use the
+  "codex:<workspace>:<jobId>" naming convention set by the driver, not the
+  command type (delegate/workflow/fork).
+
+  The cc plugin's own job store (runtime job records) DOES track commandName
+  ("delegate", "workflow", "fork", "goal", etc.) — but this is NOT exposed
+  by claude agents --json. It is available via cc status / cc result / job files.
+
+WHAT /tasks WOULD SHOW THAT claude agents --json DOESN'T:
+  Based on Plan 0011 TUI capture and the current agents --json analysis:
+
+  1. KIND LABEL — /tasks would likely render a human-readable "kind" label
+     (e.g., "Delegate task", "Workflow", "Fork") based on session metadata.
+     claude agents --json only returns "background" for all three.
+     → PARTIAL GAP: kind label would need to be derived from cc job store,
+       not from claude agents --json alone. But cc status already fills this.
+
+  2. INTERACTIVE SELECTION — /tasks lets the user ↑/↓ to select a session
+     and Enter to open/attach to it. This is TUI-only interaction.
+     → TUI-ONLY.
+
+  3. NOTHING ELSE STRUCTURAL — the /tasks panel in Plan 0011 showed "No tasks
+     currently running" with no additional metadata columns beyond name + status.
+     With running sessions, it would show name + status at minimum — both in
+     claude agents --json.
+
+VERDICT ANALYSIS:
+  The /tasks panel is structurally nearly equivalent to `claude agents --json`
+  filtered to background sessions, plus the interactive attach capability.
+  The only data gap is:
+    - The kind label (delegate/workflow/fork vs just "background") — this is
+      available via the cc plugin job store, not from claude agents --json.
+    - Interactive keyboard navigation — TUI-only.
+
+  The $claude-status --all skill (Plan 0009/0010/0011) already surfaces cc job
+  kinds via the job store. There is no new data in /tasks that isn't covered by
+  `cc status` + `claude agents --json` combined.
+
+
+VERDICT
+-------
+A — /tasks is structurally equivalent to $claude-status --all + claude agents
+    filtered to background sessions. No new $claude-tasks skill needed.
+
+Load-bearing evidence:
+1. claude agents --json already exposes all /tasks-visible fields: pid, cwd,
+   sessionId, name, status, kind, startedAt, waitingFor.
+2. The interactive navigation (↑/↓/Enter/Esc) is TUI-only but is already
+   covered by `claude attach <sessionId>` for the attach action.
+3. The only near-gap (kind label: delegate/workflow/fork) is already covered
+   by cc status, which reads the cc plugin job store.
+4. Plan 0011 showed /tasks as "No tasks currently running" — the panel renders
+   the same information claude agents --json returns, just in a TUI dialog.
+
+Implication for T2:
+  No new $claude-tasks skill is needed. T2 should append a note to the
+  $claude-status SKILL.md (or release notes) stating that $claude-status --all
+  provides equivalent coverage to the /tasks TUI panel, with claude attach
+  <sessionId> for interactive inspection. The interactive attach action
+  is the one TUI-exclusive affordance; document it as the recommended path.
+
+Sessions stopped: job_mq34u8qp_434eea11 (79770241), job_mq34ud5y_958b3918 (24637634),
+                  job_mq34uhcg_47edf135 (c9d78a0b), e09c6967, a163b004

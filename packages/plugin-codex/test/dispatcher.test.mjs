@@ -1,4 +1,4 @@
-// Tests for the claude-companion.mjs dispatcher — T10
+// Tests for the cc.mjs dispatcher — T10
 //
 // All tests run against tools/mock-claude and tools/mock-codex so no real Claude Code
 // or real Codex binary is needed and no network calls are made. Each test gets isolated
@@ -47,7 +47,7 @@ import { createRequire } from 'node:module';
 
 const here = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(here, '..', '..', '..', '..');
-const SCRIPT = join(REPO_ROOT, 'packages', 'plugin-codex', 'scripts', 'claude-companion.mjs');
+const SCRIPT = join(REPO_ROOT, 'packages', 'plugin-codex', 'scripts', 'cc.mjs');
 const MOCK_CLAUDE = join(REPO_ROOT, 'tools', 'mock-claude');
 const MOCK_CODEX = join(REPO_ROOT, 'tools', 'mock-codex');
 const FORMAT_LIB = join(REPO_ROOT, 'packages', 'plugin-codex', 'scripts', 'lib', 'format.mjs');
@@ -715,7 +715,7 @@ describe('--help', () => {
     assert.equal(result.status, 0, `expected exit 0 for --help, got ${result.status}`);
     assert.ok(
       result.stdout.toLowerCase().includes('usage') ||
-        result.stdout.toLowerCase().includes('claude-companion') ||
+        result.stdout.toLowerCase().includes('cc') ||
         result.stdout.toLowerCase().includes('subcommand'),
       `expected usage info in stdout; got:\n${result.stdout}`,
     );

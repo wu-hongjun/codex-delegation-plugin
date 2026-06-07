@@ -247,11 +247,7 @@ describe('probeCodexPluginTrust', () => {
 
   it('ok when codex config mentions the plugin and trust', async () => {
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(
-      tomlPath,
-      '[plugins."claude-companion"]\nenabled = true\ntrusted = true\n',
-      'utf8',
-    );
+    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
     const r = await probeCodexPluginTrust({
       env: { ...process.env, CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath },
     });
@@ -346,11 +342,7 @@ describe('runDoctor', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(
-      tomlPath,
-      '[plugins."claude-companion"]\nenabled = true\ntrusted = true\n',
-      'utf8',
-    );
+    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
     // Use legacy mode so --help lists --bg and daemon subcommand is available.
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
       helpListsBg: true,
@@ -374,11 +366,7 @@ describe('runDoctor', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(
-      tomlPath,
-      '[plugins."claude-companion"]\nenabled = true\ntrusted = true\n',
-      'utf8',
-    );
+    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
     // Real mode defaults: helpListsBg=false, daemonAvailable=false → both probes warn.
     const report = await runDoctor({
       env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath }),
@@ -482,11 +470,7 @@ describe('runDoctor', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(
-      tomlPath,
-      '[plugins."claude-companion"]\nenabled = true\ntrusted = true\n',
-      'utf8',
-    );
+    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
       helpListsBg: true,
       daemonAvailable: true,
@@ -513,11 +497,7 @@ describe('runDoctor', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(
-      tomlPath,
-      '[plugins."claude-companion"]\nenabled = true\ntrusted = true\n',
-      'utf8',
-    );
+    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
     // Flip claude-attach-help to fail; leave everything else healthy.
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
       helpListsBg: true,
@@ -542,11 +522,7 @@ describe('runDoctor', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(
-      tomlPath,
-      '[plugins."claude-companion"]\nenabled = true\ntrusted = true\n',
-      'utf8',
-    );
+    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
       helpListsBg: true,
       daemonAvailable: true,
@@ -575,11 +551,7 @@ describe('runDoctor', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(
-      tomlPath,
-      '[plugins."claude-companion"]\nenabled = true\ntrusted = true\n',
-      'utf8',
-    );
+    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
       helpListsBg: true,
       daemonAvailable: true,

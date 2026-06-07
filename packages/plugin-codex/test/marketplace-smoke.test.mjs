@@ -4,7 +4,7 @@
 //   - tools/smoke-marketplace.mjs (the helper that automates non-TUI smoke
 //     checks against the real codex CLI)
 //   - documentation/RELEASING.md Smoke Test section
-//   - marketplace/plugins/claude-companion/README.md smoke-test pointer
+//   - marketplace/plugins/cc/README.md smoke-test pointer
 //   - .github/workflows/ci.yml (negative — must NOT invoke smoke-marketplace)
 //
 // They do NOT spawn codex. Only --help is exercised against the smoke
@@ -25,19 +25,13 @@ const here = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(here, '..', '..', '..', '..');
 
 const SMOKE_SCRIPT = resolve(REPO_ROOT, 'tools', 'smoke-marketplace.mjs');
-const MARKETPLACE_README = resolve(
-  REPO_ROOT,
-  'marketplace',
-  'plugins',
-  'claude-companion',
-  'README.md',
-);
+const MARKETPLACE_README = resolve(REPO_ROOT, 'marketplace', 'plugins', 'cc', 'README.md');
 const RELEASING_MD = resolve(REPO_ROOT, 'documentation', 'RELEASING.md');
 const CI_WORKFLOW = resolve(REPO_ROOT, '.github', 'workflows', 'ci.yml');
 
 // ---------- constants the helper must contain verbatim ----------
 
-const PLUGIN_REF = 'claude-companion@cc-plugin-codex-local';
+const PLUGIN_REF = 'cc@cc-plugin-codex-local';
 
 // Plan 0006 T10: derive the expected plugin version from the source plugin
 // manifest at test time, so tests stay aligned with whatever the current
@@ -197,7 +191,7 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
   });
 
   // ========================================================================
-  // T9-8: script includes `codex plugin add claude-companion@cc-plugin-codex-local`
+  // T9-8: script includes `codex plugin add cc@cc-plugin-codex-local`
   // ========================================================================
 
   it('smoke script includes `codex plugin add` with the canonical plugin ref', () => {
@@ -250,7 +244,7 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
     // Positive: derivation references the marketplace plugin.json path.
     assert.match(
       body,
-      /plugins\/claude-companion\/\.codex-plugin\/plugin\.json/,
+      /plugins\/cc\/\.codex-plugin\/plugin\.json/,
       'smoke script must reference the marketplace plugin.json relative path for version derivation',
     );
     assert.match(
@@ -342,7 +336,7 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
     const surfaces = {
       'tools/smoke-marketplace.mjs': readFileSync(SMOKE_SCRIPT, 'utf8'),
       'documentation/RELEASING.md': readFileSync(RELEASING_MD, 'utf8'),
-      'marketplace/plugins/claude-companion/README.md': readFileSync(MARKETPLACE_README, 'utf8'),
+      'marketplace/plugins/cc/README.md': readFileSync(MARKETPLACE_README, 'utf8'),
     };
     for (const [label, body] of Object.entries(surfaces)) {
       for (const token of FORBIDDEN_COST_TOKENS) {
@@ -404,10 +398,10 @@ describe('smoke helper dispatcher-execution check (Plan 0006 T9.5)', () => {
       body.includes('STEP 5.5'),
       'smoke script must contain a STEP 5.5 dispatcher-execution block',
     );
-    // Must spawn the claude-companion.mjs setup command
+    // Must spawn the cc.mjs setup command
     assert.ok(
-      body.includes('claude-companion.mjs') && body.includes('setup'),
-      'smoke script STEP 5.5 must spawn claude-companion.mjs setup',
+      body.includes('cc.mjs') && body.includes('setup'),
+      'smoke script STEP 5.5 must spawn cc.mjs setup',
     );
   });
 
@@ -445,7 +439,7 @@ describe('smoke helper dispatcher-execution check (Plan 0006 T9.5)', () => {
 // T10 codifies the plugin-versioning model:
 //   1. `packages/plugin-codex/.codex-plugin/plugin.json` is the SOURCE OF
 //      TRUTH for the shipped plugin version.
-//   2. `marketplace/plugins/claude-companion/.codex-plugin/plugin.json` is a
+//   2. `marketplace/plugins/cc/.codex-plugin/plugin.json` is a
 //      byte-identical derived copy maintained by `tools/package-marketplace
 //      .mjs --write` and verified by `--check`.
 //   3. Workspace package versions (root + each packages/*) stay at "0.0.0"

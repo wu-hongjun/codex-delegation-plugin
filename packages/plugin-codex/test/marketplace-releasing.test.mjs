@@ -179,7 +179,7 @@ describe('consolidated release checklist (Plan 0006 T11)', () => {
     );
     assert.match(
       content,
-      /marketplace\/plugins\/claude-companion/,
+      /marketplace\/plugins\/cc/,
       'Packaging section must reference the marketplace plugin path',
     );
   });
@@ -202,7 +202,7 @@ describe('consolidated release checklist (Plan 0006 T11)', () => {
     );
     assert.match(
       content,
-      /scripts\/claude-companion\.mjs setup/,
+      /scripts\/cc\.mjs setup/,
       'Packaging section must reference the dispatcher setup command as the cache-execution probe',
     );
   });
@@ -357,9 +357,7 @@ describe('consolidated release checklist (Plan 0006 T11)', () => {
 
   it('Uninstall procedure preserves T8 ordering (plugin remove FIRST, marketplace second)', () => {
     const content = readFileSync(RELEASING_MD, 'utf8');
-    const removeIdx = content.indexOf(
-      'codex plugin remove "claude-companion@cc-plugin-codex-local"',
-    );
+    const removeIdx = content.indexOf('codex plugin remove "cc@cc-plugin-codex-local"');
     const marketplaceRemoveIdx = content.indexOf(
       'codex plugin marketplace remove "cc-plugin-codex-local"',
     );

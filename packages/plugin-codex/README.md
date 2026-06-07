@@ -42,20 +42,20 @@ the plugin to Codex.
 
 ```bash
 codex plugin marketplace add "$(pwd)/marketplace"
-codex plugin add "claude-companion@cc-plugin-codex-local"
+codex plugin add "cc@cc-plugin-codex-local"
 codex plugin list
 ```
 
 That's the whole install. The committed `marketplace/` tree under
 the repo root contains the byte-identical plugin payload at
-`marketplace/plugins/claude-companion/`, the marketplace root
+`marketplace/plugins/cc/`, the marketplace root
 manifest at `marketplace/.agents/plugins/marketplace.json`, and the
 bundled runtime / driver / `node-pty` dependencies under
-`marketplace/plugins/claude-companion/node_modules/` (Plan 0006
+`marketplace/plugins/cc/node_modules/` (Plan 0006
 T9.5) needed for the cached install to execute end-to-end.
 
 The streamlined end-user surface for this install is
-[`marketplace/plugins/claude-companion/README.md`](../../marketplace/plugins/claude-companion/README.md).
+[`marketplace/plugins/cc/README.md`](../../marketplace/plugins/cc/README.md).
 That file is short, install/use/troubleshoot focused, and ships
 alongside the marketplace tree itself. The full plugin docs (this
 README) cover the runtime, dispatcher, skills, and architecture in
@@ -93,7 +93,7 @@ Expected aggregate status:
 Direct dispatcher fallback (if the skill is unavailable):
 
 ```bash
-node packages/plugin-codex/scripts/claude-companion.mjs setup
+node packages/plugin-codex/scripts/cc.mjs setup
 ```
 
 ## Commands and skills
@@ -155,7 +155,7 @@ Rejected at parse time:
 Direct dispatcher equivalent:
 
 ```bash
-node packages/plugin-codex/scripts/claude-companion.mjs workflow "audit every fetch() call and propose a migration to HttpClient"
+node packages/plugin-codex/scripts/cc.mjs workflow "audit every fetch() call and propose a migration to HttpClient"
 ```
 
 ### $claude-goal
@@ -194,7 +194,7 @@ Rejected at parse time:
 Direct dispatcher equivalent:
 
 ```bash
-node packages/plugin-codex/scripts/claude-companion.mjs goal -- "all unit tests in src/utils/ pass"
+node packages/plugin-codex/scripts/cc.mjs goal -- "all unit tests in src/utils/ pass"
 ```
 
 ### $claude-fork
@@ -233,7 +233,7 @@ Rejected at parse time:
 Direct dispatcher equivalent:
 
 ```bash
-node packages/plugin-codex/scripts/claude-companion.mjs fork -- "build a proof-of-concept for the new rate-limiter"
+node packages/plugin-codex/scripts/cc.mjs fork -- "build a proof-of-concept for the new rate-limiter"
 ```
 
 ### $claude-batch
@@ -272,7 +272,7 @@ Rejected at parse time:
 Direct dispatcher equivalent:
 
 ```bash
-node packages/plugin-codex/scripts/claude-companion.mjs batch -- "migrate all usages of the old API to the new one"
+node packages/plugin-codex/scripts/cc.mjs batch -- "migrate all usages of the old API to the new one"
 ```
 
 ### $claude-deep-research
@@ -313,7 +313,7 @@ Rejected at parse time:
 Direct dispatcher equivalent:
 
 ```bash
-node packages/plugin-codex/scripts/claude-companion.mjs deep-research -- "What are the main tradeoffs between B-trees and LSM-trees for write-heavy workloads?"
+node packages/plugin-codex/scripts/cc.mjs deep-research -- "What are the main tradeoffs between B-trees and LSM-trees for write-heavy workloads?"
 ```
 
 ### $claude-status
@@ -377,19 +377,19 @@ Optional cleanup. Not required before calling `result`.
 All thirteen commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
-node packages/plugin-codex/scripts/claude-companion.mjs setup
-node packages/plugin-codex/scripts/claude-companion.mjs delegate --yes -- "Inspect this repo."
-node packages/plugin-codex/scripts/claude-companion.mjs status
-node packages/plugin-codex/scripts/claude-companion.mjs followup <jobId> -- "Next instruction."
-node packages/plugin-codex/scripts/claude-companion.mjs result <jobId>
-node packages/plugin-codex/scripts/claude-companion.mjs stop <jobId>
-node packages/plugin-codex/scripts/claude-companion.mjs review <jobId>
-node packages/plugin-codex/scripts/claude-companion.mjs adversarial-review <jobId>
-node packages/plugin-codex/scripts/claude-companion.mjs workflow "audit every fetch() call and propose a migration to HttpClient"
-node packages/plugin-codex/scripts/claude-companion.mjs goal -- "all unit tests pass"
-node packages/plugin-codex/scripts/claude-companion.mjs fork -- "build a proof-of-concept for the new rate-limiter"
-node packages/plugin-codex/scripts/claude-companion.mjs batch -- "migrate all usages of the old API to the new one"
-node packages/plugin-codex/scripts/claude-companion.mjs deep-research -- "What are the main tradeoffs between B-trees and LSM-trees for write-heavy workloads?"
+node packages/plugin-codex/scripts/cc.mjs setup
+node packages/plugin-codex/scripts/cc.mjs delegate --yes -- "Inspect this repo."
+node packages/plugin-codex/scripts/cc.mjs status
+node packages/plugin-codex/scripts/cc.mjs followup <jobId> -- "Next instruction."
+node packages/plugin-codex/scripts/cc.mjs result <jobId>
+node packages/plugin-codex/scripts/cc.mjs stop <jobId>
+node packages/plugin-codex/scripts/cc.mjs review <jobId>
+node packages/plugin-codex/scripts/cc.mjs adversarial-review <jobId>
+node packages/plugin-codex/scripts/cc.mjs workflow "audit every fetch() call and propose a migration to HttpClient"
+node packages/plugin-codex/scripts/cc.mjs goal -- "all unit tests pass"
+node packages/plugin-codex/scripts/cc.mjs fork -- "build a proof-of-concept for the new rate-limiter"
+node packages/plugin-codex/scripts/cc.mjs batch -- "migrate all usages of the old API to the new one"
+node packages/plugin-codex/scripts/cc.mjs deep-research -- "What are the main tradeoffs between B-trees and LSM-trees for write-heavy workloads?"
 ```
 
 All commands support `--json` for machine-readable output. The `--yes` flag on `delegate` and `followup` skips the interactive privacy acknowledgement; `--allow-edit` is a policy/framing flag and does NOT bypass that acknowledgement.
@@ -397,8 +397,8 @@ All commands support `--json` for machine-readable output. The `--yes` flag on `
 For bulk-stop of awaiting-followup jobs (added in plan 0002):
 
 ```bash
-node packages/plugin-codex/scripts/claude-companion.mjs stop --all-awaiting-followup
-node packages/plugin-codex/scripts/claude-companion.mjs stop --all-awaiting-followup --all
+node packages/plugin-codex/scripts/cc.mjs stop --all-awaiting-followup
+node packages/plugin-codex/scripts/cc.mjs stop --all-awaiting-followup --all
 ```
 
 ## Privacy and workspace disclosure
@@ -454,7 +454,7 @@ $claude-review <jobId-or-prefix>
 Direct dispatcher equivalent:
 
 ```bash
-node packages/plugin-codex/scripts/claude-companion.mjs review <jobId-or-prefix>
+node packages/plugin-codex/scripts/cc.mjs review <jobId-or-prefix>
 ```
 
 Accepted flags:
@@ -494,7 +494,7 @@ $claude-adversarial-review <jobId-or-prefix>
 Direct dispatcher equivalent:
 
 ```bash
-node packages/plugin-codex/scripts/claude-companion.mjs adversarial-review <jobId-or-prefix>
+node packages/plugin-codex/scripts/cc.mjs adversarial-review <jobId-or-prefix>
 ```
 
 Accepted flags:
@@ -786,7 +786,7 @@ This v1 uses Claude Code background sessions and does not use `claude -p`. It is
 Run setup again with more detail:
 
 ```bash
-node packages/plugin-codex/scripts/claude-companion.mjs setup
+node packages/plugin-codex/scripts/cc.mjs setup
 ```
 
 The detailed output will show which probes failed. Common causes:

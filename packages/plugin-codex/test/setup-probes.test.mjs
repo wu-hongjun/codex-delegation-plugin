@@ -19,7 +19,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = fileURLToPath(import.meta.url);
-const DISPATCHER = resolve(here, '..', '..', 'scripts', 'claude-companion.mjs');
+const DISPATCHER = resolve(here, '..', '..', 'scripts', 'cc.mjs');
 
 function runSetup() {
   const result = spawnSync('node', [DISPATCHER, 'setup'], {

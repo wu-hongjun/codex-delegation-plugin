@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Codex-facing plugin: skills, manifest, and `claude-companion.mjs` dispatcher.",
+  "description": "Codex-facing plugin: skills, manifest, and `cc.mjs` dispatcher.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

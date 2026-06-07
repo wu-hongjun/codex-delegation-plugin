@@ -14,7 +14,7 @@ The runtime is structured as a `Driver` interface with one implementation today 
 
 This repo is the cc-plugin-codex workspace. Different surfaces target different audiences:
 
-- **Install / use the plugin (end users):** [`marketplace/plugins/claude-companion/README.md`](marketplace/plugins/claude-companion/README.md) — short, install / verify / upgrade / uninstall / troubleshooting + the 8-skill list.
+- **Install / use the plugin (end users):** [`marketplace/plugins/cc/README.md`](marketplace/plugins/cc/README.md) — short, install / verify / upgrade / uninstall / troubleshooting + the 8-skill list.
 - **Local marketplace tree:** [`marketplace/`](marketplace/) — committed, ready for `codex plugin marketplace add "$(pwd)/marketplace"`.
 - **Full plugin docs (developers + contributors):** [`packages/plugin-codex/README.md`](packages/plugin-codex/README.md) — comprehensive runtime, dispatcher, skill, and architecture docs.
 - **Release maintainers:** [`documentation/RELEASING.md`](documentation/RELEASING.md) — canonical release-day checklist (prerequisites, version bump, packaging, smoke, CI, tagging, post-release).
@@ -83,7 +83,7 @@ Codex's plugin model is intentionally thinner than Claude Code's — skills are 
 
 - Manifest at `.codex-plugin/plugin.json` — same shape as the ~148 examples in `references/codex-plugins-examples/plugins/`.
 - Skills at `skills/<name>/SKILL.md` — same shape as `references/codex-skills-examples/skills/.system/` and `.curated/`.
-- One Node entry point (`scripts/claude-companion.mjs`) handles every skill via subcommands.
+- One Node entry point (`scripts/cc.mjs`) handles every skill via subcommands.
 
 ### 4. Universal plugin descriptor — *design seam; v1 ships Codex shape only*
 

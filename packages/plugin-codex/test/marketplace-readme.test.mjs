@@ -1,7 +1,7 @@
 // Static-validation tests for the install-procedure docs — Plan 0006 T6
 //
 // These tests do NOT spawn processes. They verify that the user-facing install
-// documentation in marketplace/plugins/claude-companion/README.md and
+// documentation in marketplace/plugins/cc/README.md and
 // documentation/RELEASING.md contains the correct verbatim install commands,
 // the expected post-install gate, and no forbidden cost-claim or
 // benchmark/cutover vocabulary.
@@ -21,21 +21,15 @@ const here = fileURLToPath(import.meta.url);
 // packages/plugin-codex/test/ -> up 3 levels to repo root
 const REPO_ROOT = resolve(here, '..', '..', '..', '..');
 
-const MARKETPLACE_README = resolve(
-  REPO_ROOT,
-  'marketplace',
-  'plugins',
-  'claude-companion',
-  'README.md',
-);
+const MARKETPLACE_README = resolve(REPO_ROOT, 'marketplace', 'plugins', 'cc', 'README.md');
 const RELEASING_MD = resolve(REPO_ROOT, 'documentation', 'RELEASING.md');
 
 // ---------- verbatim install command strings ----------
 
 const CMD_MARKETPLACE_ADD = 'codex plugin marketplace add "<repo-root>/marketplace"';
-const CMD_PLUGIN_ADD = 'codex plugin add "claude-companion@cc-plugin-codex-local"';
+const CMD_PLUGIN_ADD = 'codex plugin add "cc@cc-plugin-codex-local"';
 const CMD_VERIFY = 'codex plugin list';
-const CMD_PLUGIN_REMOVE = 'codex plugin remove "claude-companion@cc-plugin-codex-local"';
+const CMD_PLUGIN_REMOVE = 'codex plugin remove "cc@cc-plugin-codex-local"';
 const CMD_MARKETPLACE_REMOVE = 'codex plugin marketplace remove "cc-plugin-codex-local"';
 const POST_INSTALL_GATE = '$claude-setup';
 const OLD_RSYNC_CMD = 'rsync -a --delete';
@@ -73,7 +67,7 @@ describe('marketplace install procedure docs (Plan 0006 T6)', () => {
   // T6-1: marketplace README.md exists and is non-empty
   // ========================================================================
 
-  it('marketplace/plugins/claude-companion/README.md exists and is non-empty', () => {
+  it('marketplace/plugins/cc/README.md exists and is non-empty', () => {
     assert.ok(existsSync(MARKETPLACE_README), `README.md not found at ${MARKETPLACE_README}`);
     const content = readFileSync(MARKETPLACE_README, 'utf8');
     assert.ok(content.length > 0, 'marketplace README.md is empty');
@@ -95,7 +89,7 @@ describe('marketplace install procedure docs (Plan 0006 T6)', () => {
   // T6-3: README contains the verbatim plugin add command
   // ========================================================================
 
-  it('README contains the verbatim `codex plugin add "claude-companion@cc-plugin-codex-local"` command', () => {
+  it('README contains the verbatim `codex plugin add "cc@cc-plugin-codex-local"` command', () => {
     const content = readFileSync(MARKETPLACE_README, 'utf8');
     assert.ok(
       content.includes(CMD_PLUGIN_ADD),

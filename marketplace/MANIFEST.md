@@ -2,14 +2,14 @@
 
 > Generated and verified by `node tools/package-marketplace.mjs --check`.
 > Source tree: `packages/plugin-codex/`
-> Marketplace tree: `marketplace/plugins/claude-companion/`
+> Marketplace tree: `marketplace/plugins/cc/`
 
 ## Plugin-tree files (sourced from `packages/plugin-codex/`)
 
-The following 24 files are copied byte-for-byte from `packages/plugin-codex/` into `marketplace/plugins/claude-companion/`:
+The following 24 files are copied byte-for-byte from `packages/plugin-codex/` into `marketplace/plugins/cc/`:
 
 - `.codex-plugin/plugin.json`
-- `scripts/claude-companion.mjs`
+- `scripts/cc.mjs`
 - `scripts/lib/ack.mjs`
 - `scripts/lib/adapter.mjs`
 - `scripts/lib/args.mjs`
@@ -33,17 +33,17 @@ The following 24 files are copied byte-for-byte from `packages/plugin-codex/` in
 - `skills/claude-batch/SKILL.md`
 - `skills/claude-deep-research/SKILL.md`
 
-Note: `scripts/claude-companion.mjs` is copied from source and the packaging script sets the user-executable bit (chmod 0755) on the marketplace copy unconditionally, since the source file has mode 644 but the marketplace copy must be executable.
+Note: `scripts/cc.mjs` is copied from source and the packaging script sets the user-executable bit (chmod 0755) on the marketplace copy unconditionally, since the source file has mode 644 but the marketplace copy must be executable.
 
 ## Bundled-dependency tree (sourced from workspace + npm install)
 
 > Added in Plan 0006 T9.5 to fix the cache-execution `ERR_MODULE_NOT_FOUND`
 > defect: `codex plugin add` materialises only what is committed under
-> `marketplace/plugins/claude-companion/`, so the dispatcher's
+> `marketplace/plugins/cc/`, so the dispatcher's
 > `@cc-plugin-codex/*` and `node-pty` imports must resolve from a committed
 > `node_modules/` under the same plugin root.
 
-All paths are relative to `marketplace/plugins/claude-companion/`.
+All paths are relative to `marketplace/plugins/cc/`.
 
 ### `node_modules/@cc-plugin-codex/runtime/`
 - `package.json` — synthesized minimal shape (version marker: `0.2.0-bundled`).

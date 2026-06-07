@@ -132,12 +132,9 @@ describe('README.md mentions all six skill names', () => {
 // ---------- 4. Dispatcher path ----------
 
 describe('README.md mentions direct dispatcher path', () => {
-  it('contains "scripts/claude-companion.mjs"', () => {
+  it('contains "scripts/cc.mjs"', () => {
     const body = readReadme();
-    assert.ok(
-      body.includes('scripts/claude-companion.mjs'),
-      'README.md does not mention "scripts/claude-companion.mjs"',
-    );
+    assert.ok(body.includes('scripts/cc.mjs'), 'README.md does not mention "scripts/cc.mjs"');
   });
 });
 
@@ -506,11 +503,11 @@ describe('README.md mentions $claude-followup (T13-1)', () => {
 // ---------- T13-2. README documents the followup dispatcher command ----------
 
 describe('README.md documents the followup dispatcher command (T13-2)', () => {
-  it('contains "claude-companion.mjs followup"', () => {
+  it('contains "cc.mjs followup"', () => {
     const body = readReadme();
     assert.ok(
-      body.includes('claude-companion.mjs followup'),
-      'README.md does not document the direct dispatcher command "claude-companion.mjs followup"',
+      body.includes('cc.mjs followup'),
+      'README.md does not document the direct dispatcher command "cc.mjs followup"',
     );
   });
 });
@@ -787,11 +784,11 @@ describe('README.md documents $claude-adversarial-review (T10-3)', () => {
 // ---------- T10-4. README documents direct dispatcher review command ----------
 
 describe('README.md documents direct dispatcher review command (T10-4)', () => {
-  it('contains "claude-companion.mjs review"', () => {
+  it('contains "cc.mjs review"', () => {
     const body = readReadme();
     assert.ok(
-      body.includes('claude-companion.mjs review'),
-      'README.md does not document the direct dispatcher command "claude-companion.mjs review"',
+      body.includes('cc.mjs review'),
+      'README.md does not document the direct dispatcher command "cc.mjs review"',
     );
   });
 });
@@ -799,11 +796,11 @@ describe('README.md documents direct dispatcher review command (T10-4)', () => {
 // ---------- T10-5. README documents direct dispatcher adversarial-review command ----------
 
 describe('README.md documents direct dispatcher adversarial-review command (T10-5)', () => {
-  it('contains "claude-companion.mjs adversarial-review"', () => {
+  it('contains "cc.mjs adversarial-review"', () => {
     const body = readReadme();
     assert.ok(
-      body.includes('claude-companion.mjs adversarial-review'),
-      'README.md does not document the direct dispatcher command "claude-companion.mjs adversarial-review"',
+      body.includes('cc.mjs adversarial-review'),
+      'README.md does not document the direct dispatcher command "cc.mjs adversarial-review"',
     );
   });
 });

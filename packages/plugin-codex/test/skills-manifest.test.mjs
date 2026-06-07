@@ -122,13 +122,9 @@ describe('plugin.json parses as valid JSON', () => {
 });
 
 describe('plugin.json.name', () => {
-  it('equals "claude-companion"', () => {
+  it('equals "cc"', () => {
     const manifest = readManifest();
-    assert.equal(
-      manifest.name,
-      'claude-companion',
-      `expected name "claude-companion", got "${manifest.name}"`,
-    );
+    assert.equal(manifest.name, 'cc', `expected name "cc", got "${manifest.name}"`);
   });
 });
 
@@ -364,13 +360,13 @@ describe('each SKILL.md frontmatter is parseable by a strict YAML reader (Codex 
 
 // ---------- Body content tests ----------
 
-describe('each SKILL.md references scripts/claude-companion.mjs', () => {
+describe('each SKILL.md references scripts/cc.mjs', () => {
   for (const name of SKILL_NAMES) {
-    it(`${name}: body contains "scripts/claude-companion.mjs"`, () => {
+    it(`${name}: body contains "scripts/cc.mjs"`, () => {
       const body = readFileSync(skillPath(name), 'utf8');
       assert.ok(
-        body.includes('scripts/claude-companion.mjs'),
-        `${name}: SKILL.md does not reference "scripts/claude-companion.mjs"`,
+        body.includes('scripts/cc.mjs'),
+        `${name}: SKILL.md does not reference "scripts/cc.mjs"`,
       );
     });
   }
@@ -389,11 +385,11 @@ describe('each SKILL.md references its own subcommand', () => {
 // ---------- claude-delegate --yes auto-injection guard ----------
 
 describe('claude-delegate/SKILL.md does not auto-inject --yes on dispatcher run lines', () => {
-  it('no line containing both "claude-companion.mjs" and "delegate" also contains " --yes"', () => {
+  it('no line containing both "cc.mjs" and "delegate" also contains " --yes"', () => {
     const body = readFileSync(skillPath('claude-delegate'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs') && line.includes('delegate'))
+      .filter((line) => line.includes('cc.mjs') && line.includes('delegate'))
       .filter((line) => line.includes(' --yes'));
 
     assert.equal(
@@ -407,11 +403,11 @@ describe('claude-delegate/SKILL.md does not auto-inject --yes on dispatcher run 
 // ---------- claude-followup --yes auto-injection guard ----------
 
 describe('claude-followup/SKILL.md does not auto-inject --yes on dispatcher run lines', () => {
-  it('no line containing both "claude-companion.mjs" and "followup" also contains " --yes"', () => {
+  it('no line containing both "cc.mjs" and "followup" also contains " --yes"', () => {
     const body = readFileSync(skillPath('claude-followup'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs') && line.includes('followup'))
+      .filter((line) => line.includes('cc.mjs') && line.includes('followup'))
       .filter((line) => line.includes(' --yes'));
 
     assert.equal(
@@ -621,7 +617,7 @@ describe('claude-review/SKILL.md: --yes auto-injection guard', () => {
     const body = readFileSync(skillPath('claude-review'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs') && line.includes(' review'))
+      .filter((line) => line.includes('cc.mjs') && line.includes(' review'))
       .filter((line) => line.includes(' --yes'));
     assert.equal(
       offendingLines.length,
@@ -636,9 +632,7 @@ describe('claude-adversarial-review/SKILL.md: --yes auto-injection guard', () =>
     const body = readFileSync(skillPath('claude-adversarial-review'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter(
-        (line) => line.includes('claude-companion.mjs') && line.includes('adversarial-review'),
-      )
+      .filter((line) => line.includes('cc.mjs') && line.includes('adversarial-review'))
       .filter((line) => line.includes(' --yes'));
     assert.equal(
       offendingLines.length,
@@ -654,9 +648,7 @@ describe('claude-adversarial-review/SKILL.md: no empty-prompt sequence on run li
     // Check each line that invokes the dispatcher
     const runLines = body
       .split('\n')
-      .filter(
-        (line) => line.includes('claude-companion.mjs') && line.includes('adversarial-review'),
-      );
+      .filter((line) => line.includes('cc.mjs') && line.includes('adversarial-review'));
     for (const line of runLines) {
       // Must not end with bare "--" (optionally followed by whitespace)
       assert.equal(
@@ -706,7 +698,7 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     const originals = [
-      'Set up Claude Companion.',
+      'Set up CC.',
       'Delegate a task to Claude Code.',
       'Check my Claude jobs.',
       'Show the result of a Claude job.',
@@ -762,12 +754,9 @@ describe('claude-workflow skill directory and SKILL.md exist', () => {
 });
 
 describe('claude-workflow/SKILL.md: run line invokes dispatcher with "workflow" subcommand', () => {
-  it('body contains "claude-companion.mjs" and "workflow"', () => {
+  it('body contains "cc.mjs" and "workflow"', () => {
     const body = readFileSync(skillPath('claude-workflow'), 'utf8');
-    assert.ok(
-      body.includes('claude-companion.mjs'),
-      'claude-workflow/SKILL.md must reference scripts/claude-companion.mjs',
-    );
+    assert.ok(body.includes('cc.mjs'), 'claude-workflow/SKILL.md must reference scripts/cc.mjs');
     assert.ok(
       body.includes('workflow'),
       'claude-workflow/SKILL.md must reference the "workflow" subcommand',
@@ -780,7 +769,7 @@ describe('claude-workflow/SKILL.md: --yes auto-injection guard', () => {
     const body = readFileSync(skillPath('claude-workflow'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs') && line.includes('workflow'))
+      .filter((line) => line.includes('cc.mjs') && line.includes('workflow'))
       .filter((line) => line.includes(' --yes'));
     assert.equal(
       offendingLines.length,
@@ -795,7 +784,7 @@ describe('claude-workflow/SKILL.md: --allow-edit is not referenced in run lines'
     const body = readFileSync(skillPath('claude-workflow'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs'))
+      .filter((line) => line.includes('cc.mjs'))
       .filter((line) => line.includes('--allow-edit'));
     assert.equal(
       offendingLines.length,
@@ -1095,12 +1084,9 @@ describe('claude-goal skill directory and SKILL.md exist (T3b Plan 0010)', () =>
 });
 
 describe('claude-goal/SKILL.md: run line invokes dispatcher with "goal" subcommand (T3b Plan 0010)', () => {
-  it('body contains "claude-companion.mjs" and "goal"', () => {
+  it('body contains "cc.mjs" and "goal"', () => {
     const body = readFileSync(skillPath('claude-goal'), 'utf8');
-    assert.ok(
-      body.includes('claude-companion.mjs'),
-      'claude-goal/SKILL.md must reference scripts/claude-companion.mjs',
-    );
+    assert.ok(body.includes('cc.mjs'), 'claude-goal/SKILL.md must reference scripts/cc.mjs');
     assert.ok(body.includes('goal'), 'claude-goal/SKILL.md must reference the "goal" subcommand');
   });
 
@@ -1118,7 +1104,7 @@ describe('claude-goal/SKILL.md: --yes auto-injection guard (T3b Plan 0010)', () 
     const body = readFileSync(skillPath('claude-goal'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs') && line.includes('goal'))
+      .filter((line) => line.includes('cc.mjs') && line.includes('goal'))
       .filter((line) => line.includes(' --yes'));
     assert.equal(
       offendingLines.length,
@@ -1133,7 +1119,7 @@ describe('claude-goal/SKILL.md: --allow-edit is not referenced in run lines (T3b
     const body = readFileSync(skillPath('claude-goal'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs'))
+      .filter((line) => line.includes('cc.mjs'))
       .filter((line) => line.includes('--allow-edit'));
     assert.equal(
       offendingLines.length,
@@ -1174,12 +1160,9 @@ describe('claude-fork skill directory and SKILL.md exist (Plan 0011)', () => {
 });
 
 describe('claude-fork/SKILL.md: run line invokes dispatcher with "fork" subcommand (Plan 0011)', () => {
-  it('body contains "claude-companion.mjs" and "fork"', () => {
+  it('body contains "cc.mjs" and "fork"', () => {
     const body = readFileSync(skillPath('claude-fork'), 'utf8');
-    assert.ok(
-      body.includes('claude-companion.mjs'),
-      'claude-fork/SKILL.md must reference scripts/claude-companion.mjs',
-    );
+    assert.ok(body.includes('cc.mjs'), 'claude-fork/SKILL.md must reference scripts/cc.mjs');
     assert.ok(body.includes('fork'), 'claude-fork/SKILL.md must reference the "fork" subcommand');
   });
 
@@ -1197,7 +1180,7 @@ describe('claude-fork/SKILL.md: --yes auto-injection guard (Plan 0011)', () => {
     const body = readFileSync(skillPath('claude-fork'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs') && line.includes('fork'))
+      .filter((line) => line.includes('cc.mjs') && line.includes('fork'))
       .filter((line) => line.includes(' --yes'));
     assert.equal(
       offendingLines.length,
@@ -1212,7 +1195,7 @@ describe('claude-fork/SKILL.md: --allow-edit is not referenced in run lines (Pla
     const body = readFileSync(skillPath('claude-fork'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs'))
+      .filter((line) => line.includes('cc.mjs'))
       .filter((line) => line.includes('--allow-edit'));
     assert.equal(
       offendingLines.length,
@@ -1268,12 +1251,9 @@ describe('claude-batch skill directory and SKILL.md exist (Plan 0011)', () => {
 });
 
 describe('claude-batch/SKILL.md: run line invokes dispatcher with "batch" subcommand (Plan 0011)', () => {
-  it('body contains "claude-companion.mjs" and "batch"', () => {
+  it('body contains "cc.mjs" and "batch"', () => {
     const body = readFileSync(skillPath('claude-batch'), 'utf8');
-    assert.ok(
-      body.includes('claude-companion.mjs'),
-      'claude-batch/SKILL.md must reference scripts/claude-companion.mjs',
-    );
+    assert.ok(body.includes('cc.mjs'), 'claude-batch/SKILL.md must reference scripts/cc.mjs');
     assert.ok(
       body.includes('batch'),
       'claude-batch/SKILL.md must reference the "batch" subcommand',
@@ -1294,7 +1274,7 @@ describe('claude-batch/SKILL.md: --yes auto-injection guard (Plan 0011)', () => 
     const body = readFileSync(skillPath('claude-batch'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs') && line.includes('batch'))
+      .filter((line) => line.includes('cc.mjs') && line.includes('batch'))
       .filter((line) => line.includes(' --yes'));
     assert.equal(
       offendingLines.length,
@@ -1309,7 +1289,7 @@ describe('claude-batch/SKILL.md: --allow-edit is not referenced in run lines (Pl
     const body = readFileSync(skillPath('claude-batch'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs'))
+      .filter((line) => line.includes('cc.mjs'))
       .filter((line) => line.includes('--allow-edit'));
     assert.equal(
       offendingLines.length,
@@ -1369,11 +1349,11 @@ describe('claude-deep-research skill directory and SKILL.md exist (Plan 0013)', 
 });
 
 describe('claude-deep-research/SKILL.md: run line invokes dispatcher with "deep-research" subcommand (Plan 0013)', () => {
-  it('body contains "claude-companion.mjs" and "deep-research"', () => {
+  it('body contains "cc.mjs" and "deep-research"', () => {
     const body = readFileSync(skillPath('claude-deep-research'), 'utf8');
     assert.ok(
-      body.includes('claude-companion.mjs'),
-      'claude-deep-research/SKILL.md must reference scripts/claude-companion.mjs',
+      body.includes('cc.mjs'),
+      'claude-deep-research/SKILL.md must reference scripts/cc.mjs',
     );
     assert.ok(
       body.includes('deep-research'),
@@ -1395,7 +1375,7 @@ describe('claude-deep-research/SKILL.md: --yes auto-injection guard (Plan 0013)'
     const body = readFileSync(skillPath('claude-deep-research'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs') && line.includes('deep-research'))
+      .filter((line) => line.includes('cc.mjs') && line.includes('deep-research'))
       .filter((line) => line.includes(' --yes'));
     assert.equal(
       offendingLines.length,
@@ -1410,7 +1390,7 @@ describe('claude-deep-research/SKILL.md: --allow-edit is not referenced in run l
     const body = readFileSync(skillPath('claude-deep-research'), 'utf8');
     const offendingLines = body
       .split('\n')
-      .filter((line) => line.includes('claude-companion.mjs'))
+      .filter((line) => line.includes('cc.mjs'))
       .filter((line) => line.includes('--allow-edit'));
     assert.equal(
       offendingLines.length,

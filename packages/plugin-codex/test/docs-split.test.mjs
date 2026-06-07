@@ -2,7 +2,7 @@
 //
 // Plan 0006 ships three distinct documentation surfaces:
 //
-//   1. marketplace/plugins/claude-companion/README.md
+//   1. marketplace/plugins/cc/README.md
 //      End-user marketplace README. Short, install / verify / upgrade /
 //      uninstall / troubleshooting + 8-skill list. Discoverable from the
 //      committed marketplace tree.
@@ -46,13 +46,7 @@ const REPO_ROOT = resolve(here, '..', '..', '..', '..');
 
 const ROOT_README = resolve(REPO_ROOT, 'README.md');
 const PLUGIN_README = resolve(REPO_ROOT, 'packages', 'plugin-codex', 'README.md');
-const MARKETPLACE_README = resolve(
-  REPO_ROOT,
-  'marketplace',
-  'plugins',
-  'claude-companion',
-  'README.md',
-);
+const MARKETPLACE_README = resolve(REPO_ROOT, 'marketplace', 'plugins', 'cc', 'README.md');
 const RELEASING_MD = resolve(REPO_ROOT, 'documentation', 'RELEASING.md');
 
 // ---------- skill names ----------
@@ -186,8 +180,8 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
         'marketplace README must contain verbatim `codex plugin marketplace add "<repo-root>/marketplace"`',
       );
       assert.ok(
-        content.includes('codex plugin add "claude-companion@cc-plugin-codex-local"'),
-        'marketplace README must contain verbatim `codex plugin add "claude-companion@cc-plugin-codex-local"`',
+        content.includes('codex plugin add "cc@cc-plugin-codex-local"'),
+        'marketplace README must contain verbatim `codex plugin add "cc@cc-plugin-codex-local"`',
       );
     });
 
@@ -321,8 +315,8 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
       );
       assert.match(
         body,
-        /codex plugin add "claude-companion@cc-plugin-codex-local"/,
-        'plugin README install section must reference the `claude-companion@cc-plugin-codex-local` plugin add command',
+        /codex plugin add "cc@cc-plugin-codex-local"/,
+        'plugin README install section must reference the `cc@cc-plugin-codex-local` plugin add command',
       );
     });
 
@@ -351,7 +345,7 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
       const body = match[0];
       assert.match(
         body,
-        /marketplace\/plugins\/claude-companion\/README\.md/,
+        /marketplace\/plugins\/cc\/README\.md/,
         'plugin README install section must point at the marketplace README',
       );
       assert.match(
@@ -389,7 +383,7 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
       // All four canonical pointers must appear in the file.
       assert.match(
         content,
-        /marketplace\/plugins\/claude-companion\/README\.md/,
+        /marketplace\/plugins\/cc\/README\.md/,
         'root README must link to the marketplace README',
       );
       assert.match(
@@ -560,8 +554,8 @@ describe('$claude-workflow documentation — plugin README (Plan 0008 T5)', () =
   it('plugin README Direct dispatcher usage section mentions the workflow subcommand', () => {
     const content = readFileSync(PLUGIN_README, 'utf8');
     assert.ok(
-      content.includes('claude-companion.mjs workflow'),
-      'plugin README must document "claude-companion.mjs workflow" in the Direct dispatcher usage section',
+      content.includes('cc.mjs workflow'),
+      'plugin README must document "cc.mjs workflow" in the Direct dispatcher usage section',
     );
   });
 });

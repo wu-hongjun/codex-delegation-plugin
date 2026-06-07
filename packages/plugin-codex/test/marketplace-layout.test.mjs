@@ -31,11 +31,11 @@ const SOURCE_PLUGIN_ROOT = resolve(REPO_ROOT, 'packages', 'plugin-codex');
 
 // Derived paths used across multiple tests
 const MARKETPLACE_JSON = resolve(MARKETPLACE_ROOT, '.agents', 'plugins', 'marketplace.json');
-const MARKETPLACE_PLUGIN_ROOT = resolve(MARKETPLACE_ROOT, 'plugins', 'claude-companion');
+const MARKETPLACE_PLUGIN_ROOT = resolve(MARKETPLACE_ROOT, 'plugins', 'cc');
 const MARKETPLACE_PLUGIN_JSON = resolve(MARKETPLACE_PLUGIN_ROOT, '.codex-plugin', 'plugin.json');
 const SOURCE_PLUGIN_JSON = resolve(SOURCE_PLUGIN_ROOT, '.codex-plugin', 'plugin.json');
 const MARKETPLACE_SCRIPTS_DIR = resolve(MARKETPLACE_PLUGIN_ROOT, 'scripts');
-const MARKETPLACE_ENTRY_SCRIPT = resolve(MARKETPLACE_SCRIPTS_DIR, 'claude-companion.mjs');
+const MARKETPLACE_ENTRY_SCRIPT = resolve(MARKETPLACE_SCRIPTS_DIR, 'cc.mjs');
 const MARKETPLACE_LIB_DIR = resolve(MARKETPLACE_SCRIPTS_DIR, 'lib');
 const SOURCE_LIB_DIR = resolve(SOURCE_PLUGIN_ROOT, 'scripts', 'lib');
 const MARKETPLACE_SKILLS_DIR = resolve(MARKETPLACE_PLUGIN_ROOT, 'skills');
@@ -119,8 +119,8 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
     );
     assert.equal(
       parsed.plugins[0].name,
-      'claude-companion',
-      `marketplace.json plugins[0].name must be "claude-companion"; got "${parsed.plugins[0].name}"`,
+      'cc',
+      `marketplace.json plugins[0].name must be "cc"; got "${parsed.plugins[0].name}"`,
     );
     assert.equal(
       parsed.plugins[0].source?.source,
@@ -129,8 +129,8 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
     );
     assert.equal(
       parsed.plugins[0].source?.path,
-      './plugins/claude-companion',
-      `marketplace.json plugins[0].source.path must be "./plugins/claude-companion"; got "${parsed.plugins[0].source?.path}"`,
+      './plugins/cc',
+      `marketplace.json plugins[0].source.path must be "./plugins/cc"; got "${parsed.plugins[0].source?.path}"`,
     );
   });
 
@@ -138,7 +138,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   // Check 2: marketplace plugin.json exists and is valid JSON
   // ========================================================================
 
-  it('marketplace/plugins/claude-companion/.codex-plugin/plugin.json exists', () => {
+  it('marketplace/plugins/cc/.codex-plugin/plugin.json exists', () => {
     assert.ok(
       existsSync(MARKETPLACE_PLUGIN_JSON),
       `marketplace plugin.json not found at ${MARKETPLACE_PLUGIN_JSON}`,
@@ -254,18 +254,18 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   });
 
   // ========================================================================
-  // Check 6: marketplace claude-companion.mjs exists and has executable bit
+  // Check 6: marketplace cc.mjs exists and has executable bit
   // ========================================================================
 
-  it('marketplace/plugins/claude-companion/scripts/claude-companion.mjs exists and has the user-executable bit set', () => {
+  it('marketplace/plugins/cc/scripts/cc.mjs exists and has the user-executable bit set', () => {
     assert.ok(
       existsSync(MARKETPLACE_ENTRY_SCRIPT),
-      `claude-companion.mjs not found at ${MARKETPLACE_ENTRY_SCRIPT}`,
+      `cc.mjs not found at ${MARKETPLACE_ENTRY_SCRIPT}`,
     );
     const stat = statSync(MARKETPLACE_ENTRY_SCRIPT);
     assert.ok(
       (stat.mode & 0o100) !== 0,
-      `claude-companion.mjs must have the user-executable bit set; mode = ${stat.mode.toString(8)}`,
+      `cc.mjs must have the user-executable bit set; mode = ${stat.mode.toString(8)}`,
     );
   });
 
@@ -304,14 +304,14 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   });
 
   // ========================================================================
-  // Check 8: no forbidden internal/test files under marketplace/plugins/claude-companion/
+  // Check 8: no forbidden internal/test files under marketplace/plugins/cc/
   //
   // Note (Plan 0006 T9.5): the bundled node_modules/ subtree is intentional
   // and governed by the T9.5 describe block. This check skips that subtree so
   // it does not fire on the bundled package.json / dist/ files.
   // ========================================================================
 
-  it('no forbidden internal/test files appear under marketplace/plugins/claude-companion/', () => {
+  it('no forbidden internal/test files appear under marketplace/plugins/cc/', () => {
     assert.ok(
       existsSync(MARKETPLACE_PLUGIN_ROOT),
       `marketplace plugin root not found at ${MARKETPLACE_PLUGIN_ROOT}`,
@@ -376,7 +376,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   // Check 10: marketplace README.md contains no OQ4 forbidden cost-claim tokens
   // ========================================================================
 
-  it('marketplace/plugins/claude-companion/README.md contains no OQ4 forbidden cost-claim tokens', () => {
+  it('marketplace/plugins/cc/README.md contains no OQ4 forbidden cost-claim tokens', () => {
     assert.ok(
       existsSync(MARKETPLACE_README),
       `marketplace README.md not found at ${MARKETPLACE_README}`,
@@ -404,7 +404,7 @@ const PACKAGE_SCRIPT = resolve(REPO_ROOT, 'tools', 'package-marketplace.mjs');
 // Authoritative allowlist of the 24 derived files (relative to marketplace plugin root).
 const DERIVED_FILES_ALLOWLIST = [
   '.codex-plugin/plugin.json',
-  'scripts/claude-companion.mjs',
+  'scripts/cc.mjs',
   'scripts/lib/ack.mjs',
   'scripts/lib/adapter.mjs',
   'scripts/lib/args.mjs',
@@ -488,7 +488,7 @@ describe('marketplace packaging procedure (Plan 0006 T4)', () => {
   // T4-2: MANIFEST.md lists every derived file in the marketplace tree
   // ========================================================================
 
-  it('MANIFEST.md lists every derived file under marketplace/plugins/claude-companion/', () => {
+  it('MANIFEST.md lists every derived file under marketplace/plugins/cc/', () => {
     assert.ok(existsSync(MANIFEST_MD), `MANIFEST.md not found at ${MANIFEST_MD}`);
     assert.ok(
       existsSync(MARKETPLACE_PLUGIN_ROOT),
@@ -517,11 +517,11 @@ describe('marketplace packaging procedure (Plan 0006 T4)', () => {
   });
 
   // ========================================================================
-  // T4-3: No file under marketplace/plugins/claude-companion/ is outside
+  // T4-3: No file under marketplace/plugins/cc/ is outside
   //        the MANIFEST.md list (reverse direction)
   // ========================================================================
 
-  it('marketplace/plugins/claude-companion/ contains no file outside the MANIFEST.md list (reverse check)', () => {
+  it('marketplace/plugins/cc/ contains no file outside the MANIFEST.md list (reverse check)', () => {
     assert.ok(existsSync(MANIFEST_MD), `MANIFEST.md not found at ${MANIFEST_MD}`);
     assert.ok(
       existsSync(MARKETPLACE_PLUGIN_ROOT),
@@ -557,10 +557,7 @@ describe('marketplace packaging procedure (Plan 0006 T4)', () => {
       const dstPath = resolve(MARKETPLACE_PLUGIN_ROOT, rel);
 
       assert.ok(existsSync(srcPath), `source file missing: packages/plugin-codex/${rel}`);
-      assert.ok(
-        existsSync(dstPath),
-        `marketplace file missing: marketplace/plugins/claude-companion/${rel}`,
-      );
+      assert.ok(existsSync(dstPath), `marketplace file missing: marketplace/plugins/cc/${rel}`);
 
       const srcBytes = readFileSync(srcPath);
       const dstBytes = readFileSync(dstPath);
@@ -625,29 +622,29 @@ describe('marketplace packaging procedure (Plan 0006 T4)', () => {
   });
 
   // ========================================================================
-  // T4-7: scripts/claude-companion.mjs in marketplace has executable bit
+  // T4-7: scripts/cc.mjs in marketplace has executable bit
   //        (already covered by T2 Check 6 — verify it still passes)
   // ========================================================================
 
-  it('marketplace/plugins/claude-companion/scripts/claude-companion.mjs still has user-executable bit (T2 guard)', () => {
+  it('marketplace/plugins/cc/scripts/cc.mjs still has user-executable bit (T2 guard)', () => {
     assert.ok(
       existsSync(MARKETPLACE_ENTRY_SCRIPT),
-      `claude-companion.mjs not found at ${MARKETPLACE_ENTRY_SCRIPT}`,
+      `cc.mjs not found at ${MARKETPLACE_ENTRY_SCRIPT}`,
     );
     const stat = statSync(MARKETPLACE_ENTRY_SCRIPT);
     assert.ok(
       (stat.mode & 0o100) !== 0,
-      `claude-companion.mjs must have the user-executable bit set; mode = ${stat.mode.toString(8)}`,
+      `cc.mjs must have the user-executable bit set; mode = ${stat.mode.toString(8)}`,
     );
   });
 
   // ========================================================================
-  // T4-8: No extra files under marketplace/plugins/claude-companion/
+  // T4-8: No extra files under marketplace/plugins/cc/
   //        (T2 Check 8 guard — MANIFEST.md lives at marketplace/MANIFEST.md,
-  //         not inside plugins/claude-companion/, so the walker is unaffected)
+  //         not inside plugins/cc/, so the walker is unaffected)
   // ========================================================================
 
-  it('no extra files appear under marketplace/plugins/claude-companion/ beyond the allowlist + README.md', () => {
+  it('no extra files appear under marketplace/plugins/cc/ beyond the allowlist + README.md', () => {
     assert.ok(
       existsSync(MARKETPLACE_PLUGIN_ROOT),
       `marketplace plugin root not found at ${MARKETPLACE_PLUGIN_ROOT}`,
@@ -662,7 +659,7 @@ describe('marketplace packaging procedure (Plan 0006 T4)', () => {
     assert.deepEqual(
       extras,
       [],
-      `unexpected files found under marketplace/plugins/claude-companion/: ${JSON.stringify(extras)}`,
+      `unexpected files found under marketplace/plugins/cc/: ${JSON.stringify(extras)}`,
     );
   });
 
@@ -1066,7 +1063,7 @@ describe('marketplace exclusion enforcement (Plan 0006 T5)', () => {
 // ==========================================================================
 //
 // These tests lock in the structure of the committed bundled node_modules/
-// tree under marketplace/plugins/claude-companion/. They are purely static:
+// tree under marketplace/plugins/cc/. They are purely static:
 // only fs reads + spawnSync against deterministic helpers. No real codex calls.
 
 // ---------- T9.5 path constants ----------
@@ -1105,7 +1102,7 @@ describe('marketplace bundled-dependency tree (Plan 0006 T9.5)', () => {
   // T9.5-1: bundled node_modules/ directory exists
   // ========================================================================
 
-  it('marketplace/plugins/claude-companion/node_modules/ directory exists', () => {
+  it('marketplace/plugins/cc/node_modules/ directory exists', () => {
     assert.ok(existsSync(BUNDLED_ROOT), `bundled node_modules/ not found at ${BUNDLED_ROOT}`);
   });
 

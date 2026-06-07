@@ -1,0 +1,190 @@
+T1 Inventory Artifact — Plan 0014 Plugin Rename (claude-companion → cc)
+Generated: 2026-06-06
+
+===============================================================================
+1. FILE CATEGORIZATION
+===============================================================================
+
+MANIFEST (plugin.json, marketplace.json) — 2 files
+  packages/plugin-codex/.codex-plugin/plugin.json                  (1 occurrence)
+  marketplace/.agents/plugins/marketplace.json                      (2 occurrences)
+
+SCRIPT — rename targets — 2 files
+  packages/plugin-codex/scripts/claude-companion.mjs                (8 occurrences internal strings)
+  marketplace/plugins/claude-companion/scripts/claude-companion.mjs (8 occurrences — moves with DIR rename)
+
+DIR — directory rename target — 1 directory
+  marketplace/plugins/claude-companion/  →  marketplace/plugins/cc/
+  (git mv renames the dir atomically; all nested files follow)
+
+PATH_REF — SKILL.md run lines (13 source + 13 marketplace mirror) — 26 files
+  packages/plugin-codex/skills/claude-adversarial-review/SKILL.md   (2 occurrences)
+  packages/plugin-codex/skills/claude-batch/SKILL.md                (2 occurrences)
+  packages/plugin-codex/skills/claude-deep-research/SKILL.md        (2 occurrences)
+  packages/plugin-codex/skills/claude-delegate/SKILL.md             (2 occurrences)
+  packages/plugin-codex/skills/claude-followup/SKILL.md             (2 occurrences)
+  packages/plugin-codex/skills/claude-fork/SKILL.md                 (2 occurrences)
+  packages/plugin-codex/skills/claude-goal/SKILL.md                 (2 occurrences)
+  packages/plugin-codex/skills/claude-result/SKILL.md               (2 occurrences)
+  packages/plugin-codex/skills/claude-review/SKILL.md               (2 occurrences)
+  packages/plugin-codex/skills/claude-setup/SKILL.md                (2 occurrences)
+  packages/plugin-codex/skills/claude-status/SKILL.md               (2 occurrences)
+  packages/plugin-codex/skills/claude-stop/SKILL.md                 (2 occurrences)
+  packages/plugin-codex/skills/claude-workflow/SKILL.md             (2 occurrences)
+  (marketplace mirrors of all 13 SKILL.md files migrate atomically via DIR rename)
+
+LIB_REF — lib/*.mjs comment references — 2 files
+  packages/plugin-codex/scripts/lib/args.mjs                        (1 occurrence — comment header)
+  packages/plugin-codex/scripts/lib/claude-version.mjs              (2 occurrences — comment header)
+  (marketplace mirrors migrate atomically via DIR rename)
+
+TEST — test files with fixture/assertion strings — 9 files
+  packages/plugin-codex/test/dispatcher.test.mjs
+  packages/plugin-codex/test/skills-manifest.test.mjs
+  packages/plugin-codex/test/marketplace-layout.test.mjs
+  packages/plugin-codex/test/marketplace-smoke.test.mjs
+  packages/plugin-codex/test/marketplace-releasing.test.mjs
+  packages/plugin-codex/test/marketplace-readme.test.mjs
+  packages/plugin-codex/test/readme.test.mjs
+  packages/plugin-codex/test/docs-split.test.mjs
+  packages/plugin-codex/test/setup-probes.test.mjs
+
+TOOLS — tooling scripts — 2 files
+  tools/package-marketplace.mjs
+  tools/smoke-marketplace.mjs
+
+DOCS — user-facing documentation — 8 files
+  marketplace/MANIFEST.md
+  marketplace/EXCLUSIONS.md
+  marketplace/plugins/claude-companion/README.md      (moves via DIR rename → cc/README.md)
+  packages/plugin-codex/README.md
+  packages/plugin-codex/package.json                  (description field only; name is @cc-plugin-codex/plugin-codex)
+  documentation/RELEASING.md
+  documentation/REAL-CODEX-TEST-RECIPE.md
+  documentation/testing/findings-20260605.md          (testing log — historical but in non-frozen dir)
+
+DOCTOR — runtime probe + test — 3 files
+  packages/runtime/src/doctor.ts                      (1 occurrence: /claude-companion/.test(body))
+  packages/runtime/dist/doctor.js                     (1 occurrence: rebuilt via npm run build)
+  packages/runtime/test/doctor.test.mjs               (7 occurrences: fixture TOML strings)
+
+FROZEN — DO NOT TOUCH — historical plan dirs
+  documentation/plan/0001-*/
+  documentation/plan/0002-*/
+  documentation/plan/0003-*/
+  documentation/plan/0004-*/
+  documentation/plan/0005-*/
+  documentation/plan/0006-*/
+  documentation/plan/0007-*/
+  documentation/plan/0008-*/
+  documentation/plan/0009-*/
+  documentation/plan/0010-*/
+  documentation/plan/0011-*/
+  documentation/plan/0012-*/
+  documentation/plan/0013-*/
+
+NOTE — tools/bench/** contains claude-companion.mjs references but is out-of-scope per constraints.
+  tools/bench/lib/dispatcher-spawn.mjs                (DO NOT TOUCH — bench exclusion)
+  tools/bench/test/dispatcher-spawn.test.mjs          (DO NOT TOUCH — bench exclusion)
+  tools/bench/test/runners/baseline-p.test.mjs        (DO NOT TOUCH — bench exclusion)
+  tools/bench/test/runners/delegate-followup.test.mjs (DO NOT TOUCH — bench exclusion)
+  tools/bench/test/runners/delegate.test.mjs          (DO NOT TOUCH — bench exclusion)
+
+NOTE — documentation/research/ and documentation/testing/ are not frozen by plan rules but are
+historical narrative; findings-20260605.md contains many references. Treated as DOCS (update).
+
+NOTE — documentation/plan/0014-*/ is the current plan dir — plan files are READ-ONLY; the
+readme.md and 1-plan.md already reference both old and new names for documentation purposes.
+
+===============================================================================
+2. DOCTOR REGEX DECISION (OQ-A)
+===============================================================================
+
+Current code in packages/runtime/src/doctor.ts L422:
+  const mentionsPlugin = /claude-companion/.test(body);
+
+Codex config.toml shape for an installed plugin (per codex plugin add semantics):
+  [plugins."cc"]
+  enabled = true
+  trusted = true
+
+OR with marketplace qualifier:
+  [plugins."cc@cc-plugin-codex-local"]
+  enabled = true
+  trusted = true
+
+CHOSEN PATTERN: /plugins\."cc/.test(body)
+
+Justification: This matches both `[plugins."cc"]` and `[plugins."cc@cc-plugin-codex-local"]`
+(any TOML section header for the cc plugin, with or without marketplace suffix). It is specific
+enough to avoid false positives ("cc" alone would match any word containing "cc"), while covering
+both the bare-name and qualified-name forms Codex uses. Pattern A1 from the plan is the right
+choice; written as a JS regex literal: /plugins\."cc/.
+
+===============================================================================
+3. DISPLAY NAME / DESCRIPTION DECISION (OQ-D)
+===============================================================================
+
+Current plugin.json fields:
+  "name": "claude-companion"
+  "description": "Delegate tasks from Codex to Claude Code background sessions."
+  "interface": { "displayName": "Claude Companion", ... }
+  defaultPrompt entries reference "Claude Companion" and "Claude Code"
+
+DECISION:
+  "name": "cc"
+  "description": unchanged (it accurately describes the plugin without mentioning "Claude Companion")
+  "interface": { "displayName": "CC", ... }
+  defaultPrompt: "Set up Claude Companion." → "Set up CC."
+                 "Delegate a task to Claude Code." — keep (accurate)
+                 All other defaultPrompt entries — keep (they don't mention the plugin name)
+
+Justification: "CC" is concise, matches the repo shorthand (cc-plugin-codex), and is unambiguous
+in the Codex plugin marketplace context. The description stays verbatim since it describes function
+not name.
+
+===============================================================================
+4. FROZEN-DIR STRAGGLER EXCLUSION PREDICATE
+===============================================================================
+
+grep -v -E 'documentation/plan/0001|documentation/plan/0002|documentation/plan/0003|documentation/plan/0004|documentation/plan/0005|documentation/plan/0006|documentation/plan/0007|documentation/plan/0008|documentation/plan/0009|documentation/plan/0010|documentation/plan/0011|documentation/plan/0012|documentation/plan/0013'
+
+Additionally exclude tools/bench (out of scope per constraints):
+grep -v -E 'tools/bench'
+
+Full straggler command:
+  grep -rn "claude-companion" packages/ marketplace/ tools/ documentation/ 2>/dev/null \
+    | grep -v -E 'documentation/plan/000[1-9]|documentation/plan/001[0-3]|tools/bench'
+
+===============================================================================
+5. EDIT ORDER PLAN
+===============================================================================
+
+Step 1  — Write T1 artifact (this file)
+Step 2a — Manifest IDs: plugin.json + marketplace.json
+Step 2b — Directory rename: git mv marketplace/plugins/claude-companion marketplace/plugins/cc
+Step 2c — Script rename: git mv packages/plugin-codex/scripts/claude-companion.mjs .../cc.mjs
+Step 2d — Path/string references (in this order):
+  2d-1  All 13 source SKILL.md run lines (packages/plugin-codex/skills/*/SKILL.md)
+  2d-2  Renamed cc.mjs internal strings
+  2d-3  packages/plugin-codex/scripts/lib/args.mjs (comment header)
+  2d-4  packages/plugin-codex/scripts/lib/claude-version.mjs (comment header)
+  2d-5  tools/package-marketplace.mjs (DERIVED_FILES entry + DEST_DIR + all path strings)
+  2d-6  tools/smoke-marketplace.mjs (PLUGIN_REF, PLUGIN_MANIFEST_REL_PATH, dispatcher path)
+  2d-7  marketplace/MANIFEST.md
+  2d-8  marketplace/EXCLUSIONS.md
+  2d-9  packages/plugin-codex/README.md (preserve cost paragraph at L763)
+  2d-10 packages/plugin-codex/package.json (description field)
+  2d-11 documentation/RELEASING.md + T3 migration callout
+  2d-12 documentation/REAL-CODEX-TEST-RECIPE.md + T3 migration paragraph
+  2d-13 documentation/testing/findings-20260605.md
+  2d-14 All 9 plugin test files
+Step 2e — Doctor probe: runtime/src/doctor.ts + runtime/test/doctor.test.mjs
+Step 2f — npm run build (packages/runtime) to rebuild dist/doctor.js
+Step 2g — node tools/package-marketplace.mjs --write (resync marketplace mirror)
+Step T4  — Straggler grep (expected: empty outside frozen/bench)
+Step T5  — Gates
+
+NOTE: marketplace/plugins/cc/README.md gets updated in step 2d after step 2b creates it.
+NOTE: marketplace/plugins/cc/scripts/cc.mjs internal strings are already correct after step 2g
+     (package-marketplace --write copies from the updated source cc.mjs).

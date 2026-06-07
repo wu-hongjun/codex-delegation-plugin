@@ -16,9 +16,18 @@
 
 If `claude` isn't installed: `curl -fsSL https://claude.ai/install.sh \| bash` (puts it at `~/.local/bin/claude`; ensure that's on PATH ahead of any brew install).
 
-The plugin doesn't require any other ambient deps — its runtime is bundled in `marketplace/plugins/claude-companion/node_modules/`.
+The plugin doesn't require any other ambient deps — its runtime is bundled in `marketplace/plugins/cc/node_modules/`.
 
 ## 2. Install (4 commands)
+
+> **Migrating from `claude-companion` (pre-Plan-0014)**: the plugin was renamed from `claude-companion` to `cc` in Plan 0014. If you have the old plugin installed, remove it first:
+>
+> ```bash
+> codex plugin remove claude-companion --marketplace cc-plugin-codex-local
+> codex plugin marketplace remove cc-plugin-codex-local
+> ```
+>
+> Then follow the install steps below with the new `cc` id.
 
 ```bash
 # 1. Clone the repo somewhere durable
@@ -29,13 +38,13 @@ cd cc-plugin-codex
 codex plugin marketplace add "$(pwd)/marketplace"
 
 # 3. Install the plugin from that marketplace
-codex plugin add "claude-companion@cc-plugin-codex-local"
+codex plugin add "cc@cc-plugin-codex-local"
 
 # 4. Confirm it's installed + enabled
 codex plugin list
 ```
 
-You should see one row with id `claude-companion`, source `cc-plugin-codex-local`, version `0.2.0`, status `installed, enabled`.
+You should see one row with id `cc`, source `cc-plugin-codex-local`, version `0.2.0`, status `installed, enabled`.
 
 If `codex plugin add` fails on a fresh box, re-run `codex plugin marketplace add "$(pwd)/marketplace"` first — Codex sometimes caches a stale marketplace listing.
 
@@ -58,7 +67,7 @@ $claude-fork
 $claude-batch
 ```
 
-If only 7 or 9 or 10 show, the install hit a stale cache — `codex plugin remove claude-companion`, then re-run step 3 above.
+If only 7 or 9 or 10 show, the install hit a stale cache — `codex plugin remove cc`, then re-run step 3 above.
 
 ## 4. Golden-path test sequence
 
@@ -165,7 +174,7 @@ Expected: Job ID returned. The runtime injects a `/goal` slash command — the s
 ### 4.11 `$claude-fork` — spawn a forked subagent
 
 ```
-$claude-fork "Read packages/plugin-codex/scripts/claude-companion.mjs L1-L100 and explain the dispatcher architecture in 5 bullet points."
+$claude-fork "Read packages/plugin-codex/scripts/cc.mjs L1-L100 and explain the dispatcher architecture in 5 bullet points."
 ```
 
 Expected: Job ID returned. A subagent runs to completion (30k tokens baseline for a trivial directive — designed behavior). `$claude-result <job-id>` returns the subagent's final output.
@@ -173,7 +182,7 @@ Expected: Job ID returned. A subagent runs to completion (30k tokens baseline fo
 ### 4.12 `$claude-batch` — parallel-work orchestration
 
 ```
-$claude-batch "Add a JSDoc one-liner comment above every exported function in packages/plugin-codex/scripts/claude-companion.mjs that doesn't already have one. Do not change function bodies."
+$claude-batch "Add a JSDoc one-liner comment above every exported function in packages/plugin-codex/scripts/cc.mjs that doesn't already have one. Do not change function bodies."
 ```
 
 Expected: Job ID returned. The runtime injects the `# Batch: Parallel Work Orchestration` system prompt — the session goes into plan mode → decomposes → parallel execution. This is the heaviest skill; it can run for many minutes. Track via `$claude-status`. If you want to abort: `$claude-stop`.

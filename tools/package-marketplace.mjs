@@ -2,7 +2,7 @@
 /**
  * tools/package-marketplace.mjs
  *
- * Packages (syncs) the claude-companion plugin from source into the marketplace tree.
+ * Packages (syncs) the cc plugin from source into the marketplace tree.
  *
  * Usage:
  *   node tools/package-marketplace.mjs --check   (default; verify marketplace matches source)
@@ -41,14 +41,14 @@ import { execFileSync } from 'node:child_process';
 
 /**
  * DERIVED_FILES: copied byte-for-byte from packages/plugin-codex/ into
- * marketplace/plugins/claude-companion/.
+ * marketplace/plugins/cc/.
  *
- * Note: scripts/claude-companion.mjs gets chmod 0755 after copy regardless of
+ * Note: scripts/cc.mjs gets chmod 0755 after copy regardless of
  * source mode (source is 644, marketplace copy must be executable).
  */
 const DERIVED_FILES = [
   '.codex-plugin/plugin.json',
-  'scripts/claude-companion.mjs',
+  'scripts/cc.mjs',
   'scripts/lib/ack.mjs',
   'scripts/lib/adapter.mjs',
   'scripts/lib/args.mjs',
@@ -74,7 +74,7 @@ const DERIVED_FILES = [
 ];
 
 /**
- * MARKETPLACE_OWNED_FILES: present in marketplace/plugins/claude-companion/ but
+ * MARKETPLACE_OWNED_FILES: present in marketplace/plugins/cc/ but
  * NOT derived from source. The packaging script never writes or deletes these.
  *
  * README.md — Option A: marketplace-owned placeholder (T2); T12 will replace it.
@@ -87,9 +87,9 @@ const MARKETPLACE_OWNED_FILES = ['README.md'];
 //
 // The marketplace cache copy of the plugin has no node_modules of its own —
 // `codex plugin add` materialises only what is committed under
-// marketplace/plugins/claude-companion/. To make the dispatcher resolvable
+// marketplace/plugins/cc/. To make the dispatcher resolvable
 // when executed from that cache, we bundle the runtime + driver + node-pty
-// payload directly under marketplace/plugins/claude-companion/node_modules/.
+// payload directly under marketplace/plugins/cc/node_modules/.
 //
 // Choice: we ship `.js` + `.d.ts` only (no `.js.map`/`.d.ts.map`).
 //   - Maps roughly double the committed size for zero load-time value.
@@ -100,7 +100,7 @@ const MARKETPLACE_OWNED_FILES = ['README.md'];
 
 /**
  * Bundled runtime files — `packages/runtime/dist/*.{js,d.ts}` copied to
- * `marketplace/plugins/claude-companion/node_modules/@cc-plugin-codex/runtime/dist/`.
+ * `marketplace/plugins/cc/node_modules/@cc-plugin-codex/runtime/dist/`.
  * Discovered dynamically rather than hardcoded so additions to the runtime
  * package show up automatically.
  */
@@ -109,7 +109,7 @@ const RUNTIME_DEST_BASE = 'node_modules/@cc-plugin-codex/runtime';
 
 /**
  * Bundled driver files — `packages/driver-claude-code/dist/*.{js,d.ts}` copied
- * to `marketplace/plugins/claude-companion/node_modules/@cc-plugin-codex/driver-claude-code/dist/`.
+ * to `marketplace/plugins/cc/node_modules/@cc-plugin-codex/driver-claude-code/dist/`.
  */
 const DRIVER_SRC_DIST = 'packages/driver-claude-code/dist';
 const DRIVER_DEST_BASE = 'node_modules/@cc-plugin-codex/driver-claude-code';
@@ -276,7 +276,7 @@ function isForbiddenBundledPath(rel) {
   return null;
 }
 
-// The complete set of expected files under marketplace/plugins/claude-companion/.
+// The complete set of expected files under marketplace/plugins/cc/.
 // Bundled files are computed lazily because they depend on dist contents which
 // must exist; runCheck/runWrite compute and merge them at call time.
 
@@ -427,7 +427,7 @@ for (let i = 0; i < rawArgs.length; i++) {
 const MARKETPLACE_ROOT = marketplaceRootOverride
   ? resolve(marketplaceRootOverride)
   : join(REPO_ROOT, 'marketplace');
-const DEST_DIR = join(MARKETPLACE_ROOT, 'plugins', 'claude-companion');
+const DEST_DIR = join(MARKETPLACE_ROOT, 'plugins', 'cc');
 
 const flag = filteredArgs[0] ?? '--check';
 
@@ -459,7 +459,7 @@ function collectFiles(dir, base = dir, results = []) {
 
 function printHelp() {
   console.log(`
-tools/package-marketplace.mjs — sync claude-companion plugin into marketplace tree
+tools/package-marketplace.mjs — sync cc plugin into marketplace tree
 
 USAGE
   node tools/package-marketplace.mjs [--check | --write | --help]
@@ -471,7 +471,7 @@ FLAGS
             then the allowlist comparison.
             Exits 0 if clean; exits 1 with ISSUE messages on any problem.
   --write   Copy derived files from packages/plugin-codex/ into
-            marketplace/plugins/claude-companion/.
+            marketplace/plugins/cc/.
             Marketplace-owned files (README.md) are never touched.
             Prints a summary: "Wrote N derived files, skipped M marketplace-owned files."
   --help    Print this message and exit 0.
@@ -495,7 +495,7 @@ SOURCE
   packages/plugin-codex/
 
 DESTINATION
-  marketplace/plugins/claude-companion/
+  marketplace/plugins/cc/
 
 DERIVED FILES (${DERIVED_FILES.length})
 ${DERIVED_FILES.map((f) => '  ' + f).join('\n')}
@@ -596,16 +596,14 @@ function runCheck() {
       const reason = isForbiddenBundledPath(rel);
       if (reason) {
         issues.push(
-          `ISSUE: marketplace/plugins/claude-companion/${rel} is forbidden in bundled tree (${reason})`,
+          `ISSUE: marketplace/plugins/cc/${rel} is forbidden in bundled tree (${reason})`,
         );
       }
       continue;
     }
     const result = isExcluded(rel);
     if (result.excluded) {
-      issues.push(
-        `ISSUE: marketplace/plugins/claude-companion/${rel} is excluded (${result.reason})`,
-      );
+      issues.push(`ISSUE: marketplace/plugins/cc/${rel} is excluded (${result.reason})`);
     }
   }
 
@@ -624,9 +622,7 @@ function runCheck() {
     try {
       dstBuf = readFileSync(dst);
     } catch {
-      issues.push(
-        `ISSUE: derived file missing from marketplace: marketplace/plugins/claude-companion/${rel}`,
-      );
+      issues.push(`ISSUE: derived file missing from marketplace: marketplace/plugins/cc/${rel}`);
       continue;
     }
     if (!srcBuf.equals(dstBuf)) {
@@ -653,9 +649,7 @@ function runCheck() {
     try {
       dstBuf = readFileSync(dst);
     } catch {
-      issues.push(
-        `ISSUE: bundled-dep missing from marketplace: marketplace/plugins/claude-companion/${rel}`,
-      );
+      issues.push(`ISSUE: bundled-dep missing from marketplace: marketplace/plugins/cc/${rel}`);
       continue;
     }
     if (!srcBuf.equals(dstBuf)) {
@@ -676,7 +670,7 @@ function runCheck() {
       actual = readFileSync(dst);
     } catch {
       issues.push(
-        `ISSUE: bundled package.json missing from marketplace: marketplace/plugins/claude-companion/${rel}`,
+        `ISSUE: bundled package.json missing from marketplace: marketplace/plugins/cc/${rel}`,
       );
       continue;
     }
@@ -691,9 +685,7 @@ function runCheck() {
     try {
       statSync(dst);
     } catch {
-      issues.push(
-        `ISSUE: marketplace-owned file missing: marketplace/plugins/claude-companion/${rel}`,
-      );
+      issues.push(`ISSUE: marketplace-owned file missing: marketplace/plugins/cc/${rel}`);
     }
   }
 
@@ -707,19 +699,17 @@ function runCheck() {
   }
   for (const rel of actualFiles) {
     if (!allExpected.has(rel)) {
-      issues.push(
-        `ISSUE: unexpected file in marketplace tree: marketplace/plugins/claude-companion/${rel}`,
-      );
+      issues.push(`ISSUE: unexpected file in marketplace tree: marketplace/plugins/cc/${rel}`);
     }
   }
 
-  // 4. Verify executable bit on scripts/claude-companion.mjs.
-  const entrypointDst = join(DEST_DIR, 'scripts', 'claude-companion.mjs');
+  // 4. Verify executable bit on scripts/cc.mjs.
+  const entrypointDst = join(DEST_DIR, 'scripts', 'cc.mjs');
   try {
     const st = statSync(entrypointDst);
     if (!(st.mode & 0o100)) {
       issues.push(
-        `ISSUE: scripts/claude-companion.mjs in marketplace is missing user-executable bit (mode=${st.mode.toString(8)})`,
+        `ISSUE: scripts/cc.mjs in marketplace is missing user-executable bit (mode=${st.mode.toString(8)})`,
       );
     }
   } catch {
@@ -791,7 +781,7 @@ function runWrite() {
     writeFileSync(dst, buf);
     wrote++;
 
-    if (rel === 'scripts/claude-companion.mjs') {
+    if (rel === 'scripts/cc.mjs') {
       chmodSync(dst, 0o755);
     }
   }
@@ -865,7 +855,7 @@ function runWrite() {
       `\nWARNING: the following unexpected files exist in the marketplace tree and were not removed:`,
     );
     for (const f of extras) {
-      console.warn(`  marketplace/plugins/claude-companion/${f}`);
+      console.warn(`  marketplace/plugins/cc/${f}`);
     }
     console.warn(`Run --check to see the full issue list. Clean up manually if needed.`);
   }

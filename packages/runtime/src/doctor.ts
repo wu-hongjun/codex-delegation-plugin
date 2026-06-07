@@ -419,7 +419,9 @@ export async function probeCodexPluginTrust(opts: DoctorOptions = {}): Promise<D
     };
   }
   // Informational text search only; no TOML parser dependency in v1.
-  const mentionsPlugin = /claude-companion/.test(body);
+  // Matches [plugins."cc"] or [plugins."cc@cc-plugin-codex-local"] — the two
+  // TOML section header forms Codex uses for an installed plugin.
+  const mentionsPlugin = /plugins\."cc/.test(body);
   const mentionsTrust = /trust|enabled/i.test(body);
   if (mentionsPlugin && mentionsTrust) {
     return {

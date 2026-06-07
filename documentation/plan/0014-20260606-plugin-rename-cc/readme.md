@@ -1,8 +1,9 @@
 # Plan 0014 — Plugin rename: `claude-companion` → `cc`
 
-**Status**: `implementing`
+**Status**: `auditing`
 **Started**: 2026-06-06
 **Stage 1 approved**: 2026-06-06 (maintainer authorized full cycle)
+**Stage 2 complete (pending CI)**: 2026-06-06
 **Authorized scope (per maintainer AskUserQuestion 2026-06-06)**: full rename. Plugin ID + directory + script file all become `cc`. Script name `claude-companion.mjs` → `cc.mjs`.
 **Last updated**: 2026-06-06
 
@@ -11,7 +12,7 @@
 | Stage | File | Status |
 | --- | --- | --- |
 | 1 — Plan | `1-plan.md` | **approved 2026-06-06** — Full rename across 826 occurrences in 124 files; documented runtime exception for doctor.ts regex |
-| 2 — Implement | `2-implement.md` | **in progress 2026-06-06** — T1 inventory + T2 rename execution via single executor pass |
+| 2 — Implement | `2-implement.md` | **complete 2026-06-06** — T1 inventory + T2 rename executed; doctor regex `/plugins\."cc/`; 1771 tests unchanged from Plan 0013 (rename behavior-neutral); cost paragraph byte-identical; CI run pending |
 | 3 — Audit | `3-audit.md` | not started — requires independent context |
 | 4 — Polish | `4-polish.md` | not started |
 | 5 — Report | `5-report.md` | not started |

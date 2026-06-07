@@ -33,10 +33,10 @@
  *   2. Creates an isolated CODEX_HOME under the OS tempdir.
  *   3. codex --version (logged).
  *   4. codex plugin marketplace add <marketplace-root>
- *   5. codex plugin add "claude-companion@cc-plugin-codex-local"
+ *   5. codex plugin add "cc@cc-plugin-codex-local"
  *   6. codex plugin list (parsed for installed,enabled,<plugin-version>).
  *   7. Asserts the plugin appears as installed,enabled at the version
- *      declared in marketplace/plugins/claude-companion/.codex-plugin/plugin.json
+ *      declared in marketplace/plugins/cc/.codex-plugin/plugin.json
  *      (single source of truth; not hard-coded in this script — see T10).
  *   8. Prints the thirteen-skill manual TUI checklist.
  *   9. Cleanup: codex plugin remove + codex plugin marketplace remove.
@@ -63,7 +63,7 @@ import { fileURLToPath } from 'node:url';
 // Constants
 // ---------------------------------------------------------------------------
 
-const PLUGIN_REF = 'claude-companion@cc-plugin-codex-local';
+const PLUGIN_REF = 'cc@cc-plugin-codex-local';
 const MARKETPLACE_NAME = 'cc-plugin-codex-local';
 
 // Plan 0006 T10: the expected plugin version is derived from the marketplace
@@ -71,7 +71,7 @@ const MARKETPLACE_NAME = 'cc-plugin-codex-local';
 // plugin.json under packages/plugin-codex/.codex-plugin/, copied byte-identically
 // into the marketplace tree by tools/package-marketplace.mjs --write. The
 // derivation lives below `parseArgs` so it can use the resolved marketplaceRoot.
-const PLUGIN_MANIFEST_REL_PATH = 'plugins/claude-companion/.codex-plugin/plugin.json';
+const PLUGIN_MANIFEST_REL_PATH = 'plugins/cc/.codex-plugin/plugin.json';
 
 function deriveExpectedVersion(marketplaceRoot) {
   const manifestPath = join(marketplaceRoot, PLUGIN_MANIFEST_REL_PATH);
@@ -335,7 +335,7 @@ logStep('STEP 5: codex plugin list + assertions');
 
 // Step 5.5: dispatcher execution from cache
 //
-// Spawn `node <PLUGIN_ROOT>/scripts/claude-companion.mjs setup` against the
+// Spawn `node <PLUGIN_ROOT>/scripts/cc.mjs setup` against the
 // cached install to verify the T9.5 fix: the dispatcher must be resolvable
 // from the committed bundled node_modules/ tree. The T9 defect was
 // ERR_MODULE_NOT_FOUND because the runtime/driver/node-pty packages were
@@ -353,10 +353,10 @@ logStep('STEP 5.5: dispatcher execution from cache');
     'plugins',
     'cache',
     'cc-plugin-codex-local',
-    'claude-companion',
+    'cc',
     EXPECTED_VERSION,
   );
-  const dispatcherScript = join(pluginRoot, 'scripts', 'claude-companion.mjs');
+  const dispatcherScript = join(pluginRoot, 'scripts', 'cc.mjs');
   process.stdout.write(`  Plugin root: ${pluginRoot}\n`);
   process.stdout.write(`  Dispatcher:  ${dispatcherScript}\n`);
 

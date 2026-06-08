@@ -1,7 +1,18 @@
 # Plan 0020 — v0.3.2 session-identity fixes (deep-test findings F1–F4)
 
-**Status**: `in progress`
+**Status**: `complete` — v0.3.2 SHIPPED (2026-06-08)
 **Started**: 2026-06-08
+
+## Release — v0.3.2 SHIPPED
+
+- Commit 1 (fixes F1–F4): `6c9a75f` (shipped at version 0.3.1; bundled driver `background-session.js` force-staged via `git add -u` so the executing runtime carries F1+F2)
+- Commit 2 (version bump): `26ff69e`
+- CI run `27141514060` on `26ff69e`: **success** (ubuntu + macOS × Node 20 + 22). First attempt cancelled on a macos/Node-20 15-min timeout (slow runner, no code defect); re-ran the cancelled leg → all four green.
+- Tag `v0.3.2` → `26ff69e` (annotated, pushed)
+- GitHub release: https://github.com/wu-hongjun/cc-plugin-codex/releases/tag/v0.3.2
+- `v0.2.0` / `v0.3.0` / `v0.3.1` tags preserved immutable
+- Local install refreshed to `0.3.2` (cache `~/.codex/plugins/cache/cc-plugin-codex-local/cc/0.3.2`); F1+F2+F3 verified present in the executing runtime
+- Tests: 1551 npm test (mock 68 + runtime 176 + driver 191 + plugin 1116), 0 fail; marketplace `--check` 26 derived + 64 bundled
 **Drafted from**: the v0.3.1 deep test (`documentation/testing/findings-20260607-v031-deep.md`) + maintainer audit. Three High findings reduced to a single root cause — *session identity keyed on a non-unique session name* — plus a status-contract gap.
 
 ## Root-cause synthesis
@@ -38,10 +49,10 @@ The tester filed three High findings; the audit established that the first two s
 
 | Stage | File | Status |
 | --- | --- | --- |
-| 1 — Plan | this readme | drafted 2026-06-08 |
-| 2 — Implement | `2-implement.md` | pending |
-| 3 — Audit | targeted unit tests + re-smoke of F1 contamination | pending |
-| 5 — Report | folded into 2-implement.md | — |
+| 1 — Plan | this readme | approved 2026-06-08 (maintainer authorized F1–F4 → v0.3.2) |
+| 2 — Implement | `2-implement.md` | complete |
+| 3 — Audit | targeted unit tests (1551 pass) + CI green | complete |
+| 5 — Report | folded into 2-implement.md + this Release section | complete |
 
 ## Release
 

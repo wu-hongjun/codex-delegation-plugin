@@ -1,6 +1,6 @@
 # Plan 0020 Stage 2 — Implement (v0.3.2 session-identity fixes)
 
-**Status**: complete (local gates green; awaiting CI + tag)
+**Status**: complete — v0.3.2 shipped (CI `27141514060` green; tag `v0.3.2` → `26ff69e`)
 **Date**: 2026-06-08
 **Commit basis**: fixes ship at version `0.3.1`; the v0.3.2 bump is the follow-up release commit (two-commit pattern, per Plans 0018/0019).
 

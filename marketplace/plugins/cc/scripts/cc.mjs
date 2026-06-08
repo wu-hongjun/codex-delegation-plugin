@@ -105,7 +105,7 @@ try {
       await cmdDeepResearch(flags, positional, useJson);
       break;
     case 'status':
-      await cmdStatus(flags, useJson);
+      await cmdStatus(flags, positional, useJson);
       break;
     case 'result':
       await cmdResult(flags, positional, useJson);
@@ -578,7 +578,25 @@ async function _runDelegateCore(
 
 // ---------- status ----------
 
-async function cmdStatus(flags, json) {
+async function cmdStatus(flags, positional, json) {
+  // `status` is a list command (current workspace, or every workspace with --all).
+  // It does not take a <jobId>; silently ignoring one (printing the full list with
+  // exit 0) misleads the caller into thinking they filtered (deep-test Finding 3).
+  // Reject an unexpected positional and point at the single-job lookup commands.
+  if (positional.length > 0) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `cc status does not take a job id (got "${positional[0]}"). ` +
+            `For one job use: cc result ${positional[0]}  (or cc status --all to list every workspace).`,
+        ),
+        'status',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
   const workspace = process.cwd();
   const showAll = Boolean(flags['all']);
 

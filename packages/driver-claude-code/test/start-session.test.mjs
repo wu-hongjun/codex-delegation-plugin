@@ -177,6 +177,22 @@ describe('startSession() without a name', () => {
       `expected sessionName to start with "codex:${cwdBasename}:" but got "${handle.sessionName}"`,
     );
   });
+
+  // Plan 0020 F1: the auto-generated name must be unique even when two sessions start
+  // back-to-back in the same cwd (Date.now() alone has ms granularity → collisions →
+  // session merge → cross-contamination, deep-test Finding 1).
+  it('generates distinct names for two sessions in the same cwd (entropy)', async () => {
+    const driver = new ClaudeBackgroundDriver({ env: envWithMockClaude() });
+    const a = await driver.startSession({ cwd: MOCK_HOME, prompt: 'first' });
+    const b = await driver.startSession({ cwd: MOCK_HOME, prompt: 'second' });
+    assert.notEqual(
+      a.sessionName,
+      b.sessionName,
+      `expected distinct auto-generated names, both were "${a.sessionName}"`,
+    );
+    // Names keep colons so parseShortId never mistakes them for a session id.
+    assert.ok(a.sessionName.includes(':'), 'auto name must stay colon-delimited');
+  });
 });
 
 // ---------- Test 4: optional flags are forwarded and session still succeeds ----------
@@ -364,6 +380,28 @@ describe('parseShortId parser', () => {
         threw || !result,
         'expected parseShortId to throw or return falsy for unknown output',
       );
+    });
+
+    // Plan 0020 F2: an ID-shaped --name echoed by Claude must not be captured as the
+    // shortId when a real session id is also present.
+    it('prefers the real hex over an ID-shaped session name (excludeName)', () => {
+      const name = 'cc-v031-delegate-todos';
+      // Claude echoes the name after "session", then reports the real bg id.
+      const stdout = `Resuming session ${name}\nbackgrounded · 1a9e3671\n`;
+      const id = parseShortId(stdout, '', name);
+      assert.equal(id, '1a9e3671', 'real hex id should win over the echoed name');
+    });
+
+    it('falls back to the name when it is the only candidate (no regression to undefined)', () => {
+      const name = 'cc-v031-delegate-todos';
+      const stdout = `Started background session ${name}\n`;
+      const id = parseShortId(stdout, '', name);
+      assert.equal(id, name, 'name must still be returned when nothing else matches');
+    });
+
+    it('ignores excludeName when it does not appear in the output', () => {
+      const id = parseShortId('backgrounded · 8f7f2405\n', '', 'some-unused-name');
+      assert.equal(id, '8f7f2405');
     });
   } else {
     // Indirect path: verify that the default mock output (format 1) is handled by

@@ -102,10 +102,16 @@ Expected output ends with `Job ID: job_<id>`. **First run will show a privacy di
 ### 4.3 `$claude-status` — check the job's progress
 
 ```
-$claude-status job_<id-from-above>
+$claude-status
 ```
 
-Expected: a status block with `state: running` (or `complete`), session info, and current activity.
+Expected: a list of this workspace's jobs (add `--all` to span every workspace), each
+with `state: running` (or `complete`), session info, and current activity.
+
+`status` is a **list** command — it does not take a `<jobId>`. To inspect one job, use
+`$claude-result <jobId>` (output) or `$claude-status --all` (cross-workspace list). Passing
+a job id to `status` is rejected with exit 2 (it used to be silently ignored — fixed in
+v0.3.2, deep-test Finding 3).
 
 ### 4.4 `$claude-result` — fetch final output
 

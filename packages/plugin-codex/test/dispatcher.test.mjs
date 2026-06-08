@@ -500,6 +500,29 @@ describe('status with no jobs', () => {
   });
 });
 
+// ---------- Plan 0020 F3: status rejects an unexpected positional ----------
+
+describe('status with a job id positional (Plan 0020 F3)', () => {
+  it('exits 2 and points at cc result instead of silently listing everything', () => {
+    const result = runDispatcher(['status', 'job_bogus_deadbeef']);
+
+    assert.equal(
+      result.status,
+      2,
+      `expected exit 2 for status <jobId>, got ${result.status}; stdout:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stderr.includes('cc result job_bogus_deadbeef'),
+      `expected stderr to suggest "cc result <jobId>"; got:\n${result.stderr}`,
+    );
+  });
+
+  it('--json form also exits 2 for an unexpected positional', () => {
+    const result = runDispatcher(['status', '--json', 'job_bogus_deadbeef']);
+    assert.equal(result.status, 2, `expected exit 2; got ${result.status}`);
+  });
+});
+
 // ---------- Test 10a: result for still-running job exits 1 with "not complete yet" ----------
 
 describe('result for a running job', () => {

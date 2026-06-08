@@ -264,10 +264,10 @@ describe('consolidated release checklist (Plan 0006 T11)', () => {
   });
 
   // ========================================================================
-  // T11-8: Tagging section requires smoke + CI before tag + has v0.3.0 example
+  // T11-8: Tagging section requires smoke + CI before tag + has v0.3.1 example
   // ========================================================================
 
-  it('Tagging section gates on smoke + CI and shows v0.3.0 example', () => {
+  it('Tagging section gates on smoke + CI and shows v0.3.1 example', () => {
     const content = readFileSync(RELEASING_MD, 'utf8');
     assert.match(
       content,
@@ -275,8 +275,8 @@ describe('consolidated release checklist (Plan 0006 T11)', () => {
       'Tagging section must include the `git tag v0.x.y` command pattern',
     );
     assert.ok(
-      content.includes('v0.3.0'),
-      'Tagging section must include the current example tag `v0.3.0`',
+      content.includes('v0.3.1'),
+      'Tagging section must include the current example tag `v0.3.1`',
     );
     assert.match(
       content,

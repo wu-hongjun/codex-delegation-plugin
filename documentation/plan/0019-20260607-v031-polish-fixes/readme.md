@@ -1,8 +1,19 @@
 # Plan 0019 — v0.3.1 polish fixes (deep-test findings B1 + B2)
 
-**Status**: `implementing`
+**Status**: `complete` — v0.3.1 SHIPPED (2026-06-07)
 **Started**: 2026-06-07
 **Drafted from**: the v0.3.0 deep test (`documentation/testing/findings-20260607-v030-deep.md`). v0.3.0 passed comprehensively (fan-out proven, all contracts hold, both prior fixes re-confirmed); these are two polish-grade correctness fixes for a v0.3.1 patch.
+
+## Release — v0.3.1 SHIPPED
+
+- Commit 1 (fixes B1+B2): `91ffdb7` (shipped at version 0.3.0; bundled reconciler.js force-added so the executing runtime carries B2)
+- Commit 2 (version bump): `f745e2f`
+- CI run `27110450901` on `f745e2f`: **success** (ubuntu + macOS × Node 20 + 22)
+- Tag `v0.3.1` → `f745e2f` (annotated, pushed)
+- GitHub release: https://github.com/wu-hongjun/cc-plugin-codex/releases/tag/v0.3.1
+- `v0.2.0` (`ea595e1`) and `v0.3.0` (`54adf05`) tags preserved immutable
+- Local install refreshed to `0.3.1`; both B1 + B2 verified present in the running cache
+- Tests: 1545 npm test + 28 attach + 258 bench = 1831, 0 fail
 
 ## Stages
 

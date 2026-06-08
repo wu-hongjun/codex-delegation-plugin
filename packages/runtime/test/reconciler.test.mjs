@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url';
 import {
   createJob,
   getJobResultPath,
+  mapStatus,
   readEvents,
   reconcileJob,
   reconcileJobsForWorkspace,
@@ -128,6 +129,27 @@ describe('status mapping', () => {
     const adapter = fakeAdapter({ status: { value: 'orphaned' } });
     const result = await reconcileJob(job.jobId, adapter, { now });
     assert.equal(result.job.status, 'orphaned');
+  });
+
+  // Plan 0019 B2: a deliberately-stopped job stays stopped even when its
+  // session is later reaped (orphan detection must not reclassify it).
+  describe('mapStatus sticky-terminal: stopped survives orphan (Plan 0019 B2)', () => {
+    const base = {
+      driverValue: 'orphaned',
+      latestTurnStatus: 'completed',
+      ttlElapsed: false,
+      isOrphan: true,
+      sidecar: null,
+    };
+    it('previousJobStatus=stopped + isOrphan → stays stopped', () => {
+      assert.equal(mapStatus({ ...base, previousJobStatus: 'stopped' }), 'stopped');
+    });
+    it('previousJobStatus=running + isOrphan → orphaned (non-terminal not sticky)', () => {
+      assert.equal(mapStatus({ ...base, previousJobStatus: 'running' }), 'orphaned');
+    });
+    it('previousJobStatus=awaiting_followup + isOrphan → orphaned (resumable not sticky)', () => {
+      assert.equal(mapStatus({ ...base, previousJobStatus: 'awaiting_followup' }), 'orphaned');
+    });
   });
 
   it('value: unknown on a running job keeps running', async () => {

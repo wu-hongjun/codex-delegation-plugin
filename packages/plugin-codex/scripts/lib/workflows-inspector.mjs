@@ -82,12 +82,18 @@ export async function inspectWorkflow(jobId) {
   const result = await listJobs();
   const jobs = result.jobs ?? [];
 
-  const job = jobs.find(
-    (j) => j.jobId === jobId || (typeof j.jobId === 'string' && j.jobId.startsWith(jobId)),
-  );
+  // Accept either the cc job id (job_…) OR the Claude session id. The list
+  // view shows the 8-char session shortId in its first column and instructs
+  // "cc workflows <sessionId>", so the displayed id must resolve here.
+  const job = jobs.find((j) => {
+    if (j.jobId === jobId) return true;
+    if (typeof j.jobId === 'string' && j.jobId.startsWith(jobId)) return true;
+    const sid = _sessionId(j);
+    return sid !== '' && (sid === jobId || sid.startsWith(jobId));
+  });
 
   if (!job) {
-    throw new Error(`No job found matching jobId "${jobId}"`);
+    throw new Error(`No workflow found matching job id or session id "${jobId}"`);
   }
 
   if (!_isWorkflowJob(job)) {

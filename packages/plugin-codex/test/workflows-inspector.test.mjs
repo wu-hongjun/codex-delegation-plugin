@@ -328,6 +328,37 @@ describe('workflows list: shortId comes from claude.sessionId (v0.3.0 audit fix)
   });
 });
 
+describe('workflows drill-in by session id / shortId (Plan 0019 B1)', () => {
+  it('resolves a workflow by full Claude session id', () => {
+    makeJobRecord('job_sidres1_aaaaaaaa', {
+      promptSummary: 'ultracode: session-id lookup target',
+      sessionId: 'deadbeef-1111-2222-3333-444444444444',
+      sessionName: 'codex:cc:sidlookup',
+    });
+    const result = runDispatcher(['workflows', 'deadbeef-1111-2222-3333-444444444444']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes('codex:cc:sidlookup'),
+      `drill-in by full session id must resolve; got:\n${result.stdout}`,
+    );
+  });
+
+  it('resolves a workflow by 8-char session shortId (as shown in the list)', () => {
+    makeJobRecord('job_sidres2_bbbbbbbb', {
+      promptSummary: 'ultracode: session shortId lookup target',
+      sessionId: 'cafe9999-1111-2222-3333-444444444444',
+      sessionName: 'codex:cc:shortidlookup',
+    });
+    // The list view prints the 8-char prefix "cafe9999"; passing it must work.
+    const result = runDispatcher(['workflows', 'cafe9999']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stdout.includes('codex:cc:shortidlookup'),
+      `drill-in by 8-char session shortId must resolve; got:\n${result.stdout}`,
+    );
+  });
+});
+
 describe('workflows <jobId>: drill-in rejects non-workflow jobs', () => {
   it('exits 1 with a clear error when the matched job is not a workflow', () => {
     makeJobRecord('job_nonwf06_dddddddd', {

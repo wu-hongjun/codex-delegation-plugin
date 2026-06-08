@@ -189,6 +189,15 @@ function computeTtlElapsed(job: JobRecord, nowMs: number, ttlMs: number): boolea
 export function mapStatus(input: StatusMappingInput): JobStatus {
   const { driverValue, latestTurnStatus, previousJobStatus, ttlElapsed, isOrphan, sidecar } = input;
 
+  // 0. Sticky terminal: a deliberately-stopped job stays stopped. `cc stop`
+  // writes `stopped`; the next reconcile sees the reaped session and would
+  // otherwise flip it to `orphaned` (the isOrphan check below). A stopped job
+  // cannot be resumed, so its status must reflect the user's action, not the
+  // post-stop session state. Resumable states (awaiting_followup, needs_input)
+  // are intentionally NOT sticky — if their session disappears, orphaned is
+  // the correct outcome.
+  if (previousJobStatus === 'stopped') return 'stopped';
+
   // 1. Orphan check
   if (isOrphan) return 'orphaned';
 

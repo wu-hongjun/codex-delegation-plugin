@@ -1,6 +1,6 @@
 # Plan 0021 Stage 2 — Implement (v0.3.3 session-name uniqueness)
 
-**Status**: complete (local gates green; awaiting CI + tag)
+**Status**: complete — v0.3.3 shipped (CI `27388616086` green; tag `v0.3.3` → `aa0d390`)
 **Date**: 2026-06-11
 **Commit basis**: fix ships at version `0.3.2`; the v0.3.3 bump is the follow-up release commit (two-commit pattern).
 

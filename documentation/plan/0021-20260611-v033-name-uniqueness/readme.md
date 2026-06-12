@@ -1,7 +1,19 @@
 # Plan 0021 — v0.3.3 session-name uniqueness (deep-test F2b)
 
-**Status**: `in progress`
+**Status**: `complete` — v0.3.3 SHIPPED (2026-06-11)
 **Started**: 2026-06-11
+
+## Release — v0.3.3 SHIPPED
+
+- Commit 1 (fix A + tests + docs): `a18244d` (shipped at version 0.3.2; bundled driver `background-session.js` staged via `git add -u` so the executing runtime carries the fix)
+- Commit 2 (version bump): `aa0d390`
+- CI run `27388616086` on `aa0d390`: **success** (ubuntu + macOS × Node 20 + 22; macos/Node-20 passed first try this time — no rerun needed)
+- Tag `v0.3.3` → `aa0d390` (annotated, pushed)
+- GitHub release: https://github.com/wu-hongjun/cc-plugin-codex/releases/tag/v0.3.3
+- `v0.2.0` / `v0.3.0` / `v0.3.1` / `v0.3.2` tags preserved immutable
+- Local install refreshed to `0.3.3` (cache `~/.codex/plugins/cache/cc-plugin-codex-local/cc/0.3.3`); fix A (entropy on explicit `--name`) verified present in the executing runtime
+- Tests: 1552 npm test (mock 68 + runtime 176 + driver 192 + plugin 1116), 0 fail; marketplace `--check` 26 derived + 64 bundled
+- One test caught + fixed mid-build: dispatcher `T6-2` asserted the exact internal review session name, which the uniquify fix now correctly suffixes → updated to a prefix match (also fixes the review-name collision previously seen in-store)
 **Drafted from**: the v0.3.2 deep test (`documentation/testing/findings-20260608-v032-deep.md`) + maintainer audit (ground-truth trace of the F2b contamination).
 
 ## Root cause
@@ -41,10 +53,10 @@ Mechanism (Claude Code layer): the second `claude --bg --name dup-key-test …` 
 
 | Stage | File | Status |
 | --- | --- | --- |
-| 1 — Plan | this readme | drafted 2026-06-11 |
-| 2 — Implement | `2-implement.md` | pending |
-| 3 — Audit | unit tests + targeted re-smoke of duplicate `--name` isolation | pending |
-| 5 — Report | folded into 2-implement.md | — |
+| 1 — Plan | this readme | approved 2026-06-11 (maintainer authorized v0.3.3 scope) |
+| 2 — Implement | `2-implement.md` | complete |
+| 3 — Audit | unit tests (1552 pass) + CI green | complete |
+| 5 — Report | folded into 2-implement.md + this Release section | complete |
 
 ## Release
 

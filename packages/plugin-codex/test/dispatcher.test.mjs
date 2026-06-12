@@ -4255,7 +4255,7 @@ describe('adversarial-review happy path (T6)', () => {
 // ---------- T6-2: session name pattern ----------
 
 describe('adversarial-review session name (T6)', () => {
-  it('T6-2: new review session name is codex:<repo-basename>:review-<targetJobId.slice(0,12)>', () => {
+  it('T6-2: new review session name starts with codex:<repo-basename>:review-<targetJobId.slice(0,12)>', () => {
     const jobId = `job_ar2_${createHash('sha256').update('t6-session-name').digest('hex').slice(0, 8)}`;
     const repoBasename = 'cc-plugin-codex';
     const targetWorkspace = join(WORK_DIR, repoBasename);
@@ -4279,11 +4279,12 @@ describe('adversarial-review session name (T6)', () => {
       readFileSync(join(TMP_HOME, 'jobs', `${allIds[0]}.json`), 'utf8'),
     );
 
-    const expectedSessionName = `codex:${repoBasename}:review-${jobId.slice(0, 12)}`;
-    assert.equal(
-      reviewRecord.claude.sessionName,
-      expectedSessionName,
-      `expected sessionName "${expectedSessionName}"; got "${reviewRecord.claude.sessionName}"`,
+    // Plan 0021: the driver appends a unique `-<hex>` suffix to every session name
+    // (including this internal review name), so assert the prefix, not exact equality.
+    const expectedSessionPrefix = `codex:${repoBasename}:review-${jobId.slice(0, 12)}`;
+    assert.ok(
+      reviewRecord.claude.sessionName.startsWith(`${expectedSessionPrefix}-`),
+      `expected sessionName to start with "${expectedSessionPrefix}-"; got "${reviewRecord.claude.sessionName}"`,
     );
   });
 });

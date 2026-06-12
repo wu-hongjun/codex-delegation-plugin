@@ -23,11 +23,13 @@ Behavior rules:
 - Forward only these flags **when the user explicitly requests them**:
   `--name`, `--model`, `--effort`, `--permission-mode`, `--add-dir`,
   `--mcp-config`, `--allow-edit`, `--json`.
-- `--name` is an **idempotent session key**: starting two jobs with the same
-  `--name` resumes the *same* Claude Code session (the second attaches to the
-  first), so use a distinct name per concurrent job — or omit it and let the
-  dispatcher auto-generate a unique name. Auto-generated names are collision-safe
-  even when many delegations start at once (v0.3.2).
+- `--name` is a **human-readable label**, not a session key. Every job gets a
+  unique session name regardless: the dispatcher appends a random suffix, so the
+  real session name is `<your-name>-<random>` (v0.3.3). This means reusing the same
+  `--name` does NOT resume a job — it starts a fresh, isolated session. To continue
+  an existing job, use `$claude-followup <jobId>` (the jobId from delegate's output),
+  never a reused `--name`. Omitting `--name` is fine; the auto-generated name is
+  already unique and collision-safe even under heavy concurrency.
 - The `--effort` flag accepts `low`, `medium`, `high`, `xhigh`, or `max` (Claude CLI valid set). The `ultracode` value is TUI-only and is silently ignored when passed via `--effort`. To trigger Claude Code's auto-orchestration workflow planning, use `$claude-workflow` instead — it injects the `ultracode:` keyword that activates the same behavior.
 - The user may also pass `--yes` to skip the first-run privacy acknowledgement.
   Do NOT inject `--yes` automatically. If the dispatcher reports that an

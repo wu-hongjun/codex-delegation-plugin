@@ -175,7 +175,7 @@ Verify via `$claude-status <job-id>` that you see workflow-style phase tracking,
 $claude-goal "Keep iterating until all TODO comments in scripts/ are converted to GitHub issues. Do not edit other files."
 ```
 
-Expected: Job ID returned. The runtime injects a `/goal` slash command — the session keeps working until the goal is met (Stop hook fires when met) or the user stops it. `$claude-status` shows `goal_status` records mid-run.
+Expected: Job ID returned. The runtime injects a `/goal` slash command — the session keeps working until the goal is met (Stop hook fires when met) or the user stops it. Track progress with `$claude-status <jobId>` / `$claude-result <jobId>`; there is no dedicated `goal_status` field in the status output (the goal state lives inside the Claude Code session, not the bg job record).
 
 ### 4.11 `$claude-fork` — spawn a forked subagent
 

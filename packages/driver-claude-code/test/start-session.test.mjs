@@ -110,7 +110,11 @@ describe('startSession() with explicit name', () => {
       name: sessionName,
     });
 
-    assert.equal(handle.sessionName, sessionName);
+    // Plan 0021: a user --name is a unique PREFIX; the real name is `<name>-<8hex>`.
+    assert.ok(
+      handle.sessionName.startsWith(`${sessionName}-`),
+      `expected sessionName to start with "${sessionName}-" but got "${handle.sessionName}"`,
+    );
 
     // In real-2.1.149 mode, agents --json does not include name/shortId fields.
     // Verify the session exists by matching via sessionId (derived from the bg shortId).
@@ -149,7 +153,11 @@ describe('startSession() with explicit name', () => {
       name: sessionName,
     });
 
-    assert.equal(handle.sessionName, sessionName);
+    // Plan 0021: a user --name is a unique PREFIX; the real name is `<name>-<8hex>`.
+    assert.ok(
+      handle.sessionName.startsWith(`${sessionName}-`),
+      `expected sessionName to start with "${sessionName}-" but got "${handle.sessionName}"`,
+    );
 
     const agentsResult = spawnSync('claude', ['agents', '--json'], {
       env: legacyEnv,
@@ -157,9 +165,27 @@ describe('startSession() with explicit name', () => {
     });
     assert.equal(agentsResult.status, 0, `agents --json failed: ${agentsResult.stderr}`);
     const sessions = JSON.parse(agentsResult.stdout);
-    const found = sessions.find((s) => s.name === sessionName);
-    assert.ok(found, `session with name '${sessionName}' not found in agents --json`);
+    // Match by the actual (suffixed) session name the driver sent to `--bg --name`.
+    const found = sessions.find((s) => s.name === handle.sessionName);
+    assert.ok(found, `session with name '${handle.sessionName}' not found in agents --json`);
     assert.equal(found.shortId, handle.shortId);
+  });
+
+  // Plan 0021 F2b: reusing the same --name must NOT collide. Each start gets a unique
+  // suffix so Claude Code can never inject a second prompt into the earlier session
+  // (which silently corrupted the earlier job's result).
+  it('produces distinct session names when the same --name is reused', async () => {
+    const name = 'dup-key-test';
+    const driver = new ClaudeBackgroundDriver({ env: envWithMockClaude() });
+    const a = await driver.startSession({ cwd: MOCK_HOME, prompt: 'one', name });
+    const b = await driver.startSession({ cwd: MOCK_HOME, prompt: 'two', name });
+    assert.ok(a.sessionName.startsWith(`${name}-`), `a should be prefixed: ${a.sessionName}`);
+    assert.ok(b.sessionName.startsWith(`${name}-`), `b should be prefixed: ${b.sessionName}`);
+    assert.notEqual(
+      a.sessionName,
+      b.sessionName,
+      `reused --name must yield distinct session names, both were "${a.sessionName}"`,
+    );
   });
 });
 

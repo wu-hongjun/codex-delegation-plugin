@@ -48,7 +48,7 @@ Note: `scripts/cc.mjs` is copied from source and the packaging script sets the u
 All paths are relative to `marketplace/plugins/cc/`.
 
 ### `node_modules/@cc-plugin-codex/runtime/`
-- `package.json` — synthesized minimal shape (version marker: `0.3.2-bundled`).
+- `package.json` — synthesized minimal shape (version marker: `0.3.3-bundled`).
 - `dist/*.js` and `dist/*.d.ts` — copied byte-for-byte from
   `packages/runtime/dist/` after `npm run build`.
 - Sourcemaps (`*.js.map`, `*.d.ts.map`) and `*.tsbuildinfo` are excluded
@@ -56,7 +56,7 @@ All paths are relative to `marketplace/plugins/cc/`.
 
 ### `node_modules/@cc-plugin-codex/driver-claude-code/`
 - `package.json` — synthesized minimal shape with `dependencies:
-  { "@cc-plugin-codex/runtime": "0.3.2-bundled", "node-pty": "1.2.0-beta.13" }`.
+  { "@cc-plugin-codex/runtime": "0.3.3-bundled", "node-pty": "1.2.0-beta.13" }`.
 - `dist/*.js` and `dist/*.d.ts` — copied byte-for-byte from
   `packages/driver-claude-code/dist/` after `npm run build`.
 

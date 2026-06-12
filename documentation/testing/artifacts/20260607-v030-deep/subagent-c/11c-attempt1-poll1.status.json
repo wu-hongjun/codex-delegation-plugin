@@ -1,0 +1,22 @@
+{
+  "label": "11c-attempt1-poll1",
+  "invocation": "node /Users/hongjunwu/.codex/plugins/cache/cc-plugin-codex-local/cc/0.3.0/scripts/cc.mjs status --json",
+  "exitCode": 0,
+  "signal": null,
+  "error": null,
+  "jobId": "job_mq49jzsg_d78e1504",
+  "status": "awaiting_followup",
+  "shortId": "a0c3b2fd",
+  "sessionId": "a0c3b2fd-ac36-4522-ae83-8341bacd2bad",
+  "sessionName": "codex:cc-plugin-codex:mq49jx35",
+  "turnStatuses": [
+    {
+      "index": 0,
+      "status": "completed",
+      "preview": "MARKER-F3 The forked agent completed and returned `MARKER-F3`."
+    }
+  ],
+  "resultPreview": "MARKER-F3 The forked agent completed and returned `MARKER-F3`.",
+  "stdoutBytes": 258839,
+  "stderrExcerpt": ""
+}

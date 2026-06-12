@@ -1,0 +1,22 @@
+{
+  "label": "11b-attempt1-poll1",
+  "invocation": "node /Users/hongjunwu/.codex/plugins/cache/cc-plugin-codex-local/cc/0.3.0/scripts/cc.mjs status --json",
+  "exitCode": 0,
+  "signal": null,
+  "error": null,
+  "jobId": "job_mq49j8ih_3c122163",
+  "status": "awaiting_followup",
+  "shortId": "35bf2657",
+  "sessionId": "35bf2657-9986-4aea-b562-27e753c29ee8",
+  "sessionName": "codex:cc-plugin-codex:mq49j5un",
+  "turnStatuses": [
+    {
+      "index": 0,
+      "status": "completed",
+      "preview": "I'll print the marker as requested. MARKER-F"
+    }
+  ],
+  "resultPreview": "I'll print the marker as requested. MARKER-F",
+  "stdoutBytes": 253981,
+  "stderrExcerpt": ""
+}

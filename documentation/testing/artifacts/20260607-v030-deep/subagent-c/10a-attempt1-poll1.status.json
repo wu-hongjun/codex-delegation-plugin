@@ -1,0 +1,22 @@
+{
+  "label": "10a-attempt1-poll1",
+  "invocation": "node /Users/hongjunwu/.codex/plugins/cache/cc-plugin-codex-local/cc/0.3.0/scripts/cc.mjs status --json",
+  "exitCode": 0,
+  "signal": null,
+  "error": null,
+  "jobId": "job_mq49cmrj_c212200e",
+  "status": "awaiting_followup",
+  "shortId": "98d944f4",
+  "sessionId": "98d944f4-35d4-4704-babc-7f45bb13d0bc",
+  "sessionName": "codex:cc-plugin-codex:mq49ck0y",
+  "turnStatuses": [
+    {
+      "index": 0,
+      "status": "completed",
+      "preview": "MARKER-G The goal is met."
+    }
+  ],
+  "resultPreview": "MARKER-G The goal is met.",
+  "stdoutBytes": 217986,
+  "stderrExcerpt": ""
+}

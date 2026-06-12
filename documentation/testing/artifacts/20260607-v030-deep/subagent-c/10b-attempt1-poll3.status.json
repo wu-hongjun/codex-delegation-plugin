@@ -1,0 +1,22 @@
+{
+  "label": "10b-attempt1-poll3",
+  "invocation": "node /Users/hongjunwu/.codex/plugins/cache/cc-plugin-codex-local/cc/0.3.0/scripts/cc.mjs status --json",
+  "exitCode": 0,
+  "signal": null,
+  "error": null,
+  "jobId": "job_mq49dcmu_ef373178",
+  "status": "running",
+  "shortId": "482ed704",
+  "sessionId": "482ed704-8fb8-4008-9ba2-c3d0956d77ea",
+  "sessionName": "codex:cc-plugin-codex:mq49d9yi",
+  "turnStatuses": [
+    {
+      "index": 0,
+      "status": "queued",
+      "preview": "The file `documentation/RELEASING.md` has **487 lines**."
+    }
+  ],
+  "resultPreview": "The file `documentation/RELEASING.md` has **487 lines**.",
+  "stdoutBytes": 228352,
+  "stderrExcerpt": ""
+}

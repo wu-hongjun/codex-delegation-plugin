@@ -81,18 +81,25 @@ most common terminal state for delegate/workflow/goal/fork/batch.
 
 > Maintainer updates this section per release; the rest of the ticket is stable.
 
-### v0.3.3 PRIMARY — F2b: reused `--name` must be FULLY ISOLATED (zero contamination)
-Through v0.3.2 this was a High bug (the first job returned the second's output). v0.3.3
-appends entropy to every session name. Test:
+### F2b — delegate result cross-contamination — UPSTREAM, non-deterministic (NOT a plugin blocker)
+**Reclassified 2026-06-12.** Through v0.3.2/v0.3.3 this was misdiagnosed as a `--name`
+collision and "fixed" by uniquifying session names; it is actually a **rare, non-deterministic
+cross at the Claude Code / model layer** (a correctly-isolated, uniquely-named, distinct-pid
+session can still have its model emit a concurrent sibling's marker). A 34-session controlled
+repro reproduced it 0 times. The cc-plugin builds isolated sessions correctly and cannot fix
+this by naming. See `documentation/plan/0021-…/readme.md` correction + memory
+`project_f2b_upstream_nondeterministic`.
+
+Still worth checking each run (it's how we sample the upstream symptom). Test:
 ```sh
 $claude-delegate --yes --name dup-key-test -- "reply with exactly DUP-ONE"
 $claude-delegate --yes --name dup-key-test -- "reply with exactly DUP-TWO"
 ```
-For EACH job: distinct Job ID / `sessionId` / `pid`; stored `claude.sessionName` is
-`dup-key-test-<random>` (suffixed, and DIFFERENT between the two), not bare `dup-key-test`;
-`$claude-result <job1>` returns DUP-ONE and `<job2>` returns DUP-TWO (neither returns the
-other's marker). Repeat with 3 reused-name jobs (DUP-A/B/C) to stress it. **PASS = full
-isolation + correct per-job results.**
+Confirm session identity is correct (distinct Job ID / `sessionId` / `pid`; `claude.sessionName`
+is `dup-key-test-<random>` and differs between jobs). Then check `$claude-result <job1>` returns
+DUP-ONE and `<job2>` returns DUP-TWO. **If a cross occurs, record it as an UPSTREAM symptom with
+the transcript evidence (`~/.claude/projects/<slug>/<sessionId>.jsonl` — does the assistant turn
+emit the wrong marker for a correctly-logged prompt?), NOT as a plugin FAIL or release blocker.**
 
 ### F1 (carry-forward) — rapid parallel NO-name delegates isolated
 3+ no-name delegates fired fast, each a unique marker (CLEAN-RAPID-A/B/C): distinct
@@ -170,6 +177,68 @@ Do NOT commit — the maintainer reviews and commits.
 
 <!-- Codex: insert your new run entry directly below this line. Template: -->
 
+## Run 2026-06-12 - v0.3.3 - issues found
+**Env**: claude 2.1.174 (Claude Code) · codex-cli 0.137.0 · macOS 26.5.1 (25F80) arm64 · plugin `cc@cc-plugin-codex-local` 0.3.3
+
+**Artifact bundle**: `documentation/testing/artifacts/v033-ticket-20260612/` contains the per-lane command logs and cleanup evidence. The harness used Codex subagents for command groups 01-15 and throttled broad status polling.
+
+### Matrix
+| # | command | status | summary |
+| ---: | --- | --- | --- |
+| 1 | `$claude-setup` | pass | plain, `--json`, and rerun all exited 0; aggregate stayed `warn` only for the accepted `claude-bg-flag` caveat. |
+| 2 | `$claude-delegate` | fail | ordinary read-only delegates and F1 rapid no-name delegates passed, but the v0.3.3 primary reused-`--name` isolation test failed result isolation. |
+| 3 | `$claude-status` | pass | plain, `--all`, `--json`, real-id rejection, and bogus-id rejection passed; `status --all` took 96.37s in the large historical job set. |
+| 4 | `$claude-result` | pass | human result, parseable `--json`, and still-running error path behaved correctly. |
+| 5 | `$claude-followup` | fail | stopped-job errors were clean, but positive follow-up paths were blocked because completed Claude sessions remained `running` in cc job state. |
+| 6 | `$claude-review` | pass | delegate review, `--json`, and 0-finding PASS rendering worked; workflow review correctly rejected a gated workflow as not reviewable. |
+| 7 | `$claude-adversarial-review` | pass | default model, `--model opus`, and `--json` all launched and produced parseable PASS/no-finding reviews. |
+| 8 | `$claude-stop` | pass | single stop, workspace-scoped `--all-awaiting-followup`, global `--all-awaiting-followup --all`, and bare `--all` rejection passed. |
+| 9 | `$claude-workflow` | partial | launches and `--json` parsed; all workflow jobs stopped at the expected Claude Code approval gate before post-approval subagents ran. |
+| 10 | `$claude-goal` | pass | bounded, different bounded, and `--json` goals completed with expected markers; no `goal_status` field expected. |
+| 11 | `$claude-fork` | pass | explain-code, second directive, and `--json` passed; transcripts showed real fork sidechain agent execution. |
+| 12 | `$claude-batch` | pass | small batch, `--json`, and stop-mid-run passed with recoverable output; logs showed real parallel Explore agents. |
+| 13 | `$claude-deep-research` | partial | two questions and `--json` launch parsed; all hit the expected dynamic workflow approval gate before WebSearch/fetch/verify agents ran. |
+| 14 | `$claude-workflows` | pass | plain list, shortId drill-in, full jobId drill-in, `--all`, `--json`, and bogus-id error all passed. |
+
+### Regression Verdicts
+- **F2b** (reused `--name` isolation): **FAIL**. Commands:
+  `node marketplace/plugins/cc/scripts/cc.mjs delegate --yes --name dup-key-test -- "reply DUP-ONE"` and
+  `node marketplace/plugins/cc/scripts/cc.mjs delegate --yes --name dup-key-test -- "reply DUP-TWO"`.
+  The session names were suffixed and distinct, but result isolation failed:
+  `job_mqac2i4h_4d3e2965` used session `dd3a7dec-3ccf-497a-b910-6246365a8598`, pid 940, sessionName `dup-key-test-ff742519`, prompt `DUP-ONE`, result `DUP-TWO`.
+  `job_mqac2i9f_4e34a487` used session `39b5f2e3-2377-43e5-ad92-6fdb65ffdee1`, pid 3541, sessionName `dup-key-test-4732a5e5`, prompt `DUP-TWO`, result `DUP-TWO`.
+  The 3-job repeat used distinct sessions, but `job_mqac2wb3_1acbffa1` (`DUP-A`) did not return exactly `DUP-A`; `DUP-B` and `DUP-C` did.
+- **F1** (rapid no-name delegates): **PASS**. `job_mqac1g38_ad2cb29d` session `40ddc8e6-0269-482d-9316-72dc360a0ee4` returned `CLEAN-RAPID-A`; `job_mqac1g94_740b3e2c` session `af0b1668-dfeb-44b9-b2ee-3d3ca2c82dd3` returned `CLEAN-RAPID-B`; `job_mqac1gj3_0d6d406e` session `436934db-60a9-4991-827d-8b236a0cd927` returned `CLEAN-RAPID-C`. PIDs were distinct.
+- **F2** (ID-shaped `--name` shortId): **PASS**. `job_mqac23g4_03aeff0c` had shortId `013c47c4`, sessionId `013c47c4-8461-49e2-9436-ac5eecea4fe2`, sessionName `my-test-session-abc-0e8f0c01`, and result `CLEAN-NAME`.
+- **F3** (`$claude-status <jobId>` rejection): **PASS**. `status job_mqac5qn4_49ad88e7` exited 2 with guidance to use `cc result <jobId>` / `cc status --all`; `status job_lane03_bogus_does_not_exist` also exited 2 and did not dump the full list.
+
+### Edge-Case Verdicts
+- `--allow-edit` on fork/workflow/goal/batch/review/adversarial-review/deep-research: **PARTIAL**. All tested commands exited 2 and included `not applicable`, but not the exact requested phrase `not applicable to this subcommand`.
+- Empty and whitespace-only delegate prompt: **PASS**. Both exited 2 with `[delegate] Error: prompt is required: cc delegate -- "<prompt>"`; no new jobs.
+- Non-TTY `printf 'x\n' | ... delegate --yes`: **PASS**. Exited 2 with the same prompt-required error and no new job.
+- Workspace isolation: **PASS**. Temp job `job_mqad1l5k_3b475de6` was absent from repo-local `status --json`, present under `status --all --json`, and stopped with `stop <id> --all --json`.
+- `--json` across bg-flow skills: **PASS**. Delegate/status/result/followup/review/adversarial-review/stop/workflow/goal/fork/batch/deep-research/workflows all emitted parseable JSON on success or error paths.
+- Privacy disclosure: **PASS**. Fresh temp workspace first delegate without `--yes` exited 1 with `Privacy acknowledgement required`; `--yes` proceeded; second delegate in the same workspace without `--yes` proceeded.
+
+### Findings
+- Blocker: none.
+- High: F2b primary regression target still fails result isolation for reused `--name`. The first duplicate-name job returned the second job's marker despite distinct job IDs, session IDs, PIDs, and suffixed `sessionName`s.
+- Medium: `$claude-followup` positive paths are blocked by state mismatch. Fixture `job_mqacot6s_1cc0586d` produced `RETRY_INITIAL_READY`; `claude agents --json` showed session `acc0cfbd-983d-436a-b755-1c27cc930100` as `idle` / `blocked`, but `cc status --json` still reported `running` after about 52s. Command `node marketplace/plugins/cc/scripts/cc.mjs followup job_mqacot6s_1cc0586d --yes -- "Reply with exactly RETRY_FOLLOWUP_ONE_OK."` returned `[followup] Error: Job job_mqacot6s_1cc0586d is running; wait for $claude-status to show awaiting_followup before sending a follow-up.`
+- Medium: broad status reconciliation is very slow under the accumulated 200+ job history. Examples: lane 03 `status --all` took 96.37s; follow-up retry `status --json` took about 52s and still did not reconcile the completed result into an `awaiting_followup` state; several lane probes had to be bounded to avoid overload.
+- Medium: `$claude-review` attach/registration was timing-sensitive. Review submissions failed with `follow-up prompt did not register within 5000ms` and again at 20000ms, then passed with `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS=15000 CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS=60000`.
+- Low: `--allow-edit` invalid-flag errors are functionally correct but copy does not match the exact ticket phrase `not applicable to this subcommand`.
+- Low: workflow and deep-research could only be marked partial because Claude Code 2.1.174 stopped at the documented dynamic workflow approval gate under `--yes`.
+
+### Fan-Out Evidence
+- fork: `job_mqacbdob_e6d3a8f0`, `job_mqacbnpf_ba1546d8`, and `job_mqacc16t_e80b32ff` produced sidechain transcript files with `isSidechain:true`, `attributionAgent:"fork"`, and about 31k-58k subagent tokens.
+- batch: `job_mqacd6va_2fd5e94f` logs included `Running 2 Explore agents...`; sidechain files recorded two Explore agents for package/plugin metadata and CC skill inspection. Stop-mid-run job `job_mqacg7bj_7e420a55` stopped cleanly with partial output recoverable.
+- workflow: `job_mqaccixe_bb7bf22a`, `job_mqacct39_3f6b90fb`, and `job_mqacd5nz_fad99266` produced phase records and workflow session metadata, but hit `needs_input` approval before post-approval agents.
+- deep-research: `job_mqacezp5_edf17125` and companion probes logged the deep-research fan-out plan (parallel search/fetch/verify/synthesis shape), but all stopped at `needs_input` before WebSearch/fetch/verify agents ran.
+- goal: bounded goal jobs completed their markers; no `goal_status` field is expected in v0.3.3 status output, and no independent post-approval fan-out evidence was observed.
+
+### Cleanup
+Required cleanup command `node marketplace/plugins/cc/scripts/cc.mjs stop --all-awaiting-followup --all --json` exited 0. Final verification used `status --all --json` over artifact job IDs plus the coordinator's temp isolation job: `artifactJobIds=62`, `matched=58`, `byStatus={ "orphaned": 3, "stopped": 55 }`, `activeCount=0`.
+
 <!--
 ## Run YYYY-MM-DD — vX.Y.Z — <pass|issues found>
 **Env**: claude X.Y.Z · codex X.Y.Z · macOS … · plugin vX.Y.Z
@@ -198,5 +267,3 @@ Do NOT commit — the maintainer reviews and commits.
 ### Cleanup
 final `status --all` active count: …
 -->
-
-_No runs recorded yet._

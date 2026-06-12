@@ -1,0 +1,22 @@
+{
+  "label": "9d-attempt1-poll1",
+  "invocation": "node /Users/hongjunwu/.codex/plugins/cache/cc-plugin-codex-local/cc/0.3.0/scripts/cc.mjs status --json",
+  "exitCode": 0,
+  "signal": null,
+  "error": null,
+  "jobId": "job_mq49btzp_d1197391",
+  "status": "awaiting_followup",
+  "shortId": "d16b2bdc",
+  "sessionId": "d16b2bdc-0098-4b5c-a7aa-e301379fd598",
+  "sessionName": "wf-named-pr4",
+  "turnStatuses": [
+    {
+      "index": 0,
+      "status": "completed",
+      "preview": "MARKER-W4"
+    }
+  ],
+  "resultPreview": "MARKER-W4",
+  "stdoutBytes": 212335,
+  "stderrExcerpt": ""
+}

@@ -16,7 +16,25 @@
 - One test caught + fixed mid-build: dispatcher `T6-2` asserted the exact internal review session name, which the uniquify fix now correctly suffixes → updated to a prefix match (also fixes the review-name collision previously seen in-store)
 **Drafted from**: the v0.3.2 deep test (`documentation/testing/findings-20260608-v032-deep.md`) + maintainer audit (ground-truth trace of the F2b contamination).
 
-## Root cause
+## ⚠️ CORRECTION (2026-06-12) — v0.3.3 does NOT fix F2b
+
+The v0.3.3 deep test (ticket run 2026-06-12) showed F2b **still fails**, and a ground-truth
+trace overturned the root-cause theory below. Session `dd3a7dec` had a UNIQUE name
+(`dup-key-test-ff742519`), its own pid, and correctly logged the user turn `reply DUP-ONE`
+— yet its **assistant turn emitted `DUP-TWO`** (the sibling's marker). Naming was never the
+cause. A controlled reproduction (34 sessions: 5 isolated conditions + 24 under max
+concurrent load; near-identical and distinct prompts; same and different cwds) reproduced
+the cross **0 times** — F2b is a **rare, non-deterministic cross at the Claude Code / model
+layer** (likely prompt-cache or concurrent-request cross-talk), **not a cc-plugin defect**.
+
+So: the "Root cause" and "Fix" sections below are a **misdiagnosis**. The v0.3.3 unique-name
+change is harmless hygiene (it does prevent the genuine same-name/same-pid merge that
+Plan 0020 F1 addressed for explicit names) but it does **not** close F2b. F2b should be
+treated as an upstream issue, not a plugin regression or release blocker. See memory
+`project_f2b_upstream_nondeterministic`. Plan 0020 F1 (same-millisecond default-name → one
+pid) was a different, real bug and remains correctly fixed (F1 passes).
+
+## Root cause (SUPERSEDED — see correction above)
 
 Plan 0020 (v0.3.2) closed the "session identity keyed on a non-unique name" root cause **only for auto-generated default names** (F1 added entropy there). It left explicit `--name` verbatim, and the Plan 0020 F4 docs asserted — **without verification** — that a reused `--name` is a benign "idempotent session key." The v0.3.2 deep test refuted that.
 

@@ -1,0 +1,22 @@
+{
+  "label": "9b-attempt1-poll8",
+  "invocation": "node /Users/hongjunwu/.codex/plugins/cache/cc-plugin-codex-local/cc/0.3.0/scripts/cc.mjs status --json",
+  "exitCode": 0,
+  "signal": null,
+  "error": null,
+  "jobId": "job_mq492p5g_0dad8a0e",
+  "status": "needs_input",
+  "shortId": "983cda25",
+  "sessionId": "983cda25-a210-4647-b1d7-87cfe2b4dc64",
+  "sessionName": "codex:cc-plugin-codex:mq492mep",
+  "turnStatuses": [
+    {
+      "index": 0,
+      "status": "needs_input",
+      "preview": "Audit complete — 10 subagents, one per file, ran in parallel (~37s). Here are the exported functions per file: | File | Exported functions | |---|---| | `ack.mj…"
+    }
+  ],
+  "resultPreview": "Audit complete — 10 subagents, one per file, ran in parallel (~37s). Here are the exported functions per file: | File | Exported functions | |---|---| | `ack.mj…",
+  "stdoutBytes": 200212,
+  "stderrExcerpt": ""
+}

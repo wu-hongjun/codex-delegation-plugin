@@ -1,0 +1,22 @@
+{
+  "label": "11a-attempt1-poll2",
+  "invocation": "node /Users/hongjunwu/.codex/plugins/cache/cc-plugin-codex-local/cc/0.3.0/scripts/cc.mjs status --json",
+  "exitCode": 0,
+  "signal": null,
+  "error": null,
+  "jobId": "job_mq49hw8n_e1d7612f",
+  "status": "awaiting_followup",
+  "shortId": "41798f4d",
+  "sessionId": "41798f4d-a2e0-4e50-9e15-4e0769605b93",
+  "sessionName": "codex:cc-plugin-codex:mq49htjp",
+  "turnStatuses": [
+    {
+      "index": 0,
+      "status": "completed",
+      "preview": "Summary of the dispatch switch in `cc.mjs`: - **What it dispatches**: a single `switch (command)` at line 85 routes each CLI subcommand to its `cmd*` handler — …"
+    }
+  ],
+  "resultPreview": "Summary of the dispatch switch in `cc.mjs`: - **What it dispatches**: a single `switch (command)` at line 85 routes each CLI subcommand to its `cmd*` handler — …",
+  "stdoutBytes": 249129,
+  "stderrExcerpt": ""
+}

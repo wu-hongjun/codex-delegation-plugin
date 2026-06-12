@@ -1,0 +1,22 @@
+{
+  "label": "10c-attempt1-poll2",
+  "invocation": "node /Users/hongjunwu/.codex/plugins/cache/cc-plugin-codex-local/cc/0.3.0/scripts/cc.mjs status --json",
+  "exitCode": 0,
+  "signal": null,
+  "error": null,
+  "jobId": "job_mq49fwqp_003b71c6",
+  "status": "running",
+  "shortId": "4673c16d",
+  "sessionId": "4673c16d-7701-4f65-8c05-036286ba0900",
+  "sessionName": "codex:cc-plugin-codex:mq49fu0f",
+  "turnStatuses": [
+    {
+      "index": 0,
+      "status": "queued",
+      "preview": "MARKER-G3"
+    }
+  ],
+  "resultPreview": "MARKER-G3",
+  "stdoutBytes": 243930,
+  "stderrExcerpt": ""
+}

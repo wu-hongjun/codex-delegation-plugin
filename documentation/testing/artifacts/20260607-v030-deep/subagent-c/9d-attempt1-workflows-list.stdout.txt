@@ -1,0 +1,124 @@
+{
+  "sessions": [
+    {
+      "jobId": "job_mq1eqa7e_9c8e5b88",
+      "sessionId": "2b741235-83df-409f-b119-eac21a7892d9",
+      "shortId": "2b741235",
+      "name": "codex:cc-plugin-codex:mq1eq7jq",
+      "status": "orphaned",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-05T20:59:17.930Z",
+      "promptSummary": "ultracode: Survey only the file packages/plugin-codex/scripts/claude-companion.mjs (do not read other files). In one sho"
+    },
+    {
+      "jobId": "job_mq34spc3_13a8537a",
+      "sessionId": "46153ea7-aa8a-4d86-9428-86854944c72e",
+      "shortId": "46153ea7",
+      "name": "codex:cc-plugin-codex:mq34smmc",
+      "status": "orphaned",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-07T01:56:47.043Z",
+      "promptSummary": "ultracode: Survey packages/plugin-codex/scripts/cc.mjs L1-L100 and explain the dispatch switch in 3 short bullets. Be ve"
+    },
+    {
+      "jobId": "job_mq34ud5y_958b3918",
+      "sessionId": "24637634-4e0a-458b-a254-841eb43d585a",
+      "shortId": "24637634",
+      "name": "codex:cc-plugin-codex:mq34uaeq",
+      "status": "orphaned",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-07T01:58:04.582Z",
+      "promptSummary": "ultracode: Print OK then stop."
+    },
+    {
+      "jobId": "job_mq36pwuq_78224539",
+      "sessionId": "ee8a35d3-ff9e-4233-b6b1-feb99f9bad9a",
+      "shortId": "ee8a35d3",
+      "name": "codex:cc-plugin-codex:mq36ptd0",
+      "status": "running",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-07T02:50:36.050Z",
+      "promptSummary": "ultracode: Survey packages/plugin-codex/scripts/cc.mjs in 3 short bullets describing the main dispatch switch. Be very b"
+    },
+    {
+      "jobId": "job_mq36vtnu_b92cf1e8",
+      "sessionId": "6cd385c9-cf03-4b0b-970b-863f6ea9b8c2",
+      "shortId": "6cd385c9",
+      "name": "codex:cc-plugin-codex:mq36vr01",
+      "status": "orphaned",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-07T02:55:11.850Z",
+      "promptSummary": "ultracode: Survey packages/plugin-codex/scripts/cc.mjs in 3 short bullets. Be brief."
+    },
+    {
+      "jobId": "job_mq3poyn7_b2da3387",
+      "sessionId": "6f70fcfb-c954-40f5-8d43-7724d095cfd1",
+      "shortId": "6f70fcfb",
+      "name": "codex:cc-plugin-codex:mq3povx3",
+      "status": "orphaned",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-07T11:41:44.419Z",
+      "promptSummary": "ultracode: Survey docs/REAL-CODEX-TEST-RECIPE.md in one bullet. Be brief."
+    },
+    {
+      "jobId": "job_mq3ulptz_4c42ac77",
+      "sessionId": "c11c23cb-1de7-4ab2-822c-33fb7293f35d",
+      "shortId": "c11c23cb",
+      "name": "codex:cc-plugin-codex:mq3ulmrs",
+      "status": "orphaned",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-07T13:59:11.111Z",
+      "promptSummary": "ultracode: Print MARKER-W then stop. Be very brief; no file reads."
+    },
+    {
+      "jobId": "job_mq3unua6_a3360f9c",
+      "sessionId": "bf082f96-e914-4eef-9797-b3398ee26ac9",
+      "shortId": "bf082f96",
+      "name": "codex:cc-plugin-codex:mq3unrhv",
+      "status": "orphaned",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-07T14:00:50.191Z",
+      "promptSummary": "ultracode: job_mq3ulptz_4c42ac77"
+    },
+    {
+      "jobId": "job_mq48xsaf_e9b10e68",
+      "sessionId": "c2a202db-1cab-42dd-99f3-b8a06a934868",
+      "shortId": "c2a202db",
+      "name": "codex:cc-plugin-codex:mq48xpm4",
+      "status": "orphaned",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-07T20:40:28.791Z",
+      "promptSummary": "ultracode: Print MARKER-W then stop. Be brief."
+    },
+    {
+      "jobId": "job_mq492p5g_0dad8a0e",
+      "sessionId": "983cda25-a210-4647-b1d7-87cfe2b4dc64",
+      "shortId": "983cda25",
+      "name": "codex:cc-plugin-codex:mq492mep",
+      "status": "orphaned",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-07T20:44:18.004Z",
+      "promptSummary": "ultracode: Audit every .mjs file under packages/plugin-codex/scripts/lib/ in parallel — one subagent per file — and repo"
+    },
+    {
+      "jobId": "job_mq49b4ss_ffac6060",
+      "sessionId": "1605b87a-7429-4156-9d4b-414743b023ee",
+      "shortId": "1605b87a",
+      "name": "codex:cc-plugin-codex:mq49b22a",
+      "status": "awaiting_followup",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-07T20:50:51.533Z",
+      "promptSummary": "ultracode: Print MARKER-W3 then stop."
+    },
+    {
+      "jobId": "job_mq49btzp_d1197391",
+      "sessionId": "d16b2bdc-0098-4b5c-a7aa-e301379fd598",
+      "shortId": "d16b2bdc",
+      "name": "wf-named-pr4",
+      "status": "awaiting_followup",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-07T20:51:24.182Z",
+      "promptSummary": "ultracode: Print MARKER-W4 then stop."
+    }
+  ]
+}

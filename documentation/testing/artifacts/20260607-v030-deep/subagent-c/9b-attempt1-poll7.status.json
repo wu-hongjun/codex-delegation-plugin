@@ -1,0 +1,22 @@
+{
+  "label": "9b-attempt1-poll7",
+  "invocation": "node /Users/hongjunwu/.codex/plugins/cache/cc-plugin-codex-local/cc/0.3.0/scripts/cc.mjs status --json",
+  "exitCode": 0,
+  "signal": null,
+  "error": null,
+  "jobId": "job_mq492p5g_0dad8a0e",
+  "status": "running",
+  "shortId": "983cda25",
+  "sessionId": "983cda25-a210-4647-b1d7-87cfe2b4dc64",
+  "sessionName": "codex:cc-plugin-codex:mq492mep",
+  "turnStatuses": [
+    {
+      "index": 0,
+      "status": "needs_input",
+      "preview": "The workflow is running with 10 parallel subagents (one per file). I'll report results when it completes."
+    }
+  ],
+  "resultPreview": "The workflow is running with 10 parallel subagents (one per file). I'll report results when it completes.",
+  "stdoutBytes": 199551,
+  "stderrExcerpt": ""
+}

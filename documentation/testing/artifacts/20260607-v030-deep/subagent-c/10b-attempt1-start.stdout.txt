@@ -1,0 +1,13 @@
+Claude job started
+Job ID:         job_mq49dcmu_ef373178
+Status:         running
+Claude session: 482ed704
+Name:           codex:cc-plugin-codex:mq49d9yi
+Logs:           claude logs 482ed704
+Run:
+  $claude-status
+  $claude-result job_mq49dcmu_ef373178
+
+This is a Claude Code goal-condition request.
+The runtime tracks goal-completion automatically; attach via
+`claude attach <jobId>` to watch progress.

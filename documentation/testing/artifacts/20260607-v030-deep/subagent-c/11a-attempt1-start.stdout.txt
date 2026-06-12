@@ -1,0 +1,14 @@
+Claude job started
+Job ID:         job_mq49hw8n_e1d7612f
+Status:         running
+Claude session: 41798f4d
+Name:           codex:cc-plugin-codex:mq49htjp
+Logs:           claude logs 41798f4d
+Run:
+  $claude-status
+  $claude-result job_mq49hw8n_e1d7612f
+
+This is a Claude Code fork request.
+The runtime spawns a real subagent process to execute the directive.
+Note: /fork directives consume 20-30k tokens even for trivial directives.
+Attach via `claude attach <jobId>` to watch progress.

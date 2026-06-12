@@ -1,0 +1,12 @@
+Job:        job_mq49hw8n_e1d7612f
+Status:     awaiting_followup
+Transcript: (none)
+Logs:       claude logs 41798f4d
+
+Summary of the dispatch switch in `cc.mjs`:
+
+- **What it dispatches**: a single `switch (command)` at line 85 routes each CLI subcommand to its `cmd*` handler — `setup`, `delegate`, `workflow`, `goal`, `fork`, `batch`, `deep-research`, `status`, `result`, `stop`, `followup`, `review`, `adversarial-review`, and `workflows`. Every case `await`s its handler with `(flags, positional, useJson)` (setup/status take just `flags, useJson`).
+
+- **Error handling**: the whole switch is wrapped in `try/catch` (lines 84–137). An unknown command hits the `default` case, which writes a formatted error, prints usage, and exits `2` (usage error); any handler exception is caught and exits `1` (failure). Per the header, exit codes are `0` success / `1` failure / `2` usage.
+
+- **Note vs. the fork's range**: L1–L60 (what the fork read) contains only imports and `loadPluginVersion()` — not the switch, which lives at L85. The header comment at L4 also lists a stale/partial subcommand set (`setup | delegate | workflow | goal | status | result | stop`), missing `fork`, `batch`, `deep-research`, `followup`, `review`, `adversarial-review`, and `workflows` that the actual switch handles.

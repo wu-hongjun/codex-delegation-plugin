@@ -1,0 +1,18 @@
+Claude job started
+Job ID:         job_mq492p5g_0dad8a0e
+Status:         orphaned
+Claude session: 983cda25
+Name:           codex:cc-plugin-codex:mq492mep
+Logs:           claude logs 983cda25
+Run:
+  $claude-status
+  $claude-result job_mq492p5g_0dad8a0e
+
+This is a Claude Code dynamic workflow request.
+Workflows present an interactive approval dialog (Yes / View raw script / No)
+inside the Claude Code TUI. To approve and start the workflow, attach:
+
+  claude attach <jobId>
+
+Workflows can spawn up to 16 concurrent agents and 1000 total per run. Token
+usage scales with the workflow's complexity.

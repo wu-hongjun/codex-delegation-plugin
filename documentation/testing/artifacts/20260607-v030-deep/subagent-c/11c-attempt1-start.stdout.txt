@@ -1,0 +1,110 @@
+{
+  "ok": true,
+  "job": {
+    "jobId": "job_mq49jzsg_d78e1504",
+    "schemaVersion": 2,
+    "createdAt": "2026-06-07T20:57:44.944Z",
+    "updatedAt": "2026-06-07T20:57:45.768Z",
+    "status": "running",
+    "codex": {
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "pluginVersion": "0.3.0"
+    },
+    "workspace": {
+      "root": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex"
+    },
+    "driver": {
+      "name": "claude-background",
+      "version": "0.0.0",
+      "capabilitiesSnapshot": {
+        "driverName": "claude-background",
+        "driverVersion": "0.0.0",
+        "claudeVersion": "2.1.168 (Claude Code)",
+        "backgroundSessions": true,
+        "agentsJson": true,
+        "logsCommand": true,
+        "transcriptPath": true,
+        "attach": false,
+        "structuredStream": "transcript",
+        "toolEvents": "transcript",
+        "permissions": "human-attach",
+        "health": {
+          "status": "warn",
+          "probes": [
+            {
+              "name": "claude-binary",
+              "status": "ok",
+              "detail": "claude binary is executable"
+            },
+            {
+              "name": "claude-version",
+              "status": "ok",
+              "detail": "2.1.168 (Claude Code)",
+              "evidence": "2.1.168 (Claude Code)"
+            },
+            {
+              "name": "claude-auth",
+              "status": "ok",
+              "detail": "{\n  \"loggedIn\": true,\n  \"authMethod\": \"claude.ai\",\n  \"apiProvider\": \"firstParty\",\n  \"email\": \"dev@bullpen.fi\",\n  \"orgId\": \"513df1ca-877d-4382-8c2f-0557adbd53eb\",\n  \"orgName\": \"dev@bullpen.fi's Organization\",\n  \"subscriptionType\": \"max\"\n}"
+            },
+            {
+              "name": "claude-bg-flag",
+              "status": "warn",
+              "detail": "--bg not advertised in --help; Claude docs say help may omit flags. Background support will be verified when starting a session.",
+              "evidence": "Usage: claude [options] [command] [prompt]\n\nClaude Code - starts an interactive session by default, use -p/--print for\nnon-interactive output\n\nArguments:\n  prompt                                Your prompt\n\nOptions:\n  --add-dir <directories…"
+            },
+            {
+              "name": "claude-agents-json",
+              "status": "ok",
+              "detail": "claude agents --json returned 20 session(s)",
+              "evidence": {
+                "sessionCount": 20
+              }
+            },
+            {
+              "name": "claude-logs",
+              "status": "ok",
+              "detail": "claude logs --help is available"
+            },
+            {
+              "name": "claude-daemon",
+              "status": "ok",
+              "detail": "pid:     25562\nversion: 2.1.168\nuptime:  75751s\norigin:  transient — started on-demand by `claude --bg` (pid 90923) in /Users/hongjunwu/Repositories/Git/cc-plugin-codex\nconfig:  /Users/hongjunwu/.claude/daemon.json\nlog:     /Users/hongjunwu…"
+            },
+            {
+              "name": "transcript-path",
+              "status": "ok",
+              "detail": "/Users/hongjunwu/.claude/projects"
+            }
+          ]
+        }
+      }
+    },
+    "claude": {
+      "version": "2.1.168 (Claude Code)",
+      "shortId": "a0c3b2fd",
+      "sessionName": "codex:cc-plugin-codex:mq49jx35",
+      "cwd": "/Users/hongjunwu/Repositories/Git/cc-plugin-codex",
+      "startedAt": "2026-06-07T20:57:44.938Z",
+      "logsCommand": "claude logs a0c3b2fd",
+      "sessionId": "a0c3b2fd-ac36-4522-ae83-8341bacd2bad",
+      "pid": 52179
+    },
+    "prompt": {
+      "summary": "/fork Print MARKER-F3 then stop.",
+      "sha256": "ec65699c69e5c84264ab8402ae97b811438bb989a8a8abc2d979211dd8739110",
+      "bytesLen": 32
+    },
+    "turns": [
+      {
+        "prompt": {
+          "summary": "/fork Print MARKER-F3 then stop.",
+          "sha256": "ec65699c69e5c84264ab8402ae97b811438bb989a8a8abc2d979211dd8739110",
+          "bytesLen": 32
+        },
+        "startedAt": "2026-06-07T20:57:44.944Z",
+        "status": "queued"
+      }
+    ]
+  }
+}

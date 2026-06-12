@@ -1,0 +1,18 @@
+Claude job started
+Job ID:         job_mq49btzp_d1197391
+Status:         running
+Claude session: d16b2bdc
+Name:           wf-named-pr4
+Logs:           claude logs d16b2bdc
+Run:
+  $claude-status
+  $claude-result job_mq49btzp_d1197391
+
+This is a Claude Code dynamic workflow request.
+Workflows present an interactive approval dialog (Yes / View raw script / No)
+inside the Claude Code TUI. To approve and start the workflow, attach:
+
+  claude attach <jobId>
+
+Workflows can spawn up to 16 concurrent agents and 1000 total per run. Token
+usage scales with the workflow's complexity.

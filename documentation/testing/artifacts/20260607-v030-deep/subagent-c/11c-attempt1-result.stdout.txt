@@ -1,0 +1,8 @@
+Job:        job_mq49jzsg_d78e1504
+Status:     awaiting_followup
+Transcript: (none)
+Logs:       claude logs a0c3b2fd
+
+MARKER-F3
+
+The forked agent completed and returned `MARKER-F3`.

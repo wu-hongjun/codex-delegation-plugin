@@ -1,0 +1,27 @@
+Job:        job_mq492p5g_0dad8a0e
+Status:     orphaned
+Transcript: (none)
+Logs:       claude logs 983cda25
+
+Audit complete — 10 subagents, one per file, ran in parallel (~37s). Here are the exported functions per file:
+
+| File | Exported functions |
+|---|---|
+| `ack.mjs` | `hasAck`, `recordAck`, `resolveWorkspaceAck` |
+| `adapter.mjs` | `makeClaudeAdapter` |
+| `args.mjs` | `parseArgs`, `resolveJobIdPrefix` |
+| `claude-version.mjs` | `parseClaudeVersion`, `compare`, `meetsFloor` |
+| `format.mjs` | `formatSetup`, `formatDelegate`, `formatStatus`, `formatFollowup`, `formatResult`, `formatStop`, `formatBulkStop`, `formatReviewHuman`, `formatReviewJson`, `formatAdversarialReviewJson`, `formatError` |
+| `prompt-meta.mjs` | `makePromptMeta` |
+| `review-parser.mjs` | `parseReviewOutput` |
+| `review-prompts.mjs` | `SAME_SESSION_REVIEW_PROMPT`, `ADVERSARIAL_REVIEW_PROMPT` |
+| `review-result-source.mjs` | `readTurnFinalMessageOrFallback` (async) |
+| `workflows-inspector.mjs` | `listWorkflows` (async), `inspectWorkflow` (async), `_sanitizeCwd` |
+
+**Totals:** 10 files, 28 exported functions.
+
+Notable findings from the audit:
+- **No file has a default export**, no re-exports, and no arrow-const function exports — every export is a standard `function` declaration.
+- **No exported non-function values** anywhere. Module-private constants exist but none are exported (e.g. `BOOLEAN_FLAGS`/`REPEATABLE_FLAGS` in `args.mjs`, `VALID_VERDICTS`/`VALID_SEVERITIES` in `review-parser.mjs`, `ULTRACODE_PREFIX` in `workflows-inspector.mjs`).
+- **`review-prompts.mjs`**: `SAME_SESSION_REVIEW_PROMPT` and `ADVERSARIAL_REVIEW_PROMPT` are exported *functions* (not string constants), despite the SCREAMING_CASE naming.
+- **`workflows-inspector.mjs`** exports `_sanitizeCwd` — an underscore-prefixed (conventionally "private") helper that is nonetheless a public export, while its sibling `_`-helpers stay module-private. Worth a glance if that exposure is unintentional.

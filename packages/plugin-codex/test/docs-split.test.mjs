@@ -135,7 +135,7 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
     it('contains required end-user section headings', () => {
       const content = readFileSync(MARKETPLACE_README, 'utf8');
       const requiredHeadings = [
-        /^# Claude Companion\b/m,
+        /^# cc\b/m,
         /^## Requirements\b/m,
         /^## Install\b/m,
         /^## Verify\b/m,

@@ -516,7 +516,7 @@ describe('status with no jobs', () => {
 // ---------- Plan 0020 F3: status rejects an unexpected positional ----------
 
 describe('status with a job id positional (Plan 0020 F3)', () => {
-  it('exits 2 and points at cc result instead of silently listing everything', () => {
+  it('exits 2 and points at status --job instead of silently listing everything', () => {
     const result = runDispatcher(['status', 'job_bogus_deadbeef']);
 
     assert.equal(
@@ -525,8 +525,9 @@ describe('status with a job id positional (Plan 0020 F3)', () => {
       `expected exit 2 for status <jobId>, got ${result.status}; stdout:\n${result.stdout}`,
     );
     assert.ok(
-      result.stderr.includes('cc result job_bogus_deadbeef'),
-      `expected stderr to suggest "cc result <jobId>"; got:\n${result.stderr}`,
+      result.stderr.includes('cc status --job job_bogus_deadbeef') &&
+        result.stderr.includes('cc result job_bogus_deadbeef'),
+      `expected stderr to suggest status --job and result forms; got:\n${result.stderr}`,
     );
   });
 
@@ -752,6 +753,10 @@ describe('result for a running job', () => {
       mentionsNotComplete,
       `expected "not complete" hint in output; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
+    assert.ok(
+      combined.includes(`cc status --job ${jobId}`),
+      `expected single-job status hint; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    );
   });
 });
 
@@ -888,6 +893,30 @@ describe('result with ambiguous prefix', () => {
     assert.ok(
       mentionsCandidates,
       `expected candidate jobIds or "ambiguous" in output; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
+    );
+  });
+
+  it('caps broad ambiguous-prefix candidate output', () => {
+    for (let i = 0; i < 12; i++) {
+      const suffix = i.toString(16).padStart(8, '0');
+      writeSyntheticCompletedJob({
+        jobId: `job_many_${suffix}`,
+        prompt: `ambiguous task ${i}`,
+      });
+    }
+
+    const result = runDispatcher(['result', 'job_many_']);
+
+    assert.equal(result.status, 1, `expected exit 1; stderr:\n${result.stderr}`);
+    const combined = result.stdout + result.stderr;
+    assert.ok(
+      combined.includes('(+2 more; narrow the prefix or pass the full jobId)'),
+      `expected capped ambiguity suffix; got:\n${combined}`,
+    );
+    const shownCandidates = combined.match(/job_many_[a-f0-9]{8}/g) ?? [];
+    assert.ok(
+      shownCandidates.length <= 10,
+      `expected at most 10 displayed candidates; got ${shownCandidates.length} in:\n${combined}`,
     );
   });
 });
@@ -1056,6 +1085,15 @@ describe('delegate flag parsing parity (Plan 0024)', () => {
     assert.deepEqual(listJobIds(), [], 'unknown flag must not create a job');
   });
 
+  it('prefixes parser-level errors with the command name', () => {
+    const result = runDispatcher(['delegate', '--frobnicate']);
+    assert.equal(result.status, 2, `expected exit 2; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stderr.startsWith('[delegate] Error: Unknown flag: --frobnicate'),
+      `expected command-prefixed parse error; got:\n${result.stderr}`,
+    );
+  });
+
   it('--dangerously-skip-permissions aliases permission-mode bypass without swallowing prompt', () => {
     const result = runDispatcher([
       'delegate',
@@ -1090,6 +1128,11 @@ describe('delegate flag parsing parity (Plan 0024)', () => {
     assert.ok(
       result.stderr.includes('--permission-mode must be one of:'),
       `expected permission-mode validation error; got:\n${result.stderr}`,
+    );
+    assert.equal(
+      existsSync(ackPath()),
+      false,
+      'invalid permission mode must be rejected before recording the privacy ack',
     );
     assert.deepEqual(listJobIds(), [], 'invalid permission mode must not create a job');
   });
@@ -4780,6 +4823,22 @@ describe('adversarial-review structured response produces human output (T6)', ()
       `expected gate failure on stderr; got:\n${result.stderr}`,
     );
   });
+
+  it('Plan 0024 polish: --fail-on= is rejected instead of disabling the review gate', () => {
+    const result = runDispatcher(['adversarial-review', 'job_nope_deadbeef', '--fail-on=']);
+
+    assert.equal(result.status, 2, `expected usage exit 2; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stderr.includes(
+        '--fail-on requires a value: fail, any, nit, low, medium, high, blocker',
+      ),
+      `expected empty fail-on validation error; got:\n${result.stderr}`,
+    );
+    assert.ok(
+      !result.stderr.includes('No job found'),
+      `fail-on validation should happen before job lookup; got:\n${result.stderr}`,
+    );
+  });
 });
 
 // ---------- T6-4: --json output includes review + reviewOf + targetJob ----------
@@ -6980,6 +7039,30 @@ describe('printUsage reflects review/adversarial-review accepted flags (Stage 4 
       `--help --yes flag description must mention "review"\nLine: ${yesLine ?? '(not found)'}\nActual stdout:\n${result.stdout}`,
     );
   });
+
+  it('N2-1j: --help lists advanced fresh-session passthrough flags', () => {
+    const result = runDispatcher(['--help']);
+    const expectedFlags = [
+      '--system-prompt',
+      '--append-system-prompt',
+      '--plugin-dir',
+      '--plugin-url',
+      '--setting-sources',
+      '--strict-mcp-config',
+      '--agents',
+      '--bare / --safe-mode',
+      '--ide / --chrome / --no-chrome',
+      '--disable-slash-commands',
+      '--exclude-dynamic-system-prompt-sections',
+      '--verbose',
+    ];
+    for (const flag of expectedFlags) {
+      assert.ok(
+        result.stdout.includes(flag),
+        `--help must include advanced passthrough flag "${flag}"\nActual stdout:\n${result.stdout}`,
+      );
+    }
+  });
 });
 
 // ---------- workflow subcommand tests (Plan 0008 T3) ----------
@@ -7879,4 +7962,24 @@ describe('stop bare --all emits bulk-stop hint (Plan 0012 T8)', () => {
       `expected --all-awaiting-followup hint in output; got:\n${combined}`,
     );
   });
+});
+
+describe('workflow-family attach hints include actual shortIds (Plan 0024 polish)', () => {
+  for (const commandName of ['goal', 'fork', 'batch']) {
+    it(`${commandName} prints a ready-to-copy claude attach command`, () => {
+      const result = runDispatcher([commandName, '--yes', '--', 'respond with OK']);
+
+      assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+      const shortId = result.stdout.match(/Claude session:\s+([a-f0-9]{8})/)?.[1];
+      assert.ok(shortId, `expected Claude session shortId in stdout:\n${result.stdout}`);
+      assert.ok(
+        result.stdout.includes(`claude attach ${shortId}`),
+        `expected inlined attach command for ${shortId}; got:\n${result.stdout}`,
+      );
+      assert.ok(
+        !result.stdout.includes('claude attach <shortId>'),
+        `expected no literal shortId placeholder; got:\n${result.stdout}`,
+      );
+    });
+  }
 });

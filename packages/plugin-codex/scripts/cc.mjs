@@ -205,12 +205,25 @@ const REVIEW_SEVERITY_RANK = new Map([
 ]);
 
 function parseReviewGate(flags, commandName, json) {
+  const failOnFlagPresent = Object.prototype.hasOwnProperty.call(flags, 'fail-on');
   const rawFailOn = stringFlag(flags, 'fail-on');
   const blocking = Boolean(flags['blocking']);
+  const allowed = ['fail', 'any', ...REVIEW_SEVERITY_RANK.keys()];
+
+  if (failOnFlagPresent && rawFailOn === undefined) {
+    process.stderr.write(
+      formatError(
+        new Error(`--fail-on requires a value: ${allowed.join(', ')}`),
+        commandName,
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
   if (rawFailOn === undefined && !blocking) return null;
 
   const failOn = rawFailOn ?? 'high';
-  const allowed = ['fail', 'any', ...REVIEW_SEVERITY_RANK.keys()];
   if (!allowed.includes(failOn)) {
     process.stderr.write(
       formatError(
@@ -350,12 +363,35 @@ async function ensureWorkspaceAck({
 // ---------- main ----------
 
 const argv = process.argv.slice(2);
+const KNOWN_COMMANDS = new Set([
+  'setup',
+  'delegate',
+  'workflow',
+  'goal',
+  'fork',
+  'batch',
+  'deep-research',
+  'status',
+  'result',
+  'stop',
+  'followup',
+  'review',
+  'adversarial-review',
+  'workflows',
+]);
+
+function inferCommandForParseError(args) {
+  return args.find((arg) => KNOWN_COMMANDS.has(arg)) ?? '';
+}
+
 let parsed;
 try {
   parsed = parseArgs(argv);
 } catch (err) {
   const useJsonForParseError = argv.includes('--json');
-  process.stderr.write(formatError(err, '', useJsonForParseError) + '\n');
+  process.stderr.write(
+    formatError(err, inferCommandForParseError(argv), useJsonForParseError) + '\n',
+  );
   process.exit(2);
 }
 const { command, flags, positional } = parsed;
@@ -593,11 +629,8 @@ async function cmdWorkflow(flags, positional, json) {
   // --allow-edit is not applicable to workflow; workflows are planning sessions.
   if (flags['allow-edit'] !== undefined) {
     process.stderr.write(
-      formatError(
-        new Error('--allow-edit is not applicable to $claude-workflow.'),
-        'workflow',
-        json,
-      ) + '\n',
+      formatError(new Error('--allow-edit is not applicable to cc workflow.'), 'workflow', json) +
+        '\n',
     );
     process.exit(2);
   }
@@ -627,8 +660,7 @@ async function cmdGoal(flags, positional, json) {
   // --allow-edit is not applicable to goal; goal sessions track a condition automatically.
   if (flags['allow-edit'] !== undefined) {
     process.stderr.write(
-      formatError(new Error('--allow-edit is not applicable to $claude-goal.'), 'goal', json) +
-        '\n',
+      formatError(new Error('--allow-edit is not applicable to cc goal.'), 'goal', json) + '\n',
     );
     process.exit(2);
   }
@@ -636,12 +668,14 @@ async function cmdGoal(flags, positional, json) {
   await _runDelegateCore(flags, positional, json, {
     commandName: 'goal',
     promptTransformer: (p) => `/goal ${p}`,
-    extraOutput: [
-      '',
-      'This is a Claude Code goal-condition request.',
-      'The runtime tracks goal-completion automatically; attach via',
-      '`claude attach <shortId>` to watch progress.',
-    ].join('\n'),
+    extraOutput: (job) =>
+      [
+        '',
+        'This is a Claude Code goal-condition request.',
+        'The runtime tracks goal-completion automatically; attach via',
+        `claude attach ${job.claude.shortId}`,
+        'to watch progress.',
+      ].join('\n'),
   });
 }
 
@@ -651,8 +685,7 @@ async function cmdFork(flags, positional, json) {
   // --allow-edit is not applicable to fork; fork sessions spawn a subagent automatically.
   if (flags['allow-edit'] !== undefined) {
     process.stderr.write(
-      formatError(new Error('--allow-edit is not applicable to $claude-fork.'), 'fork', json) +
-        '\n',
+      formatError(new Error('--allow-edit is not applicable to cc fork.'), 'fork', json) + '\n',
     );
     process.exit(2);
   }
@@ -660,13 +693,14 @@ async function cmdFork(flags, positional, json) {
   await _runDelegateCore(flags, positional, json, {
     commandName: 'fork',
     promptTransformer: (p) => `/fork ${p}`,
-    extraOutput: [
-      '',
-      'This is a Claude Code fork request.',
-      'The runtime spawns a real subagent process to execute the directive.',
-      'Note: /fork directives consume 20-30k tokens even for trivial directives.',
-      'Attach via `claude attach <shortId>` to watch progress.',
-    ].join('\n'),
+    extraOutput: (job) =>
+      [
+        '',
+        'This is a Claude Code fork request.',
+        'The runtime spawns a real subagent process to execute the directive.',
+        'Note: /fork directives consume 20-30k tokens even for trivial directives.',
+        `Attach via \`claude attach ${job.claude.shortId}\` to watch progress.`,
+      ].join('\n'),
   });
 }
 
@@ -676,8 +710,7 @@ async function cmdBatch(flags, positional, json) {
   // --allow-edit is not applicable to batch; batch sessions use the orchestration runtime.
   if (flags['allow-edit'] !== undefined) {
     process.stderr.write(
-      formatError(new Error('--allow-edit is not applicable to $claude-batch.'), 'batch', json) +
-        '\n',
+      formatError(new Error('--allow-edit is not applicable to cc batch.'), 'batch', json) + '\n',
     );
     process.exit(2);
   }
@@ -685,13 +718,14 @@ async function cmdBatch(flags, positional, json) {
   await _runDelegateCore(flags, positional, json, {
     commandName: 'batch',
     promptTransformer: (p) => `/batch ${p}`,
-    extraOutput: [
-      '',
-      'This is a Claude Code batch request.',
-      'The runtime injects a "# Batch: Parallel Work Orchestration" system prompt.',
-      'Batch sessions can spawn multiple parallel tool-calls and subagents.',
-      'Attach via `claude attach <shortId>` to watch progress.',
-    ].join('\n'),
+    extraOutput: (job) =>
+      [
+        '',
+        'This is a Claude Code batch request.',
+        'The runtime injects a "# Batch: Parallel Work Orchestration" system prompt.',
+        'Batch sessions can spawn multiple parallel tool-calls and subagents.',
+        `Attach via \`claude attach ${job.claude.shortId}\` to watch progress.`,
+      ].join('\n'),
   });
 }
 
@@ -702,7 +736,7 @@ async function cmdDeepResearch(flags, positional, json) {
   if (flags['allow-edit'] !== undefined) {
     process.stderr.write(
       formatError(
-        new Error('--allow-edit is not applicable to $claude-deep-research.'),
+        new Error('--allow-edit is not applicable to cc deep-research.'),
         'deep-research',
         json,
       ) + '\n',
@@ -766,6 +800,9 @@ async function _runDelegateCore(
 
   const workspace = process.cwd();
   const useYes = Boolean(flags['yes']);
+  const startSessionOptions = buildStartSessionOptions(flags, commandName, json, {
+    name: typeof flags['name'] === 'string' ? flags['name'] : undefined,
+  });
 
   // 2. Privacy ack.
   await ensureWorkspaceAck({
@@ -807,9 +844,7 @@ async function _runDelegateCore(
   const handle = await driver.startSession({
     cwd: workspace,
     prompt,
-    ...buildStartSessionOptions(flags, commandName, json, {
-      name: typeof flags['name'] === 'string' ? flags['name'] : undefined,
-    }),
+    ...startSessionOptions,
     allowEdit: Boolean(flags['allow-edit']),
   });
 
@@ -887,6 +922,15 @@ function sortNewestFirst(jobs) {
   return jobs.slice().sort((a, b) => updatedAtMs(b) - updatedAtMs(a));
 }
 
+function formatAmbiguousJobPrefix(prefix, candidates) {
+  const limit = 10;
+  const shown = candidates.slice(0, limit);
+  const remaining = Math.max(0, candidates.length - shown.length);
+  const suffix =
+    remaining > 0 ? `, ... (+${remaining} more; narrow the prefix or pass the full jobId)` : '';
+  return `Ambiguous job ID prefix "${prefix}". Matches: ${shown.join(', ')}${suffix}`;
+}
+
 function parseStatusLimit(rawLimit, json) {
   if (rawLimit === undefined) return null;
   const text = typeof rawLimit === 'string' ? rawLimit : String(rawLimit);
@@ -949,7 +993,8 @@ async function cmdStatus(flags, positional, json) {
       formatError(
         new Error(
           `cc status does not take a job id (got "${positional[0]}"). ` +
-            `For one job use: cc result ${positional[0]}  (or cc status --all to list every workspace).`,
+            `For one job use: cc status --job ${positional[0]}  ` +
+            `(or cc result ${positional[0]} for final output; cc status --all lists every workspace).`,
         ),
         'status',
         json,
@@ -973,7 +1018,7 @@ async function cmdStatus(flags, positional, json) {
     if ('error' in resolved) {
       const msg =
         resolved.error === 'ambiguous'
-          ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
+          ? formatAmbiguousJobPrefix(prefix, resolved.candidates)
           : showAll
             ? `No job found matching "${prefix}"`
             : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
@@ -1065,7 +1110,7 @@ async function cmdResult(flags, positional, json) {
   if ('error' in resolved) {
     const msg =
       resolved.error === 'ambiguous'
-        ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
+        ? formatAmbiguousJobPrefix(prefix, resolved.candidates)
         : showAll
           ? `No job found matching "${prefix}"`
           : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
@@ -1104,7 +1149,9 @@ async function cmdResult(flags, positional, json) {
   if (!canReadResult) {
     process.stderr.write(
       formatError(
-        new Error(`Job ${jobId} is not complete yet (status: ${job.status}). Run: cc status`),
+        new Error(
+          `Job ${jobId} is not complete yet (status: ${job.status}). Run: cc status --job ${jobId}`,
+        ),
         'result',
         json,
       ) + '\n',
@@ -1261,7 +1308,7 @@ async function cmdStop(flags, positional, json) {
   if ('error' in resolved) {
     const msg =
       resolved.error === 'ambiguous'
-        ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
+        ? formatAmbiguousJobPrefix(prefix, resolved.candidates)
         : showAll
           ? `No job found matching "${prefix}"`
           : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
@@ -1615,7 +1662,7 @@ async function cmdFollowup(flags, positional, json) {
   if ('error' in resolved) {
     const msg =
       resolved.error === 'ambiguous'
-        ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
+        ? formatAmbiguousJobPrefix(prefix, resolved.candidates)
         : showAll
           ? `No job found matching "${prefix}"`
           : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
@@ -1824,7 +1871,7 @@ async function cmdReview(flags, positional, json) {
     }
     const msg =
       resolved.error === 'ambiguous'
-        ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
+        ? formatAmbiguousJobPrefix(prefix, resolved.candidates)
         : showAll
           ? `No job found matching "${prefix}"`
           : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
@@ -2073,6 +2120,7 @@ async function cmdReview(flags, positional, json) {
 async function cmdAdversarialReview(flags, positional, json) {
   // 1. Parse args: reject inapplicable flags at parse time.
   const reviewGate = parseReviewGate(flags, 'adversarial-review', json);
+  normalizePermissionMode(flags, 'adversarial-review', json);
 
   // --allow-edit is categorically rejected for all review skills.
   if (flags['allow-edit'] !== undefined) {
@@ -2171,7 +2219,7 @@ async function cmdAdversarialReview(flags, positional, json) {
     }
     const msg =
       resolved.error === 'ambiguous'
-        ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
+        ? formatAmbiguousJobPrefix(prefix, resolved.candidates)
         : showAll
           ? `No job found matching "${prefix}"`
           : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
@@ -2562,7 +2610,7 @@ async function cmdWorkflows(flags, positional, json) {
   if (flags['allow-edit'] !== undefined) {
     process.stderr.write(
       formatError(
-        new Error('--allow-edit is not applicable to $claude-workflows.'),
+        new Error('--allow-edit is not applicable to cc workflows; this command is read-only.'),
         'workflows',
         json,
       ) + '\n',
@@ -2669,6 +2717,7 @@ function printUsage(commandName = '') {
       '',
       'Lists Claude jobs for the current workspace by default.',
       'Use --job for one focused lookup; use --limit to keep broad lists small.',
+      'The --job form already returns the compact public job shape.',
       '',
       'Options: --all --json --compact --job <jobId-or-prefix> --limit <n> --stored-status <state>',
     ],
@@ -2726,12 +2775,26 @@ function printUsage(commandName = '') {
       '  --dangerously-skip-permissions  Alias for --permission-mode bypassPermissions on fresh Claude sessions',
       '  --allow-dangerously-skip-permissions  Allow bypass-permissions as an option without defaulting to it',
       '  --allowedTools <tools>       Claude Code allowed tools list for fresh sessions (comma-separated or quoted)',
+      '  --allowed-tools <tools>      Alias for --allowedTools',
       '  --disallowedTools <tools>    Claude Code disallowed tools list for fresh sessions (comma-separated or quoted)',
+      '  --disallowed-tools <tools>   Alias for --disallowedTools',
       '  --tools <tools>              Claude Code built-in tool list for fresh sessions',
       '  --agent <agent>              Claude Code agent for fresh sessions',
+      '  --agents <json-or-file>      Claude Code agents configuration for fresh sessions',
       '  --settings <file-or-json>    Claude Code settings file or JSON for fresh sessions',
+      '  --setting-sources <sources>  Claude Code setting sources for fresh sessions',
+      '  --strict-mcp-config          Require strict MCP config handling in Claude Code',
+      '  --system-prompt <text>       Override Claude Code system prompt for fresh sessions',
+      '  --append-system-prompt <text> Append text to the Claude Code system prompt',
+      '  --plugin-dir <dir>           Claude Code plugin directory for fresh sessions',
+      '  --plugin-url <url>           Claude Code plugin URL for fresh sessions',
       '  --add-dir <dir>              Additional directory (delegate, workflow, goal, fork, batch, deep-research; repeatable)',
       '  --mcp-config <path>          MCP config file (delegate, workflow, goal, fork, batch, deep-research)',
+      '  --bare / --safe-mode         Forward Claude Code bare or safe-mode startup toggles',
+      '  --ide / --chrome / --no-chrome  Forward Claude Code IDE/browser startup toggles',
+      '  --disable-slash-commands     Disable slash commands in fresh Claude Code sessions',
+      '  --exclude-dynamic-system-prompt-sections  Exclude dynamic system-prompt sections',
+      '  --verbose                    Forward verbose startup mode to Claude Code',
       '  --blocking                  Review gate alias for --fail-on high',
       '  --fail-on <gate>            Exit 1 after review output when gate trips: fail, any, nit, low, medium, high, blocker',
       '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, workflow, goal, fork, batch, deep-research, and workflows',

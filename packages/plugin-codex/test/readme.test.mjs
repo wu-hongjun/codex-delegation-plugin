@@ -20,7 +20,7 @@ const README_PATH = resolve(PLUGIN_ROOT, 'README.md');
 // ---------- required headings (exact order) ----------
 
 const REQUIRED_HEADINGS = [
-  '# Claude Companion for Codex',
+  '# cc Plugin for Codex',
   '## What this is',
   '## Current v1 scope',
   '## Requirements',

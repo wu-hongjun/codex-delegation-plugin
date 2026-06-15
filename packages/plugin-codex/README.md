@@ -1,4 +1,4 @@
-# Claude Companion for Codex
+# cc Plugin for Codex
 
 ## What this is
 
@@ -31,7 +31,7 @@ Lifecycle: `delegate` creates one fresh background session; `status` reconciles 
 
 - **Node.js 20+** (tested on v25.1.0)
 - **npm** (comes with Node)
-- **Codex CLI** (tested on 0.135.0)
+- **Codex CLI** (0.135.0 or later; tested on 0.136.0)
 - **Claude Code CLI** (tested on 2.1.149), authenticated locally
 - **`$claude-setup` feature-probes** background-session support and reports warnings if the environment is degraded but usable
 
@@ -101,7 +101,7 @@ node packages/plugin-codex/scripts/cc.mjs setup
 
 ### $claude-setup
 
-Check Claude Companion readiness. Probes Node version, Codex, Claude binary, authentication, background-session support, agents JSON, transcript paths, and workspace permissions.
+Check cc-plugin-codex readiness. Probes Node version, Codex, Claude binary, authentication, background-session support, agents JSON, transcript paths, and workspace permissions.
 
 ```bash
 $claude-setup

@@ -501,7 +501,7 @@ describe('marketplace upgrade procedure docs (Plan 0006 T7)', () => {
 // T6 first introduced the uninstall commands. T8 promotes uninstall to a
 // first-class lifecycle operation: verification commands, post-uninstall
 // state assertion, and explicit notes on what uninstall does NOT touch
-// (Git checkout and Claude Companion job records under the companion home).
+// (Git checkout and plugin job records under the companion home).
 
 const CMD_MARKETPLACE_LIST = 'codex plugin marketplace list';
 
@@ -598,7 +598,7 @@ describe('marketplace uninstall procedure docs (Plan 0006 T8)', () => {
   // T8-8: README states uninstall does not delete companion-home job records
   // ========================================================================
 
-  it('README states uninstall does not delete Claude Companion job records / companion-home data', () => {
+  it('README states uninstall does not delete plugin job records / companion-home data', () => {
     const content = readFileSync(MARKETPLACE_README, 'utf8');
     assert.match(
       content,

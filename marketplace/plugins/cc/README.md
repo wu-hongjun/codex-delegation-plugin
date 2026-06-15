@@ -1,4 +1,4 @@
-# Claude Companion
+# cc - Delegate Codex Tasks to Claude Code
 
 A Codex plugin that lets Codex delegate tasks to Claude Code background
 sessions, with structured review and follow-up flows.
@@ -9,7 +9,7 @@ repository.
 
 ## Requirements
 
-- Codex CLI with plugin marketplace support (tested on `codex-cli 0.136.0`).
+- Codex CLI with plugin marketplace support (`codex-cli 0.135.0` or later; 0.136.0 is the tested version).
 - Claude Code installed and authenticated locally (`claude auth login`).
 - Node.js available on `PATH` (Node 20 or later).
 
@@ -267,13 +267,13 @@ What uninstall does **not** do:
 - It does not delete this Git checkout. A local cc-plugin-codex clone
   remains on disk; only the Codex plugin and marketplace registrations
   are removed.
-- It does not delete existing Claude Companion job records or transcripts
+- It does not delete existing plugin job records or Claude Code transcripts
   under your configured companion home. Those are owned by your local
   Claude Code installation, not by the Codex plugin registry, and persist
   after uninstall.
 
 To remove the Git checkout itself, delete the directory manually. To clear
-Claude Companion job records, refer to your Claude Code session-management
+plugin job records, refer to your Claude Code session-management
 documentation; uninstalling this plugin does not touch them.
 
 After uninstall, an empty cache breadcrumb directory such as

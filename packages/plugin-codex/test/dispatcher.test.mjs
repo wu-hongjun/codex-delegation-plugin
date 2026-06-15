@@ -579,6 +579,103 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(job.workspace, undefined, 'compact status rows must not include workspace');
     assert.equal(job.result.finalMessagePreview, 'Compact status preview.');
   });
+
+  it('status --limit sorts newest first and reports hidden rows', () => {
+    const rows = [
+      {
+        jobId: `job_limold_${createHash('sha256').update('status-limit-old').digest('hex').slice(0, 8)}`,
+        updatedAt: '2026-06-15T00:00:00.000Z',
+      },
+      {
+        jobId: `job_limmid_${createHash('sha256').update('status-limit-mid').digest('hex').slice(0, 8)}`,
+        updatedAt: '2026-06-15T01:00:00.000Z',
+      },
+      {
+        jobId: `job_limnew_${createHash('sha256').update('status-limit-new').digest('hex').slice(0, 8)}`,
+        updatedAt: '2026-06-15T02:00:00.000Z',
+      },
+    ];
+
+    for (const row of rows) {
+      writeSyntheticCompletedJob({ jobId: row.jobId, resultContent: row.jobId });
+      const recordPath = join(TMP_HOME, 'jobs', `${row.jobId}.json`);
+      const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+      record.updatedAt = row.updatedAt;
+      writeFileSync(recordPath, JSON.stringify(record, null, 2));
+    }
+
+    const result = runDispatcher(['status', '--json', '--compact', '--limit', '2']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.deepEqual(
+      parsed.jobs.map((j) => j.jobId),
+      [rows[2].jobId, rows[1].jobId],
+      `expected newest-first limited rows; got:\n${result.stdout}`,
+    );
+    assert.equal(parsed.meta.limit, 2);
+    assert.equal(parsed.meta.hiddenCount, 1);
+  });
+
+  it('status --stored-status filters by stored job status', () => {
+    const completedId = `job_stdone_${createHash('sha256').update('status-filter-completed').digest('hex').slice(0, 8)}`;
+    const stoppedId = `job_ststop_${createHash('sha256').update('status-filter-stopped').digest('hex').slice(0, 8)}`;
+    writeSyntheticCompletedJob({ jobId: completedId, resultContent: 'completed row' });
+    writeSyntheticCompletedJob({ jobId: stoppedId, resultContent: 'stopped row' });
+
+    const stoppedPath = join(TMP_HOME, 'jobs', `${stoppedId}.json`);
+    const stopped = JSON.parse(readFileSync(stoppedPath, 'utf8'));
+    stopped.status = 'stopped';
+    writeFileSync(stoppedPath, JSON.stringify(stopped, null, 2));
+
+    const result = runDispatcher(['status', '--json', '--compact', '--stored-status', 'stopped']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.deepEqual(
+      parsed.jobs.map((j) => j.jobId),
+      [stoppedId],
+      `expected only stopped row; got:\n${result.stdout}`,
+    );
+    assert.equal(parsed.meta.storedStatusFilter, 'stopped');
+  });
+
+  it('status --stored-status uses stored status only to pre-filter before reconcile', () => {
+    const shortId = '51a7f001';
+    const sessionId = shortIdToSessionId(shortId);
+    const jobId = `job_stpref_${createHash('sha256').update('status-prefilter-running').digest('hex').slice(0, 8)}`;
+    writeSyntheticCompletedJob({
+      jobId,
+      shortId,
+      sessionId,
+      resultContent: 'prefilter row',
+    });
+
+    const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    record.status = 'running';
+    writeFileSync(recordPath, JSON.stringify(record, null, 2));
+    writeMockAgentSession(shortId, sessionId, 'idle');
+
+    const result = runDispatcher(['status', '--json', '--compact', '--stored-status', 'running']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.jobs.length, 1, `expected one pre-filtered row; got:\n${result.stdout}`);
+    assert.equal(parsed.jobs[0].jobId, jobId);
+    assert.equal(parsed.jobs[0].status, 'awaiting_followup');
+    assert.equal(parsed.meta.storedStatusFilter, 'running');
+  });
+
+  it('status rejects invalid --limit and --stored-status values', () => {
+    const badLimit = runDispatcher(['status', '--limit', 'soon']);
+    assert.equal(badLimit.status, 2, `expected exit 2; stderr: ${badLimit.stderr}`);
+    assert.ok(badLimit.stderr.includes('--limit must be a non-negative integer'));
+
+    const badStatus = runDispatcher(['status', '--stored-status', 'sleeping']);
+    assert.equal(badStatus.status, 2, `expected exit 2; stderr: ${badStatus.stderr}`);
+    assert.ok(badStatus.stderr.includes('--stored-status must be one of'));
+  });
 });
 
 // ---------- Plan 0022: status listing skips already-terminal job records ----------
@@ -655,6 +752,37 @@ describe('result for a running job', () => {
       mentionsNotComplete,
       `expected "not complete" hint in output; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
+  });
+});
+
+describe('result for a running job with a completed latest-turn artifact (Plan 0023)', () => {
+  it('exits 0 and reads the immutable latest turn result while status catches up', () => {
+    const jobId = `job_p23res_${createHash('sha256').update('p23-running-completed-turn').digest('hex').slice(0, 8)}`;
+    const shortId = 'p23r0001';
+    const sessionId = shortIdToSessionId(shortId);
+    const resultContent = 'Plan 0023 latest turn result is readable.';
+    writeSyntheticCompletedJob({ jobId, shortId, sessionId, resultContent });
+
+    const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    record.status = 'running';
+    record.turns[0].status = 'completed';
+    writeFileSync(recordPath, JSON.stringify(record, null, 2));
+    writeMockAgentSession(shortId, sessionId, 'working');
+
+    const result = runDispatcher(['result', jobId, '--json', '--compact']);
+
+    assert.equal(
+      result.status,
+      0,
+      `expected exit 0 for completed latest-turn result; stderr: ${result.stderr}`,
+    );
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.job.status, 'running');
+    assert.equal(parsed.resultText, resultContent);
+    assert.equal(parsed.job.latestTurn.status, 'completed');
+    assert.equal(parsed.job.latestTurn.hasResult, true);
   });
 });
 

@@ -331,9 +331,15 @@ List all delegated jobs in the current workspace with their live status.
 
 ```bash
 $claude-status
+$claude-status --job <jobId> --json --compact
+$claude-status --limit 20 --stored-status running
 ```
 
 Shows job ID, status (running/completed/stopped/orphaned), Claude session ID, and session name.
+Use `--job` for a focused lookup when you already have the job ID. Use
+`--limit <n>` to keep broad lists bounded in workspaces with many historical
+jobs; `--limit 0` means no limit. `--stored-status <state>` filters by stored job
+status before the list is reconciled.
 
 ### $claude-followup
 
@@ -363,13 +369,17 @@ These configure a *new* Claude session; passing them to `$claude-followup` produ
 
 ### $claude-result
 
-Retrieve the final assistant message and log paths for a completed job.
+Retrieve the final assistant message and log paths for a completed job or the
+latest completed turn.
 
 ```bash
 $claude-result job_mpt98g9g_b61e09f1
 ```
 
-Prints the assistant's final answer, list of touched files, and paths to transcript (if available) and logs.
+Prints the assistant's final answer, list of touched files, and paths to
+transcript (if available) and raw logs. Prefer `$claude-result` over
+`claude logs <shortId>` for clean output; logs are the raw Claude Code stream
+and may contain TUI control sequences around permission prompts.
 
 ### $claude-stop
 
@@ -872,10 +882,15 @@ Job <jobId> is not complete yet (status: running).
 ```
 
 The session is still executing. Run `$claude-status` to check live status. Once status shows `completed`, retry `result`.
+If the latest turn already has an immutable completed-turn result, `$claude-result`
+may return that output while the job-level status is still catching up.
 
 ### Result has no transcript path
 
-Transcripts are available only if Claude Code writes them. If transcripts are missing, the dispatcher falls back to printing logs via `claude logs <sessionId>`. The result output will show `Logs: claude logs <sessionId>` for manual inspection.
+Transcripts are available only if Claude Code writes them. If transcripts are
+missing, the dispatcher falls back to printing logs via `claude logs <sessionId>`.
+The result output will show `Logs: claude logs <sessionId>` for raw manual
+inspection.
 
 ### Stop fails
 

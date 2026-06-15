@@ -30,3 +30,7 @@ After reading a result, the user typically wants one of:
 - `$claude-followup` — send another instruction to continue the job
 - `$claude-review` — request a lightweight review of the job output
 - `$claude-adversarial-review` — request an independent second-opinion review
+
+Prefer `$claude-result` for completed output. `claude logs <shortId>` is the raw
+Claude Code log/TUI stream and can include ANSI/control output around permission
+prompts; `$claude-result` reads the clean recorded result path.

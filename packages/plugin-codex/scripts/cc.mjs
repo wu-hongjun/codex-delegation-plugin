@@ -697,11 +697,67 @@ function shouldReconcileForStatusList(job) {
   }
 }
 
+function updatedAtMs(job) {
+  const parsed = Date.parse(job.updatedAt ?? job.createdAt ?? '');
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function sortNewestFirst(jobs) {
+  return jobs.slice().sort((a, b) => updatedAtMs(b) - updatedAtMs(a));
+}
+
+function parseStatusLimit(rawLimit, json) {
+  if (rawLimit === undefined) return null;
+  const text = typeof rawLimit === 'string' ? rawLimit : String(rawLimit);
+  if (!/^\d+$/.test(text)) {
+    process.stderr.write(
+      formatError(
+        new Error(`--limit must be a non-negative integer (got "${text}")`),
+        'status',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+  return Number.parseInt(text, 10);
+}
+
+function parseStoredStatusFilter(rawStatus, json) {
+  if (rawStatus === undefined) return null;
+  const allowedStatuses = [
+    'queued',
+    'starting',
+    'running',
+    'needs_input',
+    'awaiting_followup',
+    'completed',
+    'failed',
+    'stopped',
+    'orphaned',
+  ];
+  const status = typeof rawStatus === 'string' ? rawStatus : String(rawStatus);
+  if (!allowedStatuses.includes(status)) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `--stored-status must be one of: ${allowedStatuses.join(', ')} (got "${status}")`,
+        ),
+        'status',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+  return status;
+}
+
 async function cmdStatus(flags, positional, json) {
   const workspace = process.cwd();
   const showAll = Boolean(flags['all']);
   const compact = Boolean(flags['compact']);
   const jobFlag = flags['job'];
+  const limit = parseStatusLimit(flags['limit'], json);
+  const storedStatusFilter = parseStoredStatusFilter(flags['stored-status'], json);
 
   // `status` is a list command (current workspace, or every workspace with --all).
   // It does not take a <jobId>; silently ignoring one (printing the full list with
@@ -775,8 +831,17 @@ async function cmdStatus(flags, positional, json) {
   const driver = new ClaudeBackgroundDriver({ cwd: workspace });
   const adapter = makeClaudeAdapter(driver);
 
+  let recordsForDisplay = sortNewestFirst(jobRecords);
+  if (storedStatusFilter !== null) {
+    recordsForDisplay = recordsForDisplay.filter((job) => job.status === storedStatusFilter);
+  }
+  const matchedBeforeLimit = recordsForDisplay.length;
+  if (limit !== null && limit > 0) {
+    recordsForDisplay = recordsForDisplay.slice(0, limit);
+  }
+
   const reconciled = [];
-  for (const job of jobRecords) {
+  for (const job of recordsForDisplay) {
     if (!shouldReconcileForStatusList(job)) {
       reconciled.push(job);
       continue;
@@ -789,7 +854,16 @@ async function cmdStatus(flags, positional, json) {
     }
   }
 
-  process.stdout.write(formatStatus(reconciled, json, workspace, { compact }) + '\n');
+  const hiddenCount =
+    limit !== null && limit > 0 ? Math.max(0, matchedBeforeLimit - recordsForDisplay.length) : 0;
+  process.stdout.write(
+    formatStatus(reconciled, json, workspace, {
+      compact,
+      limit,
+      storedStatusFilter,
+      hiddenCount,
+    }) + '\n',
+  );
 }
 
 // ---------- result ----------
@@ -837,7 +911,16 @@ async function cmdResult(flags, positional, json) {
     'orphaned',
     'awaiting_followup',
   ]);
-  if (!terminalStatuses.has(job.status)) {
+  const latestTurn = Array.isArray(job.turns) ? job.turns[job.turns.length - 1] : undefined;
+  const latestCompletedTurnResult =
+    latestTurn?.status === 'completed' &&
+    typeof latestTurn.result?.finalMessagePath === 'string' &&
+    latestTurn.result.finalMessagePath.length > 0
+      ? latestTurn.result
+      : undefined;
+  const canReadResult = terminalStatuses.has(job.status) || latestCompletedTurnResult !== undefined;
+
+  if (!canReadResult) {
     process.stderr.write(
       formatError(
         new Error(`Job ${jobId} is not complete yet (status: ${job.status}). Run: cc status`),
@@ -848,20 +931,26 @@ async function cmdResult(flags, positional, json) {
     process.exit(1);
   }
 
-  // Edge case (Plan 0012 T4): sendFollowupTurn sets turn.result.finalMessagePath='' (empty);
-  // job.result.finalMessagePath is updated only by the reconciler. If reconciliation fails
-  // after a followup on a never-completed initial job, this read returns stale data.
+  // Prefer the latest completed turn's immutable result artifact when it exists.
+  // Do not treat sendFollowupTurn's immediate empty finalMessagePath as durable
+  // result content; that path only becomes reliable after reconciliation writes
+  // the per-turn result file.
+  const resultContext = latestCompletedTurnResult ?? job.result;
+  const displayJob =
+    latestCompletedTurnResult !== undefined && latestCompletedTurnResult !== job.result
+      ? { ...job, result: latestCompletedTurnResult }
+      : job;
   let resultText = null;
-  if (job.result?.finalMessagePath) {
+  if (resultContext?.finalMessagePath) {
     try {
-      resultText = await readFile(job.result.finalMessagePath, 'utf8');
+      resultText = await readFile(resultContext.finalMessagePath, 'utf8');
     } catch {
       resultText = null;
     }
   }
 
   process.stdout.write(
-    formatResult(job, resultText, json, { compact: Boolean(flags['compact']) }) + '\n',
+    formatResult(displayJob, resultText, json, { compact: Boolean(flags['compact']) }) + '\n',
   );
 }
 
@@ -2403,6 +2492,15 @@ function printUsage(commandName = '') {
       'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode>',
       'Note: --yes only acknowledges plugin privacy; it does not approve Claude Code workflow gates.',
     ],
+    status: [
+      'Usage: cc status [--all] [--json] [--compact] [--limit <n>] [--stored-status <state>]',
+      '       cc status --job <jobId-or-prefix> [--all] [--json]',
+      '',
+      'Lists Claude jobs for the current workspace by default.',
+      'Use --job for one focused lookup; use --limit to keep broad lists small.',
+      '',
+      'Options: --all --json --compact --job <jobId-or-prefix> --limit <n> --stored-status <state>',
+    ],
     workflows: [
       'Usage: cc workflows [<jobId-or-sessionId>] [--all] [--json]',
       '',
@@ -2430,7 +2528,8 @@ function printUsage(commandName = '') {
       '  fork [flags] -- <directive>               Fork a Claude Code subagent for a directive',
       '  batch [flags] -- <instruction>            Run a batch of parallel Claude Code instructions',
       '  deep-research [flags] -- <question>       Run a Claude Code /deep-research workflow (multi-agent fan-out with WebSearch)',
-      '  status [--all] [--json] [--compact]       List jobs for current workspace',
+      '  status [--all] [--json] [--compact] [--limit <n>] [--stored-status <state>]',
+      '                                            List jobs for current workspace',
       '  status --job <jobId-or-prefix> [--all] [--json]  Show one job status',
       '  result <jobId> [--all] [--json]           Show final result of a completed job',
       '  stop <jobId> [--all] [--json]             Stop a running job',
@@ -2446,11 +2545,13 @@ function printUsage(commandName = '') {
       '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch/deep-research/workflows)',
       '  --compact                    Compact redacted JSON shape for delegate/status/result/stop',
       '  --job <jobId-or-prefix>      Select one job for status',
+      '  --limit <n>                  Limit status lists after newest-first sorting (0 = no limit)',
+      '  --stored-status <state>      Pre-filter status lists by stored job status',
       '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/goal/fork/batch/deep-research/followup/review/adversarial-review)',
       '  --name <name>                Session name (delegate, workflow, goal, fork, batch, deep-research)',
       '  --model <model>              Model selection (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
       '  --effort <effort>            Effort level (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
-      '  --permission-mode <mode>     Permission mode (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
+      '  --permission-mode <mode>     Permission mode (delegate, workflow, goal, fork, batch, deep-research, adversarial-review; bypassPermissions is for explicit trusted unattended runs)',
       '  --add-dir <dir>              Additional directory (delegate, workflow, goal, fork, batch, deep-research; repeatable)',
       '  --mcp-config <path>          MCP config file (delegate, workflow, goal, fork, batch, deep-research)',
       '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, workflow, goal, fork, batch, deep-research, and workflows',

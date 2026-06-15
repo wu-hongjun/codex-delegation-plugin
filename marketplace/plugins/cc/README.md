@@ -66,10 +66,11 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
 - `$claude-delegate` — starts a Claude Code background session with
   the provided prompt and returns a job id you can use with the other
   skills.
-- `$claude-status` — lists all delegated jobs in the current workspace
-  with their live status; also accepts a single job id or prefix.
-- `$claude-result` — prints the final message + tool-use summary for
-  a completed job.
+- `$claude-status` — lists delegated jobs in the current workspace
+  with their live status. Use `--job <id> --json --compact` for one
+  focused lookup, or `--limit <n>` to keep broad lists bounded.
+- `$claude-result` — prints clean recorded output for a completed job
+  or latest completed turn.
 - `$claude-stop` — stops a running background session by id or
   unique prefix; also supports bulk forms like
   `--all-awaiting-followup`.
@@ -317,7 +318,13 @@ re-publish the marketplace tree (see
 
 ### `$claude-result` reads raw transcript, not the display layer
 
-`$claude-result` reads the session JSONL directly, not the text shown in the Claude Code TUI. If you have a `MessageDisplay` hook installed in Claude Code (v2.1.152+) that redacts assistant output, `$claude-result` will still return the un-redacted content. This is by design.
+`$claude-result` reads the session JSONL directly, not the text shown in
+the Claude Code TUI. If you have a `MessageDisplay` hook installed in
+Claude Code (v2.1.152+) that redacts assistant output, `$claude-result`
+will still return the un-redacted content. This is by design. Prefer
+`$claude-result` over `claude logs <shortId>` for clean output; logs are
+the raw Claude Code stream and can include TUI control sequences around
+permission prompts.
 
 ## Upgrade
 

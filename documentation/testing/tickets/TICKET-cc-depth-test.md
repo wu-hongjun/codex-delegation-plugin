@@ -1,7 +1,7 @@
 # TICKET: CC plugin — comprehensive depth test (living)
 
 **Type**: recurring QA ticket · **Owner**: maintainer · **Executor**: Codex
-**Current target**: `cc@cc-plugin-codex-local` **v0.3.3**
+**Current target**: `cc@cc-plugin-codex-local` **v0.3.4**
 **Status**: OPEN — awaiting next run
 
 ---
@@ -41,6 +41,13 @@ reconciling 100+ accumulated jobs) can overload the setup probes (spurious
 `claude-auth timed out`) and slow scans. Cap concurrent status calls; poll each job at
 >=3s intervals. A slow broad `status --all` is a known load characteristic — report timing,
 don't call it a functional failure.
+Use `status --job <id> --json --compact` for exact jobs and `status --limit <n>` for
+bounded broad sweeps when the job store has accumulated many historical records.
+
+For unattended local QA lanes that intentionally inspect the repo with shell commands, pass
+`--permission-mode bypassPermissions` explicitly on the spawned delegate/batch/workflow command.
+Do not make that the default: the plugin's normal path preserves Claude Code's permission system.
+Without the explicit flag, read-only shell-shaped probes can correctly stop at `needs_input`.
 
 ## 2. Terminal job states (poll until one of these — never poll forever for `complete`)
 
@@ -139,7 +146,7 @@ didn't run unattended. Batch and fork DO fan out unattended — confirm real sub
 ## 7. Known not-bugs (do NOT file these)
 
 - Reusing a `--name` starts a FRESH isolated session (it is a label/prefix, not a resume
-  key). To continue a job use `$claude-followup <jobId>`. (v0.3.3 behavior.)
+  key). To continue a job use `$claude-followup <jobId>`. (v0.3.4 behavior.)
 - Dynamic /workflow drill-in shows `subagents: []` (agents live in the separate workflow
   runtime); phase records + session metadata still return.
 - workflow/goal/batch/deep-research parent stays non-terminal while async orchestration
@@ -176,6 +183,53 @@ Do NOT commit — the maintainer reviews and commits.
 # Results Log (newest first — Codex appends here)
 
 <!-- Codex: insert your new run entry directly below this line. Template: -->
+
+## Follow-up 2026-06-15 - v0.3.4 supplemental multi-subagent friction round
+**Env**: claude 2.1.177 (Claude Code) · codex-cli 0.139.0 · macOS 26.5.1 (25F80) arm64 · plugin `cc@cc-plugin-codex-local` 0.3.4 installed from local marketplace cache
+
+**Artifact bundle**: `documentation/testing/artifacts/v034-friction-20260615/`
+
+This was a bounded supplemental round after the v0.3.4 release and local install.
+Five Claude Code jobs were launched through the installed 0.3.4 dispatcher and then
+stopped by exact job ID. The round focused on real Codex→Claude friction rather than
+rerunning the full 14-command ticket.
+
+### Coverage Matrix
+| area | verdict | evidence |
+| --- | --- | --- |
+| install/version | PASS | `codex plugin list` showed `cc@cc-plugin-codex-local installed, enabled 0.3.4`; installed dispatcher responses reported `codex.pluginVersion:"0.3.4"`. |
+| parallel delegate identity | PASS | Five jobs launched in parallel; three shared the same millisecond job prefix `job_mqeiay1j_*` but had distinct job IDs and Claude sessions. |
+| followup | PASS | `job_mqeiay1j_6ef5a894` returned `V034_FOLLOWUP_READY`, accepted a follow-up, and later returned `V034_FOLLOWUP_DONE` with separate turn result files. |
+| review | PASS with friction | `job_mqeiay7c_00579ec1` same-session review returned `pass_with_findings`; the review turn had a result quickly, but `cc result` rejected while the job row still said `running` until a later reconcile settled it to `awaiting_followup`. |
+| status by id | PASS | `status --job <id> --json --compact` gave focused compact rows and avoided the broad-list output explosion. |
+| status --all / broad status | PASS with perf/UX note | Broad compact status remained very large in the historical job store; focused `status --job` is the practical path for automation. |
+| batch/read-only fan-out | PARTIAL | `job_mqeiay1j_8b73844c` produced useful mapping output, then hit a Claude Code shell permission prompt and stopped at `needs_input`; this is expected unless the operator explicitly chooses `--permission-mode bypassPermissions`. |
+| logs inspection | LOW friction | `claude logs <shortId>` was usable but noisy with ANSI/TUI control sequences around permission prompts. |
+| cleanup | PASS | All five exact job IDs were stopped and final `status --job` checks showed `stopped`. |
+
+### Findings
+**Blocker**: none.
+
+**High**: none.
+
+**Medium**:
+- A completed latest review/follow-up turn can have a per-turn result while the job row
+  still reports `running`; during that window, `cc result` rejects even though the latest
+  immutable result is available.
+- Broad `status --all --json --compact` remains operationally noisy in a workspace with many
+  historical jobs. This is no longer the Plan 0022 terminal-reconcile bug; Plan 0023 adds
+  `status --limit <n>` so automation can bound the broad-list surface before reconcile.
+
+**Low**:
+- Read-only shell-shaped subagent tests can stop at Claude Code permission prompts unless the
+  operator explicitly opts into `--permission-mode bypassPermissions` for that unattended run.
+- Raw `claude logs` output is hard to skim when the session is parked at a TUI permission prompt.
+
+### Cleanup
+- Stopped: `job_mqeiayev_46cc8806`, `job_mqeiay1j_e84cc468`,
+  `job_mqeiay1j_6ef5a894`, `job_mqeiay7c_00579ec1`, `job_mqeiay1j_8b73844c`.
+- Final repo status after the round had no source changes; only the pre-existing nested
+  untracked `references/*` repos were visible.
 
 ## Follow-up 2026-06-12 - Plan 0022 round-4 heavy installed stress
 **Env**: claude 2.1.176 (Claude Code) · codex-cli 0.137.0 · macOS 26.5.1 (25F80) arm64 · plugin `cc@cc-plugin-codex-local` 0.3.3 refreshed from local marketplace cache

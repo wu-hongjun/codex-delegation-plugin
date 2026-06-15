@@ -79,6 +79,14 @@ function summarizeJob(job) {
   };
 }
 
+function statusMeta(opts) {
+  const meta = {};
+  if (opts.storedStatusFilter != null) meta.storedStatusFilter = opts.storedStatusFilter;
+  if (opts.limit != null) meta.limit = opts.limit;
+  if (opts.hiddenCount != null && opts.hiddenCount > 0) meta.hiddenCount = opts.hiddenCount;
+  return Object.keys(meta).length > 0 ? meta : null;
+}
+
 /**
  * @param {import('@cc-plugin-codex/runtime').DoctorReport} report
  * @param {boolean} json
@@ -160,7 +168,7 @@ export function formatDelegate(job, json, opts = {}) {
     `Status:         ${job.status}`,
     `Claude session: ${job.claude.shortId}`,
     `Name:           ${job.claude.sessionName}`,
-    `Logs:           ${logsCmd}`,
+    `Raw logs:       ${logsCmd}`,
     'Run:',
     `  $claude-status`,
     `  $claude-result ${job.jobId}`,
@@ -171,7 +179,7 @@ export function formatDelegate(job, json, opts = {}) {
  * @param {import('@cc-plugin-codex/runtime').JobRecord[]} jobs
  * @param {boolean} json
  * @param {string} workspaceRoot
- * @param {{ compact?: boolean; singleJob?: boolean }} [opts]
+ * @param {{ compact?: boolean; singleJob?: boolean; limit?: number | null; storedStatusFilter?: string | null; hiddenCount?: number }} [opts]
  * @returns {string}
  */
 export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
@@ -180,8 +188,13 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
       const job = jobs[0] ?? null;
       return JSON.stringify({ ok: true, job: job ? summarizeJob(job) : null }, null, 2);
     }
+    const meta = statusMeta(opts);
     if (opts.compact) {
-      return JSON.stringify({ ok: true, jobs: jobs.map(summarizeJob) }, null, 2);
+      return JSON.stringify(
+        { ok: true, jobs: jobs.map(summarizeJob), ...(meta ? { meta } : {}) },
+        null,
+        2,
+      );
     }
     // Enrich each job's turns with a `kind` field where applicable.
     // `reviewOf` is already part of JobRecord and serialises as-is (omitted when absent).
@@ -197,7 +210,7 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
         : j.turns;
       return { ...j, turns: enrichedTurns };
     });
-    return JSON.stringify({ ok: true, jobs: enrichedJobs }, null, 2);
+    return JSON.stringify({ ok: true, jobs: enrichedJobs, ...(meta ? { meta } : {}) }, null, 2);
   }
 
   if (jobs.length === 0) {
@@ -240,6 +253,13 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
     lines.push(
       '',
       `Follow-up available: run $claude-followup ${awaitingJob.jobId} -- "next instruction"`,
+    );
+  }
+
+  if (opts.hiddenCount != null && opts.hiddenCount > 0) {
+    lines.push(
+      '',
+      `${opts.hiddenCount} older Claude job${opts.hiddenCount === 1 ? '' : 's'} hidden by --limit ${opts.limit}. Use --limit 0 to show all matched jobs.`,
     );
   }
 

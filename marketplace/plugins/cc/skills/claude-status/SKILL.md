@@ -20,6 +20,11 @@ Behavior rules:
 
 - Forward `--all` only if the user explicitly asks for jobs across all
   workspaces (not just the current one).
+- Forward `--json`, `--compact`, `--job <jobId-or-prefix>`, `--limit <n>`, and
+  `--stored-status <state>` when the user explicitly requests machine-readable output,
+  compact output, one focused job, bounded output, or stored-status filtering. Prefer
+  `--job <id> --json --compact` for automation when the caller already has a job
+  id; broad `--all` output can be large in old workspaces.
 
 ### Relationship to Claude Code's `/tasks` and `/workflows` panels
 
@@ -28,6 +33,14 @@ Behavior rules:
 For Claude Code's `/workflows` agent-management panel (phase view, per-agent token usage, pause/resume/restart controls), there is currently **no CLI equivalent** — that panel exposes data not reachable via `claude agents --json` or session JSONL inspection (per Plan 0015 OQ-A). A PTY-injection wrapper is deferred to Plan 0016.
 
 For interactive attach to a running session — to watch its live output — use `claude attach <sessionId>` directly. The bg job's `Claude session: <sessionId>` line in `$claude-status` output is the input.
+
+### Keeping status output bounded
+
+Use `$claude-status --job <jobId-or-prefix> --json --compact` when you already
+know the job id. For broad sweeps in a workspace with many historical jobs, use
+`--limit <n>` to show only the newest matching rows and `--stored-status <state>` to
+filter by stored job status. `--compact` affects JSON shape; it does not delete
+historical job records.
 
 ### Next steps
 

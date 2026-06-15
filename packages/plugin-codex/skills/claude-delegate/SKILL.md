@@ -35,6 +35,11 @@ Behavior rules:
   Do NOT inject `--yes` automatically. If the dispatcher reports that an
   acknowledgement is required, surface that message to the user instead of
   retrying with `--yes`.
+- For unattended local QA lanes that intentionally inspect the repo with shell
+  commands, the user may explicitly request
+  `--permission-mode bypassPermissions`. Do NOT inject this automatically; it is
+  an operator choice that bypasses Claude Code's normal permission prompts for
+  that spawned session.
 
 `$claude-delegate -- "/<saved-or-bundled-workflow-name> <args>"` also invokes saved workflows and bundled slash commands (e.g. `/deep-research <question>`). See `$claude-workflow` for details on saved-workflow invocation.
 

@@ -29,6 +29,11 @@ Behavior rules:
   Do NOT inject `--yes` automatically. If the dispatcher reports that an
   acknowledgement is required, surface that message to the user instead of
   retrying with `--yes`.
+- For unattended local QA lanes that intentionally inspect the repo with shell
+  commands, the user may explicitly request
+  `--permission-mode bypassPermissions`. Do NOT inject this automatically; it is
+  an operator choice that bypasses Claude Code's normal permission prompts for
+  that spawned session.
 - Do NOT forward `--allow-edit` — it is not applicable to this subcommand.
 
 Approval flow — important:
@@ -38,7 +43,9 @@ injected as the opening slash command. The runtime injects a
 `# Batch: Parallel Work Orchestration` system prompt that sets up the model to
 orchestrate a parallelizable change: research and plan (plan mode), then
 decompose into tasks and execute them in parallel. No interactive approval
-dialog is required. After the job ID and Claude session short ID are printed, the user can run:
+dialog is required for the batch wrapper itself, but Claude Code can still ask
+for tool/permission approval inside the spawned session. After the job ID and
+Claude session short ID are printed, the user can run:
 
     claude attach <shortId>
 

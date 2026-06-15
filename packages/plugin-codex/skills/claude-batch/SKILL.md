@@ -38,11 +38,11 @@ injected as the opening slash command. The runtime injects a
 `# Batch: Parallel Work Orchestration` system prompt that sets up the model to
 orchestrate a parallelizable change: research and plan (plan mode), then
 decompose into tasks and execute them in parallel. No interactive approval
-dialog is required. After the job ID is printed, the user can run:
+dialog is required. After the job ID and Claude session short ID are printed, the user can run:
 
-    claude attach <jobId>
+    claude attach <shortId>
 
-inside a Claude Code session to watch progress.
+using the printed Claude session short ID inside Claude Code to watch progress.
 
 Cost notice:
 

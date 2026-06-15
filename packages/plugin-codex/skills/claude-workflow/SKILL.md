@@ -36,12 +36,12 @@ Approval flow — important:
 Dynamic workflows present an interactive YES / View raw script / NO approval
 dialog inside the Claude Code TUI before any subagents are spawned. This skill
 starts the background job but does NOT auto-approve the dialog. After the job
-ID is printed, the user must run:
+ID and Claude session short ID are printed, the user must run:
 
-    claude attach <jobId>
+    claude attach <shortId>
 
-inside a Claude Code session to review the generated workflow script and choose
-whether to proceed.
+using the printed Claude session short ID to review the generated workflow
+script and choose whether to proceed.
 
 Cost notice:
 

@@ -11,11 +11,13 @@ import { fileURLToPath } from 'node:url';
 import {
   createJob,
   getJobResultPath,
+  getJobTurnResultPath,
   mapStatus,
   readEvents,
   reconcileJob,
   reconcileJobsForWorkspace,
   tryReadJob,
+  updateJob,
 } from '../dist/index.js';
 
 // ---------------------------------------------------------------------------
@@ -115,6 +117,38 @@ describe('status mapping', () => {
     // longer holds; jobs now need turns[last].status = 'completed' for idle to
     // produce awaiting_followup or completed.
     assert.equal(result.job.status, 'running');
+  });
+
+  it('repairs nested pseudo shortId "claude" from the real sessionId', async () => {
+    const sessionId = 'f9232581-2bc9-44c2-9cce-3e3093121fab';
+    const job = await createJob(
+      makeJobInput({
+        claude: {
+          version: '2.1.999-mock',
+          shortId: 'claude',
+          sessionName: 'codex:repo:nested',
+          cwd: '/repo',
+          logsCommand: 'claude logs claude',
+        },
+      }),
+    );
+    const adapter = fakeAdapter({
+      status: {
+        value: 'idle',
+        shortId: 'f9232581',
+        sessionId,
+        sessionName: 'codex:repo:nested',
+      },
+    });
+
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(result.job.claude.shortId, 'f9232581');
+    assert.equal(result.job.claude.sessionId, sessionId);
+    assert.equal(result.job.claude.logsCommand, 'claude logs f9232581');
+    const stored = await tryReadJob(job.jobId);
+    assert.equal(stored?.claude.shortId, 'f9232581');
+    assert.equal(stored?.claude.logsCommand, 'claude logs f9232581');
   });
 
   it('value: needs_input maps to needs_input', async () => {
@@ -291,11 +325,17 @@ describe('transcript artifacts', () => {
       transcript,
     });
     const result = await reconcileJob(job.jobId, adapter, { readArtifacts: true, now });
-    const resultPath = getJobResultPath(job.jobId);
-    assert.ok(existsSync(resultPath), 'result.md should exist');
-    const contents = readFileSync(resultPath, 'utf8');
-    assert.ok(contents.includes('All done.'), 'result.md should contain the assistant message');
-    assert.equal(result.job.result.finalMessagePath, resultPath);
+    const turnResultPath = getJobTurnResultPath(job.jobId, 0);
+    const latestAliasPath = getJobResultPath(job.jobId);
+    assert.ok(existsSync(turnResultPath), 'turn result snapshot should exist');
+    assert.ok(existsSync(latestAliasPath), 'latest result alias should exist');
+    const contents = readFileSync(turnResultPath, 'utf8');
+    assert.ok(
+      contents.includes('All done.'),
+      'turn result snapshot should contain the assistant message',
+    );
+    assert.equal(result.job.result.finalMessagePath, turnResultPath);
+    assert.equal(readFileSync(latestAliasPath, 'utf8'), contents);
     assert.ok(result.job.result.finalMessagePreview.includes('All done.'));
     assert.deepEqual(result.job.result.touchedFiles, ['README.md']);
     assert.equal(result.job.result.usageSnapshot.cacheRead, 100);
@@ -518,7 +558,7 @@ describe('idempotency', () => {
     assert.equal(r1.statusChanged, true);
     assert.equal(r1.previousStatus, 'queued');
 
-    const resultPath = getJobResultPath(job.jobId);
+    const resultPath = r1.job.result.finalMessagePath;
     const contentAfterFirst = readFileSync(resultPath, 'utf8');
     const eventsAfterFirst = await readEvents(job.jobId);
 
@@ -547,6 +587,159 @@ describe('idempotency', () => {
       reconcileStatusCount(eventsAfterFirst),
       'reconcile.status event count should not grow on second call',
     );
+  });
+});
+
+describe('per-turn result snapshots', () => {
+  it('writes immutable result files for separate turns while keeping latest alias current', async () => {
+    const job = await createJob(makeJobInput());
+    const turn0 = await reconcileJob(
+      job.jobId,
+      fakeAdapter({
+        status: { value: 'completed' },
+        transcript: {
+          transcriptPath: '/fake/transcript.jsonl',
+          events: [
+            {
+              type: 'message.completed',
+              role: 'assistant',
+              content: 'TURN0_SENTINEL',
+              at: NOW,
+            },
+          ],
+          warnings: [],
+        },
+      }),
+      { readArtifacts: true, now },
+    );
+
+    await updateJob(job.jobId, (current) => ({
+      ...current,
+      status: 'running',
+      turns: [
+        ...current.turns,
+        {
+          prompt: { summary: 'second turn', sha256: 'feedface', bytesLen: 11 },
+          startedAt: NOW,
+          status: 'queued',
+        },
+      ],
+    }));
+
+    const turn1 = await reconcileJob(
+      job.jobId,
+      fakeAdapter({
+        status: { value: 'completed' },
+        transcript: {
+          transcriptPath: '/fake/transcript.jsonl',
+          events: [
+            {
+              type: 'message.completed',
+              role: 'assistant',
+              content: 'TURN1_SENTINEL',
+              at: NOW,
+            },
+          ],
+          warnings: [],
+        },
+      }),
+      { readArtifacts: true, now },
+    );
+
+    const firstPath = turn1.job.turns[0].result.finalMessagePath;
+    const secondPath = turn1.job.turns[1].result.finalMessagePath;
+    assert.notEqual(firstPath, secondPath, 'each turn should have its own result snapshot');
+    assert.equal(firstPath, turn0.job.turns[0].result.finalMessagePath);
+    assert.equal(readFileSync(firstPath, 'utf8'), 'TURN0_SENTINEL');
+    assert.equal(readFileSync(secondPath, 'utf8'), 'TURN1_SENTINEL');
+    assert.equal(readFileSync(getJobResultPath(job.jobId), 'utf8'), 'TURN1_SENTINEL');
+  });
+
+  it('does not mirror a previous job result onto a new turn when no fresh artifact exists', async () => {
+    const job = await createJob(makeJobInput());
+    await reconcileJob(
+      job.jobId,
+      fakeAdapter({
+        status: { value: 'completed' },
+        transcript: {
+          transcriptPath: '/fake/transcript.jsonl',
+          events: [
+            {
+              type: 'message.completed',
+              role: 'assistant',
+              content: 'PREVIOUS_TURN_RESULT',
+              at: NOW,
+            },
+          ],
+          warnings: [],
+        },
+      }),
+      { readArtifacts: true, now },
+    );
+
+    await updateJob(job.jobId, (current) => ({
+      ...current,
+      status: 'running',
+      turns: [
+        ...current.turns,
+        {
+          prompt: { summary: 'second turn', sha256: 'cafefeed', bytesLen: 11 },
+          startedAt: NOW,
+          status: 'queued',
+        },
+      ],
+    }));
+
+    const result = await reconcileJob(
+      job.jobId,
+      fakeAdapter({
+        status: { value: 'working' },
+        transcript: { transcriptPath: '/fake/transcript.jsonl', events: [], warnings: [] },
+      }),
+      { readArtifacts: true, now },
+    );
+
+    assert.equal(
+      result.job.turns[1].result,
+      undefined,
+      'new turn should not inherit the previous turn result',
+    );
+    assert.equal(result.job.result.finalMessagePreview, 'PREVIOUS_TURN_RESULT');
+  });
+
+  it('replaces an empty-path followup sentinel even when the preview is unchanged', async () => {
+    const job = await createJob(makeJobInput());
+    await updateJob(job.jobId, (current) => ({
+      ...current,
+      status: 'running',
+      turns: [
+        ...current.turns,
+        {
+          prompt: { summary: 'second turn', sha256: '0ddba11', bytesLen: 11 },
+          startedAt: NOW,
+          status: 'completed',
+          result: { finalMessagePath: '', finalMessagePreview: 'SAME_TEXT' },
+        },
+      ],
+    }));
+
+    const result = await reconcileJob(
+      job.jobId,
+      fakeAdapter({
+        status: { value: 'completed' },
+        transcript: {
+          transcriptPath: '/fake/transcript.jsonl',
+          events: [{ type: 'message.completed', role: 'assistant', content: 'SAME_TEXT', at: NOW }],
+          warnings: [],
+        },
+      }),
+      { readArtifacts: true, now },
+    );
+
+    const latest = result.job.turns[1];
+    assert.equal(latest.result.finalMessagePreview, 'SAME_TEXT');
+    assert.equal(latest.result.finalMessagePath, getJobTurnResultPath(job.jobId, 1));
+    assert.ok(existsSync(latest.result.finalMessagePath));
   });
 });
 
@@ -1273,6 +1466,91 @@ describe('T15a — sidecar-evidence-of-completion (plan 0002)', () => {
       result.job.turns[result.job.turns.length - 1].endedAt,
       'turn[last].endedAt must be stamped when status flips to completed',
     );
+  });
+
+  it('idle driver + blocked sidecar + queued turn + transcript result → awaiting_followup', async () => {
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapterWithSidecar({
+      status: {
+        value: 'idle',
+        shortId: job.claude.shortId,
+        sessionId: 'acc0cfbd-983d-436a-b755-1c27cc930100',
+        raw: {
+          id: 'acc0cfbd',
+          status: 'idle',
+          state: 'blocked',
+        },
+      },
+      sidecar: {
+        state: 'blocked',
+        tempo: 'blocked',
+        inFlight: { tasks: 0, queued: 0, kinds: [] },
+        raw: {
+          state: 'blocked',
+          detail: "What's the next step?",
+          tempo: 'blocked',
+          output: null,
+        },
+      },
+    });
+    adapter.readTranscriptEvents = async () => ({
+      transcriptPath: '/tmp/retry.jsonl',
+      events: [
+        {
+          type: 'message.completed',
+          role: 'assistant',
+          content: 'RETRY_INITIAL_READY',
+          at: job.createdAt,
+        },
+      ],
+      warnings: [],
+    });
+    const nowFn = () => new Date(Date.parse(job.createdAt) + 1000).toISOString();
+
+    const result = await reconcileJob(job.jobId, adapter, { now: nowFn });
+
+    assert.equal(result.job.status, 'awaiting_followup');
+    assert.equal(result.job.turns[result.job.turns.length - 1].status, 'completed');
+    assert.equal(result.job.result?.finalMessagePreview, 'RETRY_INITIAL_READY');
+  });
+
+  it('idle driver + blocked sidecar + queued turn with existing latest result → awaiting_followup', async () => {
+    const job = await createJob(makeJobInput());
+    const resultPath = getJobResultPath(job.jobId);
+    writeFileSync(resultPath, 'RETRY_INITIAL_READY');
+    const resultCtx = {
+      finalMessagePath: resultPath,
+      finalMessagePreview: 'RETRY_INITIAL_READY',
+    };
+    const { updateJob: updateJobFn } = await import('../dist/index.js');
+    await updateJobFn(job.jobId, (rec) => {
+      const turns = rec.turns.map((t, i) =>
+        i === rec.turns.length - 1 ? { ...t, status: 'queued', result: resultCtx } : t,
+      );
+      return { ...rec, status: 'running', result: resultCtx, turns };
+    });
+
+    const adapter = fakeAdapterWithSidecar({
+      status: {
+        value: 'idle',
+        shortId: job.claude.shortId,
+        sessionId: 'acc0cfbd-983d-436a-b755-1c27cc930100',
+        raw: { id: 'acc0cfbd', status: 'idle', state: 'blocked' },
+      },
+      sidecar: {
+        state: 'blocked',
+        tempo: 'blocked',
+        inFlight: { tasks: 0, queued: 0, kinds: [] },
+        raw: { state: 'blocked', tempo: 'blocked', output: null },
+      },
+    });
+    const nowFn = () => new Date(Date.parse(job.createdAt) + 1000).toISOString();
+
+    const result = await reconcileJob(job.jobId, adapter, { now: nowFn });
+
+    assert.equal(result.job.status, 'awaiting_followup');
+    assert.equal(result.job.turns[result.job.turns.length - 1].status, 'completed');
+    assert.equal(result.job.result?.finalMessagePreview, 'RETRY_INITIAL_READY');
   });
 
   it('idle driver + working turn + sidecar done → awaiting_followup, turn flipped to completed', async () => {

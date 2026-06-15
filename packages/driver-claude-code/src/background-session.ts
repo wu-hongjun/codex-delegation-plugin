@@ -30,17 +30,40 @@ import type { ClaudeBackgroundDriverOptions } from './types.js';
 //      "backgrounded · 8f7f2405" as well as "session abc123".
 //   3. Fallback A: if stdout has exactly one non-empty line that is itself an ID shape,
 //      use it (bare-ID output).
-//   4. Fallback B: last token matching ID_FALLBACK_PATTERN (digit-required). This avoids
-//      treating common English words as IDs.
+//   4. Fallback B: last usable ID token. A usable token is either an 8+ char hex
+//      session prefix or contains at least one digit; this avoids treating CLI
+//      words such as "claude", "agents", "attach", or "logs" as IDs.
 //   5. If all fail, return undefined.
 //
 // Does NOT throw — caller decides whether to surface DriverError.
 
 const ID_CONTEXTUAL_PATTERN = /^[a-zA-Z0-9_-]{4,}$/;
-const ID_FALLBACK_PATTERN = /^(?=[a-zA-Z0-9_-]*\d)[a-zA-Z0-9_-]{4,}$/;
+const ID_HEX_SESSION_PATTERN = /^[a-fA-F0-9]{8,}$/;
+const ID_WITH_DIGIT_PATTERN = /^(?=[a-zA-Z0-9_-]*\d)[a-zA-Z0-9_-]{4,}$/;
 
 // Keywords whose next ID-shaped token is a session ID.
 const KEYWORDS_PRIMARY = ['backgrounded', 'session'];
+const NON_ID_TOKENS = new Set([
+  'agent',
+  'agents',
+  'attach',
+  'background',
+  'backgrounded',
+  'claude',
+  'log',
+  'logs',
+  'open',
+  'session',
+  'sessions',
+  'show',
+  'started',
+  'starting',
+]);
+
+function isUsableIdToken(token: string): boolean {
+  if (NON_ID_TOKENS.has(token.toLowerCase())) return false;
+  return ID_HEX_SESSION_PATTERN.test(token) || ID_WITH_DIGIT_PATTERN.test(token);
+}
 
 function nextIdToken(tokens: string[], from: number, exclude?: string): string | undefined {
   for (let j = from; j < tokens.length; j++) {
@@ -49,7 +72,16 @@ function nextIdToken(tokens: string[], from: number, exclude?: string): string |
     // id — skip it so that, after excluding an echoed name, the scan reaches the real id
     // following a later keyword (e.g. "session <name>" then "backgrounded · <hex>").
     if (KEYWORDS_PRIMARY.includes(t.toLowerCase())) continue;
-    if (ID_CONTEXTUAL_PATTERN.test(t) && t !== exclude) return t;
+    if (isUsableIdToken(t) && t !== exclude) return t;
+  }
+  return undefined;
+}
+
+function nextContextToken(tokens: string[], from: number): string | undefined {
+  for (let j = from; j < tokens.length; j++) {
+    const t = tokens[j]!;
+    if (KEYWORDS_PRIMARY.includes(t.toLowerCase())) continue;
+    if (ID_CONTEXTUAL_PATTERN.test(t)) return t;
   }
   return undefined;
 }
@@ -84,7 +116,7 @@ export function parseShortId(
       if (candidate) return candidate;
       // No non-excluded candidate after this keyword; remember the name as a fallback.
       if (nameFallback === undefined) {
-        const named = nextIdToken(tokens, i + 1);
+        const named = nextContextToken(tokens, i + 1);
         if (named && isExcluded(named)) nameFallback = named;
       }
     }
@@ -95,15 +127,21 @@ export function parseShortId(
     .split('\n')
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
-  if (stdoutLines.length === 1 && ID_CONTEXTUAL_PATTERN.test(stdoutLines[0]!)) {
+  if (stdoutLines.length === 1 && isUsableIdToken(stdoutLines[0]!)) {
     if (!isExcluded(stdoutLines[0]!)) return stdoutLines[0]!;
+    if (nameFallback === undefined) nameFallback = stdoutLines[0]!;
+  } else if (
+    stdoutLines.length === 1 &&
+    ID_CONTEXTUAL_PATTERN.test(stdoutLines[0]!) &&
+    isExcluded(stdoutLines[0]!)
+  ) {
     if (nameFallback === undefined) nameFallback = stdoutLines[0]!;
   }
 
-  // Strategy 3 (fallback B): last token matching the digit-requiring fallback pattern.
+  // Strategy 3 (fallback B): last usable ID token.
   for (let i = tokens.length - 1; i >= 0; i--) {
     const t = tokens[i]!;
-    if (ID_FALLBACK_PATTERN.test(t)) {
+    if (isUsableIdToken(t)) {
       if (!isExcluded(t)) return t;
       if (nameFallback === undefined) nameFallback = t;
     }

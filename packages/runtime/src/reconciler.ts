@@ -3,7 +3,7 @@
 // Architectural constraint: this file MUST NOT import from any driver package.
 // All driver interaction is dependency-injected via `ReconcilerAdapter`.
 
-import { writeFile } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 
 import {
   appendEvent,
@@ -13,7 +13,7 @@ import {
   syncCompatAliases,
   updateJob,
 } from './job-store.js';
-import { ensureCompanionDirs, getJobResultPath } from './paths.js';
+import { ensureCompanionDirs, getJobResultPath, getJobTurnResultPath } from './paths.js';
 import type { SessionStatus, SessionStatusValue, TurnStatus } from './driver.js';
 import type { DriverEvent } from './events.js';
 import type { JobRecord, JobStatus, ResultContext } from './types.js';
@@ -313,10 +313,82 @@ function deepEqual(a: unknown, b: unknown): boolean {
 function resultContextEqual(a: ResultContext | undefined, b: ResultContext | undefined): boolean {
   if (a === b) return true;
   if (!a || !b) return false;
+  if (a.finalMessagePath !== b.finalMessagePath) return false;
   if (a.finalMessagePreview !== b.finalMessagePreview) return false;
   if (!deepEqual(a.touchedFiles, b.touchedFiles)) return false;
   // Compare usageSnapshot too so changing token counts triggers an update.
   return deepEqual(a.usageSnapshot, b.usageSnapshot);
+}
+
+function latestTurnIndex(job: JobRecord): number | null {
+  return job.turns.length > 0 ? job.turns.length - 1 : null;
+}
+
+function deriveShortIdFromSessionId(sessionId: string | undefined): string | undefined {
+  if (!sessionId) return undefined;
+  const normalized = sessionId.replace(/-/g, '');
+  if (!/^[a-fA-F0-9]{8,}$/.test(normalized)) return undefined;
+  return normalized.slice(0, 8);
+}
+
+function shouldRepairPseudoShortId(current: string, derived: string | undefined): boolean {
+  return derived !== undefined && current === 'claude';
+}
+
+async function writeResultArtifact(
+  jobId: string,
+  turnIndex: number | null,
+  content: string,
+): Promise<string> {
+  await ensureCompanionDirs();
+  const latestAliasPath = getJobResultPath(jobId);
+  const resultPath = turnIndex === null ? latestAliasPath : getJobTurnResultPath(jobId, turnIndex);
+
+  await writeFile(resultPath, content, 'utf8');
+  if (resultPath !== latestAliasPath) {
+    await writeFile(latestAliasPath, content, 'utf8');
+  }
+  return resultPath;
+}
+
+async function preserveLegacySharedResultForPreviousTurn(
+  jobId: string,
+  patched: JobRecord,
+  currentTurnIndex: number | null,
+): Promise<boolean> {
+  if (currentTurnIndex === null || currentTurnIndex <= 0) return false;
+
+  const sharedPath = getJobResultPath(jobId);
+  for (let i = currentTurnIndex - 1; i >= 0; i--) {
+    const turn = patched.turns[i];
+    if (!turn) continue;
+    const result = turn.result;
+    if (result?.finalMessagePath !== sharedPath) continue;
+
+    let content: string;
+    try {
+      content = await readFile(sharedPath, 'utf8');
+    } catch {
+      return false;
+    }
+
+    const snapshotPath = getJobTurnResultPath(jobId, i);
+    await ensureCompanionDirs();
+    await writeFile(snapshotPath, content, 'utf8');
+
+    patched.turns = [...patched.turns];
+    patched.turns[i] = {
+      ...turn,
+      result: {
+        ...result,
+        finalMessagePath: snapshotPath,
+        finalMessagePreview: result.finalMessagePreview ?? makePreview(content),
+      },
+    };
+    return true;
+  }
+
+  return false;
 }
 
 // ---------- main reconcileJob ----------
@@ -338,6 +410,9 @@ export async function reconcileJob(
   const job = await readJob(jobId);
   const previousStatus = job.status;
   const previousResult = job.result;
+  const latestIndexAtStart = latestTurnIndex(job);
+  const latestTurnAtStart = latestIndexAtStart === null ? undefined : job.turns[latestIndexAtStart];
+  const latestTurnHadResultAtStart = latestTurnAtStart?.result !== undefined;
 
   // Working copy we'll mutate
   const patched: JobRecord = { ...job, claude: { ...job.claude } };
@@ -368,22 +443,25 @@ export async function reconcileJob(
 
   // Step 3: compute next status
   let nextStatus: JobStatus = previousStatus;
+  let latestTurnStatusForMapping: TurnStatus = 'queued';
+  let statusMappingInput: StatusMappingInput | null = null;
   if (!statusCallFailed && sessionStatus !== null) {
     const latestTurn = job.turns.length > 0 ? job.turns[job.turns.length - 1] : undefined;
-    const latestTurnStatus: TurnStatus = latestTurn?.status ?? 'queued';
+    latestTurnStatusForMapping = latestTurn?.status ?? 'queued';
     const nowMs = Date.parse(now());
     const ttlElapsed = computeTtlElapsed(job, nowMs, followupTtlMs);
     // isOrphan: driver reports orphaned value
     const isOrphan = sessionStatus.value === 'orphaned';
 
-    nextStatus = mapStatus({
+    statusMappingInput = {
       driverValue: sessionStatus.value,
-      latestTurnStatus,
+      latestTurnStatus: latestTurnStatusForMapping,
       previousJobStatus: previousStatus,
       ttlElapsed,
       isOrphan,
       sidecar,
-    });
+    };
+    nextStatus = mapStatus(statusMappingInput);
 
     // Non-destructively update claude fields
     if (sessionStatus.sessionId != null) {
@@ -398,7 +476,21 @@ export async function reconcileJob(
     if (sessionStatus.cwd && sessionStatus.cwd.length > 0) {
       patched.claude.cwd = sessionStatus.cwd;
     }
-    // shortId and sessionName: do NOT replace — original handle is canonical
+    // Usually the original handle is canonical. Repair only the observed nested
+    // Claude Code pseudo-id shape where `claude --bg` output was parsed as the
+    // literal command word "claude"; the status row's sessionId gives us the real
+    // first-8-hex short id used by attach/logs/stop.
+    const derivedShortId = deriveShortIdFromSessionId(sessionStatus.sessionId);
+    if (shouldRepairPseudoShortId(patched.claude.shortId, derivedShortId)) {
+      const previousShortId = patched.claude.shortId;
+      patched.claude.shortId = derivedShortId!;
+      if (
+        patched.claude.logsCommand === undefined ||
+        patched.claude.logsCommand === `claude logs ${previousShortId}`
+      ) {
+        patched.claude.logsCommand = `claude logs ${derivedShortId}`;
+      }
+    }
   }
 
   patched.status = nextStatus;
@@ -406,6 +498,9 @@ export async function reconcileJob(
   // Step 4: read artifacts
   let newResult: ResultContext | undefined = previousResult;
   let transcriptEventsForResult: DriverEvent[] | null = null;
+  let completionEvidenceProducedFromCurrentArtifacts = false;
+  let resultProducedForLatestTurn = false;
+  let turnSnapshotsChanged = false;
 
   if (readArtifacts) {
     // Try transcript first
@@ -449,9 +544,14 @@ export async function reconcileJob(
         }
 
         if (finalAssistantMessage !== null) {
-          const resultPath = getJobResultPath(jobId);
-          await ensureCompanionDirs();
-          await writeFile(resultPath, finalAssistantMessage.content, 'utf8');
+          turnSnapshotsChanged =
+            (await preserveLegacySharedResultForPreviousTurn(jobId, patched, latestIndexAtStart)) ||
+            turnSnapshotsChanged;
+          const resultPath = await writeResultArtifact(
+            jobId,
+            latestIndexAtStart,
+            finalAssistantMessage.content,
+          );
 
           const preview = makePreview(finalAssistantMessage.content);
           newResult = {
@@ -460,6 +560,8 @@ export async function reconcileJob(
             ...(touchedFilesOrdered.length > 0 ? { touchedFiles: touchedFilesOrdered } : {}),
             ...(lastUsage !== null ? { usageSnapshot: lastUsage } : {}),
           };
+          completionEvidenceProducedFromCurrentArtifacts = true;
+          resultProducedForLatestTurn = latestIndexAtStart !== null;
         } else if (hasOnlyErrorEvents && tr.events.length > 0) {
           // Only error events — do not overwrite existing result
           newResult = previousResult;
@@ -482,15 +584,53 @@ export async function reconcileJob(
     if (!transcriptProducedResult && sidecar?.output?.result) {
       const sidecarResultText = sidecar.output.result;
       if (sidecarResultText.trim().length > 0) {
-        const resultPath = getJobResultPath(jobId);
-        await ensureCompanionDirs();
-        await writeFile(resultPath, sidecarResultText, 'utf8');
+        turnSnapshotsChanged =
+          (await preserveLegacySharedResultForPreviousTurn(jobId, patched, latestIndexAtStart)) ||
+          turnSnapshotsChanged;
+        const resultPath = await writeResultArtifact(jobId, latestIndexAtStart, sidecarResultText);
         const preview = makePreview(sidecarResultText);
         newResult = {
           finalMessagePath: resultPath,
           finalMessagePreview: preview,
         };
+        resultProducedForLatestTurn = latestIndexAtStart !== null;
+        if (sidecar.state === 'done' && sidecar.tempo === 'idle') {
+          completionEvidenceProducedFromCurrentArtifacts = true;
+        }
       }
+    }
+
+    // A real Claude Code 2.1.174 session can finish a turn, answer, then settle
+    // as agents-json status=idle plus sidecar state=blocked/output=null
+    // ("What's the next step?"). The first status map above runs before
+    // transcript/result artifacts are read, so idle+queued correctly stays
+    // conservative until this point. Once the latest turn has concrete result
+    // evidence, remap it as completed so the job becomes awaiting_followup
+    // inside the same reconcile pass.
+    const currentArtifactsChangedResult =
+      completionEvidenceProducedFromCurrentArtifacts &&
+      !resultContextEqual(previousResult, newResult);
+    const currentTurnHasCompletionEvidence =
+      latestTurnHadResultAtStart ||
+      (completionEvidenceProducedFromCurrentArtifacts &&
+        (previousResult === undefined || currentArtifactsChangedResult));
+    const pendingTurnStatus =
+      latestTurnStatusForMapping === 'queued' ||
+      latestTurnStatusForMapping === 'working' ||
+      latestTurnStatusForMapping === 'starting' ||
+      latestTurnStatusForMapping === 'injecting';
+
+    if (
+      statusMappingInput !== null &&
+      sessionStatus?.value === 'idle' &&
+      pendingTurnStatus &&
+      currentTurnHasCompletionEvidence
+    ) {
+      nextStatus = mapStatus({
+        ...statusMappingInput,
+        latestTurnStatus: 'completed',
+      });
+      patched.status = nextStatus;
     }
 
     // Logs fallback: when no transcript AND no sidecar result
@@ -516,8 +656,6 @@ export async function reconcileJob(
         const logsResult = await adapter.readLogs(refFromJob(job));
         // Write logs result only when next status === 'completed' and text non-empty
         if (nextStatus === 'completed' && logsResult.text.trim().length > 0) {
-          const resultPath = getJobResultPath(jobId);
-          await ensureCompanionDirs();
           const MAX_LOG_CHARS = 8000;
           let logContent: string;
           if (logsResult.text.length > MAX_LOG_CHARS) {
@@ -525,7 +663,10 @@ export async function reconcileJob(
           } else {
             logContent = logsResult.text;
           }
-          await writeFile(resultPath, logContent, 'utf8');
+          turnSnapshotsChanged =
+            (await preserveLegacySharedResultForPreviousTurn(jobId, patched, latestIndexAtStart)) ||
+            turnSnapshotsChanged;
+          const resultPath = await writeResultArtifact(jobId, latestIndexAtStart, logContent);
 
           const preview = makePreview(logContent);
           // touchedFiles: do NOT infer from logs
@@ -533,6 +674,7 @@ export async function reconcileJob(
             finalMessagePath: resultPath,
             finalMessagePreview: preview,
           };
+          resultProducedForLatestTurn = latestIndexAtStart !== null;
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -545,12 +687,21 @@ export async function reconcileJob(
 
   // Mirror result to the last turn so turns[] stays in sync with compat aliases.
   // Also sync turn status with the computed job status (T7 turn-status synchronization).
+  const shouldMirrorResultToLatestTurn =
+    newResult !== undefined && (latestTurnHadResultAtStart || resultProducedForLatestTurn);
+  let turnStateChanged = false;
   if (patched.turns.length > 0) {
     const last = patched.turns[patched.turns.length - 1]!;
-    if (newResult !== undefined) {
+    if (shouldMirrorResultToLatestTurn && newResult !== undefined) {
+      if (!resultContextEqual(last.result, newResult)) {
+        turnStateChanged = true;
+      }
       last.result = newResult;
       last.usageSnapshot = newResult.usageSnapshot;
-      last.endedAt = last.endedAt ?? new Date().toISOString();
+      if (last.endedAt === undefined) {
+        last.endedAt = new Date().toISOString();
+        turnStateChanged = true;
+      }
     }
 
     // Turn status sync rules (T7 + T15a):
@@ -565,11 +716,17 @@ export async function reconcileJob(
     //   turns[0].status would remain stale, breaking subsequent reconciles.
     // - stopped / orphaned: preserve whatever status the turn has
     if (nextStatus === 'needs_input') {
+      if (last.status !== 'needs_input') turnStateChanged = true;
       last.status = 'needs_input';
     } else if (nextStatus === 'completed' || nextStatus === 'awaiting_followup') {
+      if (last.status !== 'completed') turnStateChanged = true;
       last.status = 'completed';
-      last.endedAt = last.endedAt ?? new Date().toISOString();
+      if (last.endedAt === undefined) {
+        last.endedAt = new Date().toISOString();
+        turnStateChanged = true;
+      }
     } else if (nextStatus === 'failed') {
+      if (last.status !== 'failed') turnStateChanged = true;
       last.status = 'failed';
     }
     // running, stopped, orphaned: do not force turn status
@@ -581,12 +738,22 @@ export async function reconcileJob(
   const statusChanged = nextStatus !== previousStatus;
   const resultChanged = !resultContextEqual(previousResult, newResult);
   const claudeChanged =
+    patched.claude.shortId !== job.claude.shortId ||
     patched.claude.sessionId !== job.claude.sessionId ||
     patched.claude.pid !== job.claude.pid ||
+    patched.claude.logsCommand !== job.claude.logsCommand ||
     patched.claude.transcriptPath !== job.claude.transcriptPath ||
     patched.claude.cwd !== job.claude.cwd;
 
-  const needsUpdate = statusChanged || resultChanged || claudeChanged;
+  const statusImpliesTurnSync =
+    statusChanged &&
+    (nextStatus === 'completed' ||
+      nextStatus === 'failed' ||
+      nextStatus === 'needs_input' ||
+      nextStatus === 'awaiting_followup');
+  const turnsChanged = turnSnapshotsChanged || turnStateChanged || statusImpliesTurnSync;
+
+  const needsUpdate = statusChanged || resultChanged || claudeChanged || turnsChanged;
 
   let finalJob: JobRecord = patched;
   if (needsUpdate) {
@@ -603,13 +770,6 @@ export async function reconcileJob(
       // Without these branches, a status-only transition would silently lose the
       // last-turn status update (the in-memory patched.turns[last].status would be
       // set but never persisted).
-      const turnsChanged =
-        resultChanged ||
-        (statusChanged &&
-          (nextStatus === 'completed' ||
-            nextStatus === 'failed' ||
-            nextStatus === 'needs_input' ||
-            nextStatus === 'awaiting_followup'));
       const mergedTurns = turnsChanged ? patched.turns : current.turns;
       const merged = {
         ...current,

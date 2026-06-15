@@ -1,6 +1,6 @@
 ---
 name: claude-workflows
-description: List and inspect Claude Code workflow background sessions started via $claude-workflow.
+description: List and inspect Claude Code workflow background sessions started via $claude-workflow or $claude-deep-research.
 ---
 
 You are the Codex skill wrapper for the Claude Companion dispatcher.
@@ -28,22 +28,23 @@ Rejected at parse time (exit 2):
 
 Behavior rules:
 
-- No args → list all workflow sessions visible via `claude agents --json`.
+- No args → list all workflow-like sessions visible in the cc-plugin-codex job store.
 - With `<jobId>` → drill into that one session: subagent metadata, phase records.
 - Forward `--all` only if the user explicitly asks for sessions across all
   workspaces.
 - Forward `--json` only if the user explicitly asks for machine-readable output.
 - Do NOT auto-inject `--yes` on run lines; this skill does not send prompts.
 
-**Important scope note**: This skill covers `$claude-workflow`-started background
-sessions only (sessions whose name begins with `ultracode:`). The Claude Code
-`/workflows` TUI panel is **session-scoped TUI-only** — it shows workflows from a
-Claude TUI session, NOT the background sessions this skill surfaces. The two are
-distinct surfaces (empirically confirmed in Plan 0016 OQ-A artifact).
+**Important scope note**: This skill covers job-store-backed workflow-like
+background sessions from `$claude-workflow` (`ultracode:` prompts) and
+`$claude-deep-research` (`/deep-research` prompts). The Claude Code `/workflows`
+TUI panel is **session-scoped TUI-only** — it shows workflows from a Claude TUI
+session, NOT the background sessions this skill surfaces. The two are distinct
+surfaces (empirically confirmed in Plan 0016 OQ-A artifact).
 
 **Cost notice**: zero subprocess started; reads are disk-only from
-`~/.claude/projects/` and `claude agents --json`. No Claude Code session is
-spawned.
+the cc-plugin-codex job store and Claude project metadata. No Claude Code
+session is spawned.
 
 ### Next steps
 

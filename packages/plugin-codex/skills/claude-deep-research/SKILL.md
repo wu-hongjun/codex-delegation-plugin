@@ -37,12 +37,15 @@ This skill starts a Claude Code background session with `/deep-research <questio
 injected as the opening slash command. The `/deep-research` slash command triggers
 Claude's bundled workflow runtime, which spawns multiple agents fanning out web
 searches, fetching sources, adversarially verifying claims, and synthesizing a
-cited report. No interactive approval dialog is required. After the job ID is
+cited report. Current Claude Code versions may present a dynamic workflow approval
+gate before subagents start. After the job ID and Claude session short ID are
 printed, the user can run:
 
-    claude attach <jobId>
+    claude attach <shortId>
 
-inside a Claude Code session to watch progress.
+using the printed Claude session short ID to watch progress or approve the gate.
+The `--yes` flag only acknowledges the plugin privacy prompt; it does not approve
+Claude Code workflow gates.
 
 WebSearch requirement: the `/deep-research` workflow requires the `WebSearch`
 tool. This tool is auto-available in standard Claude Code background sessions

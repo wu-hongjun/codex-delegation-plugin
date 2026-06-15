@@ -42,7 +42,7 @@ import {
   formatError,
 } from './lib/format.mjs';
 import { makeClaudeAdapter } from './lib/adapter.mjs';
-import { hasAck, recordAck, resolveWorkspaceAck } from './lib/ack.mjs';
+import { recordAck, resolveWorkspaceAck } from './lib/ack.mjs';
 import { makePromptMeta } from './lib/prompt-meta.mjs';
 import { SAME_SESSION_REVIEW_PROMPT, ADVERSARIAL_REVIEW_PROMPT } from './lib/review-prompts.mjs';
 import { parseReviewOutput } from './lib/review-parser.mjs';
@@ -67,6 +67,108 @@ function loadPluginVersion() {
 
 const PLUGIN_VERSION = loadPluginVersion();
 
+// ---------- privacy acknowledgement ----------
+
+/**
+ * @param {{
+ *   workspaceRoot: string;
+ *   header: string;
+ *   actionLines: string[];
+ *   workspaceLabel: string;
+ *   nonInteractive: boolean;
+ * }} input
+ * @returns {string}
+ */
+function formatPrivacyAckMessage({
+  workspaceRoot,
+  header,
+  actionLines,
+  workspaceLabel,
+  nonInteractive,
+}) {
+  return [
+    header,
+    '',
+    ...actionLines,
+    '',
+    `${workspaceLabel}: ${workspaceRoot}`,
+    '',
+    nonInteractive
+      ? 'Re-run with --yes to acknowledge and proceed.'
+      : 'Type yes to acknowledge and proceed, or no to cancel.',
+  ].join('\n');
+}
+
+/**
+ * @param {{
+ *   workspaceRoot: string;
+ *   commandName: string;
+ *   json: boolean;
+ *   useYes: boolean;
+ *   header?: string;
+ *   actionLines: string[];
+ *   workspaceLabel?: string;
+ * }} input
+ */
+async function ensureWorkspaceAck({
+  workspaceRoot,
+  commandName,
+  json,
+  useYes,
+  header = 'Privacy acknowledgement required.',
+  actionLines,
+  workspaceLabel = 'Workspace',
+}) {
+  const ackResult = resolveWorkspaceAck({
+    workspaceRoot,
+    useYes,
+    isTTY: process.stdin.isTTY === true,
+  });
+  if (ackResult.verdict !== 'rejected') return;
+
+  if (!process.stdin.isTTY) {
+    const msg = formatPrivacyAckMessage({
+      workspaceRoot: ackResult.workspaceRoot,
+      header,
+      actionLines,
+      workspaceLabel,
+      nonInteractive: true,
+    });
+    process.stderr.write(formatError(new Error(msg), commandName, json) + '\n');
+    process.exit(1);
+  }
+
+  const msg = formatPrivacyAckMessage({
+    workspaceRoot: ackResult.workspaceRoot,
+    header,
+    actionLines,
+    workspaceLabel,
+    nonInteractive: false,
+  });
+  process.stderr.write(`${msg}\n`);
+
+  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  let answer = '';
+  try {
+    answer = await rl.question('Do you want to proceed? (yes/no) ');
+  } finally {
+    rl.close();
+  }
+
+  if (/^y(?:es)?$/i.test(answer.trim())) {
+    recordAck(ackResult.workspaceRoot);
+    return;
+  }
+
+  const declineMsg = [
+    'Privacy acknowledgement declined.',
+    '',
+    `${workspaceLabel}: ${ackResult.workspaceRoot}`,
+  ].join('\n');
+  process.stderr.write(formatError(new Error(declineMsg), commandName, json) + '\n');
+  process.exit(1);
+}
+
 // ---------- main ----------
 
 const argv = process.argv.slice(2);
@@ -74,11 +176,16 @@ const parsed = parseArgs(argv);
 const { command, flags, positional } = parsed;
 const useJson = Boolean(flags['json']);
 
-if (!command || flags['help']) {
+if (flags['help']) {
+  printUsage(command);
+  process.exit(0);
+}
+
+if (!command) {
   printUsage();
   // --help is a user request, not a usage error — exit 0. Only exit 2 when no
   // command was given AND no --help was requested.
-  process.exit(flags['help'] ? 0 : 2);
+  process.exit(2);
 }
 
 try {
@@ -313,17 +420,19 @@ async function cmdWorkflow(flags, positional, json) {
   await _runDelegateCore(flags, positional, json, {
     commandName: 'workflow',
     promptTransformer: (p) => `ultracode: ${p}`,
-    extraOutput: [
-      '',
-      'This is a Claude Code dynamic workflow request.',
-      'Workflows present an interactive approval dialog (Yes / View raw script / No)',
-      'inside the Claude Code TUI. To approve and start the workflow, attach:',
-      '',
-      '  claude attach <jobId>',
-      '',
-      'Workflows can spawn up to 16 concurrent agents and 1000 total per run. Token',
-      "usage scales with the workflow's complexity.",
-    ].join('\n'),
+    extraOutput: (job) =>
+      [
+        '',
+        'This is a Claude Code dynamic workflow request.',
+        'Approval is required before workflow subagents start.',
+        '',
+        `  claude attach ${job.claude.shortId}`,
+        '',
+        'Then choose Yes, View raw script, or No in Claude Code.',
+        'Note: --yes only acknowledges the plugin privacy prompt; it does not approve this workflow gate.',
+        'Workflows can spawn up to 16 concurrent agents and 1000 total per run. Token',
+        "usage scales with the workflow's complexity.",
+      ].join('\n'),
   });
 }
 
@@ -419,14 +528,19 @@ async function cmdDeepResearch(flags, positional, json) {
   await _runDelegateCore(flags, positional, json, {
     commandName: 'deep-research',
     promptTransformer: (p) => `/deep-research ${p}`,
-    extraOutput: [
-      '',
-      'This is a Claude Code deep-research request.',
-      'The /deep-research runtime fans out parallel web searches, fetches sources,',
-      'adversarially verifies claims, and synthesizes a cited report.',
-      'WebSearch is auto-available in standard bg sessions.',
-      'Attach via `claude attach <jobId>` to watch progress.',
-    ].join('\n'),
+    extraOutput: (job) =>
+      [
+        '',
+        'This is a Claude Code deep-research request.',
+        'The /deep-research runtime fans out parallel web searches, fetches sources,',
+        'adversarially verifies claims, and synthesizes a cited report.',
+        'WebSearch is auto-available in standard bg sessions.',
+        'Current Claude Code versions may present a dynamic workflow approval gate.',
+        '',
+        `  claude attach ${job.claude.shortId}`,
+        '',
+        'Note: --yes only acknowledges the plugin privacy prompt; it does not approve Claude Code workflow gates.',
+      ].join('\n'),
   });
 }
 
@@ -441,7 +555,7 @@ async function cmdDeepResearch(flags, positional, json) {
  * @param {{
  *   commandName: string;
  *   promptTransformer: (raw: string) => string;
- *   extraOutput: string | null;
+ *   extraOutput: string | ((job: object) => string) | null;
  * }} opts
  */
 async function _runDelegateCore(
@@ -469,26 +583,16 @@ async function _runDelegateCore(
   const useYes = Boolean(flags['yes']);
 
   // 2. Privacy ack.
-  if (!hasAck(workspace) && !useYes) {
-    if (!process.stdin.isTTY) {
-      const msg = [
-        'Privacy acknowledgement required.',
-        '',
-        'This command will send your prompt to Claude Code as a background session.',
-        'Claude Code will have access to files in the current workspace.',
-        '',
-        `Workspace: ${workspace}`,
-        '',
-        'Re-run with --yes to acknowledge and proceed.',
-      ].join('\n');
-      process.stderr.write(formatError(new Error(msg), commandName, json) + '\n');
-      process.exit(1);
-    }
-    // TTY: interactive acknowledgement — record it and proceed.
-    recordAck(workspace);
-  } else if (useYes && !hasAck(workspace)) {
-    recordAck(workspace);
-  }
+  await ensureWorkspaceAck({
+    workspaceRoot: workspace,
+    commandName,
+    json,
+    useYes,
+    actionLines: [
+      'This command will send your prompt to Claude Code as a background session.',
+      'Claude Code will have access to files in the current workspace.',
+    ],
+  });
 
   // 3. Build driver.
   const driver = new ClaudeBackgroundDriver({ cwd: workspace });
@@ -568,17 +672,37 @@ async function _runDelegateCore(
   }
 
   // 10. Print summary.
-  process.stdout.write(formatDelegate(finalJob, json) + '\n');
+  process.stdout.write(
+    formatDelegate(finalJob, json, { compact: Boolean(flags['compact']) }) + '\n',
+  );
 
   // 11. Workflow-specific note (appended after the standard job block).
   if (extraOutput !== null && !json) {
-    process.stdout.write(extraOutput + '\n');
+    const renderedExtra = typeof extraOutput === 'function' ? extraOutput(finalJob) : extraOutput;
+    process.stdout.write(renderedExtra + '\n');
   }
 }
 
 // ---------- status ----------
 
+function shouldReconcileForStatusList(job) {
+  switch (job.status) {
+    case 'completed':
+    case 'failed':
+    case 'stopped':
+    case 'orphaned':
+      return false;
+    default:
+      return true;
+  }
+}
+
 async function cmdStatus(flags, positional, json) {
+  const workspace = process.cwd();
+  const showAll = Boolean(flags['all']);
+  const compact = Boolean(flags['compact']);
+  const jobFlag = flags['job'];
+
   // `status` is a list command (current workspace, or every workspace with --all).
   // It does not take a <jobId>; silently ignoring one (printing the full list with
   // exit 0) misleads the caller into thinking they filtered (deep-test Finding 3).
@@ -597,8 +721,47 @@ async function cmdStatus(flags, positional, json) {
     process.exit(2);
   }
 
-  const workspace = process.cwd();
-  const showAll = Boolean(flags['all']);
+  if (jobFlag !== undefined) {
+    const prefix = typeof jobFlag === 'string' ? jobFlag : '';
+    if (!prefix) {
+      process.stderr.write(
+        formatError(new Error('usage: cc status --job <jobId-or-prefix>'), 'status', json) + '\n',
+      );
+      process.exit(2);
+    }
+
+    const listed = showAll ? await listJobs() : await listJobsForWorkspace(workspace);
+    const allIds = listed.jobs.map((j) => j.jobId);
+    const resolved = resolveJobIdPrefix(allIds, prefix);
+    if ('error' in resolved) {
+      const msg =
+        resolved.error === 'ambiguous'
+          ? `Ambiguous job ID prefix "${prefix}". Matches: ${resolved.candidates.join(', ')}`
+          : showAll
+            ? `No job found matching "${prefix}"`
+            : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
+      process.stderr.write(formatError(new Error(msg), 'status', json) + '\n');
+      process.exit(1);
+    }
+
+    const driver = new ClaudeBackgroundDriver({ cwd: workspace });
+    const adapter = makeClaudeAdapter(driver);
+    let job =
+      listed.jobs.find((j) => j.jobId === resolved.match) ?? (await readJob(resolved.match));
+    if (shouldReconcileForStatusList(job)) {
+      try {
+        const r = await reconcileJob(job.jobId, adapter);
+        job = r.job;
+      } catch {
+        // Keep the stored row if one-job reconcile fails.
+      }
+    }
+
+    process.stdout.write(
+      formatStatus([job], json, workspace, { compact: true, singleJob: true }) + '\n',
+    );
+    return;
+  }
 
   let jobRecords;
   if (showAll) {
@@ -614,6 +777,10 @@ async function cmdStatus(flags, positional, json) {
 
   const reconciled = [];
   for (const job of jobRecords) {
+    if (!shouldReconcileForStatusList(job)) {
+      reconciled.push(job);
+      continue;
+    }
     try {
       const r = await reconcileJob(job.jobId, adapter);
       reconciled.push(r.job);
@@ -622,7 +789,7 @@ async function cmdStatus(flags, positional, json) {
     }
   }
 
-  process.stdout.write(formatStatus(reconciled, json, workspace) + '\n');
+  process.stdout.write(formatStatus(reconciled, json, workspace, { compact }) + '\n');
 }
 
 // ---------- result ----------
@@ -693,7 +860,9 @@ async function cmdResult(flags, positional, json) {
     }
   }
 
-  process.stdout.write(formatResult(job, resultText, json) + '\n');
+  process.stdout.write(
+    formatResult(job, resultText, json, { compact: Boolean(flags['compact']) }) + '\n',
+  );
 }
 
 // ---------- stop ----------
@@ -854,7 +1023,7 @@ async function cmdStop(flags, positional, json) {
   }));
   await appendEvent(jobId, { type: 'stop.completed', at: now });
 
-  process.stdout.write(formatStop(stoppedJob, json) + '\n');
+  process.stdout.write(formatStop(stoppedJob, json, { compact: Boolean(flags['compact']) }) + '\n');
 }
 
 // ---------- sendFollowupTurn (shared helper) ----------
@@ -877,7 +1046,7 @@ async function cmdStop(flags, positional, json) {
  *   job: object;
  *   promptSummaryPrefix?: string;
  * }} opts
- * @returns {Promise<{ finalJob: object; sendResult: object; newTurnIndex: number }>}
+ * @returns {Promise<{ finalJob: object; sendResult: object; newTurnIndex: number; previousTurnPreview: string | null }>}
  */
 async function sendFollowupTurn({
   jobId,
@@ -892,6 +1061,9 @@ async function sendFollowupTurn({
   // 9. Build new TurnRecord and append to job.turns.
   const now = new Date().toISOString();
   const newTurnIndex = job.turns.length;
+  const previousTurn = job.turns[job.turns.length - 1];
+  const previousTurnPreview =
+    previousTurn?.result?.finalMessagePreview ?? job.result?.finalMessagePreview ?? null;
   const promptMeta = makePromptMeta(prompt);
 
   // Apply optional prefix to the turn's prompt.summary (e.g. '[review] ').
@@ -1108,7 +1280,7 @@ async function sendFollowupTurn({
     process.stderr.write('[followup] warning: post-send reconcile failed\n');
   }
 
-  return { finalJob, sendResult, newTurnIndex };
+  return { finalJob, sendResult, newTurnIndex, previousTurnPreview };
 }
 
 // ---------- followup ----------
@@ -1270,25 +1442,18 @@ async function cmdFollowup(flags, positional, json) {
   // 7. Target-workspace privacy ack — MUST use job.workspace.root, not process.cwd().
   // The dispatcher already resolved the target job above; ack is scoped to the
   // job's workspace so that --all cannot inherit an ack across workspaces.
-  const ackResult = resolveWorkspaceAck({
+  await ensureWorkspaceAck({
     workspaceRoot: job.workspace.root,
+    commandName: 'followup',
+    json,
     useYes: Boolean(flags['yes']),
-    isTTY: process.stdin.isTTY === true,
-  });
-  if (ackResult.verdict === 'rejected') {
-    const msg = [
-      'Privacy acknowledgement required for target workspace.',
-      '',
+    header: 'Privacy acknowledgement required for target workspace.',
+    actionLines: [
       `This command will inject a follow-up prompt into job ${jobId}.`,
       "Claude Code's existing session has access to files in:",
-      '',
-      `Target workspace: ${ackResult.workspaceRoot}`,
-      '',
-      'Re-run with --yes to acknowledge and proceed.',
-    ].join('\n');
-    process.stderr.write(formatError(new Error(msg), 'followup', json) + '\n');
-    process.exit(1);
-  }
+    ],
+    workspaceLabel: 'Target workspace',
+  });
 
   // 8. Reconstitute session handle.
   const sessionHandle = {
@@ -1301,7 +1466,7 @@ async function cmdFollowup(flags, positional, json) {
   };
 
   // 9-13. Send the follow-up turn and record all events (delegated to shared helper).
-  const { finalJob, sendResult, newTurnIndex } = await sendFollowupTurn({
+  const { finalJob, sendResult, newTurnIndex, previousTurnPreview } = await sendFollowupTurn({
     jobId,
     prompt,
     driver,
@@ -1313,7 +1478,9 @@ async function cmdFollowup(flags, positional, json) {
   });
 
   // 14. Print result.
-  process.stdout.write(formatFollowup(finalJob, sendResult, newTurnIndex, json) + '\n');
+  process.stdout.write(
+    formatFollowup(finalJob, sendResult, newTurnIndex, json, { previousTurnPreview }) + '\n',
+  );
 }
 
 // ---------- review ----------
@@ -1538,25 +1705,18 @@ async function cmdReview(flags, positional, json) {
   }
 
   // 7. Privacy ack — target workspace, 4-step rule.
-  const ackResult = resolveWorkspaceAck({
+  await ensureWorkspaceAck({
     workspaceRoot: job.workspace.root,
+    commandName: 'review',
+    json,
     useYes: Boolean(flags['yes']),
-    isTTY: process.stdin.isTTY === true,
-  });
-  if (ackResult.verdict === 'rejected') {
-    const msg = [
-      'Privacy acknowledgement required for target workspace.',
-      '',
+    header: 'Privacy acknowledgement required for target workspace.',
+    actionLines: [
       `This command will inject a review prompt into job ${jobId}.`,
       "Claude Code's existing session has access to files in:",
-      '',
-      `Target workspace: ${ackResult.workspaceRoot}`,
-      '',
-      'Re-run with --yes to acknowledge and proceed.',
-    ].join('\n');
-    process.stderr.write(formatError(new Error(msg), 'review', json) + '\n');
-    process.exit(1);
-  }
+    ],
+    workspaceLabel: 'Target workspace',
+  });
 
   // 8. Build review prompt.
   // SAME_SESSION_REVIEW_PROMPT accepts { targetTurnIndex?, targetTurnPromptSummary? }.
@@ -1830,25 +1990,18 @@ async function cmdAdversarialReview(flags, positional, json) {
   }
 
   // 6. Privacy ack — target workspace, 4-step rule.
-  const ackResult = resolveWorkspaceAck({
+  await ensureWorkspaceAck({
     workspaceRoot: targetJob.workspace.root,
+    commandName: 'adversarial-review',
+    json,
     useYes: Boolean(flags['yes']),
-    isTTY: process.stdin.isTTY === true,
-  });
-  if (ackResult.verdict === 'rejected') {
-    const msg = [
-      'Privacy acknowledgement required for target workspace.',
-      '',
+    header: 'Privacy acknowledgement required for target workspace.',
+    actionLines: [
       `This command will start an adversarial review session for job ${targetJobId}.`,
       'The review session will have access to files in:',
-      '',
-      `Target workspace: ${ackResult.workspaceRoot}`,
-      '',
-      'Re-run with --yes to acknowledge and proceed.',
-    ].join('\n');
-    process.stderr.write(formatError(new Error(msg), 'adversarial-review', json) + '\n');
-    process.exit(1);
-  }
+    ],
+    workspaceLabel: 'Target workspace',
+  });
 
   // 7. Review target selection (§ 3.X): latest completed non-review turn with a result.
   let targetTurn = null;
@@ -1878,6 +2031,14 @@ async function cmdAdversarialReview(flags, positional, json) {
     process.exit(1);
   }
 
+  let latestResultTurnIndex = -1;
+  for (let i = targetJob.turns.length - 1; i >= 0; i--) {
+    if (targetJob.turns[i]?.result != null) {
+      latestResultTurnIndex = i;
+      break;
+    }
+  }
+
   // 8. Read the selected turn's content for prompt injection.
   const originalTaskSummary = targetTurn.prompt.summary;
 
@@ -1888,6 +2049,23 @@ async function cmdAdversarialReview(flags, positional, json) {
       formatError(
         new Error(
           `Reviewed output file is missing: (no path). Cannot construct adversarial review prompt.`,
+        ),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  if (
+    selectedTurnIndex !== latestResultTurnIndex &&
+    targetJob.result?.finalMessagePath &&
+    finalMessagePath === targetJob.result.finalMessagePath
+  ) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Selected turn ${selectedTurnIndex} uses a legacy shared result path that now points at a later turn. Re-run the original task or use a job with immutable per-turn result snapshots before adversarial review.`,
         ),
         'adversarial-review',
         json,
@@ -1912,7 +2090,7 @@ async function cmdAdversarialReview(flags, positional, json) {
     process.exit(1);
   }
 
-  const touchedFiles = targetJob.result?.touchedFiles;
+  const touchedFiles = targetTurn.result?.touchedFiles;
 
   // 9. Construct adversarial prompt via ADVERSARIAL_REVIEW_PROMPT.
   const adversarialPrompt = ADVERSARIAL_REVIEW_PROMPT({
@@ -2143,6 +2321,7 @@ async function cmdWorkflows(flags, positional, json) {
       const lines = [
         `Workflow session: ${detail.sessionId}`,
         `  Name:      ${detail.name}`,
+        `  Kind:      ${detail.kind ?? 'unknown'}`,
         `  Status:    ${detail.status}`,
         `  CWD:       ${detail.cwd}`,
         `  StartedAt: ${detail.startedAt ? new Date(detail.startedAt).toISOString() : 'unknown'}`,
@@ -2183,14 +2362,15 @@ async function cmdWorkflows(flags, positional, json) {
           [
             'No workflow sessions found.',
             '',
-            'Workflow sessions are background jobs started via $claude-workflow.',
+            'Workflow sessions are background jobs started via $claude-workflow or $claude-deep-research.',
             'Use `cc status` to list all background sessions.',
           ].join('\n') + '\n',
         );
       } else {
         const lines = [`Workflow sessions (${sessions.length}):`];
         for (const s of sessions) {
-          lines.push(`  ${s.shortId}  ${s.status.padEnd(10)}  ${s.name.slice(0, 60)}`);
+          const kind = String(s.kind ?? 'unknown').padEnd(16);
+          lines.push(`  ${s.shortId}  ${s.status.padEnd(10)}  ${kind}  ${s.name.slice(0, 60)}`);
         }
         lines.push('', 'Run `cc workflows <sessionId>` to drill into a session.');
         process.stdout.write(lines.join('\n') + '\n');
@@ -2199,7 +2379,45 @@ async function cmdWorkflows(flags, positional, json) {
   }
 }
 
-function printUsage() {
+function printUsage(commandName = '') {
+  const commandHelp = {
+    workflow: [
+      'Usage: cc workflow [options] -- "<prompt>"',
+      '',
+      'Starts a Claude Code dynamic workflow background session.',
+      'After startup, attach to the printed Claude session short ID:',
+      '  claude attach <shortId>',
+      'Then choose Yes, View raw script, or No in Claude Code.',
+      '',
+      'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode>',
+      'Note: --yes only acknowledges plugin privacy; it does not approve the Claude Code workflow gate.',
+    ],
+    'deep-research': [
+      'Usage: cc deep-research [options] -- "<question>"',
+      '',
+      'Starts a Claude Code /deep-research background session with WebSearch-backed fanout.',
+      'Current Claude Code versions may show a dynamic workflow approval gate.',
+      'If prompted, attach to the printed Claude session short ID:',
+      '  claude attach <shortId>',
+      '',
+      'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode>',
+      'Note: --yes only acknowledges plugin privacy; it does not approve Claude Code workflow gates.',
+    ],
+    workflows: [
+      'Usage: cc workflows [<jobId-or-sessionId>] [--all] [--json]',
+      '',
+      'Read-only inspector for workflow-like background jobs.',
+      'Includes sessions started by $claude-workflow and $claude-deep-research.',
+      '',
+      'Options: --all --json',
+    ],
+  };
+
+  if (commandName && Object.prototype.hasOwnProperty.call(commandHelp, commandName)) {
+    process.stdout.write(commandHelp[commandName].join('\n') + '\n');
+    return;
+  }
+
   process.stdout.write(
     [
       'Usage: cc <command> [options]',
@@ -2212,7 +2430,8 @@ function printUsage() {
       '  fork [flags] -- <directive>               Fork a Claude Code subagent for a directive',
       '  batch [flags] -- <instruction>            Run a batch of parallel Claude Code instructions',
       '  deep-research [flags] -- <question>       Run a Claude Code /deep-research workflow (multi-agent fan-out with WebSearch)',
-      '  status [--all] [--json]                   List jobs for current workspace',
+      '  status [--all] [--json] [--compact]       List jobs for current workspace',
+      '  status --job <jobId-or-prefix> [--all] [--json]  Show one job status',
       '  result <jobId> [--all] [--json]           Show final result of a completed job',
       '  stop <jobId> [--all] [--json]             Stop a running job',
       '  stop --all-awaiting-followup [--all]      Bulk-stop awaiting-followup jobs',
@@ -2221,10 +2440,12 @@ function printUsage() {
       '                                            Same-session structured review of the latest non-review turn',
       '  adversarial-review <jobId-or-prefix> [--all] [--json] [--yes] [--model <model>] [--effort <effort>] [--permission-mode <mode>]',
       '                                            Fresh-session independent review of the latest non-review turn',
-      '  workflows [<jobId>] [--all] [--json]      List workflow sessions or drill into one (read-only; no subprocess spawned)',
+      '  workflows [<jobId>] [--all] [--json]      List workflow/deep-research sessions or drill into one (read-only; no subprocess spawned)',
       '',
       'Flags:',
       '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch/deep-research/workflows)',
+      '  --compact                    Compact redacted JSON shape for delegate/status/result/stop',
+      '  --job <jobId-or-prefix>      Select one job for status',
       '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/goal/fork/batch/deep-research/followup/review/adversarial-review)',
       '  --name <name>                Session name (delegate, workflow, goal, fork, batch, deep-research)',
       '  --model <model>              Model selection (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',

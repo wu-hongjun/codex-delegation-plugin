@@ -45,6 +45,10 @@ export function getJobResultPath(jobId: string): string {
   return join(getJobsDir(), `${jobId}.result.md`);
 }
 
+export function getJobTurnResultPath(jobId: string, turnIndex: number): string {
+  return join(getJobsDir(), `${jobId}.turn-${turnIndex}.result.md`);
+}
+
 export function getJobLockPath(jobId: string): string {
   return join(getJobsDir(), `${jobId}.lock`);
 }

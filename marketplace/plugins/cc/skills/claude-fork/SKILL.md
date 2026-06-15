@@ -36,11 +36,11 @@ Approval flow — important:
 This skill starts a Claude Code background session with `/fork <directive>`
 injected as the opening slash command. The runtime spawns a real subagent
 process to execute the directive; the parent session completes when the
-subagent finishes. After the job ID is printed, the user can run:
+subagent finishes. After the job ID and Claude session short ID are printed, the user can run:
 
-    claude attach <jobId>
+    claude attach <shortId>
 
-inside a Claude Code session to watch progress.
+using the printed Claude session short ID inside Claude Code to watch progress.
 
 Cost notice:
 

@@ -36,12 +36,12 @@ Approval flow — important:
 This skill starts a Claude Code background session with `/goal <condition>`
 injected as the opening slash command. The runtime tracks goal-completion
 automatically; no interactive approval dialog is required. After the job ID
-is printed, the user can run:
+and Claude session short ID are printed, the user can run:
 
-    claude attach <jobId>
+    claude attach <shortId>
 
-inside a Claude Code session to watch progress and see when the goal condition
-is met.
+using the printed Claude session short ID inside Claude Code to watch progress
+and see when the goal condition is met.
 
 Cost notice:
 

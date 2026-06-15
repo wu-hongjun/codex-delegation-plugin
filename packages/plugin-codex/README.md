@@ -132,10 +132,10 @@ $claude-workflow "audit every fetch() call and propose a migration to HttpClient
 **Approval flow**: After `$claude-workflow` starts the background session, Claude Code presents an interactive YES / View Script / NO approval dialog inside its own TUI. The skill does NOT auto-approve. To approve, run:
 
 ```bash
-claude attach <jobId>
+claude attach <shortId>
 ```
 
-and select `Yes` (or `View raw script`, then `Yes`) in the approval dialog. Selecting `No` cancels the workflow cleanly with no subagents spawned.
+Use the printed `Claude session` short ID, not the plugin `Job ID`, and select `Yes` (or `View raw script`, then `Yes`) in the approval dialog. Selecting `No` cancels the workflow cleanly with no subagents spawned.
 
 **Token-cost warning**: Workflows can spawn up to 16 concurrent and 1000 total subagents. Token usage scales with the complexity of the requested task. Review the generated script before approving.
 
@@ -172,8 +172,10 @@ $claude-goal "all unit tests in src/utils/ pass"
 **Approval flow**: After `$claude-goal` starts the background session, the `/goal <condition>` slash command is injected as the prompt. The runtime tracks goal-completion automatically; no interactive approval dialog is required. To watch progress, run:
 
 ```bash
-claude attach <jobId>
+claude attach <shortId>
 ```
+
+Use the printed `Claude session` short ID, not the plugin `Job ID`.
 
 **Cost notice**: Goal sessions iterate until the condition is satisfied or stopped. Consider scoping conditions tightly to avoid open-ended run time. Use `$claude-stop` to terminate early.
 
@@ -211,8 +213,10 @@ $claude-fork "build a proof-of-concept for the new rate-limiter"
 **Approval flow**: After `$claude-fork` starts the background session, the `/fork <directive>` slash command is injected as the prompt. The runtime spawns a real subagent; the parent session completes when the subagent finishes. To watch progress, run:
 
 ```bash
-claude attach <jobId>
+claude attach <shortId>
 ```
+
+Use the printed `Claude session` short ID, not the plugin `Job ID`.
 
 **Cost notice**: `/fork` directives spawn a full subagent — even a trivial directive can consume 20-30k tokens. Consider scope before delegating. Use `$claude-stop` to terminate a fork session early.
 
@@ -250,8 +254,10 @@ $claude-batch "migrate all usages of the old API to the new one"
 **Approval flow**: After `$claude-batch` starts the background session, the `/batch <instruction>` slash command is injected as the prompt. The runtime injects the orchestration system prompt and sets its own tool-access policy. No interactive approval dialog is required. To watch progress, run:
 
 ```bash
-claude attach <jobId>
+claude attach <shortId>
 ```
+
+Use the printed `Claude session` short ID, not the plugin `Job ID`.
 
 **Cost notice**: Batch sessions can spawn multiple parallel tool-calls and subagents. Token usage scales with the number of affected files and the complexity of the instruction. Consider scoping instructions tightly. Use `$claude-stop` to terminate a batch session early.
 
@@ -286,11 +292,13 @@ $claude-deep-research "What are the main tradeoffs between B-trees and LSM-trees
 
 **Requires Claude Code v2.1.167+.** The `/deep-research` slash command is confirmed available on v2.1.167 per empirical probe evidence at `documentation/plan/0013-20260606-workflow-coverage-gaps/artifacts/oq-b-deep-research-probe-20260606.txt`.
 
-**Approval flow**: After `$claude-deep-research` starts the background session, the `/deep-research <question>` slash command is injected as the prompt. The workflow runtime engages automatically — no interactive approval dialog is required. To watch progress, run:
+**Approval flow**: After `$claude-deep-research` starts the background session, the `/deep-research <question>` slash command is injected as the prompt. Current Claude Code versions may present a dynamic workflow approval gate before subagents start. To watch or approve if prompted, run:
 
 ```bash
-claude attach <jobId>
+claude attach <shortId>
 ```
+
+Use the printed `Claude session` short ID. `--yes` only acknowledges the plugin privacy prompt; it does not approve Claude Code workflow gates.
 
 **WebSearch requirement**: The `/deep-research` workflow requires the `WebSearch` tool. This tool is auto-available in standard Claude Code background sessions.
 
@@ -375,7 +383,7 @@ Optional cleanup. Not required before calling `result`.
 
 ### $claude-workflows
 
-List and inspect Claude Code workflow background sessions started via `$claude-workflow`.
+List and inspect Claude Code workflow-like background sessions started via `$claude-workflow` or `$claude-deep-research`.
 
 ```bash
 $claude-workflows
@@ -387,9 +395,9 @@ With a job ID, drill into a single workflow session for subagent metadata and ph
 $claude-workflows <jobId>
 ```
 
-**Important scope note**: This skill covers `$claude-workflow`-started background sessions only (sessions whose name begins with `ultracode:`). The Claude Code `/workflows` TUI panel is session-scoped TUI-only — it shows workflows from a Claude TUI session, not the background sessions this skill surfaces. The two are distinct surfaces (empirically confirmed in Plan 0016 OQ-A artifact).
+**Important scope note**: This skill covers job-store-backed workflow-like background sessions from `$claude-workflow` (`ultracode:` prompts) and `$claude-deep-research` (`/deep-research` prompts). The Claude Code `/workflows` TUI panel is session-scoped TUI-only — it shows workflows from a Claude TUI session, not the background sessions this skill surfaces. The two are distinct surfaces (empirically confirmed in Plan 0016 OQ-A artifact).
 
-**Cost notice**: Zero subprocesses started by this skill; reads are disk-only from `~/.claude/projects/` and `claude agents --json`. No Claude Code session is spawned.
+**Cost notice**: Zero subprocesses started by this skill; reads are disk-only from the cc-plugin-codex job store and Claude project metadata. No Claude Code session is spawned.
 
 Accepted flags:
 
@@ -776,10 +784,10 @@ return { securityAnalysis, performanceAnalysis, uxAnalysis }
 **Approval**: After `$claude-workflow` starts the background session, Claude Code presents an interactive `Yes` / `View raw script` / `No` dialog inside its TUI before any subagents are spawned. The skill does NOT auto-approve. To review and approve:
 
 ```bash
-claude attach <jobId>
+claude attach <shortId>
 ```
 
-Select `View raw script` to inspect the generated JavaScript/ESM script before committing. Select `Yes` to proceed or `No` to cancel cleanly — no subagents are spawned and no artifacts are written until explicit approval.
+Use the printed `Claude session` short ID. Select `View raw script` to inspect the generated JavaScript/ESM script before committing. Select `Yes` to proceed or `No` to cancel cleanly — no subagents are spawned and no artifacts are written until explicit approval.
 
 **Cancel**: To stop a running workflow from the Codex side:
 

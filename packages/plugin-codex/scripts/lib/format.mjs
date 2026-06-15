@@ -37,6 +37,49 @@ function classifyTurnKind(turn) {
 }
 
 /**
+ * Compact public job shape for automation. This intentionally does not spread
+ * JobRecord: driver probes, auth diagnostics, workspace paths, prompts, and raw
+ * usage snapshots can be large or sensitive.
+ *
+ * @param {import('@cc-plugin-codex/runtime').JobRecord} job
+ * @returns {object}
+ */
+function summarizeJob(job) {
+  const turnCount = Array.isArray(job.turns) ? job.turns.length : 0;
+  const latestTurnIndex = turnCount > 0 ? turnCount - 1 : -1;
+  const latestTurn = latestTurnIndex >= 0 ? job.turns[latestTurnIndex] : undefined;
+  const latestKind = classifyTurnKind(latestTurn);
+
+  return {
+    jobId: job.jobId,
+    status: job.status,
+    shortId: job.claude?.shortId ?? null,
+    sessionName: job.claude?.sessionName ?? null,
+    createdAt: job.createdAt,
+    updatedAt: job.updatedAt,
+    ...(job.reviewOf !== undefined ? { reviewOf: job.reviewOf } : {}),
+    turnCount,
+    latestTurn:
+      latestTurnIndex >= 0
+        ? {
+            index: latestTurnIndex,
+            status: latestTurn?.status ?? null,
+            ...(latestKind !== undefined ? { kind: latestKind } : {}),
+            startedAt: latestTurn?.startedAt ?? null,
+            endedAt: latestTurn?.endedAt ?? null,
+            hasResult: latestTurn?.result !== undefined,
+            finalMessagePreview: latestTurn?.result?.finalMessagePreview ?? null,
+          }
+        : null,
+    result: {
+      hasResult: job.result !== undefined,
+      finalMessagePreview: job.result?.finalMessagePreview ?? null,
+      touchedFiles: Array.isArray(job.result?.touchedFiles) ? job.result.touchedFiles : [],
+    },
+  };
+}
+
+/**
  * @param {import('@cc-plugin-codex/runtime').DoctorReport} report
  * @param {boolean} json
  * @returns {string}
@@ -102,11 +145,12 @@ export function formatSetup(report, json) {
 /**
  * @param {import('@cc-plugin-codex/runtime').JobRecord} job
  * @param {boolean} json
+ * @param {{ compact?: boolean }} [opts]
  * @returns {string}
  */
-export function formatDelegate(job, json) {
+export function formatDelegate(job, json, opts = {}) {
   if (json) {
-    return JSON.stringify({ ok: true, job }, null, 2);
+    return JSON.stringify({ ok: true, job: opts.compact ? summarizeJob(job) : job }, null, 2);
   }
 
   const logsCmd = job.claude.logsCommand ?? `claude logs ${job.claude.shortId}`;
@@ -127,10 +171,18 @@ export function formatDelegate(job, json) {
  * @param {import('@cc-plugin-codex/runtime').JobRecord[]} jobs
  * @param {boolean} json
  * @param {string} workspaceRoot
+ * @param {{ compact?: boolean; singleJob?: boolean }} [opts]
  * @returns {string}
  */
-export function formatStatus(jobs, json, workspaceRoot) {
+export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
   if (json) {
+    if (opts.singleJob) {
+      const job = jobs[0] ?? null;
+      return JSON.stringify({ ok: true, job: job ? summarizeJob(job) : null }, null, 2);
+    }
+    if (opts.compact) {
+      return JSON.stringify({ ok: true, jobs: jobs.map(summarizeJob) }, null, 2);
+    }
     // Enrich each job's turns with a `kind` field where applicable.
     // `reviewOf` is already part of JobRecord and serialises as-is (omitted when absent).
     const enrichedJobs = jobs.map((j) => {
@@ -150,6 +202,22 @@ export function formatStatus(jobs, json, workspaceRoot) {
 
   if (jobs.length === 0) {
     return 'No Claude jobs found for this workspace.';
+  }
+
+  if (opts.singleJob) {
+    const j = jobs[0];
+    const annotation = reviewOfLabel(j.reviewOf);
+    const lines = [
+      'Claude job',
+      `Job ID:         ${j.jobId}`,
+      `Status:         ${j.status}`,
+      `Claude session: ${j.claude.shortId}`,
+      `Name:           ${j.claude.sessionName}${annotation}`,
+    ];
+    if (j.result?.finalMessagePreview) {
+      lines.push(`Result:         ${j.result.finalMessagePreview}`);
+    }
+    return lines.join('\n');
   }
 
   const header = `Claude jobs for ${workspaceRoot}`;
@@ -183,12 +251,30 @@ export function formatStatus(jobs, json, workspaceRoot) {
  * @param {import('@cc-plugin-codex/runtime').TurnHandle | null} turnHandle
  * @param {number} turnIndex
  * @param {boolean} json
+ * @param {{ previousTurnPreview?: string | null }} [opts]
  * @returns {string}
  */
-export function formatFollowup(job, turnHandle, turnIndex, json) {
+export function formatFollowup(job, turnHandle, turnIndex, json, opts = {}) {
   const turn = job.turns[turnIndex];
   const turnStatus = turn?.status ?? 'unknown';
-  const finalMessagePreview = turn?.result?.finalMessagePreview ?? turnHandle?.finalMessage ?? null;
+  const turnPreview = turn?.result?.finalMessagePreview ?? null;
+  const sendPreview = turnHandle?.finalMessage ? turnHandle.finalMessage.slice(0, 160) : null;
+  const previousTurnPreview = opts.previousTurnPreview ?? null;
+  const turnPreviewIsPrevious =
+    turnPreview != null && previousTurnPreview != null && turnPreview === previousTurnPreview;
+  const finalMessagePreview =
+    turnPreviewIsPrevious && sendPreview != null && sendPreview !== previousTurnPreview
+      ? sendPreview
+      : turnPreviewIsPrevious
+        ? null
+        : (turnPreview ?? sendPreview);
+  const previewSource =
+    finalMessagePreview == null
+      ? null
+      : finalMessagePreview === turnPreview
+        ? 'turn'
+        : 'sendResult';
+  const resultPending = finalMessagePreview == null && turnPreviewIsPrevious;
 
   if (json) {
     return JSON.stringify(
@@ -199,12 +285,16 @@ export function formatFollowup(job, turnHandle, turnIndex, json) {
           status: job.status,
           shortId: job.claude.shortId,
           sessionName: job.claude.sessionName,
-          resultPreview: turn?.result?.finalMessagePreview ?? null,
+          resultPreview: finalMessagePreview ?? null,
         },
         turn: {
           index: turnIndex,
           status: turnStatus,
           finalMessagePreview: finalMessagePreview ?? null,
+          ...(previewSource !== null ? { previewSource } : {}),
+          ...(resultPending
+            ? { stalePreview: true, resultPending: true, previousTurnPreview }
+            : {}),
         },
       },
       null,
@@ -222,6 +312,8 @@ export function formatFollowup(job, turnHandle, turnIndex, json) {
 
   if (finalMessagePreview) {
     lines.push('', finalMessagePreview);
+  } else if (resultPending) {
+    lines.push('', `Result preview pending; run $claude-result ${job.jobId} after status settles.`);
   }
 
   return lines.join('\n');
@@ -231,11 +323,16 @@ export function formatFollowup(job, turnHandle, turnIndex, json) {
  * @param {import('@cc-plugin-codex/runtime').JobRecord} job
  * @param {string | null} resultText
  * @param {boolean} json
+ * @param {{ compact?: boolean }} [opts]
  * @returns {string}
  */
-export function formatResult(job, resultText, json) {
+export function formatResult(job, resultText, json, opts = {}) {
   if (json) {
-    return JSON.stringify({ ok: true, job, resultText }, null, 2);
+    return JSON.stringify(
+      { ok: true, job: opts.compact ? summarizeJob(job) : job, resultText },
+      null,
+      2,
+    );
   }
 
   const transcriptLine = job.claude.transcriptPath ? job.claude.transcriptPath : '(none)';
@@ -267,11 +364,12 @@ export function formatResult(job, resultText, json) {
 /**
  * @param {import('@cc-plugin-codex/runtime').JobRecord} job
  * @param {boolean} json
+ * @param {{ compact?: boolean }} [opts]
  * @returns {string}
  */
-export function formatStop(job, json) {
+export function formatStop(job, json, opts = {}) {
   if (json) {
-    return JSON.stringify({ ok: true, job }, null, 2);
+    return JSON.stringify({ ok: true, job: opts.compact ? summarizeJob(job) : job }, null, 2);
   }
 
   return [

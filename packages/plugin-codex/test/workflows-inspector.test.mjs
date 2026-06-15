@@ -139,8 +139,8 @@ describe('workflows: no sessions when jobs dir is empty', () => {
   });
 });
 
-describe('workflows: filters to ultracode: prompt jobs only', () => {
-  it('exits 0 and only lists jobs whose prompt.summary starts with "ultracode: "', () => {
+describe('workflows: filters to workflow-like prompt prefixes', () => {
+  it('exits 0 and only lists jobs whose prompt.summary has a workflow-like prefix', () => {
     makeJobRecord('job_test01aa_aaaaaaaa', {
       promptSummary: 'ultracode: audit fetch calls',
       sessionName: 'codex:wflow:a1111111',
@@ -159,6 +159,29 @@ describe('workflows: filters to ultracode: prompt jobs only', () => {
       !result.stdout.includes('codex:nonwf:b2222222'),
       `non-workflow job should NOT appear; stdout:\n${result.stdout}`,
     );
+  });
+});
+
+describe('workflows: includes deep-research prompt jobs', () => {
+  it('lists ultracode and /deep-research jobs, but excludes ordinary delegates', () => {
+    makeJobRecord('job_wfkind1_aaaaaaaa', {
+      promptSummary: 'ultracode: local workflow',
+      sessionName: 'codex:wflow:kind1',
+    });
+    makeJobRecord('job_wfkind2_bbbbbbbb', {
+      promptSummary: '/deep-research local question',
+      sessionName: 'codex:research:kind2',
+    });
+    makeJobRecord('job_wfkind3_cccccccc', {
+      promptSummary: 'Regular delegate prompt',
+      sessionName: 'codex:delegate:kind3',
+    });
+
+    const result = runDispatcher(['workflows']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(result.stdout.includes('codex:wflow:kind1'), result.stdout);
+    assert.ok(result.stdout.includes('codex:research:kind2'), result.stdout);
+    assert.ok(!result.stdout.includes('codex:delegate:kind3'), result.stdout);
   });
 });
 
@@ -182,6 +205,26 @@ describe('workflows --json: produces parseable JSON with sessions array', () => 
       parsed !== null && typeof parsed === 'object' && Array.isArray(parsed.sessions),
       `workflows --json output must have a "sessions" array; got: ${JSON.stringify(parsed)}`,
     );
+  });
+});
+
+describe('workflows --json: emits workflow kind', () => {
+  it('distinguishes dynamic workflow and deep-research sessions', () => {
+    makeJobRecord('job_kindjson1_aaaaaaaa', {
+      promptSummary: 'ultracode: json workflow',
+      sessionName: 'codex:wflow:jsonkind',
+    });
+    makeJobRecord('job_kindjson2_bbbbbbbb', {
+      promptSummary: '/deep-research json question',
+      sessionName: 'codex:research:jsonkind',
+    });
+
+    const result = runDispatcher(['workflows', '--json']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = JSON.parse(result.stdout);
+    const kinds = new Set(parsed.sessions.map((s) => s.kind));
+    assert.ok(kinds.has('dynamic_workflow'), `missing dynamic_workflow in ${result.stdout}`);
+    assert.ok(kinds.has('deep_research'), `missing deep_research in ${result.stdout}`);
   });
 });
 
@@ -282,6 +325,21 @@ describe('workflows <jobId>: drill-in succeeds for workflow jobs', () => {
       result.stdout.includes('Workflow session') || result.stdout.includes('Status'),
       `expected workflow detail output; got:\n${result.stdout}`,
     );
+  });
+});
+
+describe('workflows <jobId>: drill-in succeeds for deep-research jobs', () => {
+  it('exits 0 and shows detail for a /deep-research job', () => {
+    makeJobRecord('job_drdeep_cccccccc', {
+      promptSummary: '/deep-research drill target',
+      sessionId: '22222222-3333-4444-5555-666666666666',
+      sessionName: 'codex:test:deepdrill',
+      status: 'awaiting_followup',
+    });
+    const result = runDispatcher(['workflows', 'job_drdeep_cccccccc']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(result.stdout.includes('codex:test:deepdrill'), result.stdout);
+    assert.ok(result.stdout.includes('deep_research'), result.stdout);
   });
 });
 

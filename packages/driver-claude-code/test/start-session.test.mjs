@@ -394,6 +394,21 @@ describe('parseShortId parser', () => {
       assert.equal(id, '8f7f2405');
     });
 
+    it('skips nested Claude CLI words and chooses the real attach/logs id', () => {
+      const stdout =
+        'Started background session claude\n' +
+        '  claude agents             list sessions\n' +
+        '  claude attach f9232581    open in this terminal\n' +
+        '  claude logs f9232581      show recent output\n';
+      const id = parseShortId(stdout, '');
+      assert.equal(id, 'f9232581');
+    });
+
+    it('accepts an all-letter 8-hex session id', () => {
+      const id = parseShortId('backgrounded · deadbeef\n', '');
+      assert.equal(id, 'deadbeef');
+    });
+
     it('throws or returns falsy when stdout contains no recognisable ID', () => {
       let threw = false;
       let result;

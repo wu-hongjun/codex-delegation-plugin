@@ -52,6 +52,9 @@ const MOCK_CLAUDE = join(REPO_ROOT, 'tools', 'mock-claude');
 const MOCK_CODEX = join(REPO_ROOT, 'tools', 'mock-codex');
 const FORMAT_LIB = join(REPO_ROOT, 'packages', 'plugin-codex', 'scripts', 'lib', 'format.mjs');
 
+/** @type {{ formatFollowup: (job: object, turnHandle: object | null, turnIndex: number, json: boolean, opts?: object) => string }} */
+const { formatFollowup } = await import(FORMAT_LIB);
+
 // ---------- per-test temp dirs ----------
 
 let TMP_HOME;
@@ -144,7 +147,14 @@ function parseJson(stdout) {
 
 /**
  * Write a synthetic completed job record + result file directly into TMP_HOME/jobs/.
- * @param {{ jobId: string; workspaceRoot?: string; prompt?: string; resultContent?: string }} opts
+ * @param {{
+ *   jobId: string;
+ *   workspaceRoot?: string;
+ *   prompt?: string;
+ *   resultContent?: string;
+ *   shortId?: string;
+ *   sessionId?: string;
+ * }} opts
  * @returns {{ jobId: string; resultContent: string }}
  */
 function writeSyntheticCompletedJob({
@@ -152,6 +162,8 @@ function writeSyntheticCompletedJob({
   workspaceRoot = WORK_DIR,
   prompt = 'synthetic task',
   resultContent = 'Final answer from synthetic job.',
+  shortId = 'aabbcc',
+  sessionId,
 } = {}) {
   const jobsDir = join(TMP_HOME, 'jobs');
   mkdirSync(jobsDir, { recursive: true });
@@ -192,10 +204,11 @@ function writeSyntheticCompletedJob({
     },
     claude: {
       version: '2.1.999-mock',
-      shortId: 'aabbcc',
+      shortId,
+      ...(sessionId ? { sessionId } : {}),
       sessionName: `codex:test:${jobId}`,
       cwd: workspaceRoot,
-      logsCommand: `claude logs aabbcc`,
+      logsCommand: `claude logs ${shortId}`,
     },
     prompt: promptCtx,
     result: resultCtx,
@@ -520,6 +533,100 @@ describe('status with a job id positional (Plan 0020 F3)', () => {
   it('--json form also exits 2 for an unexpected positional', () => {
     const result = runDispatcher(['status', '--json', 'job_bogus_deadbeef']);
     assert.equal(result.status, 2, `expected exit 2; got ${result.status}`);
+  });
+});
+
+describe('status --job and --compact ergonomics (Plan 0022 friction polish)', () => {
+  it('status --job <id> --json returns one compact redacted job shape', () => {
+    const jobId = `job_statjob_${createHash('sha256').update('status-job').digest('hex').slice(0, 8)}`;
+    writeSyntheticCompletedJob({ jobId, resultContent: 'Single status preview.' });
+
+    const result = runDispatcher(['status', '--job', jobId, '--json']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.job.jobId, jobId);
+    assert.equal(parsed.job.result.finalMessagePreview, 'Single status preview.');
+    assert.equal(
+      parsed.job.driver,
+      undefined,
+      'compact status-by-id must not expose driver probes',
+    );
+    assert.equal(
+      parsed.job.workspace,
+      undefined,
+      'compact status-by-id must not expose workspace paths',
+    );
+    assert.equal(
+      parsed.jobs,
+      undefined,
+      'status --job JSON should return a single job, not jobs[]',
+    );
+  });
+
+  it('status --json --compact lists compact jobs without driver capabilities snapshots', () => {
+    const jobId = `job_statcmp_${createHash('sha256').update('status-compact').digest('hex').slice(0, 8)}`;
+    writeSyntheticCompletedJob({ jobId, resultContent: 'Compact status preview.' });
+
+    const result = runDispatcher(['status', '--json', '--compact']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const parsed = parseJson(result.stdout);
+    const job = parsed.jobs.find((j) => j.jobId === jobId);
+    assert.ok(job, `missing compact job in output: ${result.stdout}`);
+    assert.equal(job.driver, undefined, 'compact status rows must not include driver');
+    assert.equal(job.workspace, undefined, 'compact status rows must not include workspace');
+    assert.equal(job.result.finalMessagePreview, 'Compact status preview.');
+  });
+});
+
+// ---------- Plan 0022: status listing skips already-terminal job records ----------
+
+describe('status terminal-history reconciliation skip (Plan 0022)', () => {
+  it('status --json leaves terminal jobs terminal instead of reconciling them back to running', () => {
+    const terminalStatuses = ['completed', 'failed', 'stopped', 'orphaned'];
+
+    for (const terminalStatus of terminalStatuses) {
+      const shortId = {
+        completed: 'c0ffee01',
+        failed: 'faded002',
+        stopped: '57000003',
+        orphaned: '0ff00004',
+      }[terminalStatus];
+      const sessionId = shortIdToSessionId(shortId);
+      const jobId = `job_p22${terminalStatus.slice(0, 4)}_${createHash('sha256')
+        .update(`plan-0022-${terminalStatus}`)
+        .digest('hex')
+        .slice(0, 8)}`;
+
+      writeSyntheticCompletedJob({ jobId, shortId, sessionId });
+      const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+      const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+      record.status = terminalStatus;
+      record.turns[0].status = terminalStatus === 'completed' ? 'completed' : 'failed';
+      writeFileSync(recordPath, JSON.stringify(record, null, 2));
+
+      // If cmdStatus reconciles this row, driverValue:'working' maps non-sticky
+      // terminal statuses back to 'running'. The listing path should skip them.
+      writeMockAgentSession(shortId, sessionId, 'working');
+    }
+
+    const result = runDispatcher(['status', '--json']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    for (const terminalStatus of terminalStatuses) {
+      const job = parsed.jobs.find((j) =>
+        j.jobId.startsWith(`job_p22${terminalStatus.slice(0, 4)}`),
+      );
+      assert.ok(job, `missing ${terminalStatus} job in status output`);
+      assert.equal(
+        job.status,
+        terminalStatus,
+        `expected ${job.jobId} to remain ${terminalStatus}; got ${job.status}`,
+      );
+    }
   });
 });
 
@@ -1300,6 +1407,67 @@ describe('followup preserves previous result (T8)', () => {
         'turns[1].status must be completed when no result preview is written inline',
       );
     }
+  });
+});
+
+describe('followup immediate preview honesty (Plan 0022 friction polish)', () => {
+  it('formatFollowup omits a stale previous-turn preview when no fresh preview exists', () => {
+    const job = {
+      jobId: 'job_preview_12345678',
+      status: 'running',
+      claude: { shortId: 'prev0001', sessionName: 'codex:test:preview' },
+      turns: [
+        {
+          status: 'completed',
+          result: { finalMessagePreview: 'PREVIOUS_TURN_PREVIEW' },
+        },
+        {
+          status: 'completed',
+          result: { finalMessagePreview: 'PREVIOUS_TURN_PREVIEW' },
+        },
+      ],
+    };
+
+    const parsed = JSON.parse(
+      formatFollowup(job, { finalMessage: 'PREVIOUS_TURN_PREVIEW' }, 1, true, {
+        previousTurnPreview: 'PREVIOUS_TURN_PREVIEW',
+      }),
+    );
+
+    assert.equal(parsed.turn.finalMessagePreview, null);
+    assert.equal(parsed.job.resultPreview, null);
+    assert.equal(parsed.turn.stalePreview, true);
+    assert.equal(parsed.turn.resultPending, true);
+    assert.equal(parsed.turn.previousTurnPreview, 'PREVIOUS_TURN_PREVIEW');
+  });
+
+  it('formatFollowup prefers a distinct sendResult preview over a stale reconciled preview', () => {
+    const job = {
+      jobId: 'job_preview_87654321',
+      status: 'running',
+      claude: { shortId: 'prev0002', sessionName: 'codex:test:preview' },
+      turns: [
+        {
+          status: 'completed',
+          result: { finalMessagePreview: 'PREVIOUS_TURN_PREVIEW' },
+        },
+        {
+          status: 'completed',
+          result: { finalMessagePreview: 'PREVIOUS_TURN_PREVIEW' },
+        },
+      ],
+    };
+
+    const parsed = JSON.parse(
+      formatFollowup(job, { finalMessage: 'FRESH_FOLLOWUP_PREVIEW' }, 1, true, {
+        previousTurnPreview: 'PREVIOUS_TURN_PREVIEW',
+      }),
+    );
+
+    assert.equal(parsed.turn.finalMessagePreview, 'FRESH_FOLLOWUP_PREVIEW');
+    assert.equal(parsed.job.resultPreview, 'FRESH_FOLLOWUP_PREVIEW');
+    assert.equal(parsed.turn.previewSource, 'sendResult');
+    assert.equal(parsed.turn.stalePreview, undefined);
   });
 });
 
@@ -2298,6 +2466,70 @@ function spawnDispatcherPty(scriptArgs, env) {
   });
   return { term, exitPromise, getOut: () => out };
 }
+
+describe('delegate privacy acknowledgement in TTY (Plan 0022 polish)', () => {
+  it(
+    'prompts in a fresh TTY workspace and declines without recording ack or job',
+    { timeout: 25000 },
+    async () => {
+      const { term, exitPromise, getOut } = spawnDispatcherPty(
+        ['delegate', '--json', '--', 'privacy tty decline'],
+        t10Env(),
+      );
+
+      await waitForCondition(
+        () => /Privacy acknowledgement required/i.test(getOut()),
+        12000,
+        'privacy acknowledgement prompt in PTY stdout/stderr',
+      );
+
+      assert.equal(
+        listJobIds().length,
+        0,
+        `no job should be created before the privacy acknowledgement is answered; output:\n${getOut()}`,
+      );
+
+      term.write('no\r');
+      const { exitCode } = await exitPromise;
+
+      assert.equal(exitCode, 1, `expected decline to exit 1; PTY output:\n${getOut()}`);
+      assert.ok(!existsSync(ackPath()), `decline must not create ack file at ${ackPath()}`);
+      assert.equal(listJobIds().length, 0, 'decline must not create any job records');
+      assert.match(getOut(), /Privacy acknowledgement declined/i);
+    },
+  );
+
+  it(
+    'prompts in a fresh TTY workspace and proceeds only after explicit yes',
+    { timeout: 25000 },
+    async () => {
+      const { term, exitPromise, getOut } = spawnDispatcherPty(
+        ['delegate', '--json', '--', 'privacy tty accept'],
+        t10Env(),
+      );
+
+      await waitForCondition(
+        () => /Privacy acknowledgement required/i.test(getOut()),
+        12000,
+        'privacy acknowledgement prompt in PTY stdout/stderr',
+      );
+
+      assert.equal(
+        listJobIds().length,
+        0,
+        `no job should be created before the privacy acknowledgement is answered; output:\n${getOut()}`,
+      );
+
+      term.write('yes\r');
+      const { exitCode } = await exitPromise;
+
+      assert.equal(exitCode, 0, `expected acceptance to exit 0; PTY output:\n${getOut()}`);
+      assert.ok(existsSync(ackPath()), `acceptance must create ack file at ${ackPath()}`);
+      assert.equal(listJobIds().length, 1, 'acceptance should create exactly one job record');
+      assert.match(getOut(), /"ok": true/);
+    },
+  );
+});
 
 describe('followup permission handoff (plan 0002 T10)', () => {
   // --------------------------------------------------------------------------
@@ -4138,13 +4370,16 @@ function writeAdversarialTargetJob({
   mkdirSync(jobsDir, { recursive: true });
 
   const now = new Date().toISOString();
-  const resultPath = join(jobsDir, `${jobId}.result.md`);
-  const resultContent = 'Original task output for adversarial review.';
-
-  const turn0Result = {
-    finalMessagePath: resultPath,
-    finalMessagePreview: resultContent.slice(0, 120),
-  };
+  const latestAliasPath = join(jobsDir, `${jobId}.result.md`);
+  const resultContents = turns.map((_spec, i) =>
+    i === 0
+      ? 'Original task output for adversarial review.'
+      : `Review/helper turn ${i} output for adversarial review.`,
+  );
+  const resultContexts = resultContents.map((content, i) => ({
+    finalMessagePath: join(jobsDir, `${jobId}.turn-${i}.result.md`),
+    finalMessagePreview: content.slice(0, 120),
+  }));
 
   const turnsData = turns.map((spec, i) => {
     const prefix = spec.summaryPrefix ?? '';
@@ -4161,9 +4396,10 @@ function writeAdversarialTargetJob({
       startedAt: now,
       endedAt: now,
       status: tStatus,
-      ...(hasResult && tStatus === 'completed' ? { result: turn0Result } : {}),
+      ...(hasResult && tStatus === 'completed' ? { result: resultContexts[i] } : {}),
     };
   });
+  const latestResult = [...turnsData].reverse().find((t) => t.result !== undefined)?.result;
 
   const record = {
     jobId,
@@ -4196,15 +4432,22 @@ function writeAdversarialTargetJob({
       sha256: createHash('sha256').update('initial task').digest('hex'),
       bytesLen: Buffer.byteLength('initial task', 'utf8'),
     },
-    ...(noResult ? {} : { result: turn0Result }),
+    ...(noResult || latestResult === undefined ? {} : { result: latestResult }),
     turns: turnsData,
   };
 
   writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify(record, null, 2));
   if (!noResult) {
-    writeFileSync(resultPath, resultContent);
+    for (let i = 0; i < turnsData.length; i++) {
+      if (turnsData[i].result !== undefined) {
+        writeFileSync(resultContexts[i].finalMessagePath, resultContents[i]);
+      }
+    }
+    if (latestResult !== undefined) {
+      writeFileSync(latestAliasPath, resultContents[resultContexts.indexOf(latestResult)]);
+    }
   }
-  return { jobId, record, resultPath };
+  return { jobId, record, resultPath: latestResult?.finalMessagePath ?? latestAliasPath };
 }
 
 // ---------- T6-1: happy path — new review job created with reviewOf ----------
@@ -4858,6 +5101,37 @@ describe('adversarial-review selects original non-review turn (T6)', () => {
       reviewRecord.reviewOf.turnIndex,
       0,
       `expected reviewOf.turnIndex === 0 (original turn); got ${reviewRecord.reviewOf.turnIndex}`,
+    );
+  });
+});
+
+describe('adversarial-review refuses legacy shared result paths (Plan 0022 friction polish)', () => {
+  it('exits 1 when the selected older turn points at the mutable latest-result file', () => {
+    const jobId = `job_arleg_${createHash('sha256').update('t6-legacy-shared-path').digest('hex').slice(0, 8)}`;
+    const { record } = writeAdversarialTargetJob({
+      jobId,
+      turns: [
+        { summaryPrefix: '', status: 'completed', hasResult: true },
+        { summaryPrefix: '[review] ', status: 'completed', hasResult: true },
+      ],
+    });
+    const sharedPath = join(TMP_HOME, 'jobs', `${jobId}.result.md`);
+    const sharedResult = {
+      finalMessagePath: sharedPath,
+      finalMessagePreview: 'Review verdict content that must not be reviewed as turn 0.',
+    };
+    record.result = sharedResult;
+    record.turns[0].result = sharedResult;
+    record.turns[1].result = sharedResult;
+    writeFileSync(join(TMP_HOME, 'jobs', `${jobId}.json`), JSON.stringify(record, null, 2));
+    writeFileSync(sharedPath, 'Review verdict content that must not be reviewed as turn 0.');
+    writeAck(WORK_DIR);
+
+    const result = runDispatcher(['adversarial-review', jobId, '--yes']);
+    assert.equal(result.status, 1, `expected exit 1; stdout:\n${result.stdout}`);
+    assert.ok(
+      result.stderr.includes('legacy shared result path'),
+      `expected legacy shared-path refusal; stderr:\n${result.stderr}`,
     );
   });
 });
@@ -6467,6 +6741,16 @@ describe('--help mentions workflow command', () => {
   });
 });
 
+describe('workflow --help command-specific output', () => {
+  it('mentions attach and that --yes does not approve the workflow gate', () => {
+    const result = runDispatcher(['workflow', '--help']);
+    assert.equal(result.status, 0, `workflow --help should exit 0; got ${result.status}`);
+    assert.ok(result.stdout.startsWith('Usage: cc workflow'), result.stdout);
+    assert.ok(result.stdout.includes('claude attach'), result.stdout);
+    assert.ok(result.stdout.includes('does not approve'), result.stdout);
+  });
+});
+
 describe('workflow --yes -- "test prompt" (happy path)', () => {
   it('exits 0, stdout contains job_* ID and workflow approval note', () => {
     const result = runDispatcher(['workflow', '--yes', '--', 'test workflow prompt']);
@@ -6484,6 +6768,20 @@ describe('workflow --yes -- "test prompt" (happy path)', () => {
     assert.ok(
       result.stdout.includes('claude attach'),
       `expected "claude attach" approval-flow note in stdout; got:\n${result.stdout}`,
+    );
+    const shortId = result.stdout.match(/Claude session:\s+(\S+)/)?.[1];
+    assert.ok(shortId, `expected Claude session shortId in stdout; got:\n${result.stdout}`);
+    assert.ok(
+      result.stdout.includes(`claude attach ${shortId}`),
+      `expected attach command to use actual shortId ${shortId}; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      !result.stdout.includes('claude attach <jobId>'),
+      `must not print literal <jobId> attach placeholder; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('does not approve'),
+      `expected --yes approval-gate note; got:\n${result.stdout}`,
     );
   });
 });
@@ -7001,6 +7299,17 @@ describe('--help mentions deep-research command', () => {
   });
 });
 
+describe('deep-research --help command-specific output', () => {
+  it('mentions WebSearch, attach, and possible workflow approval gates', () => {
+    const result = runDispatcher(['deep-research', '--help']);
+    assert.equal(result.status, 0, `deep-research --help should exit 0; got ${result.status}`);
+    assert.ok(result.stdout.startsWith('Usage: cc deep-research'), result.stdout);
+    assert.ok(result.stdout.includes('WebSearch'), result.stdout);
+    assert.ok(result.stdout.includes('claude attach'), result.stdout);
+    assert.ok(result.stdout.includes('approval gate'), result.stdout);
+  });
+});
+
 describe('deep-research --yes -- "test question" (happy path)', () => {
   it('exits 0, stdout contains job_* ID and deep-research approval note', () => {
     const result = runDispatcher(['deep-research', '--yes', '--', 'What is 2 plus 2?']);
@@ -7018,6 +7327,16 @@ describe('deep-research --yes -- "test question" (happy path)', () => {
     assert.ok(
       result.stdout.includes('claude attach') || result.stdout.includes('deep-research'),
       `expected deep-research-flavored note in stdout; got:\n${result.stdout}`,
+    );
+    const shortId = result.stdout.match(/Claude session:\s+(\S+)/)?.[1];
+    assert.ok(shortId, `expected Claude session shortId in stdout; got:\n${result.stdout}`);
+    assert.ok(
+      result.stdout.includes(`claude attach ${shortId}`),
+      `expected attach command to use actual shortId ${shortId}; got:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('does not approve Claude Code workflow gates'),
+      `expected no-auto-approval note; got:\n${result.stdout}`,
     );
   });
 });
@@ -7136,6 +7455,16 @@ describe('--help mentions workflows command', () => {
       result.stdout.includes('workflows [<jobId>] [--all] [--json]'),
       `expected "workflows [<jobId>] [--all] [--json]" in --help output; got:\n${result.stdout}`,
     );
+  });
+});
+
+describe('workflows --help command-specific output', () => {
+  it('mentions read-only inspection and deep-research inclusion', () => {
+    const result = runDispatcher(['workflows', '--help']);
+    assert.equal(result.status, 0, `workflows --help should exit 0; got ${result.status}`);
+    assert.ok(result.stdout.startsWith('Usage: cc workflows'), result.stdout);
+    assert.ok(result.stdout.includes('Read-only inspector'), result.stdout);
+    assert.ok(result.stdout.includes('$claude-deep-research'), result.stdout);
   });
 });
 

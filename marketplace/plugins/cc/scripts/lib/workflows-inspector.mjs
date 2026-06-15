@@ -10,8 +10,8 @@
 //   ~/.codex/cc-plugin-codex/jobs/*.json (resolved via the runtime's
 //   getJobsDir helper, which honors CC_PLUGIN_CODEX_HOME for tests). The
 //   `prompt.summary` field of each job record reveals which jobs were
-//   triggered as workflows (those start with "ultracode: " — the prefix
-//   that cmdWorkflow injects in cc.mjs).
+//   triggered as workflow-like sessions: "ultracode: " from cmdWorkflow and
+//   "/deep-research " from cmdDeepResearch.
 //
 //   Per-subagent / phase enrichment still reads
 //   ~/.claude/projects/<sanitized-cwd>/<sessionId>/subagents/*.meta.json and
@@ -27,7 +27,10 @@ import { join } from 'node:path';
 
 import { listJobs } from '@cc-plugin-codex/runtime';
 
-const ULTRACODE_PREFIX = 'ultracode: ';
+const WORKFLOW_PROMPT_KINDS = [
+  { kind: 'dynamic_workflow', prefix: 'ultracode: ' },
+  { kind: 'deep_research', prefix: '/deep-research ' },
+];
 
 // ---------------------------------------------------------------------------
 // listWorkflows
@@ -36,10 +39,10 @@ const ULTRACODE_PREFIX = 'ultracode: ';
 /**
  * List all cc-plugin-codex background jobs that were started as workflows.
  *
- * A job qualifies as a workflow job when its `prompt.summary` field starts
- * with "ultracode: " — the prefix that cmdWorkflow injects before the
- * user's text. The session NAME field is unreliable for this filter because
- * the driver sets it to "codex:<workspace>:<id>".
+ * A job qualifies as workflow-inspectable when its `prompt.summary` field
+ * starts with a known workflow-like command prefix. The session NAME field is
+ * unreliable for this filter because the driver sets it to
+ * "codex:<workspace>:<id>".
  *
  * @param {{ all?: boolean; cwd?: string }} opts
  * @returns {Promise<{ sessions: WorkflowSession[] }>}
@@ -98,7 +101,7 @@ export async function inspectWorkflow(jobId) {
 
   if (!_isWorkflowJob(job)) {
     throw new Error(
-      `Job "${job.jobId}" is not a workflow job (prompt does not begin with "ultracode: ").`,
+      `Job "${job.jobId}" is not workflow-inspectable (prompt does not begin with "ultracode: " or "/deep-research ").`,
     );
   }
 
@@ -113,6 +116,7 @@ export async function inspectWorkflow(jobId) {
     jobId: job.jobId,
     sessionId,
     name: _sessionName(job),
+    kind: _workflowKind(job),
     status: job.status ?? 'unknown',
     cwd,
     startedAt: job.createdAt ?? null,
@@ -126,12 +130,22 @@ export async function inspectWorkflow(jobId) {
 // ---------------------------------------------------------------------------
 
 /**
- * A job is a workflow job when its prompt.summary starts with the ultracode prefix.
+ * A job is workflow-inspectable when its prompt.summary starts with a known
+ * workflow-like prefix.
  * @param {any} job
  */
 function _isWorkflowJob(job) {
+  return _workflowKind(job) !== null;
+}
+
+/**
+ * @param {any} job
+ * @returns {'dynamic_workflow' | 'deep_research' | null}
+ */
+function _workflowKind(job) {
   const summary = job?.prompt?.summary;
-  return typeof summary === 'string' && summary.startsWith(ULTRACODE_PREFIX);
+  if (typeof summary !== 'string') return null;
+  return WORKFLOW_PROMPT_KINDS.find((entry) => summary.startsWith(entry.prefix))?.kind ?? null;
 }
 
 /**
@@ -165,6 +179,7 @@ function _toWorkflowSession(job) {
     sessionId,
     shortId: _shortId(sessionId || job.jobId || ''),
     name: _sessionName(job),
+    kind: _workflowKind(job),
     status: job.status ?? 'unknown',
     cwd: job.workspace?.root ?? job.codex?.cwd ?? '',
     startedAt: job.createdAt ?? null,

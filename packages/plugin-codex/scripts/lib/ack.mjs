@@ -45,24 +45,28 @@ export function recordAck(workspaceRoot) {
 }
 
 /**
- * Resolve the privacy-ack decision for a workspace, given user flags and TTY
- * state. Caller is responsible for printing + exiting on the 'rejected' verdict.
+ * Resolve the non-interactive privacy-ack decision for a workspace, given user
+ * flags. Caller is responsible for any interactive TTY prompt before printing
+ * + exiting on the 'rejected' verdict.
  *
  * - 'satisfied' — ack already on disk; proceed.
- * - 'recorded'  — no prior ack but --yes or TTY auto-recorded one; proceed.
- * - 'rejected'  — no prior ack, no --yes, non-TTY stdin; caller must fail.
+ * - 'recorded'  — no prior ack but --yes recorded one; proceed.
+ * - 'rejected'  — no prior ack and no --yes; caller must prompt or fail.
  *
  * The workspaceRoot is echoed back in the result so callers can render the
  * target workspace path in error messages without re-deriving it.
  *
+ * `isTTY` is accepted for compatibility with older call sites, but TTY status
+ * alone must never record an acknowledgement.
+ *
  * @param {{ workspaceRoot: string; useYes: boolean; isTTY: boolean }} input
  * @returns {{ verdict: 'satisfied' | 'recorded' | 'rejected'; workspaceRoot: string }}
  */
-export function resolveWorkspaceAck({ workspaceRoot, useYes, isTTY }) {
+export function resolveWorkspaceAck({ workspaceRoot, useYes, isTTY: _isTTY }) {
   if (hasAck(workspaceRoot)) {
     return { verdict: 'satisfied', workspaceRoot };
   }
-  if (useYes || isTTY) {
+  if (useYes) {
     recordAck(workspaceRoot);
     return { verdict: 'recorded', workspaceRoot };
   }

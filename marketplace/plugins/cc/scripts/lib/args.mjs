@@ -14,6 +14,7 @@ const BOOLEAN_FLAGS = new Set([
   'json',
   'all',
   'allow-edit',
+  'compact',
   'help',
   'all-awaiting-followup',
 ]);

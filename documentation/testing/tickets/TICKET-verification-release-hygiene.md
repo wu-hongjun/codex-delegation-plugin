@@ -17,12 +17,17 @@ This ticket is about making the release trail boring and auditable before the pl
 
 - `documentation/plan/0024-20260615-agent-parity-foundation/readme.md` exists.
 - `documentation/plan/0024-20260615-agent-parity-foundation/2-implement.md` exists.
-- `documentation/plan/0024-20260615-agent-parity-foundation/tickets/T1-cli-parity-flags.md` through `T4-docs-release-followthrough.md` exist.
+- `documentation/plan/0024-20260615-agent-parity-foundation/tickets/T1-cli-flag-permission-parity.md` exists.
+- `documentation/plan/0024-20260615-agent-parity-foundation/tickets/T2-machine-readable-waiting-state.md` exists.
+- `documentation/plan/0024-20260615-agent-parity-foundation/tickets/T3-review-evidence-and-gates.md` exists.
+- `documentation/plan/0024-20260615-agent-parity-foundation/tickets/T4-install-documentation-friction.md` exists.
 - `documentation/plan/0024-20260615-agent-parity-foundation/3-audit.md` is missing.
 - `documentation/plan/0024-20260615-agent-parity-foundation/4-polish.md` is missing.
 - `documentation/plan/0024-20260615-agent-parity-foundation/5-report.md` is missing.
 - `documentation/testing/tickets/TICKET-cc-depth-test.md:4`: current target is v0.3.6.
 - `documentation/testing/tickets/TICKET-cc-depth-test.md:187`: newest Results Log entry observed during audit was v0.3.4, not v0.3.6.
+- `tools/package-marketplace.mjs:141` to `173`: bundled runtime/driver package version markers are currently hard-coded as `0.3.6-bundled`, while `documentation/RELEASING.md:72` to `75` says they are synthesized from the source plugin version.
+- Second-pass no-Bash audit (`job_mqfv74cx_4eb6098f`) confirmed the missing v0.3.6 depth-test evidence and found the earlier ticket filename evidence was wrong; Codex verified the filenames with `ls`.
 - Existing tests cover parts of this surface, but not all newly important release claims:
   - `packages/runtime/test/reconciler.test.mjs`
   - `packages/driver-claude-code/test/agents-json.test.mjs`
@@ -46,6 +51,7 @@ This ticket is about making the release trail boring and auditable before the pl
    - `cc result` availability when a latest completed result exists but the session is currently waiting for input.
    - Review parser behavior for in-progress review/meta text.
    - Marketplace version consistency and bundled marker consistency where not already covered.
+   - Add a guard that bundled `-bundled` markers are derived from the source plugin version or fail when they drift.
 
 4. Add a final production smoke checklist.
    - Install or refresh released plugin locally.
@@ -59,6 +65,7 @@ This ticket is about making the release trail boring and auditable before the pl
 - Full npm test suite passes.
 - Lint/typecheck commands used by the repo pass, if present.
 - `node tools/package-marketplace.mjs --check` passes.
+- The marketplace package script cannot stay green if bundled runtime or driver package markers drift from `packages/plugin-codex/.codex-plugin/plugin.json`.
 - The installed plugin version matches the release version under the Codex cache.
 - CI for the release commit and tag is green before a production-readiness claim is made.
 

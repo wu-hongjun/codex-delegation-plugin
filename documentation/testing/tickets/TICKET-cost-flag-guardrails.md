@@ -26,12 +26,16 @@ There are also remaining documented flags that may matter for parity or low-fric
 - `packages/runtime/src/driver.ts:35` to `66`: `StartSessionOpts` does not model those options.
 - `packages/driver-claude-code/src/background-session.ts:164` to `248`: `buildArgv` cannot forward those options.
 - Audit lane C confirmed the live binary was available for read-only probing, but permission prompts prevented completing the full matrix in that lane.
+- `references/documentation-claudecode/02-cli-reference.md:87` documents `--settings-sources`, while the plugin currently parses and forwards singular `--setting-sources`.
+- `references/documentation-claudecode/02-cli-reference.md:91` documents `--plugins`, while the plugin currently exposes `--plugin-dir` and `--plugin-url`.
+- Second-pass no-Bash audit (`job_mqfv74mx_e9587b05`) confirmed the seven original missing flags and identified the two adjacent naming discrepancies above as probe candidates.
 
 ## Scope
 
 1. Probe live Claude Code support in background mode.
    - Test each candidate flag with `claude --bg` or the exact invocation shape used by the driver.
    - Record whether the flag is accepted, rejected, ignored, or incompatible with background sessions.
+   - Confirm exact spelling for `--max-budget-usd`, `--settings-sources`, and `--plugins` against the live binary.
    - Keep the probe read-only.
 
 2. Add supported cost and turn guardrails first.
@@ -46,10 +50,12 @@ There are also remaining documented flags that may matter for parity or low-fric
    - `--no-sandbox`
    - `--no-session-persistence`
    - Add only if the live background invocation proves they work.
+   - Treat `--no-session-persistence` as a design-risk flag because the reconciler depends on persisted transcripts and sidecars.
 
 4. Add clear rejection behavior.
    - Unknown or unsupported passthrough flags should fail with actionable text.
    - If a flag is documented by Claude Code but unsupported by this plugin, say so explicitly.
+   - Current generic unknown-flag behavior already hard-fails; this task is to make documented-but-unsupported failures more actionable.
 
 5. Improve workflow guardrails.
    - Allow batch, workflow, and deep-research skills to pass max-turn and max-budget caps to every spawned job where supported.
@@ -61,6 +67,7 @@ There are also remaining documented flags that may matter for parity or low-fric
 - Add parser tests for boolean and value flag handling.
 - Add negative tests for unsupported or incompatible flags.
 - Add a live-probe artifact or documented transcript before claiming support.
+- Add a live-probe artifact for the `--setting-sources` versus `--settings-sources` and `--plugin-dir`/`--plugin-url` versus `--plugins` discrepancies before changing shipped aliases.
 - Run full package tests and `node tools/package-marketplace.mjs --check`.
 
 ## Acceptance Criteria

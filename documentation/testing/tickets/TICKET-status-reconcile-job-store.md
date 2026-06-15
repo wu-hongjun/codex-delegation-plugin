@@ -9,11 +9,11 @@
 
 ## Problem
 
-`cc status --all` and workspace-wide status paths still do too much work per job. Each broad status sweep reconciles jobs sequentially, and each active-job reconcile can spawn a fresh `claude agents --json` process through the driver. With accumulated job-store records this becomes slow enough to make normal Codex use feel blocked, and it also delays transitions such as completed Claude sessions becoming `awaiting_followup`.
+`cc status --all` and workspace-wide status paths still do too much work per non-terminal job. Each broad status sweep reconciles jobs sequentially, and each active or follow-up-capable job reconcile can spawn a fresh `claude agents --json` process through the driver. With accumulated job-store records this becomes slow enough to make normal Codex use feel blocked, and it also delays transitions such as completed Claude sessions becoming `awaiting_followup`.
 
 There are related reliability gaps in the same area:
 
-- Terminal jobs are still read and considered during broad workspace status.
+- Terminal jobs are still read from disk, and non-terminal historical jobs such as `awaiting_followup` or `needs_input` are still live-reconciled during broad workspace status.
 - The job store has no explicit pruning command.
 - Lock files are permanent if a process dies while holding one.
 - A reconcile write can compute patched owned fields from a pre-lock snapshot, then merge into a newer locked record.
@@ -30,8 +30,11 @@ There are related reliability gaps in the same area:
 - `packages/runtime/src/job-store.ts:6` to `7`: stale-lock reaping is explicitly not implemented.
 - `packages/runtime/src/job-store.ts:77` to `103`: `acquireLock` fails on existing lock and does not recover stale locks.
 - `packages/runtime/src/reconciler.ts:803` to `828`: update fields are computed before the locked update merges them into the current record.
+- `packages/plugin-codex/scripts/cc.mjs:904` to `914`: CLI broad status already skips terminal jobs before reconciliation, so the hot path is non-terminal accumulated records rather than completed/failed/stopped records.
+- `packages/plugin-codex/scripts/cc.mjs:1140` to `1147`: `cc result` only checks the latest turn for a completed turn result, so an earlier completed result can be hidden by a later `needs_input` turn.
 - Audit lane A confirmed the call chain: `reconcileJob` -> `adapter.status` -> driver status -> `statusForSession` -> fresh `claude agents --json`.
 - Prior local observation on 2026-06-15: job store contained hundreds of records and broad status was materially slower than focused `--job` status.
+- Second-pass no-Bash audit (`job_mqfv74x2_5ff2b913`) confirmed the evidence above and corrected the scope: CLI terminal-skip exists, lock metadata already exists, and result retrieval should scan backward for the latest completed turn with a result.
 
 ## Scope
 
@@ -40,9 +43,10 @@ There are related reliability gaps in the same area:
    - Keep focused `status --job` cheap and direct.
    - Preserve behavior when the snapshot cannot be loaded.
 
-2. Skip terminal jobs during live reconciliation.
-   - Terminal records may still be listed.
-   - Do not call the driver for terminal records unless explicitly requested.
+2. Keep terminal jobs out of live reconciliation everywhere, but focus the CLI fix on non-terminal accumulation.
+   - CLI `cmdStatus` already skips `completed`, `failed`, `stopped`, and `orphaned`.
+   - Confirm whether `reconcileJobsForWorkspace` has non-test callers before optimizing it.
+   - Treat accumulated `awaiting_followup` and `needs_input` records as the main broad-status cost.
 
 3. Add a pruning command.
    - Suggested shape: `cc prune [--older-than <duration>] [--terminal-only] [--dry-run] [--json]`.
@@ -50,25 +54,30 @@ There are related reliability gaps in the same area:
    - Default must be conservative and terminal-only.
 
 4. Add stale-lock recovery.
-   - Include pid, hostname, and creation time in lock content.
+   - Lock files already include pid, hostname, operation, and creation time.
    - Reap only when the owner is clearly gone or the lock age exceeds a conservative threshold.
+   - Use same-host pid liveness only when `hostname` matches; cross-host recovery should be age-based.
+   - Reap atomically and retry lock acquisition so two reapers cannot both claim the lock.
    - Emit an event or warning when a stale lock is reaped.
 
 5. Recompute reconciler-owned fields inside the locked update.
    - Avoid overwriting user-owned or concurrent fields from a stale pre-lock snapshot.
+   - Preserve concurrent `turns` appends; do not replace the current turn array with a pre-lock array.
+   - Be careful with result artifact writes that use the pre-lock latest-turn index.
    - Add a regression test where another writer updates the record between read and lock.
 
 6. Make result retrieval friendlier when a result is already persisted.
-   - `cc result <job>` should be able to show the latest completed turn result if present, even when the current session is waiting for permission or follow-up.
+   - `cc result <job>` already handles the latest turn when that latest turn is completed.
+   - It should scan backward for the latest completed turn result, so a later `needs_input` turn does not hide an earlier completed result.
    - Preserve a clear message that the job is not terminal if more work may still occur.
 
 ## Verification
 
 - Unit test broad workspace status with a mocked driver and assert `claude agents --json` is called once per sweep, not once per active job.
-- Seed a store with terminal and active records and assert terminal records are not reconciled during broad status.
+- Seed a store with terminal, `awaiting_followup`, and `needs_input` records and assert terminal records are not reconciled while the remaining non-terminal path uses the shared snapshot.
 - Add stale-lock tests covering active pid, dead pid, too-new unknown pid, and old unknown pid.
 - Add prune tests for dry-run, terminal-only deletion, and preservation of active jobs.
-- Add a fixture where a job has `status: needs_input` and a persisted result; assert `cc result` can show the latest completed result.
+- Add a fixture where `turns[0]` is completed with a result, `turns[1]` is `needs_input`, and job status is `needs_input`; assert `cc result` shows the completed turn result.
 - Re-run the full runtime and plugin test suites plus `node tools/package-marketplace.mjs --check`.
 
 ## Acceptance Criteria

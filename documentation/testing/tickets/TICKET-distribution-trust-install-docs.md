@@ -16,13 +16,15 @@ These issues do not block local use, but they matter if this is going to be hand
 ## Evidence
 
 - `README.md:38` to `58`: quick-start install path centers on the one-line installer and setup check.
-- `README.md:309`: privacy caveat exists but is buried in the reference section.
+- `README.md:309`: privacy caveat exists under the late `Known risks` status section, but not near the install path.
 - `packages/plugin-codex/.codex-plugin/plugin.json:1` to `32`: plugin metadata is minimal.
 - `marketplace/plugins/cc/.codex-plugin/plugin.json:1` to `32`: marketplace metadata is also minimal.
 - Root repository currently lacks `LICENSE`, `PRIVACY.md`, `CHANGELOG.md`, and `SECURITY.md`.
 - `packages/plugin-codex/skills/claude-setup/SKILL.md:3`: skill description still says "Claude Companion".
 - Source and bundled skill bodies still contain "Claude Companion dispatcher" text.
 - `packages/plugin-codex/README.md` contains many `$claude-*` examples in `bash` fences, while the root README correctly uses `text` fences for skill invocations.
+- `tools/package-marketplace.mjs:49` to `84`: skills and plugin metadata are derived from source, but `marketplace/plugins/cc/README.md` is marketplace-owned and will not be regenerated from `packages/plugin-codex/README.md`.
+- Second-pass no-Bash audit (`job_mqfv7440_72c0af4e`) confirmed the evidence above and corrected two process details: marketplace README must be checked separately, and lowercase `claude-companion` migration notes in `documentation/RELEASING.md` are historical exceptions.
 
 ## Scope
 
@@ -35,9 +37,9 @@ These issues do not block local use, but they matter if this is going to be hand
 2. Improve install documentation.
    - Keep the one-line installer.
    - Add a "read first" or direct-command path for users who do not want `curl | bash`.
-   - Document tag pinning for stable installs.
+   - Document tag pinning for stable installs only after confirming the Codex plugin CLI supports a tag or ref form.
    - Show the expected setup/smoke commands after install.
-   - Include a short sample of successful `$claude-setup` output or status.
+   - Include a short sample of successful `$claude-setup` output or status captured from a real run.
 
 3. Clarify data boundaries earlier in the README.
    - Explain that prompts and workspace context are sent to Claude Code/Anthropic when jobs are spawned.
@@ -46,10 +48,12 @@ These issues do not block local use, but they matter if this is going to be hand
 
 4. Clean old naming.
    - Replace "Claude Companion" with the current plugin name or neutral "cc dispatcher" language.
-   - Update both source plugin files and bundled marketplace files.
+   - Edit source skill files and regenerate derived marketplace copies with `node tools/package-marketplace.mjs --write`.
+   - Leave intentional historical `claude-companion` migration notes alone.
 
 5. Fix command fences.
    - Convert `$claude-*` skill-call examples in plugin docs from `bash` to `text`.
+   - Check and hand-edit `marketplace/plugins/cc/README.md` separately if affected because it is marketplace-owned, not derived.
    - Keep actual shell commands in `bash`.
 
 6. Extend metadata only if the Codex plugin schema accepts it.
@@ -59,8 +63,9 @@ These issues do not block local use, but they matter if this is going to be hand
 ## Verification
 
 - `rg "Claude Companion" packages marketplace README.md documentation` returns no stale user-facing references, except historical notes if intentionally retained.
-- `rg '```bash\n\$claude' packages/plugin-codex marketplace/plugins/cc` returns no matches.
+- `rg -nU '```bash\n\$claude' packages/plugin-codex marketplace/plugins/cc` returns no matches.
 - `node tools/package-marketplace.mjs --check` passes after bundled docs are regenerated.
+- `cat install.sh` or equivalent review verifies the actual `curl | bash` target before documenting its trust properties.
 - Install instructions are validated from a clean or temporary Codex home where feasible.
 - Plugin schema or package check confirms whether new metadata fields are allowed.
 

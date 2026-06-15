@@ -22,13 +22,18 @@ The same friction appears in workflow and deep-research launch approval gates: `
 - Audit lane B reached `waitingFor: "permission prompt"` while doing read-only exploration and then had to be stopped.
 - Audit lane B also showed a nested Claude Explore agent blocking on an unquoted `find` command, which made the parent job hard to recover from Codex alone.
 - The current depth-test notes already call out approval friction under load.
+- `packages/plugin-codex/scripts/cc.mjs:366` to `381`: there is no `approve` or `reject` command in the dispatcher command set.
+- `packages/plugin-codex/scripts/cc.mjs:843` to `899`: the launch path starts a background job, reconciles once, and returns; the existing permission-answer callback is only available during follow-up/review send paths.
+- Second-pass no-Bash audit (`job_mqfv74qo_99f0817b`) confirmed the line evidence and found the problem is worse on fresh delegates than on follow-up: there is currently no dispatcher-side way to answer a fresh delegated job's pending permission prompt.
 
 ## Scope
 
 1. Add an explicit approval command.
-   - Suggested shape: `cc approve <job-id-or-prefix> [--yes | --no] [--json]`.
+   - Suggested shape: `cc approve <job-id-or-prefix> [--json]` plus a separate `cc reject <job-id-or-prefix> [--json]`, or equivalent distinct approve/reject verbs.
+   - Do not reuse `--yes` or `--no` for prompt approval; `--yes` already means privacy acknowledgement elsewhere.
    - It should answer only the current pending Claude permission prompt for that job.
    - It should be safe to retry and should report when there is no pending prompt.
+   - First confirm the driver can answer a pending prompt from a short-lived process without sending a new turn.
 
 2. Consider batch approval only with strong constraints.
    - If implemented, use an explicit flag such as `--all-current`.
@@ -38,6 +43,7 @@ The same friction appears in workflow and deep-research launch approval gates: `
 3. Surface approval state in status output.
    - Show `waitingFor`, the current prompt summary if available, and the exact command to approve or reject.
    - JSON should expose enough structured state for Codex to decide whether a follow-up or approval is needed.
+   - Confirm whether pending prompt text is available in sidecar state before displaying or approving it.
 
 4. Unify manual workflow launch gates with the approval UX.
    - Keep the current safety boundary.
@@ -48,11 +54,13 @@ The same friction appears in workflow and deep-research launch approval gates: `
    - Recommend narrow `--allowedTools` scopes for expected read-only or edit tasks.
    - Document `--permission-mode bypassPermissions` only for explicit trusted environments.
    - Include examples for Codex-to-Claude delegation that minimize follow-up prompts.
+   - Update README and skill command counts if adding a new skill or dispatcher command.
 
 ## Safety Model
 
 - No default auto-approval.
 - Approval must target a specific job and the current pending prompt.
+- The command must re-detect the live prompt at approval time so it cannot answer a stale or different prompt.
 - Record an event when a prompt is approved or rejected through `cc approve`.
 - Avoid conflating plugin-level warnings, Claude permission prompts, and workflow launch gates.
 
@@ -62,6 +70,8 @@ The same friction appears in workflow and deep-research launch approval gates: `
 - Add non-TTY tests proving the new command can resolve a prompt without interactive attach.
 - Add status JSON tests for `waitingFor: "permission prompt"` and approval command hints.
 - Add docs tests or grep checks so `--yes` is not documented as a general permission bypass.
+- Add a guard that `--yes` remains documented only as privacy acknowledgement, not as permission approval.
+- Add ambiguous-prefix and retry-safe tests for approval and rejection.
 - Use captured sidecar state from a real waiting job when possible.
 
 ## Acceptance Criteria

@@ -63,9 +63,11 @@ function fakeAdapter({
   status,
   transcript,
   logs,
+  sidecar,
   statusThrows,
   transcriptThrows,
   logsThrows,
+  sidecarThrows,
 } = {}) {
   return {
     async status(ref) {
@@ -79,6 +81,10 @@ function fakeAdapter({
     async readLogs(_ref) {
       if (logsThrows) throw logsThrows;
       return logs ?? { text: '' };
+    },
+    async readSidecar(_ref) {
+      if (sidecarThrows) throw sidecarThrows;
+      return sidecar ?? null;
     },
   };
 }
@@ -156,6 +162,25 @@ describe('status mapping', () => {
     const adapter = fakeAdapter({ status: { value: 'needs_input' } });
     const result = await reconcileJob(job.jobId, adapter, { now });
     assert.equal(result.job.status, 'needs_input');
+  });
+
+  it('persists waitingFor while needs_input and clears it after the job resumes', async () => {
+    const job = await createJob(makeJobInput());
+    const waitingAdapter = fakeAdapter({
+      status: {
+        value: 'needs_input',
+        shortId: 'abc123',
+        waitingFor: 'permission: Bash(git status)',
+      },
+    });
+    const waiting = await reconcileJob(job.jobId, waitingAdapter, { now });
+    assert.equal(waiting.job.status, 'needs_input');
+    assert.equal(waiting.job.claude.waitingFor, 'permission: Bash(git status)');
+
+    const resumedAdapter = fakeAdapter({ status: { value: 'working', shortId: 'abc123' } });
+    const resumed = await reconcileJob(job.jobId, resumedAdapter, { now });
+    assert.equal(resumed.job.status, 'running');
+    assert.equal(resumed.job.claude.waitingFor, undefined);
   });
 
   it('value: orphaned maps to orphaned', async () => {
@@ -359,6 +384,35 @@ describe('transcript artifacts', () => {
     });
     const result = await reconcileJob(job.jobId, adapter, { readArtifacts: true, now });
     assert.deepEqual(result.job.result.touchedFiles, ['a.ts', 'b.ts']);
+  });
+
+  it('extracts touched files from mutating tool.started inputs', async () => {
+    const job = await createJob(makeJobInput());
+    const transcript = {
+      transcriptPath: '/fake/transcript.jsonl',
+      events: [
+        {
+          type: 'tool.started',
+          tool: 'Edit',
+          input: { file_path: 'src/runtime.ts' },
+          at: NOW,
+        },
+        {
+          type: 'tool.started',
+          tool: 'Bash',
+          input: { command: 'git status' },
+          at: NOW,
+        },
+        { type: 'message.completed', role: 'assistant', content: 'done', at: NOW },
+      ],
+      warnings: [],
+    };
+    const adapter = fakeAdapter({
+      status: { value: 'completed' },
+      transcript,
+    });
+    const result = await reconcileJob(job.jobId, adapter, { readArtifacts: true, now });
+    assert.deepEqual(result.job.result.touchedFiles, ['src/runtime.ts']);
   });
 
   it('uses the LAST usage.updated event, not the first', async () => {

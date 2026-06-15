@@ -39,9 +39,30 @@ export interface StartSessionOpts {
   model?: string;
   effort?: string;
   permissionMode?: string;
+  allowDangerouslySkipPermissions?: boolean;
   allowEdit?: boolean;
   addDirs?: string[];
   mcpConfig?: string;
+  agent?: string;
+  agents?: string;
+  allowedTools?: string[];
+  disallowedTools?: string[];
+  tools?: string;
+  settings?: string;
+  settingSources?: string;
+  strictMcpConfig?: boolean;
+  appendSystemPrompt?: string;
+  systemPrompt?: string;
+  pluginDirs?: string[];
+  pluginUrls?: string[];
+  bare?: boolean;
+  safeMode?: boolean;
+  ide?: boolean;
+  chrome?: boolean;
+  noChrome?: boolean;
+  disableSlashCommands?: boolean;
+  excludeDynamicSystemPromptSections?: boolean;
+  verbose?: boolean;
 }
 
 export interface SessionHandle {
@@ -126,6 +147,7 @@ export interface SessionStatus {
   startedAt?: string;
   updatedAt?: string;
   transcriptPath?: string;
+  waitingFor?: string;
   raw?: unknown;
 }
 

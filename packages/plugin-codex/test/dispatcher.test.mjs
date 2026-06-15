@@ -1039,6 +1039,62 @@ describe('delegate --json --yes --allow-edit', () => {
   });
 });
 
+describe('delegate flag parsing parity (Plan 0024)', () => {
+  it('rejects an unknown flag without creating a job', () => {
+    const result = runDispatcher([
+      'delegate',
+      '--yes',
+      '--sangerously-skip-permissions',
+      '--',
+      'task',
+    ]);
+    assert.equal(result.status, 2, `expected exit 2; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stderr.includes('Unknown flag: --sangerously-skip-permissions'),
+      `expected unknown-flag error; got:\n${result.stderr}`,
+    );
+    assert.deepEqual(listJobIds(), [], 'unknown flag must not create a job');
+  });
+
+  it('--dangerously-skip-permissions aliases permission-mode bypass without swallowing prompt', () => {
+    const result = runDispatcher([
+      'delegate',
+      '--json',
+      '--yes',
+      '--dangerously-skip-permissions',
+      '--',
+      'danger alias task',
+    ]);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    const shortId = parsed.job.claude.shortId;
+    const state = JSON.parse(readFileSync(join(MOCK_HOME, 'state.json'), 'utf8'));
+    const sessions = state.sessions ?? [];
+    const session = sessions.find((s) => s.shortId === shortId);
+    assert.ok(session, `expected mock session ${shortId}`);
+    assert.equal(session.permissionMode, 'bypassPermissions');
+    assert.equal(session.prompt, 'danger alias task');
+  });
+
+  it('rejects invalid permission-mode values before creating a job', () => {
+    const result = runDispatcher([
+      'delegate',
+      '--yes',
+      '--permission-mode',
+      'approveEverything',
+      '--',
+      'task',
+    ]);
+    assert.equal(result.status, 2, `expected exit 2; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stderr.includes('--permission-mode must be one of:'),
+      `expected permission-mode validation error; got:\n${result.stderr}`,
+    );
+    assert.deepEqual(listJobIds(), [], 'invalid permission mode must not create a job');
+  });
+});
+
 // ---------- Test 20: result without --all does not resolve cross-workspace jobs ----------
 
 describe('result workspace-scoped prefix resolution (A3)', () => {
@@ -3768,6 +3824,10 @@ describe('review --json output shape (T4)', () => {
       typeof parsed.review.findingsCount === 'number',
       'expected review.findingsCount to be a number',
     );
+    assert.ok(
+      typeof parsed.review.blocking === 'boolean',
+      'expected review.blocking to be boolean',
+    );
     assert.ok(Array.isArray(parsed.review.findings), 'expected review.findings to be an array');
 
     // job sub-fields
@@ -4691,6 +4751,35 @@ describe('adversarial-review structured response produces human output (T6)', ()
       `expected bracketed severity label in human stdout; got:\n${result.stdout}`,
     );
   });
+
+  it('Plan 0024: --fail-on medium exits non-zero after emitting review JSON', () => {
+    const jobId = `job_ar24_${createHash('sha256').update('t24-review-gate').digest('hex').slice(0, 8)}`;
+    writeAdversarialTargetJob({ jobId });
+    writeAck(WORK_DIR);
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      reviewFixture: 'adversarial-review',
+    });
+
+    const result = runDispatcher(
+      ['adversarial-review', jobId, '--yes', '--json', '--fail-on', 'medium'],
+      {
+        env: {
+          CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath,
+          CC_PLUGIN_CODEX_ADVERSARIAL_REVIEW_POLL_MS: '1',
+        },
+      },
+    );
+
+    assert.equal(result.status, 1, `expected review gate exit 1; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.review.mediumCount, 1);
+    assert.ok(
+      result.stderr.includes('review gate failed (--fail-on medium)'),
+      `expected gate failure on stderr; got:\n${result.stderr}`,
+    );
+  });
 });
 
 // ---------- T6-4: --json output includes review + reviewOf + targetJob ----------
@@ -4734,6 +4823,10 @@ describe('adversarial-review --json output shape (T6)', () => {
     assert.ok(
       typeof parsed.review.findingsCount === 'number',
       'expected review.findingsCount to be a number',
+    );
+    assert.ok(
+      typeof parsed.review.blocking === 'boolean',
+      'expected review.blocking to be boolean',
     );
     assert.ok(Array.isArray(parsed.review.findings), 'expected review.findings to be an array');
 
@@ -6698,8 +6791,41 @@ describe('review parses reconciled result file, not sidecar summary (T12b)', () 
 
 // ---------- Stage 4 N1. formatAdversarialReviewJson omits reviewOf when absent ----------
 
-/** @type {{ formatAdversarialReviewJson: (opts: { review: object; job: object; targetJob: object }) => string }} */
-const { formatAdversarialReviewJson } = await import(FORMAT_LIB);
+/** @type {{ formatReviewJson: (opts: { review: object; job: object; turn: object }) => string; formatAdversarialReviewJson: (opts: { review: object; job: object; targetJob: object }) => string }} */
+const { formatReviewJson, formatAdversarialReviewJson } = await import(FORMAT_LIB);
+
+describe('review JSON blocking field (Plan 0024)', () => {
+  const job = { jobId: 'job_x', status: 'completed' };
+  const turn = { index: 0, status: 'completed' };
+
+  it('is false for pass_with_findings below high severity', () => {
+    const parsed = JSON.parse(
+      formatReviewJson({
+        review: {
+          verdict: 'pass_with_findings',
+          findings: [{ severity: 'medium', description: 'medium finding' }],
+        },
+        job,
+        turn,
+      }),
+    );
+    assert.equal(parsed.review.blocking, false);
+  });
+
+  it('is true for high findings, blocker findings, and fail verdicts', () => {
+    for (const review of [
+      { verdict: 'pass_with_findings', findings: [{ severity: 'high', description: 'high' }] },
+      {
+        verdict: 'pass_with_findings',
+        findings: [{ severity: 'blocker', description: 'blocker' }],
+      },
+      { verdict: 'fail', findings: [] },
+    ]) {
+      const parsed = JSON.parse(formatReviewJson({ review, job, turn }));
+      assert.equal(parsed.review.blocking, true, `expected blocking for ${JSON.stringify(review)}`);
+    }
+  });
+});
 
 describe('formatAdversarialReviewJson omits reviewOf when absent (Stage 4 N1)', () => {
   const minimalReview = { verdict: 'pass', findings: [] };

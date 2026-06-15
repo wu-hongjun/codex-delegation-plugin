@@ -15,7 +15,13 @@ repository.
 
 ## Install
 
-Install directly from GitHub:
+Install directly from GitHub with the bootstrap helper:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wu-hongjun/cc-plugin-codex/main/install.sh | bash
+```
+
+Or run the underlying Codex marketplace commands directly:
 
 ```bash
 codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex
@@ -115,7 +121,7 @@ $claude-workflow "audit every fetch() call and propose a migration to HttpClient
 ```
 
 **Approval flow**: After the skill starts, Claude Code presents a YES / View Script / NO
-dialog. The skill does NOT auto-approve. Run `claude attach <jobId>` to open the
+dialog. The skill does NOT auto-approve. Run `claude attach <shortId>` to open the
 approval dialog and select `Yes` to proceed (or `No` to cancel cleanly).
 
 **Token-cost warning**: Workflows can spawn up to 16 concurrent and 1000 total
@@ -134,7 +140,7 @@ $claude-goal "all unit tests pass"
 ```
 
 **Approval flow**: No interactive approval dialog is required. After the job ID
-is printed, run `claude attach <jobId>` to watch progress.
+is printed, run `claude attach <shortId>` to watch progress.
 
 **Token-cost notice**: Goal sessions iterate until the condition is satisfied.
 Scope conditions tightly to avoid open-ended run time. Use `$claude-stop` to
@@ -152,7 +158,7 @@ $claude-fork "build a proof-of-concept for the new rate-limiter"
 ```
 
 **Approval flow**: No interactive approval dialog is required. After the job ID is
-printed, run `claude attach <jobId>` to watch progress.
+printed, run `claude attach <shortId>` to watch progress.
 
 **Token-cost notice**: `/fork` directives spawn a full subagent — even a trivial
 directive can consume 20-30k tokens. Consider scope before delegating.
@@ -170,7 +176,7 @@ $claude-batch "migrate all usages of the old API to the new one"
 ```
 
 **Approval flow**: No interactive approval dialog is required. After the job ID is
-printed, run `claude attach <jobId>` to watch progress.
+printed, run `claude attach <shortId>` to watch progress.
 
 **Token-cost notice**: Batch sessions can spawn multiple parallel tool-calls and
 subagents. Token usage scales with the number of affected files and instruction
@@ -189,7 +195,7 @@ $claude-deep-research "What are the main tradeoffs between B-trees and LSM-trees
 ```
 
 **Approval flow**: No interactive approval dialog is required. After the job ID
-is printed, run `claude attach <jobId>` to watch progress.
+is printed, run `claude attach <shortId>` to watch progress.
 
 **Token-cost notice**: Research-grade workflows can spawn multiple agents fanning
 out parallel web searches (up to 16 concurrent, 1000 total). Prefer narrow,

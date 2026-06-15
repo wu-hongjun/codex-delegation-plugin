@@ -335,6 +335,38 @@ function shouldRepairPseudoShortId(current: string, derived: string | undefined)
   return derived !== undefined && current === 'claude';
 }
 
+function stringifyWaitingFor(raw: unknown): string | undefined {
+  if (typeof raw === 'string' && raw.trim().length > 0) return raw.trim();
+  if (raw === undefined || raw === null) return undefined;
+  try {
+    return JSON.stringify(raw);
+  } catch {
+    return String(raw);
+  }
+}
+
+function waitingForFromSidecar(sidecar: SidecarSnapshot | null): string | undefined {
+  if (sidecar == null) return undefined;
+  if (sidecar.inFlight?.kinds?.includes('permission')) return 'permission';
+  if (sidecar.state === 'waiting' || sidecar.state === 'blocked') {
+    return stringifyWaitingFor(sidecar.intent) ?? sidecar.state;
+  }
+  return undefined;
+}
+
+const MUTATING_TOOL_NAMES = new Set(['edit', 'multiedit', 'write', 'notebookedit']);
+
+function extractToolTouchedFile(ev: DriverEvent): string | undefined {
+  if (ev.type !== 'tool.started') return undefined;
+  if (!MUTATING_TOOL_NAMES.has(ev.tool.toLowerCase())) return undefined;
+  if (ev.input === null || typeof ev.input !== 'object' || Array.isArray(ev.input)) {
+    return undefined;
+  }
+  const input = ev.input as Record<string, unknown>;
+  const candidate = input['file_path'] ?? input['filePath'] ?? input['path'];
+  return typeof candidate === 'string' && candidate.length > 0 ? candidate : undefined;
+}
+
 async function writeResultArtifact(
   jobId: string,
   turnIndex: number | null,
@@ -476,6 +508,13 @@ export async function reconcileJob(
     if (sessionStatus.cwd && sessionStatus.cwd.length > 0) {
       patched.claude.cwd = sessionStatus.cwd;
     }
+    const waitingFor =
+      stringifyWaitingFor(sessionStatus.waitingFor) ?? waitingForFromSidecar(sidecar);
+    if (nextStatus === 'needs_input' && waitingFor !== undefined) {
+      patched.claude.waitingFor = waitingFor;
+    } else {
+      delete patched.claude.waitingFor;
+    }
     // Usually the original handle is canonical. Repair only the observed nested
     // Claude Code pseudo-id shape where `claude --bg` output was parsed as the
     // literal command word "claude"; the status row's sessionId gives us the real
@@ -537,6 +576,11 @@ export async function reconcileJob(
               touchedFilesSeen.add(ev.path);
               touchedFilesOrdered.push(ev.path);
             }
+          }
+          const toolTouchedFile = extractToolTouchedFile(ev);
+          if (toolTouchedFile !== undefined && !touchedFilesSeen.has(toolTouchedFile)) {
+            touchedFilesSeen.add(toolTouchedFile);
+            touchedFilesOrdered.push(toolTouchedFile);
           }
           if (ev.type === 'usage.updated') {
             lastUsage = ev as DriverEvent & { type: 'usage.updated' };
@@ -743,7 +787,8 @@ export async function reconcileJob(
     patched.claude.pid !== job.claude.pid ||
     patched.claude.logsCommand !== job.claude.logsCommand ||
     patched.claude.transcriptPath !== job.claude.transcriptPath ||
-    patched.claude.cwd !== job.claude.cwd;
+    patched.claude.cwd !== job.claude.cwd ||
+    patched.claude.waitingFor !== job.claude.waitingFor;
 
   const statusImpliesTurnSync =
     statusChanged &&

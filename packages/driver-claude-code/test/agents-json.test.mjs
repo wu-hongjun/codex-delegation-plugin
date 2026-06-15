@@ -174,6 +174,31 @@ describe('parseAgentsJson — status normalization', () => {
   }
 });
 
+describe('parseAgentsJson — state alias and waitingFor promotion', () => {
+  it('uses state when status is absent and exposes waitingFor on parsed/status output', () => {
+    const entry = makeSession({
+      status: undefined,
+      state: 'blocked',
+      waitingFor: 'permission: Bash(git status)',
+    });
+    const { sessions } = parseAgentsJson(JSON.stringify([entry]));
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].value, 'needs_input');
+    assert.equal(sessions[0].waitingFor, 'permission: Bash(git status)');
+
+    const status = findSessionStatus(sessions, {
+      driverName: 'claude-background',
+      shortId: 'abc123',
+      sessionId: 'session-abc123',
+      sessionName: 'codex:repo:abc123',
+      cwd: '/home/user/repo',
+      startedAt: '2026-05-30T10:00:00.000Z',
+    });
+    assert.equal(status.value, 'needs_input');
+    assert.equal(status.waitingFor, 'permission: Bash(git status)');
+  });
+});
+
 describe('parseAgentsJson — unknown status maps to "unknown"', () => {
   it('returns value: "unknown" without throwing for an unrecognised status string', () => {
     const entry = makeSession({ status: 'frobnicate' });

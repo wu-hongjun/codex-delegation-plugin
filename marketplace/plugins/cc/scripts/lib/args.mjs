@@ -5,6 +5,7 @@
 //   --flag=value        long flag with inline value
 //   --bool-flag         boolean flag (listed in BOOLEAN_FLAGS)
 //   --add-dir <path>    repeatable flag (listed in REPEATABLE_FLAGS)
+//   known flags only    unknown --flags fail closed instead of consuming prompts
 //   --                  end of flags; remaining args are positional
 //   --help              boolean flag
 
@@ -17,10 +18,61 @@ const BOOLEAN_FLAGS = new Set([
   'compact',
   'help',
   'all-awaiting-followup',
+  'all-idle',
+  'dangerously-skip-permissions',
+  'allow-dangerously-skip-permissions',
+  'blocking',
+  'strict-mcp-config',
+  'bare',
+  'safe-mode',
+  'ide',
+  'chrome',
+  'no-chrome',
+  'disable-slash-commands',
+  'exclude-dynamic-system-prompt-sections',
+  'verbose',
 ]);
 
 /** @type {Set<string>} */
 const REPEATABLE_FLAGS = new Set(['add-dir']);
+
+/** @type {Set<string>} */
+const VALUE_FLAGS = new Set([
+  'job',
+  'limit',
+  'stored-status',
+  'name',
+  'model',
+  'effort',
+  'permission-mode',
+  'mcp-config',
+  'agent',
+  'agents',
+  'allowedTools',
+  'allowed-tools',
+  'disallowedTools',
+  'disallowed-tools',
+  'tools',
+  'settings',
+  'setting-sources',
+  'append-system-prompt',
+  'system-prompt',
+  'plugin-dir',
+  'plugin-url',
+  'fail-on',
+]);
+
+function ensureKnownFlag(key) {
+  if (BOOLEAN_FLAGS.has(key) || REPEATABLE_FLAGS.has(key) || VALUE_FLAGS.has(key)) return;
+  throw new Error(`Unknown flag: --${key}`);
+}
+
+function ensureFlagValue(argv, i, key) {
+  if (i >= argv.length || argv[i] === '--' || argv[i]?.startsWith('--')) {
+    throw new Error(`--${key} requires a value`);
+  }
+  return argv[i];
+}
 
 /**
  * Parse process.argv-style array into command, flags, and positionals.
@@ -62,6 +114,10 @@ export function parseArgs(argv) {
       if (eqIdx !== -1) {
         const key = withoutDashes.slice(0, eqIdx);
         const value = withoutDashes.slice(eqIdx + 1);
+        ensureKnownFlag(key);
+        if (BOOLEAN_FLAGS.has(key)) {
+          throw new Error(`--${key} does not take a value`);
+        }
         if (REPEATABLE_FLAGS.has(key)) {
           const existing = flags[key];
           if (Array.isArray(existing)) {
@@ -77,6 +133,7 @@ export function parseArgs(argv) {
       }
 
       const key = withoutDashes;
+      ensureKnownFlag(key);
 
       // Boolean flags do not consume the next token.
       if (BOOLEAN_FLAGS.has(key)) {
@@ -88,7 +145,7 @@ export function parseArgs(argv) {
       // Repeatable flags consume the next token.
       if (REPEATABLE_FLAGS.has(key)) {
         i++;
-        const value = i < argv.length ? argv[i] : '';
+        const value = ensureFlagValue(argv, i, key);
         const existing = flags[key];
         if (Array.isArray(existing)) {
           existing.push(value);
@@ -99,9 +156,9 @@ export function parseArgs(argv) {
         continue;
       }
 
-      // Generic --flag value: consume next token as value.
+      // Known value flags consume the next token as value.
       i++;
-      const value = i < argv.length ? argv[i] : '';
+      const value = ensureFlagValue(argv, i, key);
       flags[key] = value;
       i++;
       continue;

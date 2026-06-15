@@ -93,7 +93,6 @@ function parseFrontmatter(body) {
 const FORBIDDEN_TOKENS = [
   'claude -p',
   'node-pty',
-  '--dangerously-skip-permissions',
   'saves money',
   'cheaper than',
   'reduces cost',

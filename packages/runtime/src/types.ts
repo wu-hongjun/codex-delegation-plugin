@@ -57,6 +57,7 @@ export interface ClaudeSessionContext {
   cwd: string;
   startedAt?: string;
   transcriptPath?: string;
+  waitingFor?: string;
   logsCommand: string;
 }
 

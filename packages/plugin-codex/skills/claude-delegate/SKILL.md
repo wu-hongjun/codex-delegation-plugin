@@ -22,7 +22,15 @@ Behavior rules:
   If empty, ask the user for the task prompt before running.
 - Forward only these flags **when the user explicitly requests them**:
   `--name`, `--model`, `--effort`, `--permission-mode`, `--add-dir`,
-  `--mcp-config`, `--allow-edit`, `--json`.
+  `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`,
+  `--mcp-config`, `--agent`, `--agents`, `--allowedTools`,
+  `--allowed-tools`, `--disallowedTools`, `--disallowed-tools`, `--tools`,
+  `--settings`, `--setting-sources`, `--strict-mcp-config`,
+  `--append-system-prompt`, `--system-prompt`, `--plugin-dir`,
+  `--plugin-url`, `--bare`, `--safe-mode`, `--ide`, `--chrome`,
+  `--no-chrome`, `--disable-slash-commands`,
+  `--exclude-dynamic-system-prompt-sections`, `--verbose`, `--allow-edit`,
+  `--json`.
 - `--name` is a **human-readable label**, not a session key. Every job gets a
   unique session name regardless: the dispatcher appends a random suffix, so the
   real session name is `<your-name>-<random>` (v0.3.4). This means reusing the same
@@ -37,9 +45,10 @@ Behavior rules:
   retrying with `--yes`.
 - For unattended local QA lanes that intentionally inspect the repo with shell
   commands, the user may explicitly request
-  `--permission-mode bypassPermissions`. Do NOT inject this automatically; it is
-  an operator choice that bypasses Claude Code's normal permission prompts for
-  that spawned session.
+  `--permission-mode bypassPermissions` or the Claude Code alias
+  `--dangerously-skip-permissions`. Do NOT inject this automatically; it is an
+  operator choice that bypasses Claude Code's normal permission prompts for that
+  spawned session.
 
 `$claude-delegate -- "/<saved-or-bundled-workflow-name> <args>"` also invokes saved workflows and bundled slash commands (e.g. `/deep-research <question>`). See `$claude-workflow` for details on saved-workflow invocation.
 

@@ -36,6 +36,11 @@ function classifyTurnKind(turn) {
   return undefined;
 }
 
+function isBlockingReview(review) {
+  if (review.verdict === 'fail') return true;
+  return review.findings.some((f) => f.severity === 'high' || f.severity === 'blocker');
+}
+
 /**
  * Compact public job shape for automation. This intentionally does not spread
  * JobRecord: driver probes, auth diagnostics, workspace paths, prompts, and raw
@@ -55,6 +60,7 @@ function summarizeJob(job) {
     status: job.status,
     shortId: job.claude?.shortId ?? null,
     sessionName: job.claude?.sessionName ?? null,
+    waitingFor: job.claude?.waitingFor ?? null,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     ...(job.reviewOf !== undefined ? { reviewOf: job.reviewOf } : {}),
@@ -230,17 +236,22 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
     if (j.result?.finalMessagePreview) {
       lines.push(`Result:         ${j.result.finalMessagePreview}`);
     }
+    if (j.claude.waitingFor) {
+      lines.push(`Waiting:        ${j.claude.waitingFor}`);
+      lines.push(`Attach:         claude attach ${j.claude.shortId}`);
+    }
     return lines.join('\n');
   }
 
   const header = `Claude jobs for ${workspaceRoot}`;
   const rows = jobs.map((j) => {
     const annotation = reviewOfLabel(j.reviewOf);
+    const waiting = j.claude.waitingFor ? ` (waiting: ${j.claude.waitingFor})` : '';
     const cols = [
       j.jobId.padEnd(32),
       j.status.padEnd(14),
       (j.claude.shortId ?? '').padEnd(16),
-      (j.claude.sessionName ?? '') + annotation,
+      (j.claude.sessionName ?? '') + annotation + waiting,
     ];
     return `  ${cols.join('  ')}`.trimEnd();
   });
@@ -541,6 +552,7 @@ export function formatReviewJson({ review, job, turn }) {
       ok: true,
       review: {
         verdict,
+        blocking: isBlockingReview(review),
         findingsCount: findings.length,
         blockerCount,
         highCount,
@@ -584,6 +596,7 @@ export function formatAdversarialReviewJson({ review, job, targetJob }) {
       ok: true,
       review: {
         verdict,
+        blocking: isBlockingReview(review),
         findingsCount: findings.length,
         blockerCount,
         highCount,

@@ -23,7 +23,14 @@ Behavior rules:
   instruction. If empty, ask the user for an instruction before running.
 - Forward only these flags **when the user explicitly requests them**:
   `--name`, `--model`, `--effort`, `--permission-mode`, `--add-dir`,
-  `--mcp-config`, `--json`.
+  `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`,
+  `--mcp-config`, `--agent`, `--agents`, `--allowedTools`,
+  `--allowed-tools`, `--disallowedTools`, `--disallowed-tools`, `--tools`,
+  `--settings`, `--setting-sources`, `--strict-mcp-config`,
+  `--append-system-prompt`, `--system-prompt`, `--plugin-dir`,
+  `--plugin-url`, `--bare`, `--safe-mode`, `--ide`, `--chrome`,
+  `--no-chrome`, `--disable-slash-commands`,
+  `--exclude-dynamic-system-prompt-sections`, `--verbose`, `--json`.
 - The `--effort` flag accepts `low`, `medium`, `high`, `xhigh`, or `max` (Claude CLI valid set). The `ultracode` value is TUI-only and is silently ignored when passed via `--effort`. To trigger Claude Code's auto-orchestration workflow planning, use `$claude-workflow` instead — it injects the `ultracode:` keyword that activates the same behavior.
 - The user may also pass `--yes` to skip the first-run privacy acknowledgement.
   Do NOT inject `--yes` automatically. If the dispatcher reports that an
@@ -31,9 +38,10 @@ Behavior rules:
   retrying with `--yes`.
 - For unattended local QA lanes that intentionally inspect the repo with shell
   commands, the user may explicitly request
-  `--permission-mode bypassPermissions`. Do NOT inject this automatically; it is
-  an operator choice that bypasses Claude Code's normal permission prompts for
-  that spawned session.
+  `--permission-mode bypassPermissions` or the Claude Code alias
+  `--dangerously-skip-permissions`. Do NOT inject this automatically; it is an
+  operator choice that bypasses Claude Code's normal permission prompts for that
+  spawned session.
 - Do NOT forward `--allow-edit` — it is not applicable to this subcommand.
 
 Approval flow — important:

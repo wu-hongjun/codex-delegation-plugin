@@ -35,7 +35,13 @@ Prerequisites:
 - Claude Code installed and authenticated locally (`claude auth login`).
 - Node.js 20 or later on `PATH`.
 
-Install from GitHub:
+Install from GitHub with the bootstrap helper:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/wu-hongjun/cc-plugin-codex/main/install.sh | bash
+```
+
+Or run the underlying Codex marketplace commands directly:
 
 ```bash
 codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex
@@ -124,6 +130,8 @@ For users, "deploy" means: add this GitHub repository as a Codex Git marketplace
 For contributors, the local development path remains: clone the repo, add `marketplace/` to Codex, and install `cc@cc-plugin-codex-local`.
 
 An npm wrapper could be added later, but it would only wrap these Codex marketplace commands unless the project also commits to publishing and maintaining a separate global CLI package.
+
+The root [`install.sh`](install.sh) script is intentionally just a convenience wrapper around the same marketplace install commands; it is not a separate package manager path.
 
 For maintainers, "release" means:
 

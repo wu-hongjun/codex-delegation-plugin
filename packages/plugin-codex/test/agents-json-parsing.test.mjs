@@ -45,9 +45,31 @@ describe('parseAgentsJson — forward compat: waitingFor field (v2.1.162)', () =
     assert.equal(s.sessionId, 'c0ffee00-dead-beef-cafe-000000000001');
     assert.equal(s.value, 'needs_input'); // 'waiting' normalizes to needs_input
     assert.equal(s.pid, 55001);
-    // Unknown field preserved in raw but does NOT pollute top-level parsed fields.
+    // Raw keeps the original row; waitingFor is also promoted to a typed top-level field.
     assert.equal(s.raw.waitingFor, 'permission-prompt', 'waitingFor must be in raw');
-    assert.ok(!('waitingFor' in s), 'waitingFor must not appear as a top-level parsed field');
+    assert.equal(s.waitingFor, 'permission-prompt', 'waitingFor must be parsed');
+  });
+});
+
+describe('parseAgentsJson — real state field maps to status and waiting detail', () => {
+  it('normalizes state=blocked to needs_input and exposes waitingFor', () => {
+    const row = makeBase({ status: undefined, state: 'blocked' });
+    const { sessions } = parseAgentsJson(JSON.stringify([row]));
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].value, 'needs_input');
+    assert.equal(sessions[0].waitingFor, 'blocked');
+
+    const handle = {
+      driverName: 'claude-background',
+      shortId: 'c0ffee00',
+      sessionId: 'c0ffee00-dead-beef-cafe-000000000001',
+      sessionName: 'codex:repo:state',
+      cwd: '/home/user/repo',
+      startedAt: '2026-06-05T00:00:00.000Z',
+    };
+    const status = findSessionStatus(sessions, handle);
+    assert.equal(status.value, 'needs_input');
+    assert.equal(status.waitingFor, 'blocked');
   });
 });
 

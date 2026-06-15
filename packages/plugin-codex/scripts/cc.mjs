@@ -67,6 +67,184 @@ function loadPluginVersion() {
 
 const PLUGIN_VERSION = loadPluginVersion();
 
+// ---------- startup flag handling ----------
+
+const PERMISSION_MODES = new Set([
+  'acceptEdits',
+  'auto',
+  'bypassPermissions',
+  'default',
+  'dontAsk',
+  'plan',
+]);
+
+const STARTUP_ONLY_FLAGS = [
+  'model',
+  'effort',
+  'permission-mode',
+  'dangerously-skip-permissions',
+  'allow-dangerously-skip-permissions',
+  'add-dir',
+  'mcp-config',
+  'name',
+  'agent',
+  'agents',
+  'allowedTools',
+  'allowed-tools',
+  'disallowedTools',
+  'disallowed-tools',
+  'tools',
+  'settings',
+  'setting-sources',
+  'strict-mcp-config',
+  'append-system-prompt',
+  'system-prompt',
+  'plugin-dir',
+  'plugin-url',
+  'bare',
+  'safe-mode',
+  'ide',
+  'chrome',
+  'no-chrome',
+  'disable-slash-commands',
+  'exclude-dynamic-system-prompt-sections',
+  'verbose',
+];
+
+function stringFlag(flags, name) {
+  const value = flags[name];
+  return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+function stringListFlag(flags, ...names) {
+  const values = [];
+  for (const name of names) {
+    const value = flags[name];
+    if (typeof value === 'string' && value.length > 0) values.push(value);
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        if (typeof item === 'string' && item.length > 0) values.push(item);
+      }
+    }
+  }
+  return values.length > 0 ? values : undefined;
+}
+
+function normalizePermissionMode(flags, commandName, json) {
+  const explicitMode = stringFlag(flags, 'permission-mode');
+  const dangerouslySkip = Boolean(flags['dangerously-skip-permissions']);
+  const permissionMode = dangerouslySkip ? 'bypassPermissions' : explicitMode;
+
+  if (dangerouslySkip && explicitMode !== undefined && explicitMode !== 'bypassPermissions') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          '--dangerously-skip-permissions is an alias for --permission-mode bypassPermissions and cannot be combined with a different --permission-mode.',
+        ),
+        commandName,
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  if (permissionMode !== undefined && !PERMISSION_MODES.has(permissionMode)) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `--permission-mode must be one of: ${Array.from(PERMISSION_MODES).join(', ')} (got "${permissionMode}")`,
+        ),
+        commandName,
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  return permissionMode;
+}
+
+function buildStartSessionOptions(flags, commandName, json, overrides = {}) {
+  return {
+    model: stringFlag(flags, 'model'),
+    effort: stringFlag(flags, 'effort'),
+    permissionMode: normalizePermissionMode(flags, commandName, json),
+    allowDangerouslySkipPermissions: Boolean(flags['allow-dangerously-skip-permissions']),
+    addDirs: Array.isArray(flags['add-dir']) ? flags['add-dir'] : [],
+    mcpConfig: stringFlag(flags, 'mcp-config'),
+    agent: stringFlag(flags, 'agent'),
+    agents: stringFlag(flags, 'agents'),
+    allowedTools: stringListFlag(flags, 'allowedTools', 'allowed-tools'),
+    disallowedTools: stringListFlag(flags, 'disallowedTools', 'disallowed-tools'),
+    tools: stringFlag(flags, 'tools'),
+    settings: stringFlag(flags, 'settings'),
+    settingSources: stringFlag(flags, 'setting-sources'),
+    strictMcpConfig: Boolean(flags['strict-mcp-config']),
+    appendSystemPrompt: stringFlag(flags, 'append-system-prompt'),
+    systemPrompt: stringFlag(flags, 'system-prompt'),
+    pluginDirs: stringListFlag(flags, 'plugin-dir'),
+    pluginUrls: stringListFlag(flags, 'plugin-url'),
+    bare: Boolean(flags['bare']),
+    safeMode: Boolean(flags['safe-mode']),
+    ide: Boolean(flags['ide']),
+    chrome: Boolean(flags['chrome']),
+    noChrome: Boolean(flags['no-chrome']),
+    disableSlashCommands: Boolean(flags['disable-slash-commands']),
+    excludeDynamicSystemPromptSections: Boolean(flags['exclude-dynamic-system-prompt-sections']),
+    verbose: Boolean(flags['verbose']),
+    ...overrides,
+  };
+}
+
+const REVIEW_SEVERITY_RANK = new Map([
+  ['nit', 0],
+  ['low', 1],
+  ['medium', 2],
+  ['high', 3],
+  ['blocker', 4],
+]);
+
+function parseReviewGate(flags, commandName, json) {
+  const rawFailOn = stringFlag(flags, 'fail-on');
+  const blocking = Boolean(flags['blocking']);
+  if (rawFailOn === undefined && !blocking) return null;
+
+  const failOn = rawFailOn ?? 'high';
+  const allowed = ['fail', 'any', ...REVIEW_SEVERITY_RANK.keys()];
+  if (!allowed.includes(failOn)) {
+    process.stderr.write(
+      formatError(
+        new Error(`--fail-on must be one of: ${allowed.join(', ')} (got "${failOn}")`),
+        commandName,
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  return { failOn, source: rawFailOn === undefined ? '--blocking' : `--fail-on ${failOn}` };
+}
+
+function reviewGateFailed(review, gate) {
+  if (gate === null) return false;
+  if (review.verdict === 'fail') return true;
+  if (gate.failOn === 'fail') return false;
+  if (gate.failOn === 'any') return review.findings.length > 0;
+
+  const threshold = REVIEW_SEVERITY_RANK.get(gate.failOn);
+  if (threshold === undefined) return false;
+  return review.findings.some((finding) => {
+    const rank = REVIEW_SEVERITY_RANK.get(finding.severity) ?? 0;
+    return rank >= threshold;
+  });
+}
+
+function exitIfReviewGateFailed(review, gate, commandName) {
+  if (!reviewGateFailed(review, gate)) return;
+  process.stderr.write(`[${commandName}] review gate failed (${gate.source})\n`);
+  process.exit(1);
+}
+
 // ---------- privacy acknowledgement ----------
 
 /**
@@ -172,7 +350,14 @@ async function ensureWorkspaceAck({
 // ---------- main ----------
 
 const argv = process.argv.slice(2);
-const parsed = parseArgs(argv);
+let parsed;
+try {
+  parsed = parseArgs(argv);
+} catch (err) {
+  const useJsonForParseError = argv.includes('--json');
+  process.stderr.write(formatError(err, '', useJsonForParseError) + '\n');
+  process.exit(2);
+}
 const { command, flags, positional } = parsed;
 const useJson = Boolean(flags['json']);
 
@@ -455,7 +640,7 @@ async function cmdGoal(flags, positional, json) {
       '',
       'This is a Claude Code goal-condition request.',
       'The runtime tracks goal-completion automatically; attach via',
-      '`claude attach <jobId>` to watch progress.',
+      '`claude attach <shortId>` to watch progress.',
     ].join('\n'),
   });
 }
@@ -480,7 +665,7 @@ async function cmdFork(flags, positional, json) {
       'This is a Claude Code fork request.',
       'The runtime spawns a real subagent process to execute the directive.',
       'Note: /fork directives consume 20-30k tokens even for trivial directives.',
-      'Attach via `claude attach <jobId>` to watch progress.',
+      'Attach via `claude attach <shortId>` to watch progress.',
     ].join('\n'),
   });
 }
@@ -505,7 +690,7 @@ async function cmdBatch(flags, positional, json) {
       'This is a Claude Code batch request.',
       'The runtime injects a "# Batch: Parallel Work Orchestration" system prompt.',
       'Batch sessions can spawn multiple parallel tool-calls and subagents.',
-      'Attach via `claude attach <jobId>` to watch progress.',
+      'Attach via `claude attach <shortId>` to watch progress.',
     ].join('\n'),
   });
 }
@@ -622,14 +807,10 @@ async function _runDelegateCore(
   const handle = await driver.startSession({
     cwd: workspace,
     prompt,
-    name: typeof flags['name'] === 'string' ? flags['name'] : undefined,
-    model: typeof flags['model'] === 'string' ? flags['model'] : undefined,
-    effort: typeof flags['effort'] === 'string' ? flags['effort'] : undefined,
-    permissionMode:
-      typeof flags['permission-mode'] === 'string' ? flags['permission-mode'] : undefined,
+    ...buildStartSessionOptions(flags, commandName, json, {
+      name: typeof flags['name'] === 'string' ? flags['name'] : undefined,
+    }),
     allowEdit: Boolean(flags['allow-edit']),
-    addDirs: Array.isArray(flags['add-dir']) ? flags['add-dir'] : [],
-    mcpConfig: typeof flags['mcp-config'] === 'string' ? flags['mcp-config'] : undefined,
   });
 
   // 7. Create job record.
@@ -1380,14 +1561,7 @@ async function cmdFollowup(flags, positional, json) {
   // runs before later module-scope `const` declarations are initialized; a
   // module-scope const referenced from inside an early-dispatch path would hit
   // the temporal-dead-zone (TDZ) and throw `Cannot access ... before initialization`.
-  const FOLLOWUP_REJECTED_FLAGS = new Set([
-    'model',
-    'effort',
-    'permission-mode',
-    'add-dir',
-    'mcp-config',
-    'name',
-  ]);
+  const FOLLOWUP_REJECTED_FLAGS = new Set(STARTUP_ONLY_FLAGS);
   // 1. Check for rejected startup-only flags.
   for (const flag of FOLLOWUP_REJECTED_FLAGS) {
     if (flags[flag] !== undefined) {
@@ -1576,6 +1750,7 @@ async function cmdFollowup(flags, positional, json) {
 
 async function cmdReview(flags, positional, json) {
   // 1. Parse args: reject startup-only and inapplicable flags at parse time.
+  const reviewGate = parseReviewGate(flags, 'review', json);
 
   // --allow-edit is categorically rejected for all review skills.
   if (flags['allow-edit'] !== undefined) {
@@ -1590,14 +1765,7 @@ async function cmdReview(flags, positional, json) {
   }
 
   // Startup-only flags rejected with the pinned review-specific message.
-  const REVIEW_REJECTED_STARTUP_FLAGS = new Set([
-    'model',
-    'effort',
-    'permission-mode',
-    'add-dir',
-    'mcp-config',
-    'name',
-  ]);
+  const REVIEW_REJECTED_STARTUP_FLAGS = new Set(STARTUP_ONLY_FLAGS);
   for (const flag of REVIEW_REJECTED_STARTUP_FLAGS) {
     if (flags[flag] !== undefined) {
       process.stderr.write(
@@ -1897,12 +2065,14 @@ async function cmdReview(flags, positional, json) {
       formatReviewHuman({ review, job: reviewJobForParse, turn: turnMeta }) + '\n',
     );
   }
+  exitIfReviewGateFailed(review, reviewGate, 'review');
 }
 
 // ---------- adversarial-review ----------
 
 async function cmdAdversarialReview(flags, positional, json) {
   // 1. Parse args: reject inapplicable flags at parse time.
+  const reviewGate = parseReviewGate(flags, 'adversarial-review', json);
 
   // --allow-edit is categorically rejected for all review skills.
   if (flags['allow-edit'] !== undefined) {
@@ -2196,11 +2366,11 @@ async function cmdAdversarialReview(flags, positional, json) {
   const reviewHandle = await driver.startSession({
     cwd: targetJob.workspace.root,
     prompt: adversarialPrompt,
-    name: reviewSessionName,
-    model: typeof flags['model'] === 'string' ? flags['model'] : undefined,
-    effort: typeof flags['effort'] === 'string' ? flags['effort'] : undefined,
-    permissionMode:
-      typeof flags['permission-mode'] === 'string' ? flags['permission-mode'] : undefined,
+    ...buildStartSessionOptions(flags, 'adversarial-review', json, {
+      name: reviewSessionName,
+      addDirs: [],
+      mcpConfig: undefined,
+    }),
   });
 
   // 11. Create the review JobRecord via createJob.
@@ -2380,6 +2550,7 @@ async function cmdAdversarialReview(flags, positional, json) {
       formatReviewHuman({ review, job: currentReviewJob, turn: turnMeta }) + '\n',
     );
   }
+  exitIfReviewGateFailed(review, reviewGate, 'adversarial-review');
 }
 
 // ---------- usage ----------
@@ -2478,7 +2649,7 @@ function printUsage(commandName = '') {
       '  claude attach <shortId>',
       'Then choose Yes, View raw script, or No in Claude Code.',
       '',
-      'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode>',
+      'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode> --dangerously-skip-permissions',
       'Note: --yes only acknowledges plugin privacy; it does not approve the Claude Code workflow gate.',
     ],
     'deep-research': [
@@ -2489,7 +2660,7 @@ function printUsage(commandName = '') {
       'If prompted, attach to the printed Claude session short ID:',
       '  claude attach <shortId>',
       '',
-      'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode>',
+      'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode> --dangerously-skip-permissions',
       'Note: --yes only acknowledges plugin privacy; it does not approve Claude Code workflow gates.',
     ],
     status: [
@@ -2535,9 +2706,9 @@ function printUsage(commandName = '') {
       '  stop <jobId> [--all] [--json]             Stop a running job',
       '  stop --all-awaiting-followup [--all]      Bulk-stop awaiting-followup jobs',
       '  followup <jobId> [flags] -- <prompt>      Send a follow-up prompt to an existing job',
-      '  review <jobId-or-prefix> [--all] [--json] [--yes]',
+      '  review <jobId-or-prefix> [--all] [--json] [--yes] [--blocking|--fail-on <gate>]',
       '                                            Same-session structured review of the latest non-review turn',
-      '  adversarial-review <jobId-or-prefix> [--all] [--json] [--yes] [--model <model>] [--effort <effort>] [--permission-mode <mode>]',
+      '  adversarial-review <jobId-or-prefix> [--all] [--json] [--yes] [--model <model>] [--effort <effort>] [--permission-mode <mode>] [--blocking|--fail-on <gate>]',
       '                                            Fresh-session independent review of the latest non-review turn',
       '  workflows [<jobId>] [--all] [--json]      List workflow/deep-research sessions or drill into one (read-only; no subprocess spawned)',
       '',
@@ -2552,8 +2723,17 @@ function printUsage(commandName = '') {
       '  --model <model>              Model selection (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
       '  --effort <effort>            Effort level (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
       '  --permission-mode <mode>     Permission mode (delegate, workflow, goal, fork, batch, deep-research, adversarial-review; bypassPermissions is for explicit trusted unattended runs)',
+      '  --dangerously-skip-permissions  Alias for --permission-mode bypassPermissions on fresh Claude sessions',
+      '  --allow-dangerously-skip-permissions  Allow bypass-permissions as an option without defaulting to it',
+      '  --allowedTools <tools>       Claude Code allowed tools list for fresh sessions (comma-separated or quoted)',
+      '  --disallowedTools <tools>    Claude Code disallowed tools list for fresh sessions (comma-separated or quoted)',
+      '  --tools <tools>              Claude Code built-in tool list for fresh sessions',
+      '  --agent <agent>              Claude Code agent for fresh sessions',
+      '  --settings <file-or-json>    Claude Code settings file or JSON for fresh sessions',
       '  --add-dir <dir>              Additional directory (delegate, workflow, goal, fork, batch, deep-research; repeatable)',
       '  --mcp-config <path>          MCP config file (delegate, workflow, goal, fork, batch, deep-research)',
+      '  --blocking                  Review gate alias for --fail-on high',
+      '  --fail-on <gate>            Exit 1 after review output when gate trips: fail, any, nit, low, medium, high, blocker',
       '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, workflow, goal, fork, batch, deep-research, and workflows',
       '  --all                        Search all workspaces (status/result/stop/followup/review/adversarial-review)',
       '  --all-awaiting-followup      Bulk-stop all awaiting-followup jobs (stop only; combine with --all for every workspace)',

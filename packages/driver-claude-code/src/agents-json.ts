@@ -27,6 +27,7 @@ export interface ParsedClaudeAgentSession {
   startedAt?: string;
   updatedAt?: string;
   transcriptPath?: string;
+  waitingFor?: string;
 }
 
 export interface AgentsJsonParseWarning {
@@ -128,6 +129,38 @@ function num(obj: RawClaudeAgentSession, ...keys: string[]): number | undefined 
   return undefined;
 }
 
+function waitingFor(
+  obj: RawClaudeAgentSession,
+  normalizedStatus: SessionStatusValue,
+): string | undefined {
+  const explicit = str(
+    obj,
+    'waitingFor',
+    'waiting_for',
+    'blockedOn',
+    'blocked_on',
+    'pendingPermission',
+    'pending_permission',
+  );
+  if (explicit) return explicit;
+
+  const rawWaiting = obj['waitingFor'] ?? obj['waiting_for'];
+  if (rawWaiting !== undefined && rawWaiting !== null) {
+    try {
+      return JSON.stringify(rawWaiting);
+    } catch {
+      return String(rawWaiting);
+    }
+  }
+
+  if (normalizedStatus === 'needs_input') {
+    const state = str(obj, 'state', 'status', 'sessionStatus', 'session_status');
+    if (state) return state;
+  }
+
+  return undefined;
+}
+
 // ---------- parseAgentsJson ----------
 
 export function parseAgentsJson(raw: string): AgentsJsonParseResult {
@@ -173,6 +206,8 @@ export function parseAgentsJson(raw: string): AgentsJsonParseResult {
     const explicitShortId = str(obj, 'shortId', 'id');
     const shortId = explicitShortId ?? (sessionId ? deriveShortId(sessionId) : undefined);
 
+    const value = normalizeStatus(str(obj, 'status', 'state', 'sessionStatus', 'session_status'));
+
     sessions.push({
       raw: obj,
       shortId,
@@ -181,11 +216,12 @@ export function parseAgentsJson(raw: string): AgentsJsonParseResult {
       cwd: str(obj, 'cwd', 'projectPath'),
       pid: num(obj, 'pid'),
       // Use the same alias pattern as other fields, defensive against future schema drift.
-      value: normalizeStatus(str(obj, 'status', 'sessionStatus', 'session_status')),
+      value,
       // Accept ISO string or Unix epoch number (real Claude 2.1.149 uses epoch numbers).
       startedAt: toIsoString(obj['startedAt'] ?? obj['started_at']),
       updatedAt: toIsoString(obj['updatedAt'] ?? obj['updated_at']),
       transcriptPath: str(obj, 'transcriptPath', 'transcript_path'),
+      waitingFor: waitingFor(obj, value),
     });
   }
 
@@ -263,6 +299,7 @@ function sessionToStatus(s: ParsedClaudeAgentSession): SessionStatus {
     startedAt: s.startedAt,
     updatedAt: s.updatedAt,
     transcriptPath: s.transcriptPath,
+    waitingFor: s.waitingFor,
     raw: s.raw,
   };
 }

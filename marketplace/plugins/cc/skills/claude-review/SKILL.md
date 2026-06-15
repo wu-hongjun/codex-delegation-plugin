@@ -19,12 +19,12 @@ existing Claude background job created by `$claude-delegate`.
        node "<plugin-root>/scripts/cc.mjs" review <jobId-or-prefix> [flags]
 
    Forward only these flags **when the user explicitly requests them**:
-   `--all`, `--json`, `--yes`.
+   `--all`, `--json`, `--yes`, `--blocking`, `--fail-on`.
    Do NOT forward `--allow-edit`, `--model`, `--effort`, `--permission-mode`,
-   `--add-dir`, `--mcp-config`, or `--name` — they are not applicable to this
-   subcommand. Do NOT inject `--yes` automatically. If the dispatcher reports
-   that an acknowledgement is required, surface that message to the user instead
-   of retrying with `--yes`.
+   `--add-dir`, `--mcp-config`, `--name`, or other fresh-session startup flags
+   — they are not applicable to this subcommand. Do NOT inject `--yes`
+   automatically. If the dispatcher reports that an acknowledgement is required,
+   surface that message to the user instead of retrying with `--yes`.
 
 4. Return the dispatcher's stdout verbatim. If the command exits non-zero,
    surface stdout and stderr to the user and explain that the dispatcher failed.

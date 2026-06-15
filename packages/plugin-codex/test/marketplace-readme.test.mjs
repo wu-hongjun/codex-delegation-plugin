@@ -31,6 +31,8 @@ const CMD_PLUGIN_ADD = 'codex plugin add "cc@cc-plugin-codex-local"';
 const CMD_GIT_MARKETPLACE_ADD =
   'codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex';
 const CMD_GIT_PLUGIN_ADD = 'codex plugin add "cc@cc-plugin-codex"';
+const CMD_CURL_INSTALL =
+  'curl -fsSL https://raw.githubusercontent.com/wu-hongjun/cc-plugin-codex/main/install.sh | bash';
 const CMD_VERIFY = 'codex plugin list';
 const CMD_PLUGIN_REMOVE = 'codex plugin remove "cc@cc-plugin-codex-local"';
 const CMD_MARKETPLACE_REMOVE = 'codex plugin marketplace remove "cc-plugin-codex-local"';
@@ -94,6 +96,10 @@ describe('marketplace install procedure docs (Plan 0006 T6)', () => {
   it('README contains the public Git marketplace install commands', () => {
     const content = readFileSync(MARKETPLACE_README, 'utf8');
     assert.ok(
+      content.includes(CMD_CURL_INSTALL),
+      `README.md must contain the bootstrap install command: ${CMD_CURL_INSTALL}`,
+    );
+    assert.ok(
       content.includes(CMD_GIT_MARKETPLACE_ADD),
       `README.md must contain the public Git marketplace command: ${CMD_GIT_MARKETPLACE_ADD}`,
     );
@@ -136,6 +142,19 @@ describe('marketplace install procedure docs (Plan 0006 T6)', () => {
     assert.ok(
       content.includes(POST_INSTALL_GATE),
       `README.md must contain the post-install gate: ${POST_INSTALL_GATE}`,
+    );
+  });
+
+  it('README uses shortId/sessionId, not jobId, for claude attach examples', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.equal(
+      content.includes('claude attach <jobId>'),
+      false,
+      'README.md must not tell users to pass a plugin jobId to claude attach',
+    );
+    assert.ok(
+      content.includes('claude attach <shortId>'),
+      'README.md must include a claude attach <shortId> example',
     );
   });
 

@@ -119,6 +119,8 @@ Job ID from successful delegation: `job_mpt98g9g_b61e09f1` (shown in output as `
 
 Interactive privacy acknowledgement: on first delegation in a workspace, you will be asked to confirm that delegating may send repository contents, prompts, command output, and Claude Code context to Anthropic. This is interactive by default; you can skip the prompt with `--yes` if you have intentionally pre-approved the policy.
 
+Fresh-session commands (`$claude-delegate`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, and `$claude-adversarial-review`) validate startup flags before launching Claude Code. Unknown flags fail with exit 2 instead of consuming the prompt. `--dangerously-skip-permissions` is accepted as the Claude Code alias for `--permission-mode bypassPermissions`; use it only when the operator explicitly chooses an unattended trusted run. Additional Claude Code startup controls such as `--agent`, `--agents`, `--allowedTools`, `--disallowedTools`, `--tools`, `--settings`, `--setting-sources`, `--strict-mcp-config`, `--append-system-prompt`, `--system-prompt`, `--plugin-dir`, `--plugin-url`, `--bare`, and `--safe-mode` can be forwarded when explicitly requested.
+
 ### $claude-workflow
 
 Trigger a Claude Code dynamic workflow. Workflows use Claude Code's built-in workflow engine to plan and execute multi-phase, multi-agent tasks and return a job ID for async result retrieval via `$claude-result` and `$claude-status`.
@@ -144,6 +146,7 @@ Accepted flags (forwarded to the delegate path):
 - `--model` — model override for the workflow session.
 - `--effort` — effort level.
 - `--permission-mode` — permission mode override.
+- `--dangerously-skip-permissions` — alias for `--permission-mode bypassPermissions`.
 - `--add-dir` — additional directory to expose to Claude Code.
 - `--mcp-config` — MCP configuration file path.
 - `--name` — session name override.
@@ -515,6 +518,10 @@ Accepted flags:
 - `--all` — search across all workspaces (default scope is the current workspace).
 - `--json` — machine-readable structured findings output.
 - `--yes` — record the privacy acknowledgement non-interactively.
+- `--blocking` — exit 1 after printing the review if any `high`/`blocker` finding or a `fail` verdict is returned.
+- `--fail-on <gate>` — exit 1 after printing the review when the gate trips. Gates: `fail`, `any`, `nit`, `low`, `medium`, `high`, `blocker`.
+
+With `--json`, `review.blocking` is true when the same high/blocker/fail threshold would trip `--blocking`.
 
 Rejected at parse time:
 
@@ -558,6 +565,11 @@ Accepted flags:
 - `--model` — model for the fresh review session.
 - `--effort` — effort level for the fresh review session.
 - `--permission-mode` — permission mode override for the fresh review session.
+- `--dangerously-skip-permissions` — alias for `--permission-mode bypassPermissions`.
+- `--blocking` — exit 1 after printing the review if any `high`/`blocker` finding or a `fail` verdict is returned.
+- `--fail-on <gate>` — exit 1 after printing the review when the gate trips. Gates: `fail`, `any`, `nit`, `low`, `medium`, `high`, `blocker`.
+
+With `--json`, `review.blocking` is true when the same high/blocker/fail threshold would trip `--blocking`.
 
 Rejected at parse time:
 

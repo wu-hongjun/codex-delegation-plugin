@@ -285,19 +285,47 @@ const BG_VALUE_FLAGS = new Set([
   '--add-dir',
   '--mcp-config',
   '--settings',
+  '--setting-sources',
   '--fallback-model',
   '--agent',
+  '--agents',
+  '--allowedTools',
+  '--allowed-tools',
+  '--disallowedTools',
+  '--disallowed-tools',
+  '--tools',
+  '--append-system-prompt',
+  '--system-prompt',
+  '--plugin-dir',
+  '--plugin-url',
+]);
+
+const BG_BOOLEAN_FLAGS = new Set([
+  '--allow-dangerously-skip-permissions',
+  '--strict-mcp-config',
+  '--bare',
+  '--safe-mode',
+  '--ide',
+  '--chrome',
+  '--no-chrome',
+  '--disable-slash-commands',
+  '--exclude-dynamic-system-prompt-sections',
+  '--verbose',
 ]);
 
 function parseBgArgs(args) {
   let name;
+  let permissionMode;
   const positional = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (BG_VALUE_FLAGS.has(a)) {
       const val = args[++i];
       if (a === '--name') name = val;
+      if (a === '--permission-mode') permissionMode = val;
       // Other recognized value-flags are accepted and ignored by the mock.
+    } else if (BG_BOOLEAN_FLAGS.has(a)) {
+      // Recognized boolean flags are accepted and ignored by the mock.
     } else if (a.startsWith('--')) {
       // Unknown flag. If the next token doesn't start with `--`, consume it as a value.
       if (i + 1 < args.length && !args[i + 1].startsWith('--')) {
@@ -307,7 +335,7 @@ function parseBgArgs(args) {
       positional.push(a);
     }
   }
-  return { name, prompt: positional.join(' ') };
+  return { name, permissionMode, prompt: positional.join(' ') };
 }
 
 // ---------- commands ----------
@@ -346,7 +374,7 @@ function cmdBg(config, args) {
     return 1;
   }
   ensureHome();
-  const { name, prompt } = parseBgArgs(args);
+  const { name, permissionMode, prompt } = parseBgArgs(args);
   const cwd = process.cwd();
   const startedAt = nowISO();
 
@@ -408,6 +436,7 @@ function cmdBg(config, args) {
     updatedAt: startedAt,
     transcriptPath,
     logPath,
+    permissionMode,
     prompt,
   });
   saveState(state);

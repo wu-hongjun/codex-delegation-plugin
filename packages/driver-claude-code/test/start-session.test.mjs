@@ -236,8 +236,15 @@ describe('startSession() with optional flags', () => {
         model: 'claude-sonnet-4-5',
         effort: 'high',
         permissionMode: 'default',
+        allowDangerouslySkipPermissions: true,
         addDirs: [extraDir1, extraDir2],
         mcpConfig: join(MOCK_HOME, 'mcp.json'),
+        agent: 'reviewer',
+        allowedTools: ['Read,Bash(git status)'],
+        disallowedTools: ['Edit'],
+        settings: join(MOCK_HOME, 'settings.json'),
+        strictMcpConfig: true,
+        safeMode: true,
       });
     } finally {
       rmSync(extraDir1, { recursive: true, force: true });

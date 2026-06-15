@@ -28,12 +28,18 @@ const RELEASING_MD = resolve(REPO_ROOT, 'documentation', 'RELEASING.md');
 
 const CMD_MARKETPLACE_ADD = 'codex plugin marketplace add "<repo-root>/marketplace"';
 const CMD_PLUGIN_ADD = 'codex plugin add "cc@cc-plugin-codex-local"';
+const CMD_GIT_MARKETPLACE_ADD =
+  'codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex';
+const CMD_GIT_PLUGIN_ADD = 'codex plugin add "cc@cc-plugin-codex"';
 const CMD_VERIFY = 'codex plugin list';
 const CMD_PLUGIN_REMOVE = 'codex plugin remove "cc@cc-plugin-codex-local"';
 const CMD_MARKETPLACE_REMOVE = 'codex plugin marketplace remove "cc-plugin-codex-local"';
+const CMD_GIT_PLUGIN_REMOVE = 'codex plugin remove "cc@cc-plugin-codex"';
+const CMD_GIT_MARKETPLACE_REMOVE = 'codex plugin marketplace remove "cc-plugin-codex"';
 const POST_INSTALL_GATE = '$claude-setup';
 const OLD_RSYNC_CMD = 'rsync -a --delete';
 const MARKETPLACE_NAME = 'cc-plugin-codex-local';
+const GIT_MARKETPLACE_NAME = 'cc-plugin-codex';
 const PACKAGE_CHECK_CMD = 'tools/package-marketplace.mjs --check';
 
 // ---------- OQ4 forbidden cost-claim tokens ----------
@@ -82,6 +88,18 @@ describe('marketplace install procedure docs (Plan 0006 T6)', () => {
     assert.ok(
       content.includes(CMD_MARKETPLACE_ADD),
       `README.md must contain the verbatim string: ${CMD_MARKETPLACE_ADD}`,
+    );
+  });
+
+  it('README contains the public Git marketplace install commands', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes(CMD_GIT_MARKETPLACE_ADD),
+      `README.md must contain the public Git marketplace command: ${CMD_GIT_MARKETPLACE_ADD}`,
+    );
+    assert.ok(
+      content.includes(CMD_GIT_PLUGIN_ADD),
+      `README.md must contain the public Git plugin add command: ${CMD_GIT_PLUGIN_ADD}`,
     );
   });
 
@@ -212,6 +230,14 @@ describe('marketplace install procedure docs (Plan 0006 T6)', () => {
       content.includes(CMD_MARKETPLACE_REMOVE),
       `README.md must contain the marketplace removal command: ${CMD_MARKETPLACE_REMOVE}`,
     );
+    assert.ok(
+      content.includes(CMD_GIT_PLUGIN_REMOVE),
+      `README.md must contain the Git uninstall command: ${CMD_GIT_PLUGIN_REMOVE}`,
+    );
+    assert.ok(
+      content.includes(CMD_GIT_MARKETPLACE_REMOVE),
+      `README.md must contain the Git marketplace removal command: ${CMD_GIT_MARKETPLACE_REMOVE}`,
+    );
   });
 
   // ========================================================================
@@ -223,6 +249,10 @@ describe('marketplace install procedure docs (Plan 0006 T6)', () => {
     assert.ok(
       content.includes(MARKETPLACE_NAME),
       `README.md must contain the marketplace name: ${MARKETPLACE_NAME}`,
+    );
+    assert.ok(
+      content.includes(GIT_MARKETPLACE_NAME),
+      `README.md must contain the Git marketplace name: ${GIT_MARKETPLACE_NAME}`,
     );
   });
 
@@ -249,8 +279,8 @@ describe('marketplace install procedure docs (Plan 0006 T6)', () => {
 // and no `codex plugin update` command. The user-facing upgrade procedure is
 // therefore `codex plugin remove` + `codex plugin add` against the same (or
 // refreshed) marketplace pointer. Note: Codex DOES expose
-// `codex plugin marketplace upgrade`, but that only refreshes Git
-// marketplaces and is not part of the local-marketplace upgrade flow.
+// `codex plugin marketplace upgrade` refreshes Git marketplaces only. The
+// local-marketplace upgrade flow remains remove + add against the same path.
 
 // Regex used to assert there is no runnable `codex plugin upgrade` /
 // `codex plugin update` line documented as a command. We match against the
@@ -318,6 +348,22 @@ describe('marketplace upgrade procedure docs (Plan 0006 T7)', () => {
     assert.ok(
       content.includes(CMD_PLUGIN_ADD),
       `README.md must contain the plugin add command: ${CMD_PLUGIN_ADD}`,
+    );
+  });
+
+  it('README contains the Git marketplace upgrade flow', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes('codex plugin marketplace upgrade "cc-plugin-codex"'),
+      'README.md must contain the Git marketplace upgrade command',
+    );
+    assert.ok(
+      content.includes(CMD_GIT_PLUGIN_REMOVE),
+      `README.md must contain the Git plugin remove command: ${CMD_GIT_PLUGIN_REMOVE}`,
+    );
+    assert.ok(
+      content.includes(CMD_GIT_PLUGIN_ADD),
+      `README.md must contain the Git plugin add command: ${CMD_GIT_PLUGIN_ADD}`,
     );
   });
 

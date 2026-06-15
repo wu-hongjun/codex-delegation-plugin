@@ -30,6 +30,7 @@ const MARKETPLACE_ROOT = resolve(REPO_ROOT, 'marketplace');
 const SOURCE_PLUGIN_ROOT = resolve(REPO_ROOT, 'packages', 'plugin-codex');
 
 // Derived paths used across multiple tests
+const ROOT_MARKETPLACE_JSON = resolve(REPO_ROOT, '.agents', 'plugins', 'marketplace.json');
 const MARKETPLACE_JSON = resolve(MARKETPLACE_ROOT, '.agents', 'plugins', 'marketplace.json');
 const MARKETPLACE_PLUGIN_ROOT = resolve(MARKETPLACE_ROOT, 'plugins', 'cc');
 const MARKETPLACE_PLUGIN_JSON = resolve(MARKETPLACE_PLUGIN_ROOT, '.codex-plugin', 'plugin.json');
@@ -94,6 +95,50 @@ function walkFiles(dir, visitor) {
 // ==========================================================================
 
 describe('marketplace/ layout (Plan 0006 T2)', () => {
+  it('root .agents/plugins/marketplace.json exposes the public Git marketplace shape', () => {
+    assert.ok(
+      existsSync(ROOT_MARKETPLACE_JSON),
+      `root marketplace.json not found at ${ROOT_MARKETPLACE_JSON}`,
+    );
+
+    let parsed;
+    assert.doesNotThrow(() => {
+      parsed = JSON.parse(readFileSync(ROOT_MARKETPLACE_JSON, 'utf8'));
+    }, `root marketplace.json is not valid JSON`);
+
+    assert.equal(
+      parsed.name,
+      'cc-plugin-codex',
+      `root marketplace.json name must be "cc-plugin-codex"; got "${parsed.name}"`,
+    );
+    assert.equal(
+      parsed.interface?.displayName,
+      'cc-plugin-codex',
+      `root marketplace.json interface.displayName must be "cc-plugin-codex"; got "${parsed.interface?.displayName}"`,
+    );
+    assert.ok(Array.isArray(parsed.plugins), `root marketplace.json "plugins" must be an array`);
+    assert.equal(
+      parsed.plugins.length,
+      1,
+      `root marketplace.json "plugins" array must have length 1; got ${parsed.plugins.length}`,
+    );
+    assert.equal(
+      parsed.plugins[0].name,
+      'cc',
+      `root marketplace.json plugins[0].name must be "cc"; got "${parsed.plugins[0].name}"`,
+    );
+    assert.equal(
+      parsed.plugins[0].source?.source,
+      'local',
+      `root marketplace.json plugins[0].source.source must be "local"; got "${parsed.plugins[0].source?.source}"`,
+    );
+    assert.equal(
+      parsed.plugins[0].source?.path,
+      './marketplace/plugins/cc',
+      `root marketplace.json plugins[0].source.path must be "./marketplace/plugins/cc"; got "${parsed.plugins[0].source?.path}"`,
+    );
+  });
+
   it('marketplace/.agents/plugins/marketplace.json exists and has required shape', () => {
     assert.ok(existsSync(MARKETPLACE_JSON), `marketplace.json not found at ${MARKETPLACE_JSON}`);
 

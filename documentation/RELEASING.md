@@ -1,15 +1,22 @@
 # Release checklist
 
 This is the canonical release-day checklist for the cc-plugin-codex
-local marketplace distribution. It is consolidated and finalised by
+marketplace distribution. It is consolidated and finalised by
 Plan 0006 T11. Earlier T-tasks contributed individual procedures; T11
 puts them into a single release-day flow.
 
 ## Scope
 
-This checklist covers the **local marketplace** at `marketplace/`
-inside the cc-plugin-codex repository. End users install from the
-checked-out repo via `codex plugin marketplace add "<repo-root>/marketplace"`.
+This checklist covers two Codex marketplace entry points:
+
+- The **public Git marketplace** at the repository root, exposed by
+  `.agents/plugins/marketplace.json`. End users install from GitHub via
+  `codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex`
+  and `codex plugin add "cc@cc-plugin-codex"`.
+- The **local contributor marketplace** at `marketplace/` inside the
+  repository. Contributors and release smoke tests install from a checkout
+  via `codex plugin marketplace add "<repo-root>/marketplace"` and
+  `codex plugin add "cc@cc-plugin-codex-local"`.
 
 Submitting the plugin to an external / hosted marketplace registry is
 **out of scope** for Plan 0006. If a hosted marketplace becomes
@@ -118,6 +125,9 @@ and must remain green for the release to be accepted:
   startup.
 - Marketplace README and RELEASING.md version references match the
   source-of-truth manifest.
+- The root `.agents/plugins/marketplace.json` public marketplace points at
+  `./marketplace/plugins/cc`, the same packaged payload used by the local
+  contributor marketplace.
 
 ## Packaging (Plan 0006 T4 + T5 + T9.5)
 
@@ -228,6 +238,27 @@ by CI; CI relies on the static checks in
 `packages/plugin-codex/test/marketplace-smoke.test.mjs` plus the rest
 of the unit-test matrix. The helper exits 0 only when every automated
 check passes.
+
+### Public Git marketplace smoke
+
+After the release commit has been pushed, verify the public Git marketplace
+entry point in an isolated `CODEX_HOME`:
+
+```bash
+tmp_home="$(mktemp -d)"
+CODEX_HOME="$tmp_home" codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex
+CODEX_HOME="$tmp_home" codex plugin add "cc@cc-plugin-codex"
+CODEX_HOME="$tmp_home" codex plugin list
+CODEX_HOME="$tmp_home" codex plugin remove "cc@cc-plugin-codex"
+CODEX_HOME="$tmp_home" codex plugin marketplace remove "cc-plugin-codex"
+rm -rf "$tmp_home"
+```
+
+`codex plugin list` should report `cc@cc-plugin-codex` as
+`installed, enabled` at the current plugin version. This smoke checks the
+GitHub distribution entry point; the automated preflight above remains the
+release-time cache-execution guard because it can run before the commit is
+pushed.
 
 ### Manual skill discovery
 
@@ -394,8 +425,15 @@ After the tag is pushed:
 
 ## Install procedure (Plan 0006 T6)
 
-End users install the cc-plugin-codex plugin via the committed
-`marketplace/` layout at the repo root:
+End users install the cc-plugin-codex plugin from the public Git marketplace:
+
+```bash
+codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex
+codex plugin add "cc@cc-plugin-codex"
+codex plugin list
+```
+
+Contributors can install from the committed local `marketplace/` layout:
 
 ```bash
 codex plugin marketplace add "<repo-root>/marketplace"
@@ -410,10 +448,19 @@ for the user-facing install + troubleshooting guide.
 ## Upgrade procedure (Plan 0006 T7)
 
 Codex 0.136.0 does not expose an in-place `codex plugin upgrade` or
-`codex plugin update` command. The upgrade procedure is to remove the
-installed plugin and re-add it from the same marketplace pointer.
+`codex plugin update` command. The plugin upgrade procedure is to remove
+the installed plugin and re-add it from the same marketplace pointer.
 
-Same-path upgrade (after pulling new commits in cc-plugin-codex):
+Git marketplace upgrade:
+
+```bash
+codex plugin marketplace upgrade "cc-plugin-codex"
+codex plugin remove "cc@cc-plugin-codex"
+codex plugin add "cc@cc-plugin-codex"
+codex plugin list
+```
+
+Local same-path upgrade (after pulling new commits in cc-plugin-codex):
 
 ```bash
 codex plugin remove "cc@cc-plugin-codex-local"
@@ -431,13 +478,23 @@ codex plugin add "cc@cc-plugin-codex-local"
 codex plugin list
 ```
 
-After either flow, `codex plugin list` should report
-`cc@cc-plugin-codex-local` with the current version
-(`0.3.5` as of Plan 0023), `installed, enabled`. See
+After the Git flow, `codex plugin list` should report
+`cc@cc-plugin-codex` with the current version (`0.3.5` as of Plan 0023),
+`installed, enabled`. After either local flow, it should report
+`cc@cc-plugin-codex-local` with the same version. See
 [`marketplace/plugins/cc/README.md`](../marketplace/plugins/cc/README.md)
 for the user-facing upgrade section.
 
 ## Uninstall procedure (Plan 0006 T8)
+
+Git marketplace uninstall:
+
+```bash
+codex plugin remove "cc@cc-plugin-codex"
+codex plugin marketplace remove "cc-plugin-codex"
+```
+
+Local marketplace uninstall:
 
 ```bash
 codex plugin remove "cc@cc-plugin-codex-local"
@@ -446,11 +503,12 @@ codex plugin marketplace remove "cc-plugin-codex-local"
 
 Run `codex plugin remove` **first**, then `codex plugin marketplace
 remove`. The first command removes the installed plugin from Codex.
-The second removes the local marketplace registration.
+The second removes the marketplace registration.
 
 After uninstall, the empty cache breadcrumb directory
-`<CODEX_HOME>/plugins/cache/cc-plugin-codex-local/` may remain on
-disk. This is normal Codex 0.136.0 behavior — `codex plugin remove`
+`<CODEX_HOME>/plugins/cache/cc-plugin-codex/` or
+`<CODEX_HOME>/plugins/cache/cc-plugin-codex-local/` may remain on disk.
+This is normal Codex 0.136.0 behavior — `codex plugin remove`
 empties the per-version cache contents but does not prune the parent
 directories. The empty breadcrumbs have no user-visible effect and do
 not block reinstall.

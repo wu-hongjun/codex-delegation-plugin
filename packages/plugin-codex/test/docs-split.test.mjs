@@ -177,6 +177,16 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
     it('contains exact install commands', () => {
       const content = readFileSync(MARKETPLACE_README, 'utf8');
       assert.ok(
+        content.includes(
+          'codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex',
+        ),
+        'marketplace README must contain the public Git marketplace install command',
+      );
+      assert.ok(
+        content.includes('codex plugin add "cc@cc-plugin-codex"'),
+        'marketplace README must contain verbatim `codex plugin add "cc@cc-plugin-codex"`',
+      );
+      assert.ok(
         content.includes('codex plugin marketplace add "<repo-root>/marketplace"'),
         'marketplace README must contain verbatim `codex plugin marketplace add "<repo-root>/marketplace"`',
       );

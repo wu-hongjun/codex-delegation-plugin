@@ -15,12 +15,25 @@ repository.
 
 ## Install
 
-From inside a clone of the cc-plugin-codex repository, add the local
-marketplace and install the plugin:
+Install directly from GitHub:
+
+```bash
+codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex
+codex plugin add "cc@cc-plugin-codex"
+codex plugin list
+```
+
+This registers the repository root as a Codex Git marketplace. The root
+marketplace manifest points Codex at the packaged plugin payload in
+`marketplace/plugins/cc/`.
+
+For contributor testing from a local checkout, add the local marketplace
+tree instead:
 
 ```bash
 codex plugin marketplace add "<repo-root>/marketplace"
 codex plugin add "cc@cc-plugin-codex-local"
+codex plugin list
 ```
 
 Replace `<repo-root>` with the absolute path to your cc-plugin-codex
@@ -29,6 +42,7 @@ checkout. For example, if you cloned to `~/code/cc-plugin-codex`, run:
 ```bash
 codex plugin marketplace add "$HOME/code/cc-plugin-codex/marketplace"
 codex plugin add "cc@cc-plugin-codex-local"
+codex plugin list
 ```
 
 ## Verify
@@ -209,8 +223,16 @@ in the cc-plugin-codex repository.
 
 ## Uninstall
 
-Remove the installed plugin first, then remove the local marketplace
-registration:
+Remove the installed plugin first, then remove the marketplace registration.
+
+For the GitHub install:
+
+```bash
+codex plugin remove "cc@cc-plugin-codex"
+codex plugin marketplace remove "cc-plugin-codex"
+```
+
+For a local contributor checkout:
 
 ```bash
 codex plugin remove "cc@cc-plugin-codex-local"
@@ -229,13 +251,14 @@ codex plugin list
 codex plugin marketplace list
 ```
 
-After uninstall, `cc@cc-plugin-codex-local` should no longer
-appear in `codex plugin list`, and `cc-plugin-codex-local` should no longer
-appear in `codex plugin marketplace list`.
+After uninstall, the installed plugin should no longer appear in
+`codex plugin list`, and the matching marketplace name should no longer
+appear in `codex plugin marketplace list`. For local installs, that means
+`cc@cc-plugin-codex-local` and `cc-plugin-codex-local`.
 
 What uninstall does **not** do:
 
-- It does not delete this Git checkout. Your local cc-plugin-codex clone
+- It does not delete this Git checkout. A local cc-plugin-codex clone
   remains on disk; only the Codex plugin and marketplace registrations
   are removed.
 - It does not delete existing Claude Companion job records or transcripts
@@ -247,12 +270,13 @@ To remove the Git checkout itself, delete the directory manually. To clear
 Claude Companion job records, refer to your Claude Code session-management
 documentation; uninstalling this plugin does not touch them.
 
-After uninstall, the empty cache breadcrumb directory
-`<CODEX_HOME>/plugins/cache/cc-plugin-codex-local/` may remain on
-disk. This is normal Codex 0.136.0 behaviour — `codex plugin remove`
-empties the per-version cache contents but does not prune the parent
-directories. The empty breadcrumbs have no user-visible effect and
-do not block reinstall.
+After uninstall, an empty cache breadcrumb directory such as
+`<CODEX_HOME>/plugins/cache/cc-plugin-codex/` or
+`<CODEX_HOME>/plugins/cache/cc-plugin-codex-local/` may remain on disk.
+This is normal Codex 0.136.0 behaviour — `codex plugin remove` empties
+the per-version cache contents but does not prune the parent directories.
+The empty breadcrumbs have no user-visible effect and do not block
+reinstall.
 
 ## Smoke test
 
@@ -288,9 +312,9 @@ Confirm the plugin install succeeded:
 codex plugin list
 ```
 
-If `cc@cc-plugin-codex-local` does not appear, repeat the
-install commands. If `codex plugin list` itself fails, address the
-stale-entry issue first.
+If neither `cc@cc-plugin-codex` nor `cc@cc-plugin-codex-local` appears,
+repeat the install commands. If `codex plugin list` itself fails, address
+the stale-entry issue first.
 
 ### `$claude-setup` reports `warn` or `fail`
 
@@ -309,10 +333,11 @@ skill is invoked, the packaged runtime dependencies are missing from
 the installed plugin cache. This is a packaging defect, not a
 configuration problem on your machine.
 
-End-user remediation: re-install the plugin from a fresh clone of
-the cc-plugin-codex repo. If the defect persists on a fresh clone,
-report it via the cc-plugin-codex issue tracker — the maintainer
-will need to re-run `node tools/package-marketplace.mjs --write` and
+End-user remediation: refresh the Git marketplace and re-install the
+plugin. If you are using a local contributor checkout, re-install from
+a fresh clone of the cc-plugin-codex repo. If the defect persists,
+report it via the cc-plugin-codex issue tracker — the maintainer will
+need to re-run `node tools/package-marketplace.mjs --write` and
 re-publish the marketplace tree (see
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md)).
 
@@ -329,12 +354,21 @@ permission prompts.
 ## Upgrade
 
 Codex 0.136.0 does not expose an in-place `codex plugin upgrade` or
-`codex plugin update` command. The upgrade procedure is to remove the
-installed plugin and re-add it from the same marketplace pointer.
+`codex plugin update` command. The plugin upgrade procedure is to remove
+the installed plugin and re-add it from the same marketplace pointer.
 
-(Codex does expose `codex plugin marketplace upgrade`, but that
-subcommand only refreshes Git marketplace snapshots and is not used
-for the local cc-plugin-codex marketplace.)
+For the GitHub install, refresh the Git marketplace snapshot first:
+
+```bash
+codex plugin marketplace upgrade "cc-plugin-codex"
+codex plugin remove "cc@cc-plugin-codex"
+codex plugin add "cc@cc-plugin-codex"
+codex plugin list
+```
+
+Codex also exposes `codex plugin marketplace upgrade`, but that
+subcommand refreshes Git marketplace snapshots only. It is not used
+for the local checkout marketplace below.
 
 After pulling new commits in the cc-plugin-codex repo, if the
 marketplace path has not changed, run:

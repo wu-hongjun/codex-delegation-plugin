@@ -14,23 +14,157 @@ The runtime is structured as a `Driver` interface with one implementation today 
 
 This repo is the cc-plugin-codex workspace. Different surfaces target different audiences:
 
-- **Install / use the plugin (end users):** [`marketplace/plugins/cc/README.md`](marketplace/plugins/cc/README.md) — short, install / verify / upgrade / uninstall / troubleshooting + the 8-skill list.
-- **Local marketplace tree:** [`marketplace/`](marketplace/) — committed, ready for `codex plugin marketplace add "$(pwd)/marketplace"`.
+- **Install / use the plugin (end users):** start with the GitHub install commands below, then see [`marketplace/plugins/cc/README.md`](marketplace/plugins/cc/README.md) for verify / upgrade / uninstall / troubleshooting + the 14-skill list.
+- **Public Git marketplace:** [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) points Codex at the committed plugin payload under [`marketplace/plugins/cc/`](marketplace/plugins/cc/).
+- **Local marketplace tree:** [`marketplace/`](marketplace/) — still available for contributor installs from a checkout.
 - **Full plugin docs (developers + contributors):** [`packages/plugin-codex/README.md`](packages/plugin-codex/README.md) — comprehensive runtime, dispatcher, skill, and architecture docs.
 - **Release maintainers:** [`documentation/RELEASING.md`](documentation/RELEASING.md) — canonical release-day checklist (prerequisites, version bump, packaging, smoke, CI, tagging, post-release).
 - **Plan history:** [`documentation/plan/`](documentation/plan/) — engineering-plan workflow and per-plan implementation logs.
 
-The rest of this README covers the v1 scope, design pillars, and repository layout for contributors. It is not a duplicate of the plugin docs.
+The rest of this README covers installation, deployment model, current scope, design pillars, and repository layout for contributors. It is not a duplicate of the full plugin docs.
 
 ---
 
-## v1 scope (what actually ships)
+## Install
+
+End users do **not** need `npm install` or a manual clone. Codex can install this plugin directly from the GitHub repository because the repo root exposes a Codex marketplace manifest at [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json).
+
+Prerequisites:
+
+- Codex CLI with plugin marketplace support (`codex --version`).
+- Claude Code installed and authenticated locally (`claude auth login`).
+- Node.js 20 or later on `PATH`.
+
+Install from GitHub:
+
+```bash
+codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex
+codex plugin add "cc@cc-plugin-codex"
+codex plugin list
+```
+
+Then open Codex inside any repository and run:
+
+```text
+$claude-setup
+```
+
+`$claude-setup` should report aggregate status `ok` or `warn`. `fail` means an environment dependency is missing; follow the probe output.
+
+### Upgrade
+
+For the GitHub install, refresh the Git marketplace snapshot and reinstall the plugin cache:
+
+```bash
+codex plugin marketplace upgrade "cc-plugin-codex"
+codex plugin remove "cc@cc-plugin-codex"
+codex plugin add "cc@cc-plugin-codex"
+codex plugin list
+```
+
+For a local contributor checkout, install from the committed local marketplace tree instead:
+
+```bash
+git clone https://github.com/wu-hongjun/cc-plugin-codex.git
+cd cc-plugin-codex
+codex plugin marketplace add "$(pwd)/marketplace"
+codex plugin add "cc@cc-plugin-codex-local"
+codex plugin list
+```
+
+After pulling a newer local checkout, refresh the installed local plugin cache:
+
+```bash
+git pull
+codex plugin remove "cc@cc-plugin-codex-local"
+codex plugin add "cc@cc-plugin-codex-local"
+codex plugin list
+```
+
+If you moved or re-cloned the local repository, refresh the local marketplace pointer too:
+
+```bash
+codex plugin remove "cc@cc-plugin-codex-local"
+codex plugin marketplace remove "cc-plugin-codex-local"
+codex plugin marketplace add "<repo-root>/marketplace"
+codex plugin add "cc@cc-plugin-codex-local"
+codex plugin list
+```
+
+Replace `<repo-root>` with the absolute path to the clone.
+
+### Uninstall
+
+For the GitHub install:
+
+```bash
+codex plugin remove "cc@cc-plugin-codex"
+codex plugin marketplace remove "cc-plugin-codex"
+```
+
+For a local contributor checkout:
+
+```bash
+codex plugin remove "cc@cc-plugin-codex-local"
+codex plugin marketplace remove "cc-plugin-codex-local"
+```
+
+This removes the Codex plugin registration and marketplace pointer. It does not delete any Git checkout or existing Claude Code transcripts/job records.
+
+## Deployment Model
+
+There is no npm package deployment for this project today. The deployable artifact is the committed marketplace payload:
+
+```text
+marketplace/plugins/cc/
+```
+
+For users, "deploy" means: add this GitHub repository as a Codex Git marketplace and install `cc@cc-plugin-codex`.
+
+For contributors, the local development path remains: clone the repo, add `marketplace/` to Codex, and install `cc@cc-plugin-codex-local`.
+
+An npm wrapper could be added later, but it would only wrap these Codex marketplace commands unless the project also commits to publishing and maintaining a separate global CLI package.
+
+For maintainers, "release" means:
+
+1. Make source changes under `packages/`.
+2. Regenerate the marketplace tree with `node tools/package-marketplace.mjs --write`.
+3. Keep the root [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) pointing at `./marketplace/plugins/cc`.
+4. Verify with `node tools/package-marketplace.mjs --check`, local tests, smoke, and CI.
+5. Bump `packages/plugin-codex/.codex-plugin/plugin.json`.
+6. Commit, tag, and publish a GitHub release.
+
+The full procedure is in [`documentation/RELEASING.md`](documentation/RELEASING.md).
+
+## Development Setup
+
+Use npm for contributor workflows only:
+
+```bash
+npm ci
+npm run lint
+npm run typecheck
+npm test
+node tools/package-marketplace.mjs --check
+```
+
+When source files that ship in the plugin change, regenerate the marketplace copy before testing or releasing:
+
+```bash
+node tools/package-marketplace.mjs --write
+```
+
+`npm install` or `npm ci` does not install the plugin into Codex. It only installs this workspace's development dependencies.
+
+---
+
+## Current scope (what actually ships)
 
 - **One direction**: Codex → Claude Code.
-- **One transport**: `ClaudeBackgroundDriver` — uses `claude --bg`, `claude agents --json`, transcript JSONL, `claude logs`. **No PTY in v1.** No `claude -p` fallback in v1.
+- **One primary transport**: `ClaudeBackgroundDriver` — uses `claude --bg`, `claude agents --json`, transcript JSONL, `claude logs`, `claude attach`, and `claude stop`. It does not use `claude -p`.
 - **One host plugin**: Codex skills + manifest under `packages/plugin-codex/`.
-- **Session-per-job**: every `$claude-delegate` invocation creates a fresh background job. Multi-turn reuse, PTY attach, and companion-session models are deferred to a later plan.
-- **Five skills**: `$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`, `$claude-stop`. Review / adversarial-review skills come later.
+- **Session-per-job with follow-ups**: every `$claude-delegate` invocation creates a fresh background job. Continue an existing job with `$claude-followup <jobId>`; do not reuse `--name` as a session key.
+- **Fourteen skills**: `$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`.
 
 The full v1 plan, including every deliberately-deferred feature, lives at [`documentation/plan/0001-20260530-initial-plan/1-plan.md`](documentation/plan/0001-20260530-initial-plan/1-plan.md). It supersedes any conflicting framing in this README.
 
@@ -62,7 +196,7 @@ Driver
 └── dispose()                            → void
 ```
 
-Future-stage methods (`send` for prompt injection, `interrupt`, `resume`, `attach`, `logs`) are sketched as `// future:` comments so the interface evolution is visible but unimplemented.
+Follow-up prompt injection is implemented via PTY attach. Future-stage methods such as `interrupt` and deeper resume/attach controls are still explicit interface seams rather than broad refactors.
 
 ### 2. Background sessions, not `claude -p`
 
@@ -75,7 +209,7 @@ The `ClaudeBackgroundDriver` does not call `claude -p`. Instead it:
 - **Does not parse the interactive TUI byte stream.** The TUI is a human rendering layer, not a stable protocol.
 - **Does not use `claude -p` as a fallback in v1.** If the local Claude Code doesn't support background sessions, the doctor fails hard with upgrade instructions.
 
-This pillar replaces the earlier "PTY-driven TUI" framing. PTY attach is reserved for follow-up prompt injection and human permission handoff and is deferred to plan 0002.
+PTY attach is used for follow-up prompt injection and human permission handoff. The plugin still treats transcripts, sidecars, and job records as the semantic source of truth rather than scraping the TUI display.
 
 ### 3. Codex-first plugin shape
 

@@ -25,7 +25,7 @@ Behavior rules:
   `--mcp-config`, `--allow-edit`, `--json`.
 - `--name` is a **human-readable label**, not a session key. Every job gets a
   unique session name regardless: the dispatcher appends a random suffix, so the
-  real session name is `<your-name>-<random>` (v0.3.3). This means reusing the same
+  real session name is `<your-name>-<random>` (v0.3.4). This means reusing the same
   `--name` does NOT resume a job — it starts a fresh, isolated session. To continue
   an existing job, use `$claude-followup <jobId>` (the jobId from delegate's output),
   never a reused `--name`. Omitting `--name` is fine; the auto-generated name is

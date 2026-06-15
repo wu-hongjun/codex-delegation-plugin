@@ -1,7 +1,7 @@
 # TICKET: CC plugin — comprehensive depth test (living)
 
 **Type**: recurring QA ticket · **Owner**: maintainer · **Executor**: Codex
-**Current target**: `cc@cc-plugin-codex-local` **v0.3.4**
+**Current target**: `cc@cc-plugin-codex-local` **v0.3.5**
 **Status**: OPEN — awaiting next run
 
 ---

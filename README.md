@@ -215,7 +215,7 @@ PTY attach is used for follow-up prompt injection and human permission handoff. 
 
 Codex's plugin model is intentionally thinner than Claude Code's — skills are LLM-facing markdown wrappers that shell out to scripts. We embrace that and anchor every convention to the first-party catalogs at [`openai/plugins`](https://github.com/openai/plugins) (vendored at `references/codex-plugins-examples/`) and [`openai/skills`](https://github.com/openai/skills) (vendored at `references/codex-skills-examples/`):
 
-- Manifest at `.codex-plugin/plugin.json` — same shape as the ~148 examples in `references/codex-plugins-examples/plugins/`.
+- Manifest at `.codex-plugin/plugin.json` — same shape as the examples in `references/codex-plugins-examples/plugins/`.
 - Skills at `skills/<name>/SKILL.md` — same shape as `references/codex-skills-examples/skills/.system/` and `.curated/`.
 - One Node entry point (`scripts/cc.mjs`) handles every skill via subcommands.
 
@@ -247,7 +247,7 @@ cc-plugin-codex/
 ├── references/
 │   ├── codex-plugin-cc/               ← submodule, openai/codex-plugin-cc @ v1.0.4 (CC→Codex official plugin)
 │   ├── cc-plugin-codex/               ← submodule, pejmanjohn/cc-plugin-codex @ cb4a07c (Codex→CC community port)
-│   ├── codex-plugins-examples/        ← submodule, openai/plugins @ main (~148 first-party Codex plugin examples)
+│   ├── codex-plugins-examples/        ← submodule, openai/plugins @ main (first-party Codex plugin examples)
 │   ├── codex-skills-examples/         ← submodule, openai/skills @ main (curated/system Codex skills)
 │   ├── documentation-codex/           ← local snapshot of developers.openai.com/codex docs (28 files + github/)
 │   └── documentation-claudecode/      ← local snapshot of code.claude.com/docs (overview + CLI ref + index + summary)
@@ -263,7 +263,7 @@ cc-plugin-codex/
 |---|---|---|
 | `references/codex-plugin-cc` | `v1.0.4` (`807e03a`) | Canonical CC→Codex plugin. Source of the persistent-app-server / streaming-notification pattern we mirror in reverse. |
 | `references/cc-plugin-codex` | `cb4a07c` (12 commits past `v0.1.0`; no newer tag) | Community Codex→CC port. Useful reverse-port reference for skill names and dispatcher shape. |
-| `references/codex-plugins-examples` | `fef63ec` (`heads/main`, no tags) | `openai/plugins` — first-party Codex plugin manifests. Authoritative reference for `.codex-plugin/plugin.json`, `skills/`, `.app.json`, `.mcp.json`, `agents/`, `commands/`, `hooks.json` conventions. |
+| `references/codex-plugins-examples` | `c6ea566d` (`heads/main`, no tags) | `openai/plugins` — first-party Codex plugin manifests. Authoritative reference for `.codex-plugin/plugin.json`, `skills/`, `.app.json`, `.mcp.json`, `agents/`, `commands/`, `hooks.json` conventions. |
 | `references/codex-skills-examples` | `a8924c2` (`heads/main`, no tags) | `openai/skills` — curated + system Codex skills. Authoritative reference for `SKILL.md` format and the `$skill-installer` distribution flow. |
 
 Update with `git submodule update --remote --merge`.

@@ -32,6 +32,10 @@ Behavior rules:
   skill that is not installed as a Codex skill.
 - The dispatcher lists project `.claude/skills`, user `~/.claude/skills`, and
   skills from installed Claude Code plugin cache paths.
+- Duplicate skill names are reported, not hidden. JSON output includes
+  duplicate metadata (`duplicates`, `duplicateGroup`, `duplicateCount`,
+  `duplicateSourceRank`, `duplicateSource`, `duplicateAmbiguous`) so agents can
+  detect ambiguity before relying on a short slash invocation.
 - Claude Code skills are invoked in Claude prompts with `/skill-name`; when
   delegating, include the desired `/skill-name` explicitly in the prompt.
 - Forward `--json` only if the user explicitly asks for machine-readable output.

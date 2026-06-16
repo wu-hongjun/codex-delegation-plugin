@@ -446,6 +446,14 @@ skill is user-invocable:
 $claude-delegate "Use /pcb-optimize to audit this KiCad board layout. Report findings only."
 ```
 
+Duplicate skill names are reported instead of hidden. Human output marks them
+as ambiguous because Claude Code may namespace, reject, or otherwise
+disambiguate direct slash invocation differently from this catalog. JSON output
+keeps every skill entry and adds `counts.duplicateNames`, top-level
+`duplicates`, and per-skill `duplicateGroup`, `duplicateCount`,
+`duplicateSourceRank`, `duplicateSource`, and `duplicateAmbiguous` fields when
+a name appears more than once.
+
 Direct dispatcher equivalent:
 
 ```bash

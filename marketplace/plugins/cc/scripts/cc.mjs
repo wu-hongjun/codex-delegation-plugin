@@ -442,6 +442,79 @@ function collectClaudeSkillDir(root, source, errors) {
   return skills;
 }
 
+function claudeSkillSourceOrderRank(source) {
+  if (source?.type === 'project') return 0;
+  if (source?.type === 'user') return 1;
+  if (source?.type === 'plugin') return 2;
+  return 99;
+}
+
+function claudeSkillSourceOrderLabel(rank) {
+  if (rank === 0) return 'project';
+  if (rank === 1) return 'user';
+  if (rank === 2) return 'plugin';
+  return 'unknown';
+}
+
+function claudeSkillDuplicateRef(skill) {
+  return {
+    name: skill.name,
+    invocation: skill.invocation,
+    source: skill.source,
+    path: skill.path,
+  };
+}
+
+function annotateClaudeSkillDuplicates(skills) {
+  const byName = new Map();
+  for (const skill of skills) {
+    const group = byName.get(skill.name) ?? [];
+    group.push(skill);
+    byName.set(skill.name, group);
+  }
+
+  const duplicates = [];
+  for (const [name, group] of byName) {
+    if (group.length < 2) continue;
+
+    const ranked = [...group].sort((a, b) => {
+      const byRank = claudeSkillSourceOrderRank(a.source) - claudeSkillSourceOrderRank(b.source);
+      if (byRank !== 0) return byRank;
+      const bySource = String(a.source.label).localeCompare(String(b.source.label));
+      if (bySource !== 0) return bySource;
+      return a.path.localeCompare(b.path);
+    });
+
+    for (const skill of group) {
+      const rank = claudeSkillSourceOrderRank(skill.source);
+      skill.duplicateGroup = name;
+      skill.duplicateCount = group.length;
+      skill.duplicateSourceRank = rank;
+      skill.duplicateSource = claudeSkillSourceOrderLabel(rank);
+      skill.duplicateAmbiguous = true;
+    }
+
+    duplicates.push({
+      name,
+      invocation: `/${name}`,
+      count: group.length,
+      sourceOrder: ['project', 'user', 'plugin'],
+      resolution: {
+        status: 'ambiguous',
+        note: 'Duplicate invocation names are reported, not resolved. Claude Code may namespace, reject, or otherwise disambiguate direct slash invocation differently from this catalog.',
+      },
+      entries: ranked.map((skill) => ({
+        ...claudeSkillDuplicateRef(skill),
+        duplicateSourceRank: claudeSkillSourceOrderRank(skill.source),
+        duplicateSource: claudeSkillSourceOrderLabel(claudeSkillSourceOrderRank(skill.source)),
+      })),
+    });
+  }
+
+  duplicates.sort((a, b) => a.name.localeCompare(b.name));
+  return duplicates;
+}
+
 function readJsonFileIfPresent(path) {
   if (!existsSync(path)) return null;
   try {
@@ -536,6 +609,7 @@ function discoverClaudeSkills({ cwd = process.cwd(), env = process.env } = {}) {
   for (const skill of skills) {
     if (skill.source.type in bySource) bySource[skill.source.type]++;
   }
+  const duplicates = annotateClaudeSkillDuplicates(skills);
 
   return {
     claudeHome,
@@ -543,8 +617,10 @@ function discoverClaudeSkills({ cwd = process.cwd(), env = process.env } = {}) {
     counts: {
       total: skills.length,
       uniqueNames: new Set(skills.map((s) => s.name)).size,
+      duplicateNames: duplicates.length,
       ...bySource,
     },
+    duplicates,
     skills,
     warnings: errors,
   };
@@ -556,10 +632,15 @@ function formatClaudeSkills(catalog, json) {
   const { counts } = catalog;
   const lines = [
     `Claude Code skills — ${counts.total} installed (${counts.uniqueNames} unique name${counts.uniqueNames === 1 ? '' : 's'})`,
-    `  project: ${counts.project}  user: ${counts.user}  plugin: ${counts.plugin}`,
+    `  project: ${counts.project}  user: ${counts.user}  plugin: ${counts.plugin}  duplicate names: ${counts.duplicateNames}`,
     '',
     'Use these in delegated Claude prompts as /skill-name when the skill is user-invocable.',
   ];
+  if (counts.duplicateNames > 0) {
+    lines.push(
+      'Duplicate-name note: names are ambiguous; Claude Code may namespace or reject direct slash invocation. Use --json to inspect all entries.',
+    );
+  }
 
   if (catalog.skills.length === 0) {
     lines.push(
@@ -575,7 +656,8 @@ function formatClaudeSkills(catalog, json) {
           ? `${skill.source.plugin}${skill.source.version ? ` v${skill.source.version}` : ''}`
           : skill.source.label;
       const desc = skill.description ? ` — ${truncateOneLine(skill.description, 140)}` : '';
-      lines.push(`  ${invocable.padEnd(28)} [${source}]${desc}`);
+      const duplicate = skill.duplicateAmbiguous ? ' (duplicate name: ambiguous)' : '';
+      lines.push(`  ${invocable.padEnd(28)} [${source}]${duplicate}${desc}`);
     }
   }
 

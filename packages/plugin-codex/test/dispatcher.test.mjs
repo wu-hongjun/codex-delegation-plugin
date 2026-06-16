@@ -380,6 +380,54 @@ describe('skills command', () => {
     assert.equal(byName.get('demo-plugin-skill')?.userInvocable, false);
   });
 
+  it('annotates duplicate skill names as ambiguous metadata', () => {
+    writeMockClaudeSkill(join(WORK_DIR, '.claude', 'skills'), 'dup-skill', 'Project copy');
+    writeMockClaudeSkill(join(MOCK_HOME, 'skills'), 'dup-skill', 'User copy');
+    const installPath = writeMockInstalledClaudePlugin('demo-plugin@example-market');
+    writeMockClaudeSkill(join(installPath, 'skills'), 'dup-skill', 'Plugin copy');
+
+    const result = runDispatcher(['skills', '--json']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.counts.total, 3);
+    assert.equal(parsed.counts.uniqueNames, 1);
+    assert.equal(parsed.counts.duplicateNames, 1);
+    assert.equal(parsed.duplicates.length, 1);
+
+    const [duplicate] = parsed.duplicates;
+    assert.equal(duplicate.name, 'dup-skill');
+    assert.equal(duplicate.invocation, '/dup-skill');
+    assert.equal(duplicate.count, 3);
+    assert.deepEqual(duplicate.sourceOrder, ['project', 'user', 'plugin']);
+    assert.equal(duplicate.resolution.status, 'ambiguous');
+    assert.match(duplicate.resolution.note, /reported, not resolved/);
+    assert.deepEqual(
+      duplicate.entries.map((entry) => [
+        entry.source.type,
+        entry.duplicateSourceRank,
+        entry.duplicateSource,
+      ]),
+      [
+        ['project', 0, 'project'],
+        ['user', 1, 'user'],
+        ['plugin', 2, 'plugin'],
+      ],
+    );
+
+    const bySource = new Map(parsed.skills.map((skill) => [skill.source.type, skill]));
+    assert.equal(bySource.get('project')?.duplicateGroup, 'dup-skill');
+    assert.equal(bySource.get('project')?.duplicateCount, 3);
+    assert.equal(bySource.get('project')?.duplicateSourceRank, 0);
+    assert.equal(bySource.get('project')?.duplicateSource, 'project');
+    assert.equal(bySource.get('project')?.duplicateAmbiguous, true);
+    assert.equal(bySource.get('user')?.duplicateSourceRank, 1);
+    assert.equal(bySource.get('user')?.duplicateSource, 'user');
+    assert.equal(bySource.get('user')?.duplicateAmbiguous, true);
+    assert.equal(bySource.get('plugin')?.duplicateSourceRank, 2);
+    assert.equal(bySource.get('plugin')?.duplicateSource, 'plugin');
+    assert.equal(bySource.get('plugin')?.duplicateAmbiguous, true);
+  });
+
   it('human output explains /skill-name invocation', () => {
     writeMockClaudeSkill(join(MOCK_HOME, 'skills'), 'demo-user-skill', 'User demo skill');
     const result = runDispatcher(['skills']);
@@ -387,6 +435,17 @@ describe('skills command', () => {
     assert.match(result.stdout, /Claude Code skills/);
     assert.ok(result.stdout.includes('/demo-user-skill'), result.stdout);
     assert.ok(result.stdout.includes('/skill-name'), result.stdout);
+  });
+
+  it('human output notes duplicate skill ambiguity', () => {
+    writeMockClaudeSkill(join(WORK_DIR, '.claude', 'skills'), 'dup-skill', 'Project copy');
+    writeMockClaudeSkill(join(MOCK_HOME, 'skills'), 'dup-skill', 'User copy');
+
+    const result = runDispatcher(['skills']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.match(result.stdout, /duplicate names: 1/);
+    assert.match(result.stdout, /Duplicate-name note: names are ambiguous/);
+    assert.match(result.stdout, /duplicate name: ambiguous/);
   });
 
   it('rejects --allow-edit because the command is read-only', () => {

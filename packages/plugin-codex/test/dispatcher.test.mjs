@@ -145,6 +145,55 @@ function parseJson(stdout) {
   return JSON.parse(stdout.trim());
 }
 
+function writeMockClaudeSkill(root, name, description, extraFrontmatter = '') {
+  const skillDir = join(root, name);
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(
+    join(skillDir, 'SKILL.md'),
+    [
+      '---',
+      `name: ${name}`,
+      `description: "${description}"`,
+      extraFrontmatter,
+      '---',
+      '',
+      `# ${name}`,
+      '',
+    ]
+      .filter((line) => line !== '')
+      .join('\n'),
+  );
+  return skillDir;
+}
+
+function writeMockInstalledClaudePlugin(pluginRef, version = '1.2.3') {
+  const [pluginName, marketplaceName] = pluginRef.split('@');
+  const installPath = join(MOCK_HOME, 'plugins', 'cache', marketplaceName, pluginName, version);
+  mkdirSync(join(MOCK_HOME, 'plugins'), { recursive: true });
+  mkdirSync(installPath, { recursive: true });
+  writeFileSync(
+    join(MOCK_HOME, 'plugins', 'installed_plugins.json'),
+    JSON.stringify(
+      {
+        version: 2,
+        plugins: {
+          [pluginRef]: [
+            {
+              scope: 'user',
+              installPath,
+              version,
+              installedAt: new Date().toISOString(),
+            },
+          ],
+        },
+      },
+      null,
+      2,
+    ),
+  );
+  return installPath;
+}
+
 /**
  * Write a synthetic completed job record + result file directly into TMP_HOME/jobs/.
  * @param {{
@@ -280,6 +329,71 @@ describe('setup --json', () => {
     );
     assert.deepEqual(ptyBuild.capabilities, ['followup']);
   });
+
+  it('includes an informational Claude Code skills catalog probe', () => {
+    writeMockClaudeSkill(join(MOCK_HOME, 'skills'), 'demo-user-skill', 'User demo skill');
+    const installPath = writeMockInstalledClaudePlugin('demo-plugin@example-market');
+    writeMockClaudeSkill(join(installPath, 'skills'), 'demo-plugin-skill', 'Plugin demo skill');
+
+    const result = runDispatcher(['setup', '--json']);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    const probe = parsed.probes.find((p) => p.name === 'claude-skills');
+    assert.ok(
+      probe,
+      `expected claude-skills probe in setup output; got names: ${parsed.probes.map((p) => p.name).join(', ')}`,
+    );
+    assert.deepEqual(probe.capabilities, []);
+    assert.equal(probe.status, 'ok');
+    assert.equal(probe.evidence.counts.total, 2);
+    assert.deepEqual(probe.evidence.skills.map((s) => s.name).sort(), [
+      'demo-plugin-skill',
+      'demo-user-skill',
+    ]);
+  });
+});
+
+// ---------- Claude Code skill catalog ----------
+
+describe('skills command', () => {
+  it('lists user and installed-plugin Claude Code skills as JSON', () => {
+    writeMockClaudeSkill(join(MOCK_HOME, 'skills'), 'demo-user-skill', 'User demo skill');
+    const installPath = writeMockInstalledClaudePlugin('demo-plugin@example-market');
+    writeMockClaudeSkill(
+      join(installPath, 'skills'),
+      'demo-plugin-skill',
+      'Plugin demo skill',
+      'user-invocable: false',
+    );
+
+    const result = runDispatcher(['skills', '--json']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.counts.total, 2);
+    assert.equal(parsed.counts.user, 1);
+    assert.equal(parsed.counts.plugin, 1);
+    const byName = new Map(parsed.skills.map((s) => [s.name, s]));
+    assert.equal(byName.get('demo-user-skill')?.invocation, '/demo-user-skill');
+    assert.equal(byName.get('demo-user-skill')?.source?.type, 'user');
+    assert.equal(byName.get('demo-plugin-skill')?.source?.plugin, 'demo-plugin@example-market');
+    assert.equal(byName.get('demo-plugin-skill')?.userInvocable, false);
+  });
+
+  it('human output explains /skill-name invocation', () => {
+    writeMockClaudeSkill(join(MOCK_HOME, 'skills'), 'demo-user-skill', 'User demo skill');
+    const result = runDispatcher(['skills']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.match(result.stdout, /Claude Code skills/);
+    assert.ok(result.stdout.includes('/demo-user-skill'), result.stdout);
+    assert.ok(result.stdout.includes('/skill-name'), result.stdout);
+  });
+
+  it('rejects --allow-edit because the command is read-only', () => {
+    const result = runDispatcher(['skills', '--allow-edit']);
+    assert.equal(result.status, 2, `expected exit 2; stderr: ${result.stderr}`);
+    assert.ok((result.stderr + result.stdout).includes('--allow-edit'));
+  });
 });
 
 // ---------- Test 2: setup (human output) ----------
@@ -311,6 +425,7 @@ describe('setup (human output)', () => {
       'claude-bg-no-prompt',
       'sidecar-jobs-dir',
       'pty-build',
+      'claude-skills',
     ];
 
     for (const probe of expectedProbes) {
@@ -7887,8 +8002,7 @@ describe('workflows does not require --yes (read-only, no privacy ack needed)', 
 // ---------- T7: version reporting consistency (Plan 0012) ----------
 
 describe('dispatcher pluginVersion matches .codex-plugin/plugin.json (Plan 0012 T7)', () => {
-  it('job record written by delegate --yes contains the canonical plugin version, not 0.0.0', () => {
-    // Read the canonical version dynamically so this test survives future bumps.
+  function canonicalPluginVersion() {
     const pluginJsonPath = join(
       REPO_ROOT,
       'packages',
@@ -7896,7 +8010,41 @@ describe('dispatcher pluginVersion matches .codex-plugin/plugin.json (Plan 0012 
       '.codex-plugin',
       'plugin.json',
     );
-    const canonicalVersion = JSON.parse(readFileSync(pluginJsonPath, 'utf8')).version;
+    return JSON.parse(readFileSync(pluginJsonPath, 'utf8')).version;
+  }
+
+  it('prints the canonical plugin version with --version', () => {
+    const canonicalVersion = canonicalPluginVersion();
+    const result = runDispatcher(['--version']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.equal(result.stdout.trim(), canonicalVersion);
+  });
+
+  it('prints the canonical plugin version with version command', () => {
+    const canonicalVersion = canonicalPluginVersion();
+    const result = runDispatcher(['version']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.equal(result.stdout.trim(), canonicalVersion);
+  });
+
+  it('prints machine-readable plugin version with --version --json', () => {
+    const canonicalVersion = canonicalPluginVersion();
+    const result = runDispatcher(['--version', '--json']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.deepEqual(JSON.parse(result.stdout), { ok: true, version: canonicalVersion });
+  });
+
+  it('does not treat --version after -- as a global version request', () => {
+    const canonicalVersion = canonicalPluginVersion();
+    const result = runDispatcher(['delegate', '--yes', '--', '--version']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.notEqual(result.stdout.trim(), canonicalVersion);
+    assert.match(result.stdout, /job_[a-z0-9]+_[a-f0-9]{8}/);
+  });
+
+  it('job record written by delegate --yes contains the canonical plugin version, not 0.0.0', () => {
+    // Read the canonical version dynamically so this test survives future bumps.
+    const canonicalVersion = canonicalPluginVersion();
     assert.ok(
       typeof canonicalVersion === 'string' && canonicalVersion !== '0.0.0',
       `plugin.json should have a real version, got: ${canonicalVersion}`,

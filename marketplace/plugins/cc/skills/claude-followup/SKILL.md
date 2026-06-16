@@ -11,8 +11,9 @@ Claude background job created by `$claude-delegate`.
    The first token after `$claude-followup` is the job id (or a job-id prefix).
    The remaining text is the follow-up prompt.
 
-2. Resolve `<plugin-root>` as the directory two levels above this `SKILL.md` file
-   (so `<plugin-root>/scripts/cc.mjs` is the dispatcher).
+2. Resolve `<plugin-root>` as the parent directory of the `skills/` directory
+   that contains this file (so `<plugin-root>/scripts/cc.mjs` is the
+   dispatcher). Confirm `<plugin-root>/scripts/cc.mjs` exists before running.
 
 3. Run the dispatcher with the follow-up prompt passed positionally after `--`:
 

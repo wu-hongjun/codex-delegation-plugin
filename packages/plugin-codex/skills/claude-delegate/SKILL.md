@@ -3,14 +3,19 @@ name: claude-delegate
 description: Delegate a coding task to Claude Code as a background sub-agent.
 ---
 
-You are the Codex skill wrapper for the Claude Companion dispatcher.
+You are the Codex skill wrapper for the cc dispatcher.
 
-Resolve `<plugin-root>` as the directory two levels above this `SKILL.md` file
-(so `<plugin-root>/scripts/cc.mjs` is the dispatcher).
+Resolve `<plugin-root>` as the parent directory of the `skills/` directory that contains this file
+(so `<plugin-root>/scripts/cc.mjs` is the dispatcher). Confirm `<plugin-root>/scripts/cc.mjs` exists before running.
 
 Run:
 
     node "<plugin-root>/scripts/cc.mjs" delegate -- "<task prompt>"
+
+Forwarded flags go before `--`; everything after `--` is the prompt verbatim.
+Example:
+
+    node "<plugin-root>/scripts/cc.mjs" delegate --model claude-opus-4-8 --name audit -- "<task prompt>"
 
 Return the dispatcher's stdout verbatim. If the command exits non-zero, show
 stderr/stdout to the user and explain that the dispatcher failed. Do not
@@ -33,7 +38,7 @@ Behavior rules:
   `--json`.
 - `--name` is a **human-readable label**, not a session key. Every job gets a
   unique session name regardless: the dispatcher appends a random suffix, so the
-  real session name is `<your-name>-<random>` (v0.3.4). This means reusing the same
+  real session name is `<your-name>-<random>` (since v0.3.4). This means reusing the same
   `--name` does NOT resume a job — it starts a fresh, isolated session. To continue
   an existing job, use `$claude-followup <jobId>` (the jobId from delegate's output),
   never a reused `--name`. Omitting `--name` is fine; the auto-generated name is

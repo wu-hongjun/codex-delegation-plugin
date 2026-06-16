@@ -171,7 +171,7 @@ node tools/package-marketplace.mjs --check
 
 `--check` enforces:
 
-- Source ↔ marketplace byte-identity for all 26 derived files
+- Source ↔ marketplace byte-identity for all 27 derived files
   (`marketplace/MANIFEST.md` allowlist).
 - No excluded categories appear under
   `marketplace/plugins/cc/` (`marketplace/EXCLUSIONS.md`
@@ -182,7 +182,7 @@ node tools/package-marketplace.mjs --check
   `marketplace/.agents/plugins/marketplace.json` parses and has the
   expected `name`.
 
-Expected output: `check: OK — 26 derived files match source, 64
+Expected output: `check: OK — 27 derived files match source, 64
 bundled-dep files match source, 3 synthesized package.json files
 match canonical shape, 1 marketplace-owned files present, no
 unexpected files.`
@@ -282,12 +282,13 @@ skill is recognized:
 - `$claude-batch`
 - `$claude-deep-research`
 - `$claude-workflows`
+- `$claude-skills`
 
 Pass criteria:
 
 - `$claude-setup` is the gate skill: it must return an `ok` or `warn`
   aggregate status, not an unknown-skill error.
-- The other thirteen skills must not return `unknown skill` or
+- The other fourteen skills must not return `unknown skill` or
   `unrecognized skill` when invoked or shown in Codex skill discovery.
 - A skill that requires a job-id may stop at its expected
   usage-or-error message. That still counts as recognized for smoke

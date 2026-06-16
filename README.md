@@ -14,7 +14,7 @@ The runtime is structured as a `Driver` interface with one implementation today 
 
 This repo is the cc-plugin-codex workspace. Different surfaces target different audiences:
 
-- **Install / use the plugin (end users):** start with the GitHub install commands below, then see [`marketplace/plugins/cc/README.md`](marketplace/plugins/cc/README.md) for verify / upgrade / uninstall / troubleshooting + the 14-skill list.
+- **Install / use the plugin (end users):** start with the GitHub install commands below, then see [`marketplace/plugins/cc/README.md`](marketplace/plugins/cc/README.md) for verify / upgrade / uninstall / troubleshooting + the 15-skill list.
 - **Public Git marketplace:** [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) points Codex at the committed plugin payload under [`marketplace/plugins/cc/`](marketplace/plugins/cc/).
 - **Local marketplace tree:** [`marketplace/`](marketplace/) — still available for contributor installs from a checkout.
 - **Full plugin docs (developers + contributors):** [`packages/plugin-codex/README.md`](packages/plugin-codex/README.md) — comprehensive runtime, dispatcher, skill, and architecture docs.
@@ -172,7 +172,7 @@ node tools/package-marketplace.mjs --write
 - **One primary transport**: `ClaudeBackgroundDriver` — uses `claude --bg`, `claude agents --json`, transcript JSONL, `claude logs`, `claude attach`, and `claude stop`. It does not use `claude -p`.
 - **One host plugin**: Codex skills + manifest under `packages/plugin-codex/`.
 - **Session-per-job with follow-ups**: every `$claude-delegate` invocation creates a fresh background job. Continue an existing job with `$claude-followup <jobId>`; do not reuse `--name` as a session key.
-- **Fourteen skills**: `$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`.
+- **Fifteen skills**: `$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`, `$claude-skills`.
 
 The full v1 plan, including every deliberately-deferred feature, lives at [`documentation/plan/0001-20260530-initial-plan/1-plan.md`](documentation/plan/0001-20260530-initial-plan/1-plan.md). It supersedes any conflicting framing in this README.
 

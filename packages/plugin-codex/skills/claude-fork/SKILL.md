@@ -3,11 +3,11 @@ name: claude-fork
 description: Fork a Claude Code subagent for a directive (spawns a parallel subagent in a background session).
 ---
 
-You are the Codex skill wrapper for the Claude Companion dispatcher's fork
+You are the Codex skill wrapper for the cc dispatcher's fork
 subcommand.
 
-Resolve `<plugin-root>` as the directory two levels above this `SKILL.md` file
-(so `<plugin-root>/scripts/cc.mjs` is the dispatcher).
+Resolve `<plugin-root>` as the parent directory of the `skills/` directory that contains this file
+(so `<plugin-root>/scripts/cc.mjs` is the dispatcher). Confirm `<plugin-root>/scripts/cc.mjs` exists before running.
 
 Run:
 

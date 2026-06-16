@@ -8,7 +8,7 @@ Key design choice: this v1 uses Claude Code background sessions directly and doe
 
 ## Current v1 scope
 
-Fourteen skills are available:
+Fifteen skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
 - **`$claude-delegate`** — start a new background session for a task
@@ -24,6 +24,7 @@ Fourteen skills are available:
 - **`$claude-batch`** — run a batch of parallel Claude Code instructions via the Batch Parallel Work Orchestration runtime (added in plan 0011)
 - **`$claude-deep-research`** — run a Claude Code `/deep-research` workflow with multi-agent fan-out, WebSearch, and cross-checked citations (added in plan 0013)
 - **`$claude-workflows`** — list and inspect Claude Code workflow background sessions started via `$claude-workflow` (added in plan 0016)
+- **`$claude-skills`** — list Claude Code skills visible to delegated Claude sessions
 
 Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
 
@@ -81,7 +82,7 @@ historical context, see Plan 0006 T2 in
 
 Run the setup skill to probe your environment:
 
-```bash
+```text
 $claude-setup
 ```
 
@@ -103,7 +104,7 @@ node packages/plugin-codex/scripts/cc.mjs setup
 
 Check cc-plugin-codex readiness. Probes Node version, Codex, Claude binary, authentication, background-session support, agents JSON, transcript paths, and workspace permissions.
 
-```bash
+```text
 $claude-setup
 ```
 
@@ -111,7 +112,7 @@ $claude-setup
 
 Delegate a coding task to Claude Code. Starts a new background session and prints the job ID.
 
-```bash
+```text
 $claude-delegate "Inspect this repo and summarize TODOs. Do not edit files."
 ```
 
@@ -125,7 +126,7 @@ Fresh-session commands (`$claude-delegate`, `$claude-workflow`, `$claude-goal`, 
 
 Trigger a Claude Code dynamic workflow. Workflows use Claude Code's built-in workflow engine to plan and execute multi-phase, multi-agent tasks and return a job ID for async result retrieval via `$claude-result` and `$claude-status`.
 
-```bash
+```text
 $claude-workflow "audit every fetch() call and propose a migration to HttpClient"
 ```
 
@@ -166,7 +167,7 @@ node packages/plugin-codex/scripts/cc.mjs workflow "audit every fetch() call and
 
 Set a goal condition for a Claude Code background session. The runtime tracks goal-completion automatically — Claude Code keeps working until the stated condition is met or the session is stopped.
 
-```bash
+```text
 $claude-goal "all unit tests in src/utils/ pass"
 ```
 
@@ -207,7 +208,7 @@ node packages/plugin-codex/scripts/cc.mjs goal -- "all unit tests in src/utils/ 
 
 Fork a Claude Code subagent for a directive. The `/fork` slash command spawns a real subagent process that executes the directive independently.
 
-```bash
+```text
 $claude-fork "build a proof-of-concept for the new rate-limiter"
 ```
 
@@ -248,7 +249,7 @@ node packages/plugin-codex/scripts/cc.mjs fork -- "build a proof-of-concept for 
 
 Run a batch of parallel Claude Code instructions via the Batch Parallel Work Orchestration runtime. The `/batch` slash command injects a `# Batch: Parallel Work Orchestration` system prompt that drives research, planning, and parallel execution phases.
 
-```bash
+```text
 $claude-batch "migrate all usages of the old API to the new one"
 ```
 
@@ -289,7 +290,7 @@ node packages/plugin-codex/scripts/cc.mjs batch -- "migrate all usages of the ol
 
 Run a Claude Code `/deep-research` workflow as a background job. The `/deep-research` slash command triggers Claude's bundled workflow runtime, which fans out parallel web searches, fetches sources, adversarially verifies claims, and synthesizes a cited report.
 
-```bash
+```text
 $claude-deep-research "What are the main tradeoffs between B-trees and LSM-trees for write-heavy workloads?"
 ```
 
@@ -332,7 +333,7 @@ node packages/plugin-codex/scripts/cc.mjs deep-research -- "What are the main tr
 
 List all delegated jobs in the current workspace with their live status.
 
-```bash
+```text
 $claude-status
 $claude-status --job <jobId> --json --compact
 $claude-status --limit 20 --stored-status running
@@ -348,7 +349,7 @@ status before the list is reconciled.
 
 Send a follow-up instruction to an existing Claude background job. Useful while a job is in `awaiting_followup` (recently completed; session still live) and you want the next turn without starting a new delegation.
 
-```bash
+```text
 $claude-followup <jobId> -- "Now sort the TODOs by file name and print the count."
 ```
 
@@ -375,7 +376,7 @@ These configure a *new* Claude session; passing them to `$claude-followup` produ
 Retrieve the final assistant message and log paths for a completed job or the
 latest completed turn.
 
-```bash
+```text
 $claude-result job_mpt98g9g_b61e09f1
 ```
 
@@ -388,7 +389,7 @@ and may contain TUI control sequences around permission prompts.
 
 Terminate a background session. The job will be marked `stopped` and can still be accessed via `result`.
 
-```bash
+```text
 $claude-stop job_mpt98g9g_b61e09f1
 ```
 
@@ -398,13 +399,13 @@ Optional cleanup. Not required before calling `result`.
 
 List and inspect Claude Code workflow-like background sessions started via `$claude-workflow` or `$claude-deep-research`.
 
-```bash
+```text
 $claude-workflows
 ```
 
 With a job ID, drill into a single workflow session for subagent metadata and phase records:
 
-```bash
+```text
 $claude-workflows <jobId>
 ```
 
@@ -427,14 +428,39 @@ Direct dispatcher equivalent:
 node packages/plugin-codex/scripts/cc.mjs workflows
 ```
 
+### $claude-skills
+
+List Claude Code skills visible to delegated Claude sessions. This reads project
+`.claude/skills`, user `~/.claude/skills`, and skills from installed Claude
+Code plugin cache paths.
+
+```text
+$claude-skills
+$claude-skills --json
+```
+
+Use the listed skills in delegated Claude prompts as `/skill-name` when the
+skill is user-invocable:
+
+```text
+$claude-delegate "Use /pcb-optimize to audit this KiCad board layout. Report findings only."
+```
+
+Direct dispatcher equivalent:
+
+```bash
+node packages/plugin-codex/scripts/cc.mjs skills --json
+```
+
 ## Direct dispatcher usage
 
-All fourteen commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All fifteen skill commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-codex/scripts/cc.mjs setup
 node packages/plugin-codex/scripts/cc.mjs delegate --yes -- "Inspect this repo."
 node packages/plugin-codex/scripts/cc.mjs status
+node packages/plugin-codex/scripts/cc.mjs skills --json
 node packages/plugin-codex/scripts/cc.mjs followup <jobId> -- "Next instruction."
 node packages/plugin-codex/scripts/cc.mjs result <jobId>
 node packages/plugin-codex/scripts/cc.mjs stop <jobId>
@@ -473,7 +499,7 @@ Plan 0002 adds follow-up injection: after `$claude-delegate` completes its first
 
 Typical flow:
 
-```bash
+```text
 $claude-delegate "Inspect this repo and summarize TODOs. Do not edit files."
 $claude-status
 $claude-followup <jobId> -- "Now sort the TODOs by file name and print the count."
@@ -813,7 +839,7 @@ Use the printed `Claude session` short ID. Select `View raw script` to inspect t
 
 **Cancel**: To stop a running workflow from the Codex side:
 
-```bash
+```text
 $claude-stop <jobId>
 ```
 
@@ -936,10 +962,14 @@ The plugin reads Claude's per-job sidecar at `~/.claude/jobs/<shortId>/state.jso
 
 **Cause**: After attaching to the Claude PTY, the dispatcher waits a short period for the terminal handshake to settle before writing the follow-up prompt. On slower machines or high-load environments, the default wait (2000 ms) may not be sufficient.
 
-**Resolution**: Set `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` to a higher value before running `$claude-followup`:
+**Resolution**: Start Codex with `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` set to a higher value, then run `$claude-followup` inside Codex:
 
 ```bash
-CC_PLUGIN_CODEX_ATTACH_WARMUP_MS=4000 $claude-followup <jobId> "your follow-up prompt"
+CC_PLUGIN_CODEX_ATTACH_WARMUP_MS=4000 codex
+```
+
+```text
+$claude-followup <jobId> -- "your follow-up prompt"
 ```
 
 Acceptable values: any non-negative integer (milliseconds). Use `0` only in mock-driven test environments where the PTY responds instantly — setting it to `0` in a real Claude session will cause the follow-up prompt to be dropped.

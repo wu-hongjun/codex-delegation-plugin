@@ -5,8 +5,9 @@
 // Exit codes: 0 success, 1 failure, 2 usage error
 
 import { createInterface } from 'node:readline/promises';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -360,9 +361,249 @@ async function ensureWorkspaceAck({
   process.exit(1);
 }
 
+// ---------- Claude Code skill discovery ----------
+
+function truncateOneLine(value, max = 180) {
+  const text = String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return text.length > max ? `${text.slice(0, max)}...` : text;
+}
+
+function parseSimpleFrontmatter(body) {
+  const match = /^---\s*\n([\s\S]*?)\n---/.exec(body);
+  if (!match) return {};
+  const out = {};
+  for (const line of match[1].split('\n')) {
+    const idx = line.indexOf(':');
+    if (idx === -1) continue;
+    const key = line.slice(0, idx).trim();
+    let value = line.slice(idx + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+function readClaudeSkill(skillDir, source) {
+  const skillPath = join(skillDir, 'SKILL.md');
+  const body = readFileSync(skillPath, 'utf8');
+  const fm = parseSimpleFrontmatter(body);
+  const fallbackName = basename(skillDir);
+  const name = truncateOneLine(fm.name || fallbackName, 80);
+  const userInvocable =
+    fm['user-invocable'] === undefined ? true : String(fm['user-invocable']) !== 'false';
+  return {
+    name,
+    invocation: `/${name}`,
+    description: truncateOneLine(fm.description || '', 360),
+    userInvocable,
+    path: skillPath,
+    source,
+  };
+}
+
+function collectClaudeSkillDir(root, source, errors) {
+  if (!existsSync(root)) return [];
+  let stat;
+  try {
+    stat = statSync(root);
+  } catch (err) {
+    errors.push({ root, error: err instanceof Error ? err.message : String(err) });
+    return [];
+  }
+  if (!stat.isDirectory()) return [];
+
+  const skills = [];
+  let entries = [];
+  try {
+    entries = readdirSync(root, { withFileTypes: true });
+  } catch (err) {
+    errors.push({ root, error: err instanceof Error ? err.message : String(err) });
+    return [];
+  }
+
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    const skillDir = join(root, entry.name);
+    const skillPath = join(skillDir, 'SKILL.md');
+    if (!existsSync(skillPath)) continue;
+    try {
+      skills.push(readClaudeSkill(skillDir, source));
+    } catch (err) {
+      errors.push({ root: skillDir, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+  return skills;
+}
+
+function readJsonFileIfPresent(path) {
+  if (!existsSync(path)) return null;
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function installedClaudePluginEntries(claudeHome) {
+  const installedPath = join(claudeHome, 'plugins', 'installed_plugins.json');
+  const installed = readJsonFileIfPresent(installedPath);
+  if (
+    !installed ||
+    typeof installed !== 'object' ||
+    !installed.plugins ||
+    typeof installed.plugins !== 'object'
+  ) {
+    return [];
+  }
+
+  const entries = [];
+  for (const [pluginRef, installs] of Object.entries(installed.plugins)) {
+    if (!Array.isArray(installs)) continue;
+    for (const install of installs) {
+      if (!install || typeof install !== 'object') continue;
+      if (typeof install.installPath !== 'string' || install.installPath.length === 0) continue;
+      entries.push({
+        pluginRef,
+        installPath: install.installPath,
+        version: typeof install.version === 'string' ? install.version : null,
+        scope: typeof install.scope === 'string' ? install.scope : null,
+      });
+    }
+  }
+  return entries;
+}
+
+function discoverClaudeSkills({ cwd = process.cwd(), env = process.env } = {}) {
+  const claudeHome = env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME || join(homedir(), '.claude');
+  const errors = [];
+  const roots = [];
+  const skills = [];
+
+  const projectRoot = join(cwd, '.claude', 'skills');
+  roots.push({ sourceType: 'project', root: projectRoot });
+  skills.push(
+    ...collectClaudeSkillDir(
+      projectRoot,
+      { type: 'project', label: 'project .claude/skills' },
+      errors,
+    ),
+  );
+
+  const userRoot = join(claudeHome, 'skills');
+  roots.push({ sourceType: 'user', root: userRoot });
+  skills.push(
+    ...collectClaudeSkillDir(userRoot, { type: 'user', label: '~/.claude/skills' }, errors),
+  );
+
+  for (const plugin of installedClaudePluginEntries(claudeHome)) {
+    const root = join(plugin.installPath, 'skills');
+    roots.push({
+      sourceType: 'plugin',
+      root,
+      plugin: plugin.pluginRef,
+      version: plugin.version,
+      scope: plugin.scope,
+    });
+    skills.push(
+      ...collectClaudeSkillDir(
+        root,
+        {
+          type: 'plugin',
+          label: plugin.pluginRef,
+          plugin: plugin.pluginRef,
+          version: plugin.version,
+          scope: plugin.scope,
+        },
+        errors,
+      ),
+    );
+  }
+
+  skills.sort((a, b) => {
+    const byName = a.name.localeCompare(b.name);
+    if (byName !== 0) return byName;
+    return String(a.source.label).localeCompare(String(b.source.label));
+  });
+
+  const bySource = { project: 0, user: 0, plugin: 0 };
+  for (const skill of skills) {
+    if (skill.source.type in bySource) bySource[skill.source.type]++;
+  }
+
+  return {
+    claudeHome,
+    roots,
+    counts: {
+      total: skills.length,
+      uniqueNames: new Set(skills.map((s) => s.name)).size,
+      ...bySource,
+    },
+    skills,
+    warnings: errors,
+  };
+}
+
+function formatClaudeSkills(catalog, json) {
+  if (json) return JSON.stringify({ ok: true, ...catalog }, null, 2);
+
+  const { counts } = catalog;
+  const lines = [
+    `Claude Code skills — ${counts.total} installed (${counts.uniqueNames} unique name${counts.uniqueNames === 1 ? '' : 's'})`,
+    `  project: ${counts.project}  user: ${counts.user}  plugin: ${counts.plugin}`,
+    '',
+    'Use these in delegated Claude prompts as /skill-name when the skill is user-invocable.',
+  ];
+
+  if (catalog.skills.length === 0) {
+    lines.push(
+      '',
+      'No Claude Code skills found in project, user, or installed-plugin skill roots.',
+    );
+  } else {
+    lines.push('');
+    for (const skill of catalog.skills) {
+      const invocable = skill.userInvocable ? skill.invocation : `${skill.invocation} (internal)`;
+      const source =
+        skill.source.type === 'plugin'
+          ? `${skill.source.plugin}${skill.source.version ? ` v${skill.source.version}` : ''}`
+          : skill.source.label;
+      const desc = skill.description ? ` — ${truncateOneLine(skill.description, 140)}` : '';
+      lines.push(`  ${invocable.padEnd(28)} [${source}]${desc}`);
+    }
+  }
+
+  if (catalog.warnings.length > 0) {
+    lines.push('', 'Warnings:');
+    for (const warning of catalog.warnings) {
+      lines.push(`  ${warning.root}: ${warning.error}`);
+    }
+  }
+
+  return lines.join('\n');
+}
+
 // ---------- main ----------
 
 const argv = process.argv.slice(2);
+const firstArg = argv[0] ?? '';
+const versionRequested =
+  argv.length > 0 && (firstArg === 'version' || firstArg === '--version' || firstArg === '-v');
+if (versionRequested) {
+  if (argv.includes('--json')) {
+    process.stdout.write(JSON.stringify({ ok: true, version: PLUGIN_VERSION }) + '\n');
+  } else {
+    process.stdout.write(`${PLUGIN_VERSION}\n`);
+  }
+  process.exit(0);
+}
+
 const KNOWN_COMMANDS = new Set([
   'setup',
   'delegate',
@@ -378,6 +619,7 @@ const KNOWN_COMMANDS = new Set([
   'review',
   'adversarial-review',
   'workflows',
+  'skills',
 ]);
 
 function inferCommandForParseError(args) {
@@ -452,6 +694,9 @@ try {
       break;
     case 'workflows':
       await cmdWorkflows(flags, positional, useJson);
+      break;
+    case 'skills':
+      await cmdSkills(flags, positional, useJson);
       break;
     default:
       process.stderr.write(
@@ -603,8 +848,28 @@ async function cmdSetup(_flags, json) {
     },
   };
 
+  /** @type {import('@cc-plugin-codex/runtime').DoctorExtraProbe} */
+  const claudeSkillsProbe = {
+    name: 'claude-skills',
+    capabilities: [],
+    run: async (opts) => {
+      const catalog = discoverClaudeSkills({
+        cwd: opts.cwd ?? process.cwd(),
+        env: opts.env ?? process.env,
+      });
+      const { counts } = catalog;
+      return {
+        name: 'claude-skills',
+        status: catalog.warnings.length > 0 ? 'warn' : 'ok',
+        detail: `found ${counts.total} Claude Code skill(s) (${counts.project} project, ${counts.user} user, ${counts.plugin} plugin; ${counts.uniqueNames} unique); run $claude-skills or cc skills --json for the catalog`,
+        evidence: catalog,
+      };
+    },
+  };
+
   const report = await runDoctor({
-    extraProbes: [ptyBuildExtraProbe, opus48Probe, workflowsProbe, bgExecProbe],
+    cwd: process.cwd(),
+    extraProbes: [ptyBuildExtraProbe, opus48Probe, workflowsProbe, bgExecProbe, claudeSkillsProbe],
   });
   process.stdout.write(formatSetup(report, json) + '\n');
   if (report.status === 'fail') {
@@ -2687,6 +2952,30 @@ async function cmdWorkflows(flags, positional, json) {
   }
 }
 
+// ---------- skills ----------
+
+async function cmdSkills(flags, positional, json) {
+  if (flags['allow-edit'] !== undefined) {
+    process.stderr.write(
+      formatError(
+        new Error('--allow-edit is not applicable to cc skills; this command is read-only.'),
+        'skills',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+  if (positional.length > 0) {
+    process.stderr.write(
+      formatError(new Error('skills does not take positional arguments.'), 'skills', json) + '\n',
+    );
+    process.exit(2);
+  }
+
+  const catalog = discoverClaudeSkills({ cwd: process.cwd(), env: process.env });
+  process.stdout.write(formatClaudeSkills(catalog, json) + '\n');
+}
+
 function printUsage(commandName = '') {
   const commandHelp = {
     workflow: [
@@ -2729,6 +3018,15 @@ function printUsage(commandName = '') {
       '',
       'Options: --all --json',
     ],
+    skills: [
+      'Usage: cc skills [--json]',
+      '',
+      'Read-only catalog of Claude Code skills visible to delegated Claude sessions.',
+      'Includes project .claude/skills, user ~/.claude/skills, and skills from installed Claude Code plugin cache paths.',
+      'Use listed skills in delegated prompts as /skill-name when user-invocable.',
+      '',
+      'Options: --json',
+    ],
   };
 
   if (commandName && Object.prototype.hasOwnProperty.call(commandHelp, commandName)) {
@@ -2760,9 +3058,11 @@ function printUsage(commandName = '') {
       '  adversarial-review <jobId-or-prefix> [--all] [--json] [--yes] [--model <model>] [--effort <effort>] [--permission-mode <mode>] [--blocking|--fail-on <gate>]',
       '                                            Fresh-session independent review of the latest non-review turn',
       '  workflows [<jobId>] [--all] [--json]      List workflow/deep-research sessions or drill into one (read-only; no subprocess spawned)',
+      '  skills [--json]                          List Claude Code skills visible to delegated Claude sessions',
+      '  version | --version                       Print the installed plugin version',
       '',
       'Flags:',
-      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch/deep-research/workflows)',
+      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch/deep-research/workflows/skills)',
       '  --compact                    Compact redacted JSON shape for delegate/status/result/stop',
       '  --job <jobId-or-prefix>      Select one job for status',
       '  --limit <n>                  Limit status lists after newest-first sorting (0 = no limit)',
@@ -2797,9 +3097,10 @@ function printUsage(commandName = '') {
       '  --verbose                    Forward verbose startup mode to Claude Code',
       '  --blocking                  Review gate alias for --fail-on high',
       '  --fail-on <gate>            Exit 1 after review output when gate trips: fail, any, nit, low, medium, high, blocker',
-      '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, workflow, goal, fork, batch, deep-research, and workflows',
+      '  --allow-edit                 Policy/framing flag (delegate, followup); does NOT bypass the privacy acknowledgement and is rejected by review, adversarial-review, workflow, goal, fork, batch, deep-research, workflows, and skills',
       '  --all                        Search all workspaces (status/result/stop/followup/review/adversarial-review)',
       '  --all-awaiting-followup      Bulk-stop all awaiting-followup jobs (stop only; combine with --all for every workspace)',
+      '  --version                    Print the installed plugin version',
       '  --help                       Show this help',
       '',
     ].join('\n'),

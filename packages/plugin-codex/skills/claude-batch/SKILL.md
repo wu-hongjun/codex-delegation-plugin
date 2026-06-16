@@ -3,15 +3,20 @@ name: claude-batch
 description: Run a batch of Claude Code instructions via the Batch Parallel Work Orchestration runtime.
 ---
 
-You are the Codex skill wrapper for the Claude Companion dispatcher's batch
+You are the Codex skill wrapper for the cc dispatcher's batch
 subcommand.
 
-Resolve `<plugin-root>` as the directory two levels above this `SKILL.md` file
-(so `<plugin-root>/scripts/cc.mjs` is the dispatcher).
+Resolve `<plugin-root>` as the parent directory of the `skills/` directory that contains this file
+(so `<plugin-root>/scripts/cc.mjs` is the dispatcher). Confirm `<plugin-root>/scripts/cc.mjs` exists before running.
 
 Run:
 
     node "<plugin-root>/scripts/cc.mjs" batch -- "<instruction>"
+
+Forwarded flags go before `--`; everything after `--` is the instruction
+verbatim. Example:
+
+    node "<plugin-root>/scripts/cc.mjs" batch --model claude-opus-4-8 --name migration -- "<instruction>"
 
 Return the dispatcher's stdout verbatim. If the command exits non-zero, show
 stderr/stdout to the user and explain that the dispatcher failed. Do not

@@ -35,6 +35,8 @@ const MARKETPLACE_JSON = resolve(MARKETPLACE_ROOT, '.agents', 'plugins', 'market
 const MARKETPLACE_PLUGIN_ROOT = resolve(MARKETPLACE_ROOT, 'plugins', 'cc');
 const MARKETPLACE_PLUGIN_JSON = resolve(MARKETPLACE_PLUGIN_ROOT, '.codex-plugin', 'plugin.json');
 const SOURCE_PLUGIN_JSON = resolve(SOURCE_PLUGIN_ROOT, '.codex-plugin', 'plugin.json');
+const SOURCE_PLUGIN_VERSION = JSON.parse(readFileSync(SOURCE_PLUGIN_JSON, 'utf8')).version;
+const BUNDLED_VERSION_MARKER = `${SOURCE_PLUGIN_VERSION}-bundled`;
 const MARKETPLACE_SCRIPTS_DIR = resolve(MARKETPLACE_PLUGIN_ROOT, 'scripts');
 const MARKETPLACE_ENTRY_SCRIPT = resolve(MARKETPLACE_SCRIPTS_DIR, 'cc.mjs');
 const MARKETPLACE_LIB_DIR = resolve(MARKETPLACE_SCRIPTS_DIR, 'lib');
@@ -66,6 +68,7 @@ const EXPECTED_SKILL_NAMES = [
   'claude-result',
   'claude-review',
   'claude-setup',
+  'claude-skills',
   'claude-status',
   'claude-stop',
   'claude-workflow',
@@ -266,7 +269,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   // Check 4: marketplace skills/ contains exactly the 8 expected directories
   // ========================================================================
 
-  it('marketplace skills/ contains exactly the 14 expected skill directories', () => {
+  it('marketplace skills/ contains exactly the 15 expected skill directories', () => {
     assert.ok(
       existsSync(MARKETPLACE_SKILLS_DIR),
       `marketplace skills/ directory not found at ${MARKETPLACE_SKILLS_DIR}`,
@@ -287,7 +290,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   // Check 5: each skill directory contains a non-empty SKILL.md
   // ========================================================================
 
-  it('each of the 14 skill directories contains a non-empty SKILL.md', () => {
+  it('each of the 15 skill directories contains a non-empty SKILL.md', () => {
     for (const skillName of EXPECTED_SKILL_NAMES) {
       const skillMdPath = join(MARKETPLACE_SKILLS_DIR, skillName, 'SKILL.md');
       assert.ok(
@@ -447,7 +450,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
 const MANIFEST_MD = resolve(MARKETPLACE_ROOT, 'MANIFEST.md');
 const PACKAGE_SCRIPT = resolve(REPO_ROOT, 'tools', 'package-marketplace.mjs');
 
-// Authoritative allowlist of the 26 derived files (relative to marketplace plugin root).
+// Authoritative allowlist of the 27 derived files (relative to marketplace plugin root).
 const DERIVED_FILES_ALLOWLIST = [
   '.codex-plugin/plugin.json',
   'scripts/cc.mjs',
@@ -475,6 +478,7 @@ const DERIVED_FILES_ALLOWLIST = [
   'skills/claude-batch/SKILL.md',
   'skills/claude-deep-research/SKILL.md',
   'skills/claude-workflows/SKILL.md',
+  'skills/claude-skills/SKILL.md',
 ];
 
 // Marketplace-owned files (present in plugin root but NOT derived from source).
@@ -596,10 +600,10 @@ describe('marketplace packaging procedure (Plan 0006 T4)', () => {
   });
 
   // ========================================================================
-  // T4-4: Source <-> marketplace byte-identity for all 26 derived files
+  // T4-4: Source <-> marketplace byte-identity for all 27 derived files
   // ========================================================================
 
-  it('all 26 derived files are byte-identical between source and marketplace', () => {
+  it('all 27 derived files are byte-identical between source and marketplace', () => {
     for (const rel of DERIVED_FILES_ALLOWLIST) {
       const srcPath = resolve(SOURCE_PLUGIN_ROOT, rel);
       const dstPath = resolve(MARKETPLACE_PLUGIN_ROOT, rel);
@@ -1163,6 +1167,7 @@ describe('marketplace bundled-dependency tree (Plan 0006 T9.5)', () => {
     assert.ok(existsSync(pkgPath), `runtime package.json not found at ${pkgPath}`);
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
     assert.equal(pkg.name, '@cc-plugin-codex/runtime', 'runtime package.json name');
+    assert.equal(pkg.version, BUNDLED_VERSION_MARKER, 'runtime package.json version marker');
     assert.equal(pkg.type, 'module', 'runtime package.json type');
     assert.equal(pkg.main, './dist/index.js', 'runtime package.json main');
     assert.equal(pkg?.engines?.node, '>=20', 'runtime package.json engines.node');
@@ -1227,6 +1232,7 @@ describe('marketplace bundled-dependency tree (Plan 0006 T9.5)', () => {
     assert.ok(existsSync(pkgPath), `driver package.json not found at ${pkgPath}`);
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
     assert.equal(pkg.name, '@cc-plugin-codex/driver-claude-code', 'driver package.json name');
+    assert.equal(pkg.version, BUNDLED_VERSION_MARKER, 'driver package.json version marker');
     assert.equal(pkg.type, 'module', 'driver package.json type');
     assert.equal(pkg.main, './dist/index.js', 'driver package.json main');
     assert.equal(pkg?.engines?.node, '>=20', 'driver package.json engines.node');
@@ -1237,8 +1243,8 @@ describe('marketplace bundled-dependency tree (Plan 0006 T9.5)', () => {
     );
     assert.equal(
       pkg?.dependencies?.['@cc-plugin-codex/runtime'],
-      '0.3.6-bundled',
-      'driver must pin @cc-plugin-codex/runtime to 0.3.6-bundled',
+      BUNDLED_VERSION_MARKER,
+      `driver must pin @cc-plugin-codex/runtime to ${BUNDLED_VERSION_MARKER}`,
     );
   });
 

@@ -32,6 +32,7 @@ const SKILL_NAMES = [
   'claude-batch',
   'claude-deep-research',
   'claude-workflows',
+  'claude-skills',
 ];
 
 /** Subcommand each skill must reference in its body. */
@@ -50,6 +51,7 @@ const SKILL_SUBCOMMANDS = {
   'claude-batch': 'batch',
   'claude-deep-research': 'deep-research',
   'claude-workflows': 'workflows',
+  'claude-skills': 'skills',
 };
 
 function skillPath(name) {
@@ -712,26 +714,26 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
     }
   });
 
-  it('has at least 14 entries after T4 additions', () => {
+  it('has at least 15 entries after Claude skill discovery addition', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.ok(
-      dp.length >= 14,
-      `interface.defaultPrompt must have at least 14 entries after T4; got ${dp.length}`,
+      dp.length >= 15,
+      `interface.defaultPrompt must have at least 15 entries; got ${dp.length}`,
     );
   });
 });
 
-describe('plugin.json.interface.defaultPrompt length is exactly 14 (v0.2.0 + claude-fork + claude-batch + claude-deep-research + claude-workflows contract)', () => {
-  it('array length equals 14', () => {
+describe('plugin.json.interface.defaultPrompt length is exactly 15 (adds claude-skills discovery)', () => {
+  it('array length equals 15', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      14,
-      `interface.defaultPrompt must have exactly 14 entries (v0.2.0 + claude-fork + claude-batch + claude-deep-research + claude-workflows contract); got ${dp.length}`,
+      15,
+      `interface.defaultPrompt must have exactly 15 entries; got ${dp.length}`,
     );
   });
 });
@@ -829,14 +831,14 @@ describe('no unexpected review-adjacent skill directories exist', () => {
 // ---------- T6: OQ-C defaultPrompt rewrites (entries #6-#9) ----------
 
 describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)', () => {
-  it('array length is exactly 14', () => {
+  it('array length is exactly 15', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      14,
-      `interface.defaultPrompt must have exactly 14 entries; got ${dp.length}`,
+      15,
+      `interface.defaultPrompt must have exactly 15 entries; got ${dp.length}`,
     );
   });
 
@@ -921,7 +923,7 @@ describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)'
   });
 });
 
-// ---------- T1 (Plan 0009): cross-skill chaining hints — all 14 skills ----------
+// ---------- T1 (Plan 0009): cross-skill chaining hints — all skills ----------
 
 describe('each SKILL.md ends with a "Next steps" subsection (T1 Plan 0009)', () => {
   for (const name of SKILL_NAMES) {
@@ -1499,6 +1501,18 @@ describe('plugin.json interface.defaultPrompt contains workflows entry (Plan 001
     assert.ok(
       dp.includes('List my Claude Code workflow sessions.'),
       `interface.defaultPrompt must contain "List my Claude Code workflow sessions."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+});
+
+describe('plugin.json interface.defaultPrompt contains Claude skills catalog entry', () => {
+  it('includes "List installed Claude Code skills."', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.includes('List installed Claude Code skills.'),
+      `interface.defaultPrompt must contain "List installed Claude Code skills."; got: ${JSON.stringify(dp)}`,
     );
   });
 });

@@ -26,7 +26,7 @@ This ticket is about making the release trail boring and auditable before the pl
 - `documentation/plan/0024-20260615-agent-parity-foundation/5-report.md` is missing.
 - `documentation/testing/tickets/TICKET-cc-depth-test.md:4`: current target is v0.3.6.
 - `documentation/testing/tickets/TICKET-cc-depth-test.md:187`: newest Results Log entry observed during audit was v0.3.4, not v0.3.6.
-- `tools/package-marketplace.mjs:141` to `173`: bundled runtime/driver package version markers are currently hard-coded as `0.3.6-bundled`, while `documentation/RELEASING.md:72` to `75` says they are synthesized from the source plugin version.
+- `tools/package-marketplace.mjs` must keep bundled runtime/driver package version markers derived from the source plugin version; this was tightened during the 2026-06-16 polish pass after the audit found the old hard-coded `0.3.6-bundled` literals.
 - Second-pass no-Bash audit (`job_mqfv74cx_4eb6098f`) confirmed the missing v0.3.6 depth-test evidence and found the earlier ticket filename evidence was wrong; Codex verified the filenames with `ls`.
 - Existing tests cover parts of this surface, but not all newly important release claims:
   - `packages/runtime/test/reconciler.test.mjs`
@@ -51,7 +51,7 @@ This ticket is about making the release trail boring and auditable before the pl
    - `cc result` availability when a latest completed result exists but the session is currently waiting for input.
    - Review parser behavior for in-progress review/meta text.
    - Marketplace version consistency and bundled marker consistency where not already covered.
-   - Add a guard that bundled `-bundled` markers are derived from the source plugin version or fail when they drift.
+   - Keep or extend the guard that bundled `-bundled` markers are derived from the source plugin version or fail when they drift.
 
 4. Add a final production smoke checklist.
    - Install or refresh released plugin locally.

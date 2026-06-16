@@ -3,11 +3,11 @@ name: claude-workflow
 description: Trigger a Claude Code dynamic workflow as a background sub-agent.
 ---
 
-You are the Codex skill wrapper for the Claude Companion dispatcher's workflow
+You are the Codex skill wrapper for the cc dispatcher's workflow
 subcommand.
 
-Resolve `<plugin-root>` as the directory two levels above this `SKILL.md` file
-(so `<plugin-root>/scripts/cc.mjs` is the dispatcher).
+Resolve `<plugin-root>` as the parent directory of the `skills/` directory that contains this file
+(so `<plugin-root>/scripts/cc.mjs` is the dispatcher). Confirm `<plugin-root>/scripts/cc.mjs` exists before running.
 
 Run:
 

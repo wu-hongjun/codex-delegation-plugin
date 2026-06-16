@@ -49,7 +49,7 @@
  * Not for CI: this script requires the real codex CLI on PATH. The CI
  * matrix never invokes this file. The static test
  * packages/plugin-codex/test/marketplace-smoke.test.mjs verifies the
- * script's shape (--help text, 14 skill names, isolation invariants,
+ * script's shape (--help text, 15 skill names, isolation invariants,
  * cleanup commands) without spawning codex.
  */
 
@@ -110,6 +110,7 @@ const SKILL_NAMES = [
   'claude-batch',
   'claude-deep-research',
   'claude-workflows',
+  'claude-skills',
 ];
 
 // ---------------------------------------------------------------------------
@@ -163,7 +164,7 @@ function printHelp() {
       'be run manually inside Codex. The helper prints the skill checklist',
       'after the automated install/list/version assertions pass.',
       '',
-      'Fourteen skills covered by the manual TUI checklist:',
+      'Fifteen skills covered by the manual TUI checklist:',
       ...SKILL_NAMES.map((s) => `  - $${s}`),
       '',
     ].join('\n'),
@@ -397,7 +398,7 @@ logStep('STEP 6: manual Codex TUI skill checklist (operator-driven)');
 process.stdout.write(
   [
     'The helper cannot drive the Codex TUI. Open Codex with this isolated',
-    `CODEX_HOME and verify each of the 14 skills below is recognized.`,
+    `CODEX_HOME and verify each of the 15 skills below is recognized.`,
     '',
     `  CODEX_HOME=${codexHome} codex`,
     '',

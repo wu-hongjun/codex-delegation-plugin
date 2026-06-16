@@ -77,7 +77,7 @@ If `$claude-setup` reports `ok` or `warn`, the install is complete.
 
 ## Skills
 
-After install, the plugin makes 14 skills available inside the Codex
+After install, the plugin makes 15 skills available inside the Codex
 TUI. Type the `$<name>` form at the Codex chat prompt.
 
 - `$claude-setup` — probes the local environment (Claude Code auth,
@@ -111,6 +111,8 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
   with multi-agent fan-out, WebSearch, and cross-checked citations.
 - `$claude-workflows` — lists and inspects Claude Code workflow
   background sessions started via `$claude-workflow`.
+- `$claude-skills` — lists Claude Code skills visible to delegated
+  Claude sessions, including user and installed-plugin skills.
 
 ### $claude-workflow
 
@@ -220,6 +222,18 @@ $claude-workflows <jobId>
 sessions (sessions whose name begins with `ultracode:`). The Claude Code
 `/workflows` TUI panel is session-scoped TUI-only and is a distinct surface.
 
+### $claude-skills
+
+Lists Claude Code skills visible to delegated Claude sessions. Read-only — no
+Claude Code session is spawned.
+
+```
+$claude-skills
+$claude-skills --json
+```
+
+Use listed user-invocable skills in delegated prompts as `/skill-name`.
+
 Each skill prints a usage message when invoked without the arguments
 it needs (e.g., a job id). That usage message is normal behaviour —
 it confirms the skill is registered and reachable. The full plugin
@@ -288,12 +302,12 @@ reinstall.
 
 Before release, run the smoke checklist in
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md).
-It verifies the local marketplace install and all 14 skill names
+It verifies the local marketplace install and all 15 skill names
 (`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`,
 `$claude-stop`, `$claude-followup`, `$claude-review`,
 `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`,
 `$claude-fork`, `$claude-batch`, `$claude-deep-research`,
-`$claude-workflows`) under an isolated `CODEX_HOME`.
+`$claude-workflows`, `$claude-skills`) under an isolated `CODEX_HOME`.
 
 ## Troubleshooting
 

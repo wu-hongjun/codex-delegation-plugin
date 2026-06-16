@@ -1,12 +1,12 @@
 ---
 name: claude-setup
-description: Check Claude Companion readiness across Codex, Claude Code, auth, transcripts, and daemon.
+description: Check CC plugin readiness across Codex, Claude Code, auth, transcripts, and daemon.
 ---
 
-You are the Codex skill wrapper for the Claude Companion dispatcher.
+You are the Codex skill wrapper for the cc dispatcher.
 
-Resolve `<plugin-root>` as the directory two levels above this `SKILL.md` file
-(so `<plugin-root>/scripts/cc.mjs` is the dispatcher).
+Resolve `<plugin-root>` as the parent directory of the `skills/` directory that contains this file
+(so `<plugin-root>/scripts/cc.mjs` is the dispatcher). Confirm `<plugin-root>/scripts/cc.mjs` exists before running.
 
 Run:
 
@@ -22,3 +22,7 @@ Once setup reports success, the user typically wants to:
 
 - `$claude-delegate` — start the first background job
 - `$claude-status` — verify the daemon is running and see existing jobs
+
+The first delegation in a workspace may require the plugin privacy
+acknowledgement. Surface the dispatcher's message to the user; do not add
+`--yes` unless the user explicitly asks for it.

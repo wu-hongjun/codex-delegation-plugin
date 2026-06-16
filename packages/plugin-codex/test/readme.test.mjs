@@ -1278,27 +1278,27 @@ describe('README.md adversarial-review section uses neutral usage wording (T10-o
 
 // ---------- T10-optional-B. Direct dispatcher usage mentions eight commands ----------
 
-describe('README.md Direct dispatcher usage mentions fourteen commands (T10-optional-B)', () => {
-  it('contains "fourteen commands" or "All fourteen commands"', () => {
+describe('README.md Direct dispatcher usage mentions fifteen skill commands (T10-optional-B)', () => {
+  it('contains "fifteen skill commands" or "All fifteen skill commands"', () => {
     const body = readReadme();
     const lower = body.toLowerCase();
     assert.ok(
-      lower.includes('fourteen commands') || lower.includes('all fourteen commands'),
-      'README.md Direct dispatcher usage section must say "fourteen commands" (updated from thirteen)',
+      lower.includes('fifteen skill commands') || lower.includes('all fifteen skill commands'),
+      'README.md Direct dispatcher usage section must say "fifteen skill commands"',
     );
   });
 });
 
-// ---------- T10-optional-C. Current v1 scope lists Thirteen skills ----------
+// ---------- T10-optional-C. Current v1 scope lists Fifteen skills ----------
 
-describe('README.md Current v1 scope lists Fourteen skills (T10-optional-C)', () => {
-  it('contains "Fourteen skills" in the Current v1 scope section', () => {
+describe('README.md Current v1 scope lists Fifteen skills (T10-optional-C)', () => {
+  it('contains "Fifteen skills" in the Current v1 scope section', () => {
     const body = readReadme();
     const section = extractSection(body, '## Current v1 scope');
     assert.ok(section !== null, 'README.md must have a ## Current v1 scope section');
     assert.ok(
-      section.includes('Fourteen skills'),
-      'README.md ## Current v1 scope must say "Fourteen skills" (updated from Thirteen skills)',
+      section.includes('Fifteen skills'),
+      'README.md ## Current v1 scope must say "Fifteen skills"',
     );
   });
 });

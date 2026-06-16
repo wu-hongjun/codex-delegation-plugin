@@ -73,6 +73,7 @@ const DERIVED_FILES = [
   'skills/claude-batch/SKILL.md',
   'skills/claude-deep-research/SKILL.md',
   'skills/claude-workflows/SKILL.md',
+  'skills/claude-skills/SKILL.md',
 ];
 
 /**
@@ -135,16 +136,29 @@ const NODEPTY_INCLUDE_DIRS = [
 ];
 const NODEPTY_INCLUDE_FILES = ['LICENSE', 'README.md'];
 
+function readSourcePluginVersion() {
+  const repoRoot = findRepoRoot(dirname(fileURLToPath(import.meta.url)));
+  const manifestPath = join(repoRoot, 'packages', 'plugin-codex', '.codex-plugin', 'plugin.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  if (typeof manifest.version !== 'string' || manifest.version.length === 0) {
+    throw new Error(`Invalid plugin version in ${manifestPath}`);
+  }
+  return manifest.version;
+}
+
+const SOURCE_PLUGIN_VERSION = readSourcePluginVersion();
+const BUNDLED_VERSION_MARKER = `${SOURCE_PLUGIN_VERSION}-bundled`;
+
 /**
  * Synthesised `package.json` bodies for the two workspace packages.
  *
- * Version marker: `0.3.6-bundled`. The workspace source stays at `0.0.0` so
+ * Version marker: `<plugin-version>-bundled`. The workspace source stays at `0.0.0` so
  * `npm` keeps recognising it as the in-tree workspace; the `-bundled` suffix
  * exists only on the marketplace cache copy to make inspection unambiguous.
  */
 const SYNTH_RUNTIME_PKG = {
   name: '@cc-plugin-codex/runtime',
-  version: '0.3.6-bundled',
+  version: BUNDLED_VERSION_MARKER,
   type: 'module',
   main: './dist/index.js',
   types: './dist/index.d.ts',
@@ -159,7 +173,7 @@ const SYNTH_RUNTIME_PKG = {
 
 const SYNTH_DRIVER_PKG = {
   name: '@cc-plugin-codex/driver-claude-code',
-  version: '0.3.6-bundled',
+  version: BUNDLED_VERSION_MARKER,
   type: 'module',
   main: './dist/index.js',
   types: './dist/index.d.ts',
@@ -170,7 +184,7 @@ const SYNTH_DRIVER_PKG = {
     },
   },
   dependencies: {
-    '@cc-plugin-codex/runtime': '0.3.6-bundled',
+    '@cc-plugin-codex/runtime': BUNDLED_VERSION_MARKER,
     'node-pty': '1.2.0-beta.13',
   },
   engines: { node: '>=20' },

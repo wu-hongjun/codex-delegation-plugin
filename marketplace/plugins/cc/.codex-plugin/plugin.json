@@ -25,7 +25,8 @@
       "Fork a Claude Code subagent for a directive.",
       "Run a batch of parallel Claude Code instructions.",
       "Run a Claude Code dynamic deep-research workflow on a question.",
-      "List my Claude Code workflow sessions."
+      "List my Claude Code workflow sessions.",
+      "List installed Claude Code skills."
     ],
     "brandColor": "#D97706"
   }

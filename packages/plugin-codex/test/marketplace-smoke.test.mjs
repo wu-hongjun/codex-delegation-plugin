@@ -62,6 +62,7 @@ const SKILL_NAMES = [
   'claude-batch',
   'claude-deep-research',
   'claude-workflows',
+  'claude-skills',
 ];
 
 // ---------- forbidden tokens (shared with T6/T7/T8) ----------
@@ -117,10 +118,10 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
   });
 
   // ========================================================================
-  // T9-3: script body contains all 14 skill names
+  // T9-3: script body contains all 15 skill names
   // ========================================================================
 
-  it('smoke script body contains all 14 skill names', () => {
+  it('smoke script body contains all 15 skill names', () => {
     const body = readFileSync(SMOKE_SCRIPT, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(
@@ -270,10 +271,10 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
   });
 
   // ========================================================================
-  // T9-12: RELEASING.md enumerates all 14 skills
+  // T9-12: RELEASING.md enumerates all 15 skills
   // ========================================================================
 
-  it('RELEASING.md enumerates all 14 skill names', () => {
+  it('RELEASING.md enumerates all 15 skill names', () => {
     const content = readFileSync(RELEASING_MD, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(

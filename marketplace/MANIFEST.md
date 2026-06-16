@@ -6,7 +6,7 @@
 
 ## Plugin-tree files (sourced from `packages/plugin-codex/`)
 
-The following 26 files are copied byte-for-byte from `packages/plugin-codex/` into `marketplace/plugins/cc/`:
+The following 27 files are copied byte-for-byte from `packages/plugin-codex/` into `marketplace/plugins/cc/`:
 
 - `.codex-plugin/plugin.json`
 - `scripts/cc.mjs`
@@ -34,6 +34,7 @@ The following 26 files are copied byte-for-byte from `packages/plugin-codex/` in
 - `skills/claude-batch/SKILL.md`
 - `skills/claude-deep-research/SKILL.md`
 - `skills/claude-workflows/SKILL.md`
+- `skills/claude-skills/SKILL.md`
 
 Note: `scripts/cc.mjs` is copied from source and the packaging script sets the user-executable bit (chmod 0755) on the marketplace copy unconditionally, since the source file has mode 644 but the marketplace copy must be executable.
 
@@ -48,7 +49,7 @@ Note: `scripts/cc.mjs` is copied from source and the packaging script sets the u
 All paths are relative to `marketplace/plugins/cc/`.
 
 ### `node_modules/@cc-plugin-codex/runtime/`
-- `package.json` — synthesized minimal shape (version marker: `0.3.6-bundled`).
+- `package.json` — synthesized minimal shape (version marker: `<plugin-version>-bundled`).
 - `dist/*.js` and `dist/*.d.ts` — copied byte-for-byte from
   `packages/runtime/dist/` after `npm run build`.
 - Sourcemaps (`*.js.map`, `*.d.ts.map`) and `*.tsbuildinfo` are excluded
@@ -56,7 +57,7 @@ All paths are relative to `marketplace/plugins/cc/`.
 
 ### `node_modules/@cc-plugin-codex/driver-claude-code/`
 - `package.json` — synthesized minimal shape with `dependencies:
-  { "@cc-plugin-codex/runtime": "0.3.6-bundled", "node-pty": "1.2.0-beta.13" }`.
+  { "@cc-plugin-codex/runtime": "<plugin-version>-bundled", "node-pty": "1.2.0-beta.13" }`.
 - `dist/*.js` and `dist/*.d.ts` — copied byte-for-byte from
   `packages/driver-claude-code/dist/` after `npm run build`.
 

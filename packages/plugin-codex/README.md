@@ -122,6 +122,13 @@ Interactive privacy acknowledgement: on first delegation in a workspace, you wil
 
 Fresh-session commands (`$claude-delegate`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, and `$claude-adversarial-review`) validate startup flags before launching Claude Code. Unknown flags fail with exit 2 instead of consuming the prompt. `--dangerously-skip-permissions` is accepted as the Claude Code alias for `--permission-mode bypassPermissions`; use it only when the operator explicitly chooses an unattended trusted run. Additional Claude Code startup controls such as `--agent`, `--agents`, `--allowedTools`, `--disallowedTools`, `--tools`, `--settings`, `--setting-sources`, `--strict-mcp-config`, `--append-system-prompt`, `--system-prompt`, `--plugin-dir`, `--plugin-url`, `--bare`, and `--safe-mode` can be forwarded when explicitly requested.
 
+For unattended expert-agent QA that intentionally lets Claude Code inspect a
+trusted local checkout with shell commands, pass `--permission-mode
+bypassPermissions` or `--dangerously-skip-permissions` explicitly. The plugin
+does not choose that mode automatically. Without it, Claude Code may pause on a
+permission prompt; inspect the job with `$claude-status --job <jobId> --json
+--compact` and attach with the returned `actionHints.attach` command.
+
 ### $claude-workflow
 
 Trigger a Claude Code dynamic workflow. Workflows use Claude Code's built-in workflow engine to plan and execute multi-phase, multi-agent tasks and return a job ID for async result retrieval via `$claude-result` and `$claude-status`.
@@ -345,6 +352,18 @@ Use `--job` for a focused lookup when you already have the job ID. Use
 jobs; `--limit 0` means no limit. `--stored-status <state>` filters by stored job
 status before the list is reconciled.
 
+Compact JSON includes `actionHints` for the next stable commands:
+`status`, `result`, `partialResult`, `attach`, and `logs`. If a job is
+`needs_input` with `waitingFor: "permission prompt"`, attach with
+`actionHints.attach`. If `partialResult` is present, use `$claude-result <jobId>
+--partial` to read recorded progress without waiting for a terminal state.
+
+When status runs from a cc-plugin-codex checkout, JSON `meta.versionMismatch`
+and the human footer warn if the running dispatcher version differs from the
+workspace plugin version. That usually means Codex is using a stale installed
+plugin cache; refresh the install or run `node packages/plugin-codex/scripts/cc.mjs`
+directly for development testing.
+
 ### $claude-followup
 
 Send a follow-up instruction to an existing Claude background job. Useful while a job is in `awaiting_followup` (recently completed; session still live) and you want the next turn without starting a new delegation.
@@ -378,12 +397,17 @@ latest completed turn.
 
 ```text
 $claude-result job_mpt98g9g_b61e09f1
+$claude-result job_mpt98g9g_b61e09f1 --partial
 ```
 
 Prints the assistant's final answer, list of touched files, and paths to
 transcript (if available) and raw logs. Prefer `$claude-result` over
 `claude logs <shortId>` for clean output; logs are the raw Claude Code stream
 and may contain TUI control sequences around permission prompts.
+
+`--partial` allows the command to print the latest recorded result artifact for
+a running, stopped, or permission-blocked job. Without `--partial`, incomplete
+jobs still reject so scripts do not accidentally treat partial output as final.
 
 ### $claude-stop
 
@@ -930,6 +954,9 @@ Job <jobId> is not complete yet (status: running).
 The session is still executing. Run `$claude-status` to check live status. Once status shows `completed`, retry `result`.
 If the latest turn already has an immutable completed-turn result, `$claude-result`
 may return that output while the job-level status is still catching up.
+If the status output reports `result.hasResult: true` or an
+`actionHints.partialResult` command, run `$claude-result <jobId> --partial` to
+inspect the recorded partial output.
 
 ### Result has no transcript path
 
@@ -966,28 +993,28 @@ The plugin reads Claude's per-job sidecar at `~/.claude/jobs/<shortId>/state.jso
 
 ### Follow-up prompt did not register (slow TTY warmup)
 
-**Symptom**: `$claude-followup` exits with `Error: follow-up prompt did not register within 5000ms`, or the follow-up input appears to be silently ignored on the first attempt, requiring a retry.
+**Symptom**: `$claude-followup` or same-session `$claude-review` exits with `Error: follow-up prompt did not register within 20000ms`, or the follow-up input appears to be silently ignored on the first attempt, requiring a retry.
 
-**Cause**: After attaching to the Claude PTY, the dispatcher waits a short period for the terminal handshake to settle before writing the follow-up prompt. On slower machines or high-load environments, the default wait (2000 ms) may not be sufficient.
+**Cause**: After attaching to the Claude PTY, the dispatcher waits for the terminal handshake to settle before writing the follow-up prompt, then waits for Claude Code's sidecar or `agents --json` state to show that the prompt registered. On slower machines or high-load environments, either phase may need more time.
 
-**Resolution**: Start Codex with `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` set to a higher value, then run `$claude-followup` inside Codex:
+**Resolution**: Start Codex with a higher `CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS` value if prompt registration times out. If the prompt appears to be dropped before registration starts, raise `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` too.
 
 ```bash
-CC_PLUGIN_CODEX_ATTACH_WARMUP_MS=4000 codex
+CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS=30000 codex
 ```
 
 ```text
 $claude-followup <jobId> -- "your follow-up prompt"
 ```
 
-Acceptable values: any non-negative integer (milliseconds). Use `0` only in mock-driven test environments where the PTY responds instantly — setting it to `0` in a real Claude session will cause the follow-up prompt to be dropped.
+Acceptable values: positive integers in milliseconds for `CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS`; non-negative integers in milliseconds for `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS`. Use attach warmup `0` only in mock-driven test environments where the PTY responds instantly — setting it to `0` in a real Claude session can cause the follow-up prompt to be dropped.
 
 ### Tuning operator escape hatches
 
 The plugin uses PTY attach for follow-up and same-session review input. Most users should not need tuning. If a local Claude Code version is slow to accept pasted input or to flush an assistant message after a turn completes, the following environment variables can help operators diagnose timing issues:
 
-- `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` — wait before writing to `claude attach`. Default is tuned for current Claude Code versions.
-- `CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS` — deadline for a follow-up or same-session review prompt to register on the attached Claude session.
+- `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` — wait before writing to `claude attach`. Default: `8000`.
+- `CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS` — deadline for a follow-up or same-session review prompt to register on the attached Claude session. Default: `20000`.
 - `CC_PLUGIN_CODEX_REVIEW_RECONCILE_DELAY_MS` — wait before `$claude-review` reads the reconciled review result file.
 
 These are operator escape hatches, not normal workflow flags. Prefer the defaults unless you are debugging a local Claude Code timing issue.

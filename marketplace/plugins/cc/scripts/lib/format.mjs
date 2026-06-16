@@ -54,16 +54,27 @@ function summarizeJob(job) {
   const latestTurnIndex = turnCount > 0 ? turnCount - 1 : -1;
   const latestTurn = latestTurnIndex >= 0 ? job.turns[latestTurnIndex] : undefined;
   const latestKind = classifyTurnKind(latestTurn);
+  const shortId = job.claude?.shortId ?? null;
+  const waitingFor = job.claude?.waitingFor ?? null;
+  const hasResult = job.result !== undefined;
+  const actionHints = {
+    status: `cc status --job ${job.jobId} --json --compact`,
+    result: `cc result ${job.jobId}`,
+    ...(hasResult ? { partialResult: `cc result ${job.jobId} --partial` } : {}),
+    ...(shortId != null ? { attach: `claude attach ${shortId}` } : {}),
+    ...(shortId != null ? { logs: job.claude?.logsCommand ?? `claude logs ${shortId}` } : {}),
+  };
 
   return {
     jobId: job.jobId,
     status: job.status,
-    shortId: job.claude?.shortId ?? null,
+    shortId,
     sessionName: job.claude?.sessionName ?? null,
-    waitingFor: job.claude?.waitingFor ?? null,
+    waitingFor,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     ...(job.reviewOf !== undefined ? { reviewOf: job.reviewOf } : {}),
+    actionHints,
     turnCount,
     latestTurn:
       latestTurnIndex >= 0
@@ -78,8 +89,9 @@ function summarizeJob(job) {
           }
         : null,
     result: {
-      hasResult: job.result !== undefined,
+      hasResult,
       finalMessagePreview: job.result?.finalMessagePreview ?? null,
+      finalMessagePath: job.result?.finalMessagePath ?? null,
       touchedFiles: Array.isArray(job.result?.touchedFiles) ? job.result.touchedFiles : [],
     },
   };
@@ -90,6 +102,7 @@ function statusMeta(opts) {
   if (opts.storedStatusFilter != null) meta.storedStatusFilter = opts.storedStatusFilter;
   if (opts.limit != null) meta.limit = opts.limit;
   if (opts.hiddenCount != null && opts.hiddenCount > 0) meta.hiddenCount = opts.hiddenCount;
+  if (opts.versionMismatch != null) meta.versionMismatch = opts.versionMismatch;
   return Object.keys(meta).length > 0 ? meta : null;
 }
 
@@ -190,11 +203,15 @@ export function formatDelegate(job, json, opts = {}) {
  */
 export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
   if (json) {
+    const meta = statusMeta(opts);
     if (opts.singleJob) {
       const job = jobs[0] ?? null;
-      return JSON.stringify({ ok: true, job: job ? summarizeJob(job) : null }, null, 2);
+      return JSON.stringify(
+        { ok: true, job: job ? summarizeJob(job) : null, ...(meta ? { meta } : {}) },
+        null,
+        2,
+      );
     }
-    const meta = statusMeta(opts);
     if (opts.compact) {
       return JSON.stringify(
         { ok: true, jobs: jobs.map(summarizeJob), ...(meta ? { meta } : {}) },
@@ -239,6 +256,15 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
     if (j.claude.waitingFor) {
       lines.push(`Waiting:        ${j.claude.waitingFor}`);
       lines.push(`Attach:         claude attach ${j.claude.shortId}`);
+      if (j.result?.finalMessagePreview) {
+        lines.push(`Partial result: cc result ${j.jobId} --partial`);
+      }
+    }
+    if (opts.versionMismatch) {
+      lines.push(
+        '',
+        `Version warning: dispatcher ${opts.versionMismatch.dispatcherVersion} is running while this workspace declares ${opts.versionMismatch.worktreeVersion}. Refresh the installed cc plugin or use the workspace dispatcher directly.`,
+      );
     }
     return lines.join('\n');
   }
@@ -271,6 +297,13 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
     lines.push(
       '',
       `${opts.hiddenCount} older Claude job${opts.hiddenCount === 1 ? '' : 's'} hidden by --limit ${opts.limit}. Use --limit 0 to show all matched jobs.`,
+    );
+  }
+
+  if (opts.versionMismatch) {
+    lines.push(
+      '',
+      `Version warning: dispatcher ${opts.versionMismatch.dispatcherVersion} is running while this workspace declares ${opts.versionMismatch.worktreeVersion}. Refresh the installed cc plugin or use the workspace dispatcher directly.`,
     );
   }
 
@@ -360,7 +393,12 @@ export function formatFollowup(job, turnHandle, turnIndex, json, opts = {}) {
 export function formatResult(job, resultText, json, opts = {}) {
   if (json) {
     return JSON.stringify(
-      { ok: true, job: opts.compact ? summarizeJob(job) : job, resultText },
+      {
+        ok: true,
+        ...(opts.partial ? { partial: true } : {}),
+        job: opts.compact ? summarizeJob(job) : job,
+        resultText,
+      },
       null,
       2,
     );
@@ -372,6 +410,7 @@ export function formatResult(job, resultText, json, opts = {}) {
   const lines = [
     `Job:        ${job.jobId}`,
     `Status:     ${job.status}`,
+    ...(opts.partial ? ['Partial:    yes'] : []),
     `Transcript: ${transcriptLine}`,
     `Logs:       ${logsCmd}`,
   ];

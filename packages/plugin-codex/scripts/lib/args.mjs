@@ -16,6 +16,7 @@ const BOOLEAN_FLAGS = new Set([
   'all',
   'allow-edit',
   'compact',
+  'partial',
   'help',
   'all-awaiting-followup',
   'all-idle',

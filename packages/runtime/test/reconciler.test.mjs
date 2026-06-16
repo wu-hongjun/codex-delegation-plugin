@@ -1080,6 +1080,24 @@ describe('context-aware status mapping (plan 0002 T7)', () => {
     );
   });
 
+  it('sidecar tempo: blocked overrides working driver → needs_input', async () => {
+    const job = await createJob(makeJobInput());
+    const adapter = fakeAdapterWithSidecar({
+      status: { value: 'working' },
+      sidecar: {
+        state: 'working',
+        tempo: 'blocked',
+        intent: 'permission prompt',
+        inFlight: { tasks: 0, queued: 0, kinds: [] },
+      },
+    });
+    const result = await reconcileJob(job.jobId, adapter, { now });
+
+    assert.equal(result.job.status, 'needs_input');
+    assert.equal(result.job.claude.waitingFor, 'permission prompt');
+    assert.equal(result.job.turns[result.job.turns.length - 1].status, 'needs_input');
+  });
+
   it('sidecar inFlight.kinds includes permission overrides idle driver → needs_input', async () => {
     const job = await createJob(makeJobInput());
     const adapter = fakeAdapterWithSidecar({

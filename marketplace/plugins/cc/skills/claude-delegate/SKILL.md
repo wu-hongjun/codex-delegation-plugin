@@ -53,7 +53,10 @@ Behavior rules:
   `--permission-mode bypassPermissions` or the Claude Code alias
   `--dangerously-skip-permissions`. Do NOT inject this automatically; it is an
   operator choice that bypasses Claude Code's normal permission prompts for that
-  spawned session.
+  spawned session. If a delegated job later shows `waitingFor: "permission prompt"`,
+  report the blocked state and the `claude attach <shortId>` command from
+  `$claude-status --job <jobId> --json --compact`; do not try to approve the
+  permission prompt yourself.
 
 `$claude-delegate -- "/<saved-or-bundled-workflow-name> <args>"` also invokes saved workflows and bundled slash commands (e.g. `/deep-research <question>`). See `$claude-workflow` for details on saved-workflow invocation.
 
@@ -63,6 +66,8 @@ After delegating, the user typically wants one of:
 
 - `$claude-status` — check live progress of all open jobs
 - `$claude-result` — read the final answer when the job completes
+- `$claude-result <jobId> --partial` — read recorded partial output from a
+  running or permission-blocked job
 - `$claude-followup` — send an additional instruction to the same job
 - `$claude-stop` — terminate the job early
 

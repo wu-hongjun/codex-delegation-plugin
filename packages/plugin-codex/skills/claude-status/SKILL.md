@@ -42,10 +42,24 @@ know the job id. For broad sweeps in a workspace with many historical jobs, use
 filter by stored job status. `--compact` affects JSON shape; it does not delete
 historical job records.
 
+Compact JSON includes `actionHints` with stable next commands such as
+`status`, `result`, `partialResult`, `attach`, and `logs`. When a job is
+`needs_input` with `waitingFor: "permission prompt"`, surface the `attach`
+hint to the user. If `partialResult` is present, use `$claude-result <jobId>
+--partial` to inspect recorded progress without waiting for the job to finish.
+
+When running from a cc-plugin-codex checkout, status may include a
+`versionMismatch` meta warning if the dispatcher version differs from the
+workspace plugin version. Treat that as a stale install/cache signal; refresh
+the installed plugin or run `node packages/plugin-codex/scripts/cc.mjs`
+directly for development testing.
+
 ### Next steps
 
 After checking status, the user typically wants one of:
 
 - `$claude-result` — read the output of a completed job
+- `$claude-result <jobId> --partial` — read recorded partial output if status
+  says the job is incomplete but has a result artifact
 - `$claude-followup` — continue a job that is awaiting a follow-up turn
 - `claude attach <sessionId>` — drop into a live attach (Claude Code CLI; not a plugin skill)

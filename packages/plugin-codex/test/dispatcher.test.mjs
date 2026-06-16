@@ -92,7 +92,7 @@ function runDispatcher(args, { cwd = WORK_DIR, env: extraEnv = {} } = {}) {
       ...extraEnv,
       CC_PLUGIN_CODEX_HOME: TMP_HOME,
       CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: MOCK_HOME,
-      // T15a: mock-claude responds immediately; skip the 2-second real-TUI
+      // T15a: mock-claude responds immediately; skip the 8-second real-TUI
       // warmup so dispatcher integration tests don't pay it on every send().
       CC_PLUGIN_CODEX_ATTACH_WARMUP_MS: '0',
       // T12b: cmdReview waits briefly after sendFollowupTurn so Claude
@@ -723,6 +723,10 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.ok, true);
     assert.equal(parsed.job.jobId, jobId);
     assert.equal(parsed.job.result.finalMessagePreview, 'Single status preview.');
+    assert.equal(parsed.job.result.finalMessagePath.endsWith(`${jobId}.result.md`), true);
+    assert.equal(parsed.job.actionHints.result, `cc result ${jobId}`);
+    assert.equal(parsed.job.actionHints.partialResult, `cc result ${jobId} --partial`);
+    assert.equal(parsed.job.actionHints.attach, 'claude attach aabbcc');
     assert.equal(
       parsed.job.driver,
       undefined,
@@ -813,6 +817,97 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
       `expected only stopped row; got:\n${result.stdout}`,
     );
     assert.equal(parsed.meta.storedStatusFilter, 'stopped');
+  });
+
+  it('status --job JSON includes permission-resolution hints for blocked jobs with partial output', () => {
+    const jobId = `job_statblk_${createHash('sha256').update('status-blocked-partial').digest('hex').slice(0, 8)}`;
+    writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Partial blocked answer.',
+      shortId: 'blk00001',
+    });
+
+    const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    record.status = 'needs_input';
+    record.claude.waitingFor = 'permission prompt';
+    record.turns[0].status = 'needs_input';
+    writeFileSync(recordPath, JSON.stringify(record, null, 2));
+    writeMockAgentSession('blk00001', shortIdToSessionId('blk00001'), 'idle');
+    const sidecarDir = join(MOCK_HOME, 'jobs', 'blk00001');
+    mkdirSync(sidecarDir, { recursive: true });
+    writeFileSync(
+      join(sidecarDir, 'state.json'),
+      JSON.stringify(
+        {
+          sessionId: shortIdToSessionId('blk00001'),
+          daemonShort: 'blk00001',
+          state: 'waiting',
+          tempo: 'blocked',
+          intent: 'permission prompt',
+          inFlight: { tasks: 0, queued: 0, kinds: [] },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const result = runDispatcher(['status', '--job', jobId, '--json']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.job.status, 'needs_input');
+    assert.equal(parsed.job.waitingFor, 'permission prompt');
+    assert.equal(parsed.job.actionHints.attach, 'claude attach blk00001');
+    assert.equal(parsed.job.actionHints.partialResult, `cc result ${jobId} --partial`);
+  });
+
+  it('result --partial prints recorded output for an incomplete job', () => {
+    const jobId = `job_respart_${createHash('sha256').update('result-partial').digest('hex').slice(0, 8)}`;
+    const { resultContent } = writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Usable partial output from a blocked job.',
+      shortId: 'part0001',
+    });
+
+    const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    record.status = 'needs_input';
+    record.claude.waitingFor = 'permission prompt';
+    record.turns[0].status = 'needs_input';
+    writeFileSync(recordPath, JSON.stringify(record, null, 2));
+    writeMockAgentSession('part0001', shortIdToSessionId('part0001'), 'idle');
+    const sidecarDir = join(MOCK_HOME, 'jobs', 'part0001');
+    mkdirSync(sidecarDir, { recursive: true });
+    writeFileSync(
+      join(sidecarDir, 'state.json'),
+      JSON.stringify(
+        {
+          sessionId: shortIdToSessionId('part0001'),
+          daemonShort: 'part0001',
+          state: 'waiting',
+          tempo: 'blocked',
+          intent: 'permission prompt',
+          inFlight: { tasks: 0, queued: 0, kinds: [] },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const rejected = runDispatcher(['result', jobId, '--json']);
+    assert.equal(rejected.status, 1, 'result without --partial should reject incomplete jobs');
+    assert.ok(
+      rejected.stderr.includes(`cc result ${jobId} --partial`),
+      `expected partial hint; got:\n${rejected.stderr}`,
+    );
+
+    const result = runDispatcher(['result', jobId, '--json', '--partial']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.partial, true);
+    assert.equal(parsed.job.status, 'needs_input');
+    assert.equal(parsed.resultText, resultContent);
   });
 
   it('status --stored-status uses stored status only to pre-filter before reconcile', () => {
@@ -4054,6 +4149,41 @@ describe('review --json output shape (T4)', () => {
     // turn sub-fields
     assert.ok(typeof parsed.turn.index === 'number', 'expected turn.index to be a number');
     assert.ok(typeof parsed.turn.status === 'string', 'expected turn.status to be a string');
+  });
+});
+
+describe('review --json runtime errors (Plan 0025)', () => {
+  it('prints parseable JSON to stdout when same-session send fails at runtime', () => {
+    const jobId = `job_rv25_${createHash('sha256').update('plan-0025-json-error').digest('hex').slice(0, 8)}`;
+    const shortId = 'rv250001';
+    writeSyntheticReviewableJob({ jobId, shortId });
+    writeAck(WORK_DIR);
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'idle');
+    writeMockIdleSidecar(shortId, shortIdToSessionId(shortId));
+
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, {
+      attachResponse: MOCK_REVIEW_RESPONSE_STRUCTURED,
+    });
+
+    const result = runDispatcher(['review', jobId, '--json', '--yes'], {
+      env: {
+        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath,
+        CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS: '1',
+      },
+    });
+
+    assert.equal(result.status, 1, `expected exit 1; stderr: ${result.stderr}`);
+    assert.doesNotMatch(
+      result.stderr,
+      /"ok"\s*:\s*false|"operation"\s*:\s*"send"|follow-up prompt did not register within 1ms/,
+      `--json runtime errors should be parseable from stdout without stderr parsing`,
+    );
+
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.ok, false);
+    assert.match(parsed.error.message, /follow-up prompt did not register within 1ms/);
+    assert.equal(parsed.error.name, 'DriverError');
+    assert.equal(parsed.error.operation, 'send');
   });
 });
 

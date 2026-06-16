@@ -68,6 +68,38 @@ function loadPluginVersion() {
 
 const PLUGIN_VERSION = loadPluginVersion();
 
+function readJsonFileMaybe(path) {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function findWorkspacePluginVersion(cwd) {
+  const candidates = [
+    join(cwd, 'packages', 'plugin-codex', '.codex-plugin', 'plugin.json'),
+    join(cwd, '.codex-plugin', 'plugin.json'),
+  ];
+  for (const candidate of candidates) {
+    const parsed = readJsonFileMaybe(candidate);
+    if (typeof parsed?.version === 'string' && parsed.version.length > 0) {
+      return { version: parsed.version, path: candidate };
+    }
+  }
+  return null;
+}
+
+function worktreeVersionMismatch(cwd) {
+  const worktree = findWorkspacePluginVersion(cwd);
+  if (worktree === null || worktree.version === PLUGIN_VERSION) return null;
+  return {
+    dispatcherVersion: PLUGIN_VERSION,
+    worktreeVersion: worktree.version,
+    worktreePluginJson: worktree.path,
+  };
+}
+
 // ---------- startup flag handling ----------
 
 const PERMISSION_MODES = new Set([
@@ -289,6 +321,15 @@ function formatPrivacyAckMessage({
       ? 'Re-run with --yes to acknowledge and proceed.'
       : 'Type yes to acknowledge and proceed, or no to cancel.',
   ].join('\n');
+}
+
+function writeRuntimeError(err, commandName, json) {
+  const formatted = formatError(err, commandName, json);
+  if (json) {
+    process.stdout.write(formatted + '\n');
+  } else {
+    process.stderr.write(formatted + '\n');
+  }
 }
 
 /**
@@ -788,7 +829,11 @@ try {
       process.exit(2);
   }
 } catch (err) {
-  process.stderr.write(formatError(err, command, useJson) + '\n');
+  if (useJson) {
+    process.stdout.write(formatError(err, command, true) + '\n');
+  } else {
+    process.stderr.write(formatError(err, command, false) + '\n');
+  }
   process.exit(1);
 }
 
@@ -949,9 +994,38 @@ async function cmdSetup(_flags, json) {
     },
   };
 
+  /** @type {import('@cc-plugin-codex/runtime').DoctorExtraProbe} */
+  const worktreeVersionProbe = {
+    name: 'cc-worktree-version',
+    capabilities: [],
+    run: async (opts) => {
+      const mismatch = worktreeVersionMismatch(opts.cwd ?? process.cwd());
+      if (mismatch === null) {
+        return {
+          name: 'cc-worktree-version',
+          status: 'ok',
+          detail: `dispatcher version ${PLUGIN_VERSION} matches visible cc worktree, or no cc worktree was detected`,
+        };
+      }
+      return {
+        name: 'cc-worktree-version',
+        status: 'warn',
+        detail: `dispatcher version ${mismatch.dispatcherVersion} differs from workspace plugin version ${mismatch.worktreeVersion}; refresh the installed plugin or run node packages/plugin-codex/scripts/cc.mjs for development testing`,
+        evidence: mismatch,
+      };
+    },
+  };
+
   const report = await runDoctor({
     cwd: process.cwd(),
-    extraProbes: [ptyBuildExtraProbe, opus48Probe, workflowsProbe, bgExecProbe, claudeSkillsProbe],
+    extraProbes: [
+      ptyBuildExtraProbe,
+      opus48Probe,
+      workflowsProbe,
+      bgExecProbe,
+      claudeSkillsProbe,
+      worktreeVersionProbe,
+    ],
   });
   process.stdout.write(formatSetup(report, json) + '\n');
   if (report.status === 'fail') {
@@ -1330,6 +1404,7 @@ async function cmdStatus(flags, positional, json) {
   const jobFlag = flags['job'];
   const limit = parseStatusLimit(flags['limit'], json);
   const storedStatusFilter = parseStoredStatusFilter(flags['stored-status'], json);
+  const versionMismatch = worktreeVersionMismatch(workspace);
 
   // `status` is a list command (current workspace, or every workspace with --all).
   // It does not take a <jobId>; silently ignoring one (printing the full list with
@@ -1387,7 +1462,11 @@ async function cmdStatus(flags, positional, json) {
     }
 
     process.stdout.write(
-      formatStatus([job], json, workspace, { compact: true, singleJob: true }) + '\n',
+      formatStatus([job], json, workspace, {
+        compact: true,
+        singleJob: true,
+        versionMismatch,
+      }) + '\n',
     );
     return;
   }
@@ -1435,6 +1514,7 @@ async function cmdStatus(flags, positional, json) {
       limit,
       storedStatusFilter,
       hiddenCount,
+      versionMismatch,
     }) + '\n',
   );
 }
@@ -1443,6 +1523,7 @@ async function cmdStatus(flags, positional, json) {
 
 async function cmdResult(flags, positional, json) {
   const prefix = positional[0];
+  const allowPartial = Boolean(flags['partial']);
   if (!prefix) {
     process.stderr.write(formatError(new Error('usage: cc result <jobId>'), 'result', json) + '\n');
     process.exit(2);
@@ -1491,13 +1572,24 @@ async function cmdResult(flags, positional, json) {
     latestTurn.result.finalMessagePath.length > 0
       ? latestTurn.result
       : undefined;
-  const canReadResult = terminalStatuses.has(job.status) || latestCompletedTurnResult !== undefined;
+  const partialResult =
+    typeof job.result?.finalMessagePath === 'string' && job.result.finalMessagePath.length > 0
+      ? job.result
+      : latestTurn?.result;
+  const canReadResult =
+    terminalStatuses.has(job.status) ||
+    latestCompletedTurnResult !== undefined ||
+    (allowPartial && typeof partialResult?.finalMessagePath === 'string');
 
   if (!canReadResult) {
+    const partialHint =
+      typeof partialResult?.finalMessagePath === 'string'
+        ? ` Partial output exists; run: cc result ${jobId} --partial`
+        : '';
     process.stderr.write(
       formatError(
         new Error(
-          `Job ${jobId} is not complete yet (status: ${job.status}). Run: cc status --job ${jobId}`,
+          `Job ${jobId} is not complete yet (status: ${job.status}). Run: cc status --job ${jobId}.${partialHint}`,
         ),
         'result',
         json,
@@ -1510,10 +1602,12 @@ async function cmdResult(flags, positional, json) {
   // Do not treat sendFollowupTurn's immediate empty finalMessagePath as durable
   // result content; that path only becomes reliable after reconciliation writes
   // the per-turn result file.
-  const resultContext = latestCompletedTurnResult ?? job.result;
+  const resultContext = allowPartial
+    ? (partialResult ?? latestCompletedTurnResult)
+    : (latestCompletedTurnResult ?? job.result);
   const displayJob =
-    latestCompletedTurnResult !== undefined && latestCompletedTurnResult !== job.result
-      ? { ...job, result: latestCompletedTurnResult }
+    resultContext !== undefined && resultContext !== job.result
+      ? { ...job, result: resultContext }
       : job;
   let resultText = null;
   if (resultContext?.finalMessagePath) {
@@ -1525,7 +1619,10 @@ async function cmdResult(flags, positional, json) {
   }
 
   process.stdout.write(
-    formatResult(displayJob, resultText, json, { compact: Boolean(flags['compact']) }) + '\n',
+    formatResult(displayJob, resultText, json, {
+      compact: Boolean(flags['compact']),
+      partial: allowPartial && !terminalStatuses.has(job.status),
+    }) + '\n',
   );
 }
 
@@ -1873,28 +1970,24 @@ async function sendFollowupTurn({
     }
 
     if (isPermissionStall) {
-      process.stderr.write(
-        formatError(
-          new Error(
-            `Claude is asking for permission. Run claude attach ${sessionHandle.shortId} to approve manually, then retry $claude-followup.`,
-          ),
-          'followup',
-          json,
-        ) + '\n',
+      writeRuntimeError(
+        new Error(
+          `Claude is asking for permission. Run claude attach ${sessionHandle.shortId} to approve manually, then retry $claude-followup.`,
+        ),
+        'followup',
+        json,
       );
     } else if (msg.includes('permission required but no response')) {
       // Non-TTY null-return path: driver threw after callback returned null.
-      process.stderr.write(
-        formatError(
-          new Error(
-            `Permission required, but this dispatcher is non-interactive. Run \`claude attach ${sessionHandle.shortId}\` in your own terminal to approve manually.`,
-          ),
-          'followup',
-          json,
-        ) + '\n',
+      writeRuntimeError(
+        new Error(
+          `Permission required, but this dispatcher is non-interactive. Run \`claude attach ${sessionHandle.shortId}\` in your own terminal to approve manually.`,
+        ),
+        'followup',
+        json,
       );
     } else {
-      process.stderr.write(formatError(err, 'followup', json) + '\n');
+      writeRuntimeError(err, 'followup', json);
     }
     process.exit(1);
   }
@@ -3092,6 +3185,14 @@ function printUsage(commandName = '') {
       '',
       'Options: --all --json --compact --job <jobId-or-prefix> --limit <n> --stored-status <state>',
     ],
+    result: [
+      'Usage: cc result <jobId-or-prefix> [--all] [--json] [--compact] [--partial]',
+      '',
+      'Shows the final result of a completed Claude job.',
+      'Use --partial to read the latest recorded partial output from a running or blocked job.',
+      '',
+      'Options: --all --json --compact --partial',
+    ],
     workflows: [
       'Usage: cc workflows [<jobId-or-sessionId>] [--all] [--json]',
       '',
@@ -3131,7 +3232,7 @@ function printUsage(commandName = '') {
       '  status [--all] [--json] [--compact] [--limit <n>] [--stored-status <state>]',
       '                                            List jobs for current workspace',
       '  status --job <jobId-or-prefix> [--all] [--json]  Show one job status',
-      '  result <jobId> [--all] [--json]           Show final result of a completed job',
+      '  result <jobId> [--all] [--json] [--partial]  Show final or recorded partial result',
       '  stop <jobId> [--all] [--json]             Stop a running job',
       '  stop --all-awaiting-followup [--all]      Bulk-stop awaiting-followup jobs',
       '  followup <jobId> [flags] -- <prompt>      Send a follow-up prompt to an existing job',
@@ -3146,6 +3247,7 @@ function printUsage(commandName = '') {
       'Flags:',
       '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch/deep-research/workflows/skills)',
       '  --compact                    Compact redacted JSON shape for delegate/status/result/stop',
+      '  --partial                    Allow result to print recorded partial output for incomplete jobs',
       '  --job <jobId-or-prefix>      Select one job for status',
       '  --limit <n>                  Limit status lists after newest-first sorting (0 = no limit)',
       '  --stored-status <state>      Pre-filter status lists by stored job status',

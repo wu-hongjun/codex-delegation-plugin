@@ -36,12 +36,12 @@ import type { ReadSidecarOptions } from './sidecar.js';
 export interface AttachAndSendOptions extends SendOpts {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
-  /** Default 5_000. */
+  /** Default 20_000. */
   promptRegisterTimeoutMs?: number;
   /** Default 500. Internal/driver use; tests may pass a smaller value. */
   pollIntervalMs?: number;
   /**
-   * Default 2_000 (real Claude TUI). Time to wait between `pty.spawn('claude
+   * Default 8_000 (real Claude TUI). Time to wait between `pty.spawn('claude
    * attach', ...)` and writing the prompt, so the Claude Code TUI has time to
    * finish its startup banner + capability handshake and is ready to accept
    * input. Mock-claude in tests responds immediately so tests typically set
@@ -223,14 +223,15 @@ export async function attachAndSend(
   // Plan 0003 T12a: env-var override for the prompt-register polling
   // timeout. The real Plan 0003 T12 issue turned out to be that Claude
   // 2.1.150 needs CRLF (not bare CR) to submit; once the line terminator is
-  // correct, the sidecar tempo flips to active well within the historic
-  // 5_000ms window. Keep the env-var override as a defensive operator knob
-  // for any future TUI version that becomes slower again. Same env-var
-  // pattern as the warmup knob (test seam + production fallback via
-  // process.env, defensive parse on bad input).
+  // correct, the sidecar tempo usually flips to active quickly. Plan 0025
+  // heavy testing against released v0.3.8 still found real same-session review
+  // attempts timing out at 5_000ms under load while a 20_000ms retry passed, so
+  // keep the env-var override and raise the default deadline.
+  // Same env-var pattern as the warmup knob (test seam + production fallback
+  // via process.env, defensive parse on bad input).
   const envPromptRegRaw = envSource['CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS'];
   const envPromptRegParsed = envPromptRegRaw != null ? Number(envPromptRegRaw) : NaN;
-  const PROMPT_REGISTER_DEFAULT_MS = 5_000;
+  const PROMPT_REGISTER_DEFAULT_MS = 20_000;
   const promptRegTimeoutMs =
     opts?.promptRegisterTimeoutMs ??
     (Number.isFinite(envPromptRegParsed) && envPromptRegParsed > 0

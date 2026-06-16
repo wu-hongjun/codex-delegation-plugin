@@ -181,7 +181,7 @@ function computeTtlElapsed(job: JobRecord, nowMs: number, ttlMs: number): boolea
  *
  * Precedence order (top wins):
  *   1. isOrphan → orphaned
- *   2. Sidecar waiting hint → needs_input
+ *   2. Sidecar waiting/blocked-tempo hint → needs_input
  *   3. Sidecar inFlight tasks/queued > 0 (overrides driver-idle) → running
  *   4. Driver value mapping (see switch below)
  *   5. Default fallback: previousJobStatus
@@ -203,7 +203,11 @@ export function mapStatus(input: StatusMappingInput): JobStatus {
 
   // 2. Sidecar waiting hint
   if (sidecar != null) {
-    if (sidecar.state === 'waiting' || sidecar.inFlight?.kinds?.includes('permission')) {
+    if (
+      sidecar.state === 'waiting' ||
+      sidecar.tempo === 'blocked' ||
+      sidecar.inFlight?.kinds?.includes('permission')
+    ) {
       return 'needs_input';
     }
 
@@ -348,6 +352,9 @@ function stringifyWaitingFor(raw: unknown): string | undefined {
 function waitingForFromSidecar(sidecar: SidecarSnapshot | null): string | undefined {
   if (sidecar == null) return undefined;
   if (sidecar.inFlight?.kinds?.includes('permission')) return 'permission';
+  if (sidecar.tempo === 'blocked') {
+    return stringifyWaitingFor(sidecar.intent) ?? 'blocked';
+  }
   if (sidecar.state === 'waiting' || sidecar.state === 'blocked') {
     return stringifyWaitingFor(sidecar.intent) ?? sidecar.state;
   }
@@ -673,6 +680,10 @@ export async function reconcileJob(
       nextStatus = mapStatus({
         ...statusMappingInput,
         latestTurnStatus: 'completed',
+        sidecar:
+          sidecar?.tempo === 'blocked' || sidecar?.state === 'blocked'
+            ? null
+            : statusMappingInput.sidecar,
       });
       patched.status = nextStatus;
     }

@@ -21,6 +21,10 @@ Behavior rules:
 - Use the job id (or unique prefix) the user provided.
 - If the user did not provide one, ask for it. Do not guess job IDs from prose.
 - Forward `--json` for machine-readable output when the user requests it.
+- Forward `--partial` when the user asks for partial output, progress output,
+  or output from a running, stopped, or permission-blocked job. Without
+  `--partial`, incomplete jobs are rejected even if a recorded partial result
+  exists.
 - Forward `--all` only if the user explicitly asks for jobs across all workspaces.
 
 ### Next steps

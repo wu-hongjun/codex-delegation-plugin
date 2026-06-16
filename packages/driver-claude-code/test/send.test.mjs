@@ -27,6 +27,7 @@
 //  16. AbortSignal abort releases lock and throws DriverError
 //  17. No `claude -p` appears in attach.ts source
 //  18. finalMessage matches readSidecar output.result (no semantic PTY dependence)
+//  19. Prompt-register default is pinned at 20 seconds
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -68,7 +69,7 @@ function buildEnv(mockHome, companionHome, extra = {}) {
     CC_PLUGIN_CODEX_HOME: companionHome,
     // T15a: mock-claude responds immediately so no TUI-warmup wait is needed.
     // Tests pass attachWarmupMs=0 via this env var so each send() in the
-    // mock suite runs without the 2-second real-TUI default.
+    // mock suite runs without the 8-second real-TUI default.
     CC_PLUGIN_CODEX_ATTACH_WARMUP_MS: '0',
     PATH: `${MOCK_CLAUDE_DIR}${delimiter}${process.env.PATH ?? ''}`,
   };
@@ -939,7 +940,7 @@ describe('send() — CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS env var honored 
       // Force a near-immediate prompt-register timeout. With mock-claude
       // responding very quickly, this asserts the env-var-read path is wired
       // through to the production dispatcher path. If the env var were
-      // unread, the default 30_000ms timeout would let the send complete
+      // unread, the default timeout would let the send complete
       // before this 15s test timeout fires.
       process.env.CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS = '1';
 
@@ -987,6 +988,17 @@ describe('send() — CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS env var honored 
       }
     },
   );
+});
+
+describe('send() — prompt-register default (Plan 0025)', () => {
+  it('source default is 20 seconds for slower real Claude Code attach registration', () => {
+    const src = readFileSync(ATTACH_SRC, 'utf8');
+    assert.match(
+      src,
+      /const PROMPT_REGISTER_DEFAULT_MS = 20_000;/,
+      'prompt registration default should remain at 20 seconds unless live evidence supports changing it',
+    );
+  });
 });
 
 describe('send() — CC_PLUGIN_CODEX_ATTACH_WARMUP_MS env var falls back to process.env (T12a)', () => {

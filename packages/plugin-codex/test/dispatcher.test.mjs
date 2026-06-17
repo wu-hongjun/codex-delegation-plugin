@@ -7465,6 +7465,142 @@ describe('workflow --help command-specific output', () => {
   });
 });
 
+describe('upgrade command', () => {
+  function writeMockCodexConfig(config) {
+    const cfgPath = join(TMP_HOME, 'mock-codex-config.json');
+    writeFileSync(cfgPath, JSON.stringify(config, null, 2));
+    return cfgPath;
+  }
+
+  function readCommandLog(path) {
+    if (!existsSync(path)) return [];
+    return readFileSync(path, 'utf8')
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .map((line) => JSON.parse(line).argv);
+  }
+
+  it('upgrade --dry-run --json prints the reinstall plan without invoking codex plugin commands', () => {
+    const logPath = join(TMP_HOME, 'mock-codex-commands.jsonl');
+    const cfgPath = writeMockCodexConfig({ commandLogPath: logPath });
+
+    const result = runDispatcher(['upgrade', '--dry-run', '--json'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CODEX_CONFIG: cfgPath },
+    });
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.dryRun, true);
+    assert.equal(parsed.target.plugin, 'cc@cc-plugin-codex');
+    assert.deepEqual(readCommandLog(logPath), []);
+  });
+
+  it('upgrade --local --dry-run --json targets the local marketplace install', () => {
+    const result = runDispatcher(['upgrade', '--local', '--dry-run', '--json']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.target.source, 'local');
+    assert.equal(parsed.target.marketplace, 'cc-plugin-codex-local');
+    assert.equal(parsed.target.plugin, 'cc@cc-plugin-codex-local');
+    assert.deepEqual(
+      parsed.commands.map((step) => step.args),
+      [
+        ['plugin', 'remove', 'cc@cc-plugin-codex-local'],
+        ['plugin', 'add', 'cc@cc-plugin-codex-local'],
+        ['plugin', 'list'],
+      ],
+    );
+  });
+
+  it('upgrade --public --dry-run --json targets the public Git marketplace install', () => {
+    const result = runDispatcher(['upgrade', '--public', '--dry-run', '--json']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.target.source, 'public');
+    assert.equal(parsed.target.marketplace, 'cc-plugin-codex');
+    assert.equal(parsed.target.plugin, 'cc@cc-plugin-codex');
+    assert.deepEqual(parsed.commands[0].args, [
+      'plugin',
+      'marketplace',
+      'upgrade',
+      'cc-plugin-codex',
+    ]);
+  });
+
+  it('upgrade rejects --public and --local together', () => {
+    const result = runDispatcher(['upgrade', '--public', '--local']);
+    assert.equal(result.status, 2, `expected exit 2; stdout: ${result.stdout}`);
+    assert.ok(result.stderr.includes('Use only one of --public or --local'), result.stderr);
+  });
+
+  it('upgrade without --yes defaults to a dry-run plan', () => {
+    const result = runDispatcher(['upgrade']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(result.stdout.includes('CC upgrade plan'), result.stdout);
+    assert.ok(result.stdout.includes('cc upgrade --yes'), result.stdout);
+  });
+
+  it('upgrade --yes --json refreshes the marketplace and reinstalls the plugin through codex', () => {
+    const logPath = join(TMP_HOME, 'mock-codex-commands.jsonl');
+    const cfgPath = writeMockCodexConfig({
+      commandLogPath: logPath,
+      pluginListVersion: '0.3.10',
+    });
+
+    const result = runDispatcher(['upgrade', '--yes', '--json'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CODEX_CONFIG: cfgPath },
+    });
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.dryRun, false);
+    assert.deepEqual(readCommandLog(logPath), [
+      ['plugin', 'marketplace', 'upgrade', 'cc-plugin-codex'],
+      ['plugin', 'remove', 'cc@cc-plugin-codex'],
+      ['plugin', 'add', 'cc@cc-plugin-codex'],
+      ['plugin', 'list'],
+    ]);
+  });
+
+  it('upgrade falls back to marketplace add if marketplace upgrade is not registered', () => {
+    const logPath = join(TMP_HOME, 'mock-codex-commands.jsonl');
+    const cfgPath = writeMockCodexConfig({
+      commandLogPath: logPath,
+      pluginFailures: {
+        'plugin marketplace upgrade cc-plugin-codex': 'not registered',
+      },
+    });
+
+    const result = runDispatcher(['upgrade', '--yes', '--json'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CODEX_CONFIG: cfgPath },
+    });
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.deepEqual(readCommandLog(logPath), [
+      ['plugin', 'marketplace', 'upgrade', 'cc-plugin-codex'],
+      ['plugin', 'marketplace', 'add', 'https://github.com/wu-hongjun/cc-plugin-codex'],
+      ['plugin', 'remove', 'cc@cc-plugin-codex'],
+      ['plugin', 'add', 'cc@cc-plugin-codex'],
+      ['plugin', 'list'],
+    ]);
+  });
+
+  it('upgrade --help prints focused upgrade usage', () => {
+    const result = runDispatcher(['upgrade', '--help']);
+    assert.equal(result.status, 0, `upgrade --help should exit 0; got ${result.status}`);
+    assert.ok(result.stdout.startsWith('Usage: cc upgrade'), result.stdout);
+    assert.ok(result.stdout.includes('--dry-run'), result.stdout);
+    assert.ok(result.stdout.includes('--public'), result.stdout);
+    assert.ok(result.stdout.includes('--local'), result.stdout);
+    assert.ok(!result.stdout.includes('Commands:'), result.stdout);
+  });
+});
+
 describe('workflow --yes -- "test prompt" (happy path)', () => {
   it('exits 0, stdout contains job_* ID and workflow approval note', () => {
     const result = runDispatcher(['workflow', '--yes', '--', 'test workflow prompt']);

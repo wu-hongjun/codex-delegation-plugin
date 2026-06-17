@@ -263,7 +263,7 @@ pushed.
 ### Manual skill discovery
 
 Codex 0.136.0 does not expose a documented non-interactive
-skill-invocation interface, so the fourteen-skill discovery check must be
+skill-invocation interface, so the sixteen-skill discovery check must be
 run manually inside the Codex TUI. With the smoke helper's isolated
 `CODEX_HOME` preserved (`--keep-home`), open Codex and verify each
 skill is recognized:
@@ -283,12 +283,13 @@ skill is recognized:
 - `$claude-deep-research`
 - `$claude-workflows`
 - `$claude-skills`
+- `$claude-upgrade`
 
 Pass criteria:
 
 - `$claude-setup` is the gate skill: it must return an `ok` or `warn`
   aggregate status, not an unknown-skill error.
-- The other fourteen skills must not return `unknown skill` or
+- The other fifteen skills must not return `unknown skill` or
   `unrecognized skill` when invoked or shown in Codex skill discovery.
 - A skill that requires a job-id may stop at its expected
   usage-or-error message. That still counts as recognized for smoke

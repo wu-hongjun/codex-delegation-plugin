@@ -1276,29 +1276,29 @@ describe('README.md adversarial-review section uses neutral usage wording (T10-o
   });
 });
 
-// ---------- T10-optional-B. Direct dispatcher usage mentions eight commands ----------
+// ---------- T10-optional-B. Direct dispatcher usage mentions sixteen commands ----------
 
-describe('README.md Direct dispatcher usage mentions fifteen skill commands (T10-optional-B)', () => {
-  it('contains "fifteen skill commands" or "All fifteen skill commands"', () => {
+describe('README.md Direct dispatcher usage mentions sixteen skill commands (T10-optional-B)', () => {
+  it('contains "sixteen skill commands" or "All sixteen skill commands"', () => {
     const body = readReadme();
     const lower = body.toLowerCase();
     assert.ok(
-      lower.includes('fifteen skill commands') || lower.includes('all fifteen skill commands'),
-      'README.md Direct dispatcher usage section must say "fifteen skill commands"',
+      lower.includes('sixteen skill commands') || lower.includes('all sixteen skill commands'),
+      'README.md Direct dispatcher usage section must say "sixteen skill commands"',
     );
   });
 });
 
-// ---------- T10-optional-C. Current v1 scope lists Fifteen skills ----------
+// ---------- T10-optional-C. Current v1 scope lists Sixteen skills ----------
 
-describe('README.md Current v1 scope lists Fifteen skills (T10-optional-C)', () => {
-  it('contains "Fifteen skills" in the Current v1 scope section', () => {
+describe('README.md Current v1 scope lists Sixteen skills (T10-optional-C)', () => {
+  it('contains "Sixteen skills" in the Current v1 scope section', () => {
     const body = readReadme();
     const section = extractSection(body, '## Current v1 scope');
     assert.ok(section !== null, 'README.md must have a ## Current v1 scope section');
     assert.ok(
-      section.includes('Fifteen skills'),
-      'README.md ## Current v1 scope must say "Fifteen skills"',
+      section.includes('Sixteen skills'),
+      'README.md ## Current v1 scope must say "Sixteen skills"',
     );
   });
 });

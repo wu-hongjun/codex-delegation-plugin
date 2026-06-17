@@ -8,7 +8,7 @@ Key design choice: this v1 uses Claude Code background sessions directly and doe
 
 ## Current v1 scope
 
-Fifteen skills are available:
+Sixteen skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
 - **`$claude-delegate`** — start a new background session for a task
@@ -25,6 +25,7 @@ Fifteen skills are available:
 - **`$claude-deep-research`** — run a Claude Code `/deep-research` workflow with multi-agent fan-out, WebSearch, and cross-checked citations (added in plan 0013)
 - **`$claude-workflows`** — list and inspect Claude Code workflow background sessions started via `$claude-workflow` (added in plan 0016)
 - **`$claude-skills`** — list Claude Code skills visible to delegated Claude sessions
+- **`$claude-upgrade`** — refresh or repair the installed CC plugin through Codex plugin commands
 
 Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
 
@@ -483,15 +484,35 @@ keeps every skill entry and adds `counts.duplicateNames`, top-level
 `duplicateSourceRank`, `duplicateSource`, and `duplicateAmbiguous` fields when
 a name appears more than once.
 
+### $claude-upgrade
+
+Refresh or repair the installed CC plugin through Codex's plugin manager.
+Without `--yes`, this prints the exact plan and does not change the install.
+
+```text
+$claude-upgrade
+$claude-upgrade --yes
+$claude-upgrade --json
+$claude-upgrade --local --yes
+```
+
+The `--yes` form auto-detects the installed target. Public installs refresh the
+Git marketplace snapshot, remove the cached `cc@cc-plugin-codex` install if
+present, reinstall it, and print `codex plugin list`. Local cached installs use
+`cc@cc-plugin-codex-local` and skip the Git marketplace refresh. It does not
+edit Codex config files directly.
+
+Use `--public` or `--local` only when you need to override auto-detection.
+
 Direct dispatcher equivalent:
 
 ```bash
-node packages/plugin-codex/scripts/cc.mjs skills --json
+node packages/plugin-codex/scripts/cc.mjs upgrade
 ```
 
 ## Direct dispatcher usage
 
-All fifteen skill commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All sixteen skill commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-codex/scripts/cc.mjs setup
@@ -509,6 +530,7 @@ node packages/plugin-codex/scripts/cc.mjs fork -- "build a proof-of-concept for 
 node packages/plugin-codex/scripts/cc.mjs batch -- "migrate all usages of the old API to the new one"
 node packages/plugin-codex/scripts/cc.mjs deep-research -- "What are the main tradeoffs between B-trees and LSM-trees for write-heavy workloads?"
 node packages/plugin-codex/scripts/cc.mjs workflows
+node packages/plugin-codex/scripts/cc.mjs upgrade
 ```
 
 All commands support `--json` for machine-readable output. The `--yes` flag on `delegate` and `followup` skips the interactive privacy acknowledgement; `--allow-edit` is a policy/framing flag and does NOT bypass that acknowledgement.

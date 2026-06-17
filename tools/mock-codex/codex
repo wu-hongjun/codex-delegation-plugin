@@ -3,13 +3,17 @@
 // today — enough to satisfy the `codex-version` doctor probe without depending on a
 // real Codex install. Extend the surface only as future probes/skills need it.
 
-import { existsSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 const CONFIG_PATH = process.env.CC_PLUGIN_CODEX_MOCK_CODEX_CONFIG;
 
 const DEFAULT_CONFIG = Object.freeze({
   version: 'codex-cli 0.0.0-mock',
   versionFails: false,
+  pluginListVersion: '0.0.0-mock',
+  pluginFailures: {},
+  commandLogPath: '',
   sleepMs: 0,
 });
 
@@ -28,6 +32,20 @@ function maybeSleep(config) {
   }
 }
 
+function logCommand(config, argv) {
+  if (!config.commandLogPath) return;
+  mkdirSync(dirname(config.commandLogPath), { recursive: true });
+  appendFileSync(config.commandLogPath, JSON.stringify({ argv }) + '\n');
+}
+
+function maybeFailPluginCommand(config, commandKey) {
+  const failure = config.pluginFailures?.[commandKey];
+  if (!failure) return false;
+  const message = typeof failure === 'string' ? failure : `mock failure for ${commandKey}`;
+  process.stderr.write(`${message}\n`);
+  process.exit(1);
+}
+
 function main() {
   const argv = process.argv.slice(2);
   const config = loadConfig();
@@ -40,6 +58,37 @@ function main() {
     }
     process.stdout.write(`${config.version}\n`);
     process.exit(0);
+  }
+
+  if (argv[0] === 'plugin') {
+    const commandKey = argv.join(' ');
+    logCommand(config, argv);
+    maybeFailPluginCommand(config, commandKey);
+
+    if (argv[1] === 'marketplace' && argv[2] === 'upgrade' && argv[3]) {
+      process.stdout.write(`Upgraded marketplace ${argv[3]}\n`);
+      process.exit(0);
+    }
+
+    if (argv[1] === 'marketplace' && argv[2] === 'add' && argv[3]) {
+      process.stdout.write(`Added marketplace ${argv[3]}\n`);
+      process.exit(0);
+    }
+
+    if (argv[1] === 'remove' && argv[2]) {
+      process.stdout.write(`Removed plugin ${argv[2]}\n`);
+      process.exit(0);
+    }
+
+    if (argv[1] === 'add' && argv[2]) {
+      process.stdout.write(`Added plugin ${argv[2]}\n`);
+      process.exit(0);
+    }
+
+    if (argv[1] === 'list') {
+      process.stdout.write(`cc@cc-plugin-codex  enabled  ${config.pluginListVersion}\n`);
+      process.exit(0);
+    }
   }
 
   process.stderr.write(`mock-codex: unsupported command: ${argv.join(' ') || '(none)'}\n`);

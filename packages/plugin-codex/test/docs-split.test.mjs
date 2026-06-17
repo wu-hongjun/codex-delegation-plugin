@@ -67,6 +67,7 @@ const SKILL_NAMES = [
   'claude-deep-research',
   'claude-workflows',
   'claude-skills',
+  'claude-upgrade',
 ];
 
 // ---------- forbidden tokens for END-USER surfaces ----------
@@ -155,8 +156,8 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
       }
     });
 
-    // T12-3: Skills section lists all 15 skills with $-prefix
-    it('Skills section enumerates all 15 skill names with $-prefix and a one-line description', () => {
+    // T12-3: Skills section lists all 16 skills with $-prefix
+    it('Skills section enumerates all 16 skill names with $-prefix and a one-line description', () => {
       const content = readFileSync(MARKETPLACE_README, 'utf8');
       // Extract the Skills section body.
       const match = content.match(/^## Skills\b[\s\S]*?(?=^## )/m);
@@ -553,13 +554,13 @@ describe('$claude-workflow documentation — plugin README (Plan 0008 T5)', () =
     );
   });
 
-  it('plugin README Current v1 scope section says "Fifteen skills"', () => {
+  it('plugin README Current v1 scope section says "Sixteen skills"', () => {
     const content = readFileSync(PLUGIN_README, 'utf8');
     const match = content.match(/^## Current v1 scope\b[\s\S]*?(?=^## )/m);
     assert.ok(match, 'plugin README must have a "## Current v1 scope" section');
     assert.ok(
-      match[0].includes('Fifteen skills'),
-      'plugin README ## Current v1 scope must say "Fifteen skills" (updated from Thirteen skills)',
+      match[0].includes('Sixteen skills'),
+      'plugin README ## Current v1 scope must say "Sixteen skills"',
     );
   });
 

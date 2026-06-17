@@ -26,7 +26,8 @@
       "Run a batch of parallel Claude Code instructions.",
       "Run a Claude Code dynamic deep-research workflow on a question.",
       "List my Claude Code workflow sessions.",
-      "List installed Claude Code skills."
+      "List installed Claude Code skills.",
+      "Upgrade or refresh the installed CC plugin."
     ],
     "brandColor": "#D97706"
   }

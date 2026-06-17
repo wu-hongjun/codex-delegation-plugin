@@ -5,6 +5,7 @@
 // Exit codes: 0 success, 1 failure, 2 usage error
 
 import { createInterface } from 'node:readline/promises';
+import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -67,6 +68,23 @@ function loadPluginVersion() {
 }
 
 const PLUGIN_VERSION = loadPluginVersion();
+
+const UPGRADE_TARGETS = Object.freeze({
+  public: Object.freeze({
+    source: 'public',
+    marketplace: 'cc-plugin-codex',
+    plugin: 'cc@cc-plugin-codex',
+    repoUrl: 'https://github.com/wu-hongjun/cc-plugin-codex',
+    refreshMarketplace: true,
+  }),
+  local: Object.freeze({
+    source: 'local',
+    marketplace: 'cc-plugin-codex-local',
+    plugin: 'cc@cc-plugin-codex-local',
+    repoUrl: null,
+    refreshMarketplace: false,
+  }),
+});
 
 function readJsonFileMaybe(path) {
   try {
@@ -743,6 +761,7 @@ const KNOWN_COMMANDS = new Set([
   'adversarial-review',
   'workflows',
   'skills',
+  'upgrade',
 ]);
 
 function inferCommandForParseError(args) {
@@ -820,6 +839,9 @@ try {
       break;
     case 'skills':
       await cmdSkills(flags, positional, useJson);
+      break;
+    case 'upgrade':
+      await cmdUpgrade(flags, positional, useJson);
       break;
     default:
       process.stderr.write(
@@ -3151,6 +3173,213 @@ async function cmdSkills(flags, positional, json) {
   process.stdout.write(formatClaudeSkills(catalog, json) + '\n');
 }
 
+// ---------- upgrade ----------
+
+function detectUpgradeTarget(flags) {
+  if (flags['public'] && flags['local']) {
+    throw new Error('Use only one of --public or --local.');
+  }
+  if (flags['public']) return UPGRADE_TARGETS.public;
+  if (flags['local']) return UPGRADE_TARGETS.local;
+
+  const scriptPath = fileURLToPath(import.meta.url);
+  if (scriptPath.includes('/cc-plugin-codex-local/')) return UPGRADE_TARGETS.local;
+  return UPGRADE_TARGETS.public;
+}
+
+function upgradePlan(target) {
+  const steps = [];
+  if (target.refreshMarketplace) {
+    steps.push({
+      label: 'refresh-marketplace',
+      command: 'codex',
+      args: ['plugin', 'marketplace', 'upgrade', target.marketplace],
+      fallback: target.repoUrl
+        ? {
+            command: 'codex',
+            args: ['plugin', 'marketplace', 'add', target.repoUrl],
+          }
+        : null,
+      required: true,
+    });
+  }
+  steps.push(
+    {
+      label: 'remove-installed-plugin',
+      command: 'codex',
+      args: ['plugin', 'remove', target.plugin],
+      required: false,
+    },
+    {
+      label: 'install-plugin',
+      command: 'codex',
+      args: ['plugin', 'add', target.plugin],
+      required: true,
+    },
+    {
+      label: 'list-plugins',
+      command: 'codex',
+      args: ['plugin', 'list'],
+      required: true,
+    },
+  );
+  return steps;
+}
+
+function upgradeSourceLabel(target) {
+  return target.source === 'local'
+    ? 'local marketplace (cc-plugin-codex-local)'
+    : 'public Git marketplace (cc-plugin-codex)';
+}
+function formatCommandForDisplay(step) {
+  return [
+    step.command,
+    ...step.args.map((arg) => (arg.includes(' ') ? JSON.stringify(arg) : arg)),
+  ].join(' ');
+}
+
+function runUpgradeStep(step) {
+  const startedAt = new Date().toISOString();
+  const result = spawnSync(step.command, step.args, {
+    env: process.env,
+    encoding: 'utf8',
+  });
+  return {
+    label: step.label,
+    command: step.command,
+    args: step.args,
+    required: step.required !== false,
+    status: result.status,
+    signal: result.signal,
+    stdout: result.stdout ?? '',
+    stderr: result.stderr ?? '',
+    error: result.error ? String(result.error.message ?? result.error) : null,
+    startedAt,
+    finishedAt: new Date().toISOString(),
+  };
+}
+
+async function cmdUpgrade(flags, positional, json) {
+  if (flags['allow-edit'] !== undefined) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          '--allow-edit is not applicable to cc upgrade; it only calls Codex plugin commands.',
+        ),
+        'upgrade',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+  if (positional.length > 0) {
+    process.stderr.write(
+      formatError(new Error('upgrade does not take positional arguments.'), 'upgrade', json) + '\n',
+    );
+    process.exit(2);
+  }
+
+  let target;
+  try {
+    target = detectUpgradeTarget(flags);
+  } catch (err) {
+    process.stderr.write(formatError(err, 'upgrade', json) + '\n');
+    process.exit(2);
+  }
+  const steps = upgradePlan(target);
+  const commands = steps.map((step) => ({
+    label: step.label,
+    command: step.command,
+    args: step.args,
+    required: step.required !== false,
+    fallback: step.fallback
+      ? {
+          command: step.fallback.command,
+          args: step.fallback.args,
+        }
+      : null,
+  }));
+
+  const dryRun = Boolean(flags['dry-run']) || !flags['yes'];
+  if (dryRun) {
+    const payload = {
+      ok: true,
+      dryRun: true,
+      version: PLUGIN_VERSION,
+      target,
+      commands,
+      next: 'Run `cc upgrade --yes` to execute this plan.',
+    };
+    if (json) {
+      process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+    } else {
+      const lines = [
+        'CC upgrade plan',
+        `  Current dispatcher version: ${PLUGIN_VERSION}`,
+        `  Source:      ${upgradeSourceLabel(target)}`,
+        `  Marketplace: ${target.marketplace}`,
+        `  Plugin:      ${target.plugin}`,
+        '',
+        'Commands:',
+      ];
+      for (const step of steps) {
+        lines.push(`  ${formatCommandForDisplay(step)}`);
+        if (step.fallback) {
+          lines.push(`    fallback: ${formatCommandForDisplay(step.fallback)}`);
+        }
+      }
+      lines.push('', 'Run `cc upgrade --yes` to execute this plan.');
+      process.stdout.write(lines.join('\n') + '\n');
+    }
+    return;
+  }
+
+  /** @type {Array<Record<string, unknown>>} */
+  const results = [];
+  for (const step of steps) {
+    let result = runUpgradeStep(step);
+    if (result.status !== 0 && step.fallback) {
+      results.push({ ...result, continuedWithFallback: true });
+      result = runUpgradeStep({
+        ...step.fallback,
+        label: `${step.label}-fallback`,
+        required: true,
+      });
+    }
+    results.push(result);
+
+    if (result.status !== 0 && step.required !== false) {
+      const detail = result.stderr || result.stdout || result.error || `exit ${result.status}`;
+      throw new Error(`${formatCommandForDisplay(step)} failed: ${String(detail).trim()}`);
+    }
+  }
+
+  const payload = {
+    ok: true,
+    dryRun: false,
+    version: PLUGIN_VERSION,
+    target,
+    steps: results,
+    next: 'Restart Codex if the skill catalog does not refresh immediately, then run $claude-setup.',
+  };
+
+  if (json) {
+    process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+  } else {
+    const lines = ['CC plugin refresh complete.', ''];
+    for (const step of results) {
+      const ok = step.status === 0 ? 'ok' : step.required === false ? 'warn' : 'fail';
+      lines.push(`${ok}: ${formatCommandForDisplay(step)}`);
+      const stdout = String(step.stdout ?? '').trim();
+      const stderr = String(step.stderr ?? '').trim();
+      if (stdout) lines.push(`  ${stdout.split('\n')[0]}`);
+      if (stderr) lines.push(`  ${stderr.split('\n')[0]}`);
+    }
+    lines.push('', 'Next: run $claude-setup.');
+    process.stdout.write(lines.join('\n') + '\n');
+  }
+}
+
 function printUsage(commandName = '') {
   const commandHelp = {
     delegate: [
@@ -3227,6 +3456,15 @@ function printUsage(commandName = '') {
       '',
       'Options: --json',
     ],
+    upgrade: [
+      'Usage: cc upgrade [--dry-run] [--yes] [--json] [--public|--local]',
+      '',
+      'Refreshes or repairs the installed CC plugin through the Codex CLI.',
+      'Auto-detects local cached installs; use --public or --local to override.',
+      'Defaults to a dry-run plan. Use --yes to execute.',
+      '',
+      'Options: --dry-run --yes --json --public --local',
+    ],
   };
 
   if (commandName && Object.prototype.hasOwnProperty.call(commandHelp, commandName)) {
@@ -3259,16 +3497,20 @@ function printUsage(commandName = '') {
       '                                            Fresh-session independent review of the latest non-review turn',
       '  workflows [<jobId>] [--all] [--json]      List workflow/deep-research sessions or drill into one (read-only; no subprocess spawned)',
       '  skills [--json]                          List Claude Code skills visible to delegated Claude sessions',
+      '  upgrade [--dry-run] [--yes] [--json] [--public|--local]  Refresh or repair the installed CC plugin',
       '  version | --version                       Print the installed plugin version',
       '',
       'Flags:',
-      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch/deep-research/workflows/skills)',
+      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch/deep-research/workflows/skills/upgrade)',
       '  --compact                    Compact redacted JSON shape for delegate/status/result/stop',
       '  --partial                    Allow result to print recorded partial output for incomplete jobs',
       '  --job <jobId-or-prefix>      Select one job for status',
       '  --limit <n>                  Limit status lists after newest-first sorting (0 = no limit)',
       '  --stored-status <state>      Pre-filter status lists by stored job status',
       '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/goal/fork/batch/deep-research/followup/review/adversarial-review)',
+      '  --dry-run                    Print the upgrade plan without changing the Codex plugin install',
+      '  --public                     Force public Git marketplace target for upgrade',
+      '  --local                      Force local marketplace target for upgrade',
       '  --name <name>                Session name (delegate, workflow, goal, fork, batch, deep-research)',
       '  --model <model>              Model selection (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
       '  --effort <effort>            Effort level (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',

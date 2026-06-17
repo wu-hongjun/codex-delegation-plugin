@@ -35,6 +35,7 @@ The following 27 files are copied byte-for-byte from `packages/plugin-codex/` in
 - `skills/claude-deep-research/SKILL.md`
 - `skills/claude-workflows/SKILL.md`
 - `skills/claude-skills/SKILL.md`
+- `skills/claude-upgrade/SKILL.md`
 
 Note: `scripts/cc.mjs` is copied from source and the packaging script sets the user-executable bit (chmod 0755) on the marketplace copy unconditionally, since the source file has mode 644 but the marketplace copy must be executable.
 

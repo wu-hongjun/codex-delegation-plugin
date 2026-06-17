@@ -77,7 +77,7 @@ If `$claude-setup` reports `ok` or `warn`, the install is complete.
 
 ## Skills
 
-After install, the plugin makes 15 skills available inside the Codex
+After install, the plugin makes 16 skills available inside the Codex
 TUI. Type the `$<name>` form at the Codex chat prompt.
 
 - `$claude-setup` — probes the local environment (Claude Code auth,
@@ -113,6 +113,8 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
   background sessions started via `$claude-workflow`.
 - `$claude-skills` — lists Claude Code skills visible to delegated
   Claude sessions, including user and installed-plugin skills.
+- `$claude-upgrade` — refreshes or repairs the installed CC plugin through
+  Codex plugin commands.
 
 ### $claude-workflow
 
@@ -234,6 +236,21 @@ $claude-skills --json
 
 Use listed user-invocable skills in delegated prompts as `/skill-name`.
 
+### $claude-upgrade
+
+Refreshes or repairs the installed CC plugin through Codex's plugin manager.
+Without `--yes`, it prints the exact plan and makes no changes.
+
+```
+$claude-upgrade
+$claude-upgrade --yes
+$claude-upgrade --json
+```
+
+The `--yes` form auto-detects public Git vs local cached installs. Use
+`--public` or `--local` only when you need to override that target. After a
+successful refresh, run `$claude-setup`.
+
 Each skill prints a usage message when invoked without the arguments
 it needs (e.g., a job id). That usage message is normal behaviour —
 it confirms the skill is registered and reachable. The full plugin
@@ -302,12 +319,12 @@ reinstall.
 
 Before release, run the smoke checklist in
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md).
-It verifies the local marketplace install and all 15 skill names
+It verifies the local marketplace install and all 16 skill names
 (`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`,
 `$claude-stop`, `$claude-followup`, `$claude-review`,
 `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`,
 `$claude-fork`, `$claude-batch`, `$claude-deep-research`,
-`$claude-workflows`, `$claude-skills`) under an isolated `CODEX_HOME`.
+`$claude-workflows`, `$claude-skills`, `$claude-upgrade`) under an isolated `CODEX_HOME`.
 
 ## Troubleshooting
 

@@ -71,6 +71,7 @@ const EXPECTED_SKILL_NAMES = [
   'claude-skills',
   'claude-status',
   'claude-stop',
+  'claude-upgrade',
   'claude-workflow',
   'claude-workflows',
 ];
@@ -269,7 +270,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   // Check 4: marketplace skills/ contains exactly the 8 expected directories
   // ========================================================================
 
-  it('marketplace skills/ contains exactly the 15 expected skill directories', () => {
+  it('marketplace skills/ contains exactly the 16 expected skill directories', () => {
     assert.ok(
       existsSync(MARKETPLACE_SKILLS_DIR),
       `marketplace skills/ directory not found at ${MARKETPLACE_SKILLS_DIR}`,
@@ -290,7 +291,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   // Check 5: each skill directory contains a non-empty SKILL.md
   // ========================================================================
 
-  it('each of the 15 skill directories contains a non-empty SKILL.md', () => {
+  it('each of the 16 skill directories contains a non-empty SKILL.md', () => {
     for (const skillName of EXPECTED_SKILL_NAMES) {
       const skillMdPath = join(MARKETPLACE_SKILLS_DIR, skillName, 'SKILL.md');
       assert.ok(
@@ -479,6 +480,7 @@ const DERIVED_FILES_ALLOWLIST = [
   'skills/claude-deep-research/SKILL.md',
   'skills/claude-workflows/SKILL.md',
   'skills/claude-skills/SKILL.md',
+  'skills/claude-upgrade/SKILL.md',
 ];
 
 // Marketplace-owned files (present in plugin root but NOT derived from source).

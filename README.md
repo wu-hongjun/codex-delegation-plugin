@@ -2,84 +2,88 @@
 
 > **Delegate coding work to Claude Code from inside the OpenAI Codex CLI, through Claude Code's native background sessions.**
 
-This repository is a **Codex-native plugin and runtime** that lets the OpenAI Codex CLI orchestrate Claude Code as a delegated coding agent. The transport is Claude Code's first-party background-session surface (`claude --bg`, `claude agents --json`, transcript JSONL, `claude logs`, `claude attach`, `claude stop`) — **not** `claude -p`.
+## Install
 
-This plugin delegates work to Claude Code through background sessions (`claude --bg`) rather than `claude -p`. It is designed to preserve the architecture needed for session/cache reuse, but savings have not yet been benchmarked.
+Install the public plugin into Codex:
 
-The runtime is structured as a `Driver` interface with one implementation today (`ClaudeBackgroundDriver`). Adding a future driver for Gemini CLI / Grok Code / Qwen Code / DeepSeek CLI is a localized addition, not a refactor — but only Claude Code ships in v1.
+```bash
+codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex
+codex plugin add "cc@cc-plugin-codex"
+```
+
+Then restart Codex and verify the plugin is installed:
+
+```bash
+codex plugin list
+```
+
+Inside Codex, run:
+
+```text
+$claude-setup
+$claude-skills
+```
+
+`$claude-setup` should return aggregate status `ok` or `warn`. `fail` means an environment dependency is missing; follow the probe output.
 
 ---
 
 ## Quick start
 
-This repo is the cc-plugin-codex workspace. Different surfaces target different audiences:
-
-- **Install / use the plugin (end users):** start with the GitHub install commands below, then see [`marketplace/plugins/cc/README.md`](marketplace/plugins/cc/README.md) for verify / upgrade / uninstall / troubleshooting + the 16-skill list.
-- **Public Git marketplace:** [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json) points Codex at the committed plugin payload under [`marketplace/plugins/cc/`](marketplace/plugins/cc/).
-- **Local marketplace tree:** [`marketplace/`](marketplace/) — still available for contributor installs from a checkout.
-- **Full plugin docs (developers + contributors):** [`packages/plugin-codex/README.md`](packages/plugin-codex/README.md) — comprehensive runtime, dispatcher, skill, and architecture docs.
-- **Release maintainers:** [`documentation/RELEASING.md`](documentation/RELEASING.md) — canonical release-day checklist (prerequisites, version bump, packaging, smoke, CI, tagging, post-release).
-- **Plan history:** [`documentation/plan/`](documentation/plan/) — engineering-plan workflow and per-plan implementation logs.
-
-The rest of this README covers installation, deployment model, current scope, design pillars, and repository layout for contributors. It is not a duplicate of the full plugin docs.
+- **Install and use:** follow the commands above, then use `$claude-delegate`, `$claude-status`, `$claude-result`, and `$claude-followup` inside Codex.
+- **End-user manual:** [`marketplace/plugins/cc/README.md`](marketplace/plugins/cc/README.md) covers verify, update, uninstall, troubleshooting, and the full skill list.
+- **Developer manual:** [`packages/plugin-codex/README.md`](packages/plugin-codex/README.md) covers dispatcher commands, runtime behavior, architecture, and contributor workflows.
+- **Marketplace payload:** [`marketplace/`](marketplace/) contains the committed plugin tree that Codex installs.
+- **Release checklist:** [`documentation/RELEASING.md`](documentation/RELEASING.md).
+- **Plan history:** [`documentation/plan/`](documentation/plan/).
 
 ---
 
-## Install
-
-End users do **not** need `npm install` or a manual clone. Codex can install this plugin directly from the GitHub repository because the repo root exposes a Codex marketplace manifest at [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json).
-
-Prerequisites:
+## Requirements
 
 - Codex CLI with plugin marketplace support (`codex --version`).
 - Claude Code installed and authenticated locally (`claude auth login`).
 - Node.js 20 or later on `PATH`.
 
-Install from GitHub with the bootstrap helper:
+No `npm install` or manual clone is needed for normal users.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/wu-hongjun/cc-plugin-codex/main/install.sh | bash
+---
+
+## Use
+
+After install, the main Codex skills are:
+
+```text
+$claude-delegate "Inspect this repo and summarize the main risks."
+$claude-status
+$claude-result <jobId>
+$claude-followup <jobId> -- "Now check the tests around that area."
 ```
 
-Or run the underlying Codex marketplace commands directly:
-
-```bash
-codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex
-codex plugin add "cc@cc-plugin-codex"
-codex plugin list
-```
-
-Then open Codex inside any repository and run:
+Useful discovery and maintenance commands:
 
 ```text
 $claude-setup
+$claude-skills
+$claude-upgrade
 ```
 
-`$claude-setup` should report aggregate status `ok` or `warn`. `fail` means an environment dependency is missing; follow the probe output.
+The plugin currently ships 16 skills: `$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`, `$claude-skills`, `$claude-upgrade`.
 
-### Upgrade
+---
 
-Inside Codex, use the plugin-native upgrade helper:
+## Update
+
+Inside Codex:
 
 ```text
 $claude-upgrade
 $claude-upgrade --yes
 ```
 
-The first command prints the plan. The `--yes` form auto-detects the installed
-target, refreshes the Git marketplace when using the public install, and
-reinstalls the plugin cache through Codex's own plugin commands. From a shell,
-the equivalent dispatcher command is:
+`$claude-upgrade` prints the exact plan without changing anything. `$claude-upgrade --yes` refreshes the Git marketplace and reinstalls the plugin through Codex's plugin manager.
 
-```bash
-node packages/plugin-codex/scripts/cc.mjs upgrade --yes
-```
-
-Contributor checkouts can force the local marketplace target with
-`$claude-upgrade --local --yes`; public installs can force the Git target with
-`$claude-upgrade --public --yes`.
-
-Manual GitHub install refresh, if you need to run the Codex commands yourself:
+From a shell, the manual equivalent is:
 
 ```bash
 codex plugin marketplace upgrade "cc-plugin-codex"
@@ -88,7 +92,32 @@ codex plugin add "cc@cc-plugin-codex"
 codex plugin list
 ```
 
-For a local contributor checkout, install from the committed local marketplace tree instead:
+---
+
+## Uninstall
+
+```bash
+codex plugin remove "cc@cc-plugin-codex"
+codex plugin marketplace remove "cc-plugin-codex"
+```
+
+This removes the Codex plugin registration and marketplace pointer. It does not delete Claude Code transcripts or plugin job records.
+
+---
+
+## What This Is
+
+This repository is a **Codex-native plugin and runtime** that lets the OpenAI Codex CLI orchestrate Claude Code as a delegated coding agent. The transport is Claude Code's first-party background-session surface (`claude --bg`, `claude agents --json`, transcript JSONL, `claude logs`, `claude attach`, `claude stop`) — **not** `claude -p`.
+
+This plugin delegates work to Claude Code through background sessions (`claude --bg`) rather than `claude -p`. It is designed to preserve the architecture needed for session/cache reuse, but savings have not yet been benchmarked.
+
+The runtime is structured as a `Driver` interface with one implementation today (`ClaudeBackgroundDriver`). Adding a future driver for Gemini CLI / Grok Code / Qwen Code / DeepSeek CLI is a localized addition, not a refactor — but only Claude Code ships in v1.
+
+---
+
+## Local Contributor Install
+
+For development from a checkout:
 
 ```bash
 git clone https://github.com/wu-hongjun/cc-plugin-codex.git
@@ -118,24 +147,6 @@ codex plugin list
 ```
 
 Replace `<repo-root>` with the absolute path to the clone.
-
-### Uninstall
-
-For the GitHub install:
-
-```bash
-codex plugin remove "cc@cc-plugin-codex"
-codex plugin marketplace remove "cc-plugin-codex"
-```
-
-For a local contributor checkout:
-
-```bash
-codex plugin remove "cc@cc-plugin-codex-local"
-codex plugin marketplace remove "cc-plugin-codex-local"
-```
-
-This removes the Codex plugin registration and marketplace pointer. It does not delete any Git checkout or existing Claude Code transcripts/job records.
 
 ## Deployment Model
 

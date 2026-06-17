@@ -3153,6 +3153,15 @@ async function cmdSkills(flags, positional, json) {
 
 function printUsage(commandName = '') {
   const commandHelp = {
+    delegate: [
+      'Usage: cc delegate [options] -- "<prompt>"',
+      '',
+      'Starts a Claude Code background session and records a cc job.',
+      'Use --yes to acknowledge plugin privacy non-interactively.',
+      'Use --permission-mode bypassPermissions only for explicit trusted unattended runs.',
+      '',
+      'Options: --yes --json --compact --name <name> --model <model> --effort <effort> --permission-mode <mode> --dangerously-skip-permissions --add-dir <dir> --mcp-config <path> --allow-edit',
+    ],
     workflow: [
       'Usage: cc workflow [options] -- "<prompt>"',
       '',
@@ -3192,6 +3201,14 @@ function printUsage(commandName = '') {
       'Use --partial to read the latest recorded partial output from a running or blocked job.',
       '',
       'Options: --all --json --compact --partial',
+    ],
+    followup: [
+      'Usage: cc followup <jobId-or-prefix> [options] -- "<prompt>"',
+      '',
+      'Sends a follow-up prompt to an awaiting Claude job in the existing session.',
+      'If JSON output reports resultPending:true, run cc result <jobId> after status settles.',
+      '',
+      'Options: --all --yes --json --allow-edit',
     ],
     workflows: [
       'Usage: cc workflows [<jobId-or-sessionId>] [--all] [--json]',

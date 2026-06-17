@@ -1989,6 +1989,7 @@ describe('followup immediate preview honesty (Plan 0022 friction polish)', () =>
     assert.equal(parsed.turn.stalePreview, true);
     assert.equal(parsed.turn.resultPending, true);
     assert.equal(parsed.turn.previousTurnPreview, 'PREVIOUS_TURN_PREVIEW');
+    assert.equal(parsed.turn.resultHint, 'cc result job_preview_12345678');
   });
 
   it('formatFollowup prefers a distinct sendResult preview over a stale reconciled preview', () => {
@@ -7433,6 +7434,24 @@ describe('--help mentions workflow command', () => {
       result.stdout.includes('workflow'),
       `expected "workflow" in --help output; got:\n${result.stdout}`,
     );
+  });
+});
+
+describe('delegate/followup command-specific help', () => {
+  it('delegate --help prints focused delegate usage and unattended-run guidance', () => {
+    const result = runDispatcher(['delegate', '--help']);
+    assert.equal(result.status, 0, `delegate --help should exit 0; got ${result.status}`);
+    assert.ok(result.stdout.startsWith('Usage: cc delegate'), result.stdout);
+    assert.ok(result.stdout.includes('--permission-mode bypassPermissions'), result.stdout);
+    assert.ok(!result.stdout.includes('Commands:'), result.stdout);
+  });
+
+  it('followup --help prints focused followup usage and resultPending guidance', () => {
+    const result = runDispatcher(['followup', '--help']);
+    assert.equal(result.status, 0, `followup --help should exit 0; got ${result.status}`);
+    assert.ok(result.stdout.startsWith('Usage: cc followup'), result.stdout);
+    assert.ok(result.stdout.includes('resultPending:true'), result.stdout);
+    assert.ok(!result.stdout.includes('Commands:'), result.stdout);
   });
 });
 

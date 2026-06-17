@@ -428,7 +428,12 @@ export function formatFollowup(job, turnHandle, turnIndex, json, opts = {}) {
           finalMessagePreview: finalMessagePreview ?? null,
           ...(previewSource !== null ? { previewSource } : {}),
           ...(resultPending
-            ? { stalePreview: true, resultPending: true, previousTurnPreview }
+            ? {
+                stalePreview: true,
+                resultPending: true,
+                previousTurnPreview,
+                resultHint: `cc result ${job.jobId}`,
+              }
             : {}),
         },
       },

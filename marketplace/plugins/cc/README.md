@@ -432,4 +432,4 @@ codex plugin list
 ```
 
 You should see `cc@cc-plugin-codex-local` with version
-`0.3.10` (the current plugin version), reported as `installed, enabled`.
+`0.3.11` (the current plugin version), reported as `installed, enabled`.

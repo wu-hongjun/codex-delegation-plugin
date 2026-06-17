@@ -7548,7 +7548,7 @@ describe('upgrade command', () => {
     const logPath = join(TMP_HOME, 'mock-codex-commands.jsonl');
     const cfgPath = writeMockCodexConfig({
       commandLogPath: logPath,
-      pluginListVersion: '0.3.10',
+      pluginListVersion: '0.3.11',
     });
 
     const result = runDispatcher(['upgrade', '--yes', '--json'], {

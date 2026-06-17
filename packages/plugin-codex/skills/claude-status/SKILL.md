@@ -42,11 +42,16 @@ know the job id. For broad sweeps in a workspace with many historical jobs, use
 filter by stored job status. `--compact` affects JSON shape; it does not delete
 historical job records.
 
-Compact JSON includes `actionHints` with stable next commands such as
-`status`, `result`, `partialResult`, `attach`, and `logs`. When a job is
-`needs_input` with `waitingFor: "permission prompt"`, surface the `attach`
-hint to the user. If `partialResult` is present, use `$claude-result <jobId>
---partial` to inspect recorded progress without waiting for the job to finish.
+Human status output includes a header row, a relative age column, and a footer
+with `claude attach <shortId>` when any listed job needs input.
+
+Compact JSON includes `waiting.kind` plus `actionHints` with stable next
+commands such as `status`, `result`, `partialResult`, `stop`, `followup`,
+`attach`, and `logs`. When `waiting.kind` is `"permission"`, surface the
+`attach` hint to the user. If `partialResult` is present, use `$claude-result
+<jobId> --partial` to inspect recorded progress without waiting for the job to
+finish. Check `result.isPartial` and `latestTurn.resultState` before treating
+recorded output as final.
 
 When running from a cc-plugin-codex checkout, status may include a
 `versionMismatch` meta warning if the dispatcher version differs from the

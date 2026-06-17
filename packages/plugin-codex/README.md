@@ -352,11 +352,16 @@ Use `--job` for a focused lookup when you already have the job ID. Use
 jobs; `--limit 0` means no limit. `--stored-status <state>` filters by stored job
 status before the list is reconciled.
 
-Compact JSON includes `actionHints` for the next stable commands:
-`status`, `result`, `partialResult`, `attach`, and `logs`. If a job is
-`needs_input` with `waitingFor: "permission prompt"`, attach with
+Human status output includes a header row, a relative age column, and a footer
+with `claude attach <shortId>` when any listed job needs input.
+
+Compact JSON includes `waiting.kind` plus `actionHints` for the next stable
+commands: `status`, `result`, `partialResult`, `stop`, `followup`, `attach`,
+and `logs`. If `waiting.kind` is `"permission"`, attach with
 `actionHints.attach`. If `partialResult` is present, use `$claude-result <jobId>
 --partial` to read recorded progress without waiting for a terminal state.
+Check `result.isPartial` and `latestTurn.resultState` before treating recorded
+output as final.
 
 When status runs from a cc-plugin-codex checkout, JSON `meta.versionMismatch`
 and the human footer warn if the running dispatcher version differs from the

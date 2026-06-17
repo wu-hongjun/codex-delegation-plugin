@@ -464,6 +464,35 @@ describe('transcript artifacts', () => {
       'result.md should not be created for error-only transcripts',
     );
   });
+
+  it('running job can expose a partial transcript result without ending the turn', async () => {
+    const job = await createJob(makeJobInput());
+    const transcript = {
+      transcriptPath: '/fake/live-partial.jsonl',
+      events: [
+        {
+          type: 'message.completed',
+          role: 'assistant',
+          content: 'partial live answer',
+          at: NOW,
+        },
+      ],
+      warnings: [],
+    };
+    const adapter = fakeAdapter({
+      status: { value: 'working' },
+      transcript,
+    });
+
+    const result = await reconcileJob(job.jobId, adapter, { readArtifacts: true, now });
+    const latest = result.job.turns[result.job.turns.length - 1];
+
+    assert.equal(result.job.status, 'running');
+    assert.equal(result.job.result?.finalMessagePreview, 'partial live answer');
+    assert.equal(latest.result?.finalMessagePreview, 'partial live answer');
+    assert.equal(latest.status, 'queued');
+    assert.equal(latest.endedAt, undefined);
+  });
 });
 
 // ---------------------------------------------------------------------------

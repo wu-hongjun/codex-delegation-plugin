@@ -26,5 +26,9 @@ Patch-release polish after v0.3.8 heavy testing.
 - Add `cc result --partial` for recorded partial output on incomplete jobs.
 - Add compact status `actionHints` and `result.finalMessagePath` so agents can
   choose `attach`, `logs`, or `partialResult` without parsing prose.
+- Add compact status `result.isPartial` / `latestTurn.resultState` and avoid
+  stamping `turn.endedAt` for live partial transcript output.
+- Add compact status `waiting.kind`, `actionHints.stop/followup`, a human status
+  header/age column, and a needs-input attach footer.
 - Add setup/status worktree-version mismatch warnings for stale installed
   dispatcher caches during contributor testing.

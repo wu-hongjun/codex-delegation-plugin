@@ -753,10 +753,6 @@ export async function reconcileJob(
       }
       last.result = newResult;
       last.usageSnapshot = newResult.usageSnapshot;
-      if (last.endedAt === undefined) {
-        last.endedAt = new Date().toISOString();
-        turnStateChanged = true;
-      }
     }
 
     // Turn status sync rules (T7 + T15a):

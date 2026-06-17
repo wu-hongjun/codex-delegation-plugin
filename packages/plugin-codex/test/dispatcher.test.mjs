@@ -724,6 +724,8 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.job.jobId, jobId);
     assert.equal(parsed.job.result.finalMessagePreview, 'Single status preview.');
     assert.equal(parsed.job.result.finalMessagePath.endsWith(`${jobId}.result.md`), true);
+    assert.equal(parsed.job.result.isPartial, false);
+    assert.equal(parsed.job.latestTurn.resultState, 'final');
     assert.equal(parsed.job.actionHints.result, `cc result ${jobId}`);
     assert.equal(parsed.job.actionHints.partialResult, `cc result ${jobId} --partial`);
     assert.equal(parsed.job.actionHints.attach, 'claude attach aabbcc');
@@ -757,6 +759,47 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(job.driver, undefined, 'compact status rows must not include driver');
     assert.equal(job.workspace, undefined, 'compact status rows must not include workspace');
     assert.equal(job.result.finalMessagePreview, 'Compact status preview.');
+  });
+
+  it('status human list includes headers, age, and attach footer for needs_input jobs', () => {
+    const jobId = `job_stathum_${createHash('sha256').update('status-human-needs-input').digest('hex').slice(0, 8)}`;
+    writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Blocked human row.',
+      shortId: 'hum00001',
+    });
+
+    const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    record.status = 'needs_input';
+    record.claude.waitingFor = 'permission prompt';
+    record.turns[0].status = 'needs_input';
+    writeFileSync(recordPath, JSON.stringify(record, null, 2));
+    writeMockAgentSession('hum00001', shortIdToSessionId('hum00001'), 'idle');
+    const sidecarDir = join(MOCK_HOME, 'jobs', 'hum00001');
+    mkdirSync(sidecarDir, { recursive: true });
+    writeFileSync(
+      join(sidecarDir, 'state.json'),
+      JSON.stringify(
+        {
+          sessionId: shortIdToSessionId('hum00001'),
+          daemonShort: 'hum00001',
+          state: 'waiting',
+          tempo: 'blocked',
+          intent: 'permission prompt',
+          inFlight: { tasks: 0, queued: 0, kinds: [] },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const result = runDispatcher(['status', '--stored-status', 'needs_input']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.match(result.stdout, /JOB ID\s+STATUS\s+AGE\s+CLAUDE\s+NAME/);
+    assert.ok(result.stdout.includes(jobId), result.stdout);
+    assert.ok(result.stdout.includes('Input needed: run claude attach hum00001'), result.stdout);
   });
 
   it('status --limit sorts newest first and reports hidden rows', () => {
@@ -858,7 +901,15 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     const parsed = parseJson(result.stdout);
     assert.equal(parsed.job.status, 'needs_input');
     assert.equal(parsed.job.waitingFor, 'permission prompt');
+    assert.deepEqual(parsed.job.waiting, {
+      kind: 'permission',
+      detail: 'permission prompt',
+      action: 'attach',
+    });
+    assert.equal(parsed.job.result.isPartial, true);
+    assert.equal(parsed.job.latestTurn.resultState, 'partial');
     assert.equal(parsed.job.actionHints.attach, 'claude attach blk00001');
+    assert.equal(parsed.job.actionHints.stop, `cc stop ${jobId}`);
     assert.equal(parsed.job.actionHints.partialResult, `cc result ${jobId} --partial`);
   });
 
@@ -934,6 +985,9 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.jobs.length, 1, `expected one pre-filtered row; got:\n${result.stdout}`);
     assert.equal(parsed.jobs[0].jobId, jobId);
     assert.equal(parsed.jobs[0].status, 'awaiting_followup');
+    assert.equal(parsed.jobs[0].result.isPartial, false);
+    assert.equal(parsed.jobs[0].latestTurn.resultState, 'final');
+    assert.equal(parsed.jobs[0].actionHints.followup, `cc followup ${jobId} -- "<prompt>"`);
     assert.equal(parsed.meta.storedStatusFilter, 'running');
   });
 

@@ -41,6 +41,49 @@ function isBlockingReview(review) {
   return review.findings.some((f) => f.severity === 'high' || f.severity === 'blocker');
 }
 
+function isNonTerminalJobStatus(status) {
+  return (
+    status === 'queued' ||
+    status === 'starting' ||
+    status === 'running' ||
+    status === 'needs_input' ||
+    status === 'awaiting_followup'
+  );
+}
+
+function isFinalResultStatus(status) {
+  return status === 'completed' || status === 'awaiting_followup';
+}
+
+function classifyWaiting(waitingFor) {
+  if (waitingFor == null || waitingFor === '') return null;
+  const text = String(waitingFor);
+  const lower = text.toLowerCase();
+  const kind = lower.includes('permission')
+    ? 'permission'
+    : lower.includes('blocked') || lower.includes('waiting') || lower.includes('input')
+      ? 'input'
+      : 'other';
+  return {
+    kind,
+    detail: text,
+    action: 'attach',
+  };
+}
+
+function formatAge(iso) {
+  const ms = Date.parse(iso ?? '');
+  if (Number.isNaN(ms)) return '?';
+  const elapsed = Math.max(0, Date.now() - ms);
+  const seconds = Math.floor(elapsed / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 48) return `${hours}h`;
+  return `${Math.floor(hours / 24)}d`;
+}
+
 /**
  * Compact public job shape for automation. This intentionally does not spread
  * JobRecord: driver probes, auth diagnostics, workspace paths, prompts, and raw
@@ -56,11 +99,23 @@ function summarizeJob(job) {
   const latestKind = classifyTurnKind(latestTurn);
   const shortId = job.claude?.shortId ?? null;
   const waitingFor = job.claude?.waitingFor ?? null;
+  const waiting = classifyWaiting(waitingFor);
   const hasResult = job.result !== undefined;
+  const latestTurnHasResult = latestTurn?.result !== undefined;
+  const latestTurnResultState = latestTurnHasResult
+    ? latestTurn?.status === 'completed' || isFinalResultStatus(job.status)
+      ? 'final'
+      : 'partial'
+    : 'none';
+  const resultIsPartial = hasResult && latestTurnResultState !== 'final';
   const actionHints = {
     status: `cc status --job ${job.jobId} --json --compact`,
     result: `cc result ${job.jobId}`,
     ...(hasResult ? { partialResult: `cc result ${job.jobId} --partial` } : {}),
+    ...(isNonTerminalJobStatus(job.status) ? { stop: `cc stop ${job.jobId}` } : {}),
+    ...(job.status === 'awaiting_followup'
+      ? { followup: `cc followup ${job.jobId} -- "<prompt>"` }
+      : {}),
     ...(shortId != null ? { attach: `claude attach ${shortId}` } : {}),
     ...(shortId != null ? { logs: job.claude?.logsCommand ?? `claude logs ${shortId}` } : {}),
   };
@@ -71,6 +126,7 @@ function summarizeJob(job) {
     shortId,
     sessionName: job.claude?.sessionName ?? null,
     waitingFor,
+    waiting,
     createdAt: job.createdAt,
     updatedAt: job.updatedAt,
     ...(job.reviewOf !== undefined ? { reviewOf: job.reviewOf } : {}),
@@ -84,12 +140,14 @@ function summarizeJob(job) {
             ...(latestKind !== undefined ? { kind: latestKind } : {}),
             startedAt: latestTurn?.startedAt ?? null,
             endedAt: latestTurn?.endedAt ?? null,
-            hasResult: latestTurn?.result !== undefined,
+            hasResult: latestTurnHasResult,
+            resultState: latestTurnResultState,
             finalMessagePreview: latestTurn?.result?.finalMessagePreview ?? null,
           }
         : null,
     result: {
       hasResult,
+      isPartial: resultIsPartial,
       finalMessagePreview: job.result?.finalMessagePreview ?? null,
       finalMessagePath: job.result?.finalMessagePath ?? null,
       touchedFiles: Array.isArray(job.result?.touchedFiles) ? job.result.touchedFiles : [],
@@ -270,19 +328,27 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
   }
 
   const header = `Claude jobs for ${workspaceRoot}`;
+  const columnHeader = [
+    'JOB ID'.padEnd(32),
+    'STATUS'.padEnd(14),
+    'AGE'.padEnd(6),
+    'CLAUDE'.padEnd(16),
+    'NAME',
+  ].join('  ');
   const rows = jobs.map((j) => {
     const annotation = reviewOfLabel(j.reviewOf);
     const waiting = j.claude.waitingFor ? ` (waiting: ${j.claude.waitingFor})` : '';
     const cols = [
       j.jobId.padEnd(32),
       j.status.padEnd(14),
+      formatAge(j.updatedAt ?? j.createdAt).padEnd(6),
       (j.claude.shortId ?? '').padEnd(16),
       (j.claude.sessionName ?? '') + annotation + waiting,
     ];
     return `  ${cols.join('  ')}`.trimEnd();
   });
 
-  const lines = [header, '', ...rows];
+  const lines = [header, '', `  ${columnHeader}`, ...rows];
 
   // Footer hint when any job is awaiting a follow-up (human output only).
   const awaitingJob = jobs.find((j) => j.status === 'awaiting_followup');
@@ -291,6 +357,11 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
       '',
       `Follow-up available: run $claude-followup ${awaitingJob.jobId} -- "next instruction"`,
     );
+  }
+
+  const needsInputJob = jobs.find((j) => j.status === 'needs_input' && j.claude.shortId);
+  if (needsInputJob) {
+    lines.push('', `Input needed: run claude attach ${needsInputJob.claude.shortId}`);
   }
 
   if (opts.hiddenCount != null && opts.hiddenCount > 0) {

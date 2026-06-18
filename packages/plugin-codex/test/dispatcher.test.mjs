@@ -281,7 +281,7 @@ function writeSyntheticCompletedJob({
 // ---------- Test 1: setup --json ----------
 
 describe('setup --json', () => {
-  it('exits 0, outputs parseable JSON with ok:true and a probes array, and writes doctor.json', () => {
+  it('exits 0, outputs parseable JSON with ok:true and does not require writing doctor.json', () => {
     const result = runDispatcher(['setup', '--json']);
 
     assert.equal(
@@ -296,12 +296,20 @@ describe('setup --json', () => {
     }, `stdout is not valid JSON: ${result.stdout}`);
 
     assert.equal(parsed.ok, true, `expected ok:true, got: ${JSON.stringify(parsed)}`);
+    assert.match(parsed.summary, /delegate (ok|warn|fail); follow-up (ok|warn|fail)/);
+    assert.deepEqual(parsed.workflow, [
+      'delegate',
+      'status --job',
+      'result --partial/result',
+      'followup/stop',
+    ]);
+    assert.ok(Array.isArray(parsed.warnings), 'expected warnings to be an array');
     assert.ok(Array.isArray(parsed.probes), 'expected probes to be an array');
     assert.ok(parsed.probes.length > 0, 'expected at least one probe in the array');
 
-    // doctor.json should be written
+    // Dispatcher setup is a preflight and should not require snapshot writes.
     const doctorPath = join(TMP_HOME, 'doctor.json');
-    assert.ok(existsSync(doctorPath), `expected doctor.json at ${doctorPath}`);
+    assert.ok(!existsSync(doctorPath), `did not expect doctor.json at ${doctorPath}`);
   });
 
   it('exposes delegateCapability and followupCapability aggregates (plan 0002)', () => {
@@ -500,6 +508,11 @@ describe('setup (human output)', () => {
     assert.equal(result.status, 0, `stderr: ${result.stderr}`);
     assert.match(result.stdout, /delegate capability:\s+(ok|warn|fail)/);
     assert.match(result.stdout, /follow-up capability:\s+(ok|warn|fail)/);
+    assert.match(result.stdout, /summary: delegate (ok|warn|fail); follow-up (ok|warn|fail)/);
+    assert.match(
+      result.stdout,
+      /workflow: delegate -> status --job -> result --partial\/result -> followup\/stop/,
+    );
     assert.ok(
       result.stdout.includes('Shared (delegate + follow-up):'),
       'expected the "Shared" group header in human output',
@@ -587,6 +600,22 @@ describe('delegate without --yes (non-TTY stdin)', () => {
 
     // No job records should exist
     assert.equal(listJobIds().length, 0, 'no job records should be created when --yes is absent');
+  });
+
+  it('JSON output includes structured ackRequired retry metadata', () => {
+    const result = runDispatcher(['delegate', '--json', '--', 'hello']);
+    assert.equal(result.status, 1, `expected exit 1; stderr:\n${result.stderr}`);
+
+    const parsed = parseJson(result.stderr);
+    assert.equal(parsed.ok, false);
+    assert.equal(parsed.error.operation.type, 'ackRequired');
+    assert.equal(parsed.error.operation.workspaceRoot, WORK_DIR);
+    assert.equal(parsed.error.operation.persistence, 'workspace');
+    assert.match(
+      parsed.error.operation.retryCommand,
+      /node ".+packages\/plugin-codex\/scripts\/cc\.mjs" "delegate" "--yes" "--json" "--" "hello"/,
+    );
+    assert.match(parsed.error.operation.note, /workspace only/);
   });
 });
 
@@ -725,10 +754,26 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.job.result.finalMessagePreview, 'Single status preview.');
     assert.equal(parsed.job.result.finalMessagePath.endsWith(`${jobId}.result.md`), true);
     assert.equal(parsed.job.result.isPartial, false);
+    assert.equal(parsed.job.resultState, 'final_result_available');
+    assert.equal(parsed.job.recommendedNextAction, 'result');
+    assert.equal(parsed.job.process.state, 'completed');
+    assert.equal(parsed.job.process.orphaned, false);
     assert.equal(parsed.job.latestTurn.resultState, 'final');
     assert.equal(parsed.job.actionHints.result, `cc result ${jobId}`);
     assert.equal(parsed.job.actionHints.partialResult, `cc result ${jobId} --partial`);
     assert.equal(parsed.job.actionHints.attach, 'claude attach aabbcc');
+    assert.equal(
+      parsed.meta.dispatcherPath.endsWith('/packages/plugin-codex/scripts/cc.mjs'),
+      true,
+    );
+    assert.ok(
+      parsed.job.exactActionHints.result.includes(`/packages/plugin-codex/scripts/cc.mjs`),
+      parsed.job.exactActionHints.result,
+    );
+    assert.ok(
+      parsed.job.exactActionHints.partialResult.endsWith(` result ${jobId} --partial`),
+      parsed.job.exactActionHints.partialResult,
+    );
     assert.equal(
       parsed.job.driver,
       undefined,
@@ -907,6 +952,8 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
       action: 'attach',
     });
     assert.equal(parsed.job.result.isPartial, true);
+    assert.equal(parsed.job.resultState, 'partial_result_available');
+    assert.equal(parsed.job.recommendedNextAction, 'attach');
     assert.equal(parsed.job.latestTurn.resultState, 'partial');
     assert.equal(parsed.job.actionHints.attach, 'claude attach blk00001');
     assert.equal(parsed.job.actionHints.stop, `cc stop ${jobId}`);
@@ -961,6 +1008,40 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.resultText, resultContent);
   });
 
+  it('status --job JSON gives a clear next action for orphaned jobs with partial output', () => {
+    const jobId = `job_orphpart_${createHash('sha256').update('orphaned-partial').digest('hex').slice(0, 8)}`;
+    writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Useful output before the process disappeared.',
+      shortId: 'orph0001',
+    });
+
+    const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    record.status = 'orphaned';
+    record.updatedAt = new Date(Date.now() + 1000).toISOString();
+    record.turns[0].status = 'queued';
+    writeFileSync(recordPath, JSON.stringify(record, null, 2));
+
+    const result = runDispatcher(['status', '--job', jobId, '--json']);
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.job.status, 'orphaned');
+    assert.equal(parsed.job.process.state, 'orphaned');
+    assert.equal(parsed.job.process.orphaned, true);
+    assert.equal(parsed.job.latestTurn.status, 'queued');
+    assert.equal(parsed.job.result.hasResult, true);
+    assert.equal(parsed.job.result.isPartial, true);
+    assert.equal(parsed.job.resultState, 'orphaned_partial_result_available');
+    assert.equal(parsed.job.recommendedNextAction, 'result --partial');
+    assert.equal(parsed.job.actionHints.partialResult, `cc result ${jobId} --partial`);
+    assert.equal(
+      parsed.job.exactActionHints.partialResult.endsWith(` result ${jobId} --partial`),
+      true,
+    );
+  });
+
   it('status --stored-status uses stored status only to pre-filter before reconcile', () => {
     const shortId = '51a7f001';
     const sessionId = shortIdToSessionId(shortId);
@@ -986,8 +1067,18 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.jobs[0].jobId, jobId);
     assert.equal(parsed.jobs[0].status, 'awaiting_followup');
     assert.equal(parsed.jobs[0].result.isPartial, false);
+    assert.equal(parsed.jobs[0].resultState, 'final_result_available');
+    assert.equal(parsed.jobs[0].recommendedNextAction, 'followup');
     assert.equal(parsed.jobs[0].latestTurn.resultState, 'final');
     assert.equal(parsed.jobs[0].actionHints.followup, `cc followup ${jobId} -- "<prompt>"`);
+    assert.equal(
+      parsed.jobs[0].exactActionHints.followup.endsWith(` followup ${jobId} -- "<prompt>"`),
+      true,
+    );
+    assert.equal(
+      parsed.meta.dispatcherPath.endsWith('/packages/plugin-codex/scripts/cc.mjs'),
+      true,
+    );
     assert.equal(parsed.meta.storedStatusFilter, 'running');
   });
 

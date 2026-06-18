@@ -55,6 +55,32 @@ function isFinalResultStatus(status) {
   return status === 'completed' || status === 'awaiting_followup';
 }
 
+function shellQuote(value) {
+  return JSON.stringify(value);
+}
+
+function exactDispatcherCommand(dispatcherPath, command) {
+  return dispatcherPath ? `node ${shellQuote(dispatcherPath)} ${command}` : command;
+}
+
+function classifyResultState(job, hasResult, latestTurnResultState) {
+  if (!hasResult) return 'none';
+  if (latestTurnResultState === 'final') return 'final_result_available';
+  if (job.status === 'orphaned') return 'orphaned_partial_result_available';
+  return 'partial_result_available';
+}
+
+function recommendedNextAction(job, hasResult, resultState) {
+  if (resultState === 'orphaned_partial_result_available') return 'result --partial';
+  if (job.status === 'needs_input') return job.claude?.shortId ? 'attach' : 'status';
+  if (job.status === 'awaiting_followup') return 'followup';
+  if (job.status === 'completed') return hasResult ? 'result' : 'logs';
+  if (hasResult && resultState === 'partial_result_available') return 'result --partial';
+  if (job.status === 'orphaned') return job.claude?.shortId ? 'logs' : 'stop';
+  if (isNonTerminalJobStatus(job.status)) return 'status';
+  return hasResult ? 'result' : 'status';
+}
+
 function classifyWaiting(waitingFor) {
   if (waitingFor == null || waitingFor === '') return null;
   const text = String(waitingFor);
@@ -90,9 +116,10 @@ function formatAge(iso) {
  * usage snapshots can be large or sensitive.
  *
  * @param {import('@cc-plugin-codex/runtime').JobRecord} job
+ * @param {{ dispatcherPath?: string | null }} [opts]
  * @returns {object}
  */
-function summarizeJob(job) {
+function summarizeJob(job, opts = {}) {
   const turnCount = Array.isArray(job.turns) ? job.turns.length : 0;
   const latestTurnIndex = turnCount > 0 ? turnCount - 1 : -1;
   const latestTurn = latestTurnIndex >= 0 ? job.turns[latestTurnIndex] : undefined;
@@ -108,6 +135,8 @@ function summarizeJob(job) {
       : 'partial'
     : 'none';
   const resultIsPartial = hasResult && latestTurnResultState !== 'final';
+  const resultState = classifyResultState(job, hasResult, latestTurnResultState);
+  const recommended = recommendedNextAction(job, hasResult, resultState);
   const actionHints = {
     status: `cc status --job ${job.jobId} --json --compact`,
     result: `cc result ${job.jobId}`,
@@ -119,10 +148,49 @@ function summarizeJob(job) {
     ...(shortId != null ? { attach: `claude attach ${shortId}` } : {}),
     ...(shortId != null ? { logs: job.claude?.logsCommand ?? `claude logs ${shortId}` } : {}),
   };
+  const exactActionHints =
+    opts.dispatcherPath == null
+      ? null
+      : {
+          status: exactDispatcherCommand(
+            opts.dispatcherPath,
+            `status --job ${job.jobId} --json --compact`,
+          ),
+          result: exactDispatcherCommand(opts.dispatcherPath, `result ${job.jobId}`),
+          ...(hasResult
+            ? {
+                partialResult: exactDispatcherCommand(
+                  opts.dispatcherPath,
+                  `result ${job.jobId} --partial`,
+                ),
+              }
+            : {}),
+          ...(isNonTerminalJobStatus(job.status)
+            ? { stop: exactDispatcherCommand(opts.dispatcherPath, `stop ${job.jobId}`) }
+            : {}),
+          ...(job.status === 'awaiting_followup'
+            ? {
+                followup: exactDispatcherCommand(
+                  opts.dispatcherPath,
+                  `followup ${job.jobId} -- "<prompt>"`,
+                ),
+              }
+            : {}),
+          ...(shortId != null ? { attach: `claude attach ${shortId}` } : {}),
+          ...(shortId != null ? { logs: job.claude?.logsCommand ?? `claude logs ${shortId}` } : {}),
+        };
 
   return {
     jobId: job.jobId,
     status: job.status,
+    process: {
+      state: job.status,
+      shortId,
+      lastObservedAt: job.updatedAt ?? job.createdAt ?? null,
+      orphaned: job.status === 'orphaned',
+    },
+    resultState,
+    recommendedNextAction: recommended,
     shortId,
     sessionName: job.claude?.sessionName ?? null,
     waitingFor,
@@ -131,6 +199,7 @@ function summarizeJob(job) {
     updatedAt: job.updatedAt,
     ...(job.reviewOf !== undefined ? { reviewOf: job.reviewOf } : {}),
     actionHints,
+    ...(exactActionHints != null ? { exactActionHints } : {}),
     turnCount,
     latestTurn:
       latestTurnIndex >= 0
@@ -161,7 +230,24 @@ function statusMeta(opts) {
   if (opts.limit != null) meta.limit = opts.limit;
   if (opts.hiddenCount != null && opts.hiddenCount > 0) meta.hiddenCount = opts.hiddenCount;
   if (opts.versionMismatch != null) meta.versionMismatch = opts.versionMismatch;
+  if (opts.dispatcherPath != null) meta.dispatcherPath = opts.dispatcherPath;
   return Object.keys(meta).length > 0 ? meta : null;
+}
+
+function setupWarnings(report) {
+  return report.probes
+    .filter((p) => p.status === 'warn')
+    .map((p) => ({ name: p.name, detail: p.detail }));
+}
+
+function setupSummary(report) {
+  const warnings = setupWarnings(report).map((w) => w.name);
+  const warningText = warnings.length > 0 ? warnings.join(', ') : 'none';
+  return `delegate ${report.delegateCapability}; follow-up ${report.followupCapability}; warnings: ${warningText}`;
+}
+
+function setupWorkflow() {
+  return ['delegate', 'status --job', 'result --partial/result', 'followup/stop'];
 }
 
 /**
@@ -177,6 +263,9 @@ export function formatSetup(report, json) {
         status: report.status,
         delegateCapability: report.delegateCapability,
         followupCapability: report.followupCapability,
+        summary: setupSummary(report),
+        warnings: setupWarnings(report),
+        workflow: setupWorkflow(),
         generatedAt: report.generatedAt,
         probes: report.probes,
       },
@@ -209,6 +298,8 @@ export function formatSetup(report, json) {
     `Claude companion setup — ${overall}`,
     `  delegate capability: ${report.delegateCapability}`,
     `  follow-up capability: ${report.followupCapability}`,
+    `  summary: ${setupSummary(report)}`,
+    `  workflow: ${setupWorkflow().join(' -> ')}`,
   );
   if (shared.length > 0) {
     sections.push('', 'Shared (delegate + follow-up):', ...shared.map(fmtRow));
@@ -235,7 +326,7 @@ export function formatSetup(report, json) {
  */
 export function formatDelegate(job, json, opts = {}) {
   if (json) {
-    return JSON.stringify({ ok: true, job: opts.compact ? summarizeJob(job) : job }, null, 2);
+    return JSON.stringify({ ok: true, job: opts.compact ? summarizeJob(job, opts) : job }, null, 2);
   }
 
   const logsCmd = job.claude.logsCommand ?? `claude logs ${job.claude.shortId}`;
@@ -265,14 +356,14 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
     if (opts.singleJob) {
       const job = jobs[0] ?? null;
       return JSON.stringify(
-        { ok: true, job: job ? summarizeJob(job) : null, ...(meta ? { meta } : {}) },
+        { ok: true, job: job ? summarizeJob(job, opts) : null, ...(meta ? { meta } : {}) },
         null,
         2,
       );
     }
     if (opts.compact) {
       return JSON.stringify(
-        { ok: true, jobs: jobs.map(summarizeJob), ...(meta ? { meta } : {}) },
+        { ok: true, jobs: jobs.map((job) => summarizeJob(job, opts)), ...(meta ? { meta } : {}) },
         null,
         2,
       );
@@ -305,9 +396,14 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
       'Claude job',
       `Job ID:         ${j.jobId}`,
       `Status:         ${j.status}`,
+      `Process:        ${j.status}`,
       `Claude session: ${j.claude.shortId}`,
       `Name:           ${j.claude.sessionName}${annotation}`,
     ];
+    const compact = summarizeJob(j, opts);
+    lines.push(`Result state:   ${compact.resultState}`);
+    lines.push(`Next:           ${compact.recommendedNextAction}`);
+    lines.push(`Last observed:  ${compact.process.lastObservedAt ?? '(unknown)'}`);
     if (j.result?.finalMessagePreview) {
       lines.push(`Result:         ${j.result.finalMessagePreview}`);
     }
@@ -472,7 +568,7 @@ export function formatResult(job, resultText, json, opts = {}) {
       {
         ok: true,
         ...(opts.partial ? { partial: true } : {}),
-        job: opts.compact ? summarizeJob(job) : job,
+        job: opts.compact ? summarizeJob(job, opts) : job,
         resultText,
       },
       null,
@@ -482,11 +578,14 @@ export function formatResult(job, resultText, json, opts = {}) {
 
   const transcriptLine = job.claude.transcriptPath ? job.claude.transcriptPath : '(none)';
   const logsCmd = job.claude.logsCommand ?? `claude logs ${job.claude.shortId}`;
+  const compact = summarizeJob(job, opts);
 
   const lines = [
     `Job:        ${job.jobId}`,
     `Status:     ${job.status}`,
     ...(opts.partial ? ['Partial:    yes'] : []),
+    `Result:     ${compact.resultState}`,
+    `Next:       ${compact.recommendedNextAction}`,
     `Transcript: ${transcriptLine}`,
     `Logs:       ${logsCmd}`,
   ];
@@ -515,7 +614,7 @@ export function formatResult(job, resultText, json, opts = {}) {
  */
 export function formatStop(job, json, opts = {}) {
   if (json) {
-    return JSON.stringify({ ok: true, job: opts.compact ? summarizeJob(job) : job }, null, 2);
+    return JSON.stringify({ ok: true, job: opts.compact ? summarizeJob(job, opts) : job }, null, 2);
   }
 
   return [

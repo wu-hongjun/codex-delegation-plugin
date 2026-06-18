@@ -350,6 +350,31 @@ function writeRuntimeError(err, commandName, json) {
   }
 }
 
+function shellQuote(value) {
+  return JSON.stringify(value);
+}
+
+function privacyAckRetryCommand(commandName) {
+  const retryArgs = process.argv.slice(2);
+  if (!retryArgs.includes('--yes')) {
+    const commandIndex = retryArgs.findIndex((arg) => arg === commandName);
+    retryArgs.splice(commandIndex >= 0 ? commandIndex + 1 : 0, 0, '--yes');
+  }
+  return `node ${shellQuote(fileURLToPath(import.meta.url))} ${retryArgs.map(shellQuote).join(' ')}`;
+}
+
+function makePrivacyAckError({ message, workspaceRoot, commandName, useYes }) {
+  const err = new Error(message);
+  err.operation = {
+    type: 'ackRequired',
+    workspaceRoot,
+    retryCommand: privacyAckRetryCommand(commandName),
+    persistence: useYes ? 'already_requested' : 'workspace',
+    note: '--yes records a persistent plugin privacy acknowledgement for this workspace only; it does not approve Claude Code permission prompts.',
+  };
+  return err;
+}
+
 /**
  * @param {{
  *   workspaceRoot: string;
@@ -385,7 +410,18 @@ async function ensureWorkspaceAck({
       workspaceLabel,
       nonInteractive: true,
     });
-    process.stderr.write(formatError(new Error(msg), commandName, json) + '\n');
+    process.stderr.write(
+      formatError(
+        makePrivacyAckError({
+          message: msg,
+          workspaceRoot: ackResult.workspaceRoot,
+          commandName,
+          useYes,
+        }),
+        commandName,
+        json,
+      ) + '\n',
+    );
     process.exit(1);
   }
 
@@ -861,6 +897,57 @@ try {
 
 // ---------- setup ----------
 
+function aggregateProbeStatus(probes) {
+  if (probes.some((probe) => probe.status === 'fail')) return 'fail';
+  if (probes.some((probe) => probe.status === 'warn')) return 'warn';
+  return 'ok';
+}
+
+function aggregateCapabilityStatus(probes, capability) {
+  return aggregateProbeStatus(
+    probes.filter(
+      (probe) => Array.isArray(probe.capabilities) && probe.capabilities.includes(capability),
+    ),
+  );
+}
+
+function withAppendedDetail(probe, detail) {
+  if (probe.detail.includes(detail)) return probe;
+  return { ...probe, detail: `${probe.detail} ${detail}` };
+}
+
+function normalizeSetupReport(report) {
+  const probes = report.probes.map((probe) => {
+    if (probe.name === 'sidecar-jobs-dir' && probe.status === 'warn') {
+      return withAppendedDetail(
+        probe,
+        'No action required unless you need Claude sidecar job tracking; follow-up can continue via fallback.',
+      );
+    }
+    if (probe.name === 'claude-bg-flag' && probe.status === 'warn') {
+      const bgExec = report.probes.find((p) => p.name === 'bg-exec-supported');
+      const noPrompt = report.probes.find((p) => p.name === 'claude-bg-no-prompt');
+      if (bgExec?.status === 'ok' || noPrompt?.status === 'ok') {
+        return {
+          ...probe,
+          status: 'ok',
+          detail:
+            '--bg is not advertised in --help, but version/probe checks confirm background-session support. No action required.',
+        };
+      }
+    }
+    return probe;
+  });
+
+  return {
+    ...report,
+    probes,
+    status: aggregateProbeStatus(probes),
+    delegateCapability: aggregateCapabilityStatus(probes, 'delegate'),
+    followupCapability: aggregateCapabilityStatus(probes, 'followup'),
+  };
+}
+
 async function cmdSetup(_flags, json) {
   // Inject the driver-owned pty-build probe so the unified setup report covers both
   // Plan 0001 (delegate) and Plan 0002 (follow-up) capability groups. The runtime
@@ -1038,17 +1125,20 @@ async function cmdSetup(_flags, json) {
     },
   };
 
-  const report = await runDoctor({
-    cwd: process.cwd(),
-    extraProbes: [
-      ptyBuildExtraProbe,
-      opus48Probe,
-      workflowsProbe,
-      bgExecProbe,
-      claudeSkillsProbe,
-      worktreeVersionProbe,
-    ],
-  });
+  const report = normalizeSetupReport(
+    await runDoctor({
+      cwd: process.cwd(),
+      writeSnapshot: false,
+      extraProbes: [
+        ptyBuildExtraProbe,
+        opus48Probe,
+        workflowsProbe,
+        bgExecProbe,
+        claudeSkillsProbe,
+        worktreeVersionProbe,
+      ],
+    }),
+  );
   process.stdout.write(formatSetup(report, json) + '\n');
   if (report.status === 'fail') {
     process.exit(1);
@@ -1421,6 +1511,7 @@ function parseStoredStatusFilter(rawStatus, json) {
 
 async function cmdStatus(flags, positional, json) {
   const workspace = process.cwd();
+  const dispatcherPath = fileURLToPath(import.meta.url);
   const showAll = Boolean(flags['all']);
   const compact = Boolean(flags['compact']);
   const jobFlag = flags['job'];
@@ -1487,6 +1578,7 @@ async function cmdStatus(flags, positional, json) {
       formatStatus([job], json, workspace, {
         compact: true,
         singleJob: true,
+        dispatcherPath,
         versionMismatch,
       }) + '\n',
     );
@@ -1536,6 +1628,7 @@ async function cmdStatus(flags, positional, json) {
       limit,
       storedStatusFilter,
       hiddenCount,
+      dispatcherPath,
       versionMismatch,
     }) + '\n',
   );

@@ -552,6 +552,18 @@ describe('delegate --yes -- "hello"', () => {
   });
 });
 
+describe('delegate prompt delimiter flag placement', () => {
+  it('rejects known dispatcher flags placed after prompt text', () => {
+    const result = runDispatcher(['delegate', '--yes', '--', 'hello', '--json', '--compact']);
+
+    assert.equal(result.status, 2, `expected exit 2; stderr: ${result.stderr}`);
+    const combined = result.stdout + result.stderr;
+    assert.match(combined, /--json appears after --/);
+    assert.match(combined, /Put dispatcher flags before --/);
+    assert.match(combined, /cc delegate --json --compact -- "<prompt>"/);
+  });
+});
+
 // ---------- Test 4: delegate --json --yes -- "hello" ----------
 
 describe('delegate --json --yes -- "hello"', () => {
@@ -1074,6 +1086,30 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.job.latestTurn.rawStatus, 'queued');
   });
 
+  it('status JSON omits stale thresholds for terminal jobs', () => {
+    const jobId = `job_termst_${createHash('sha256').update('terminal-stale-status').digest('hex').slice(0, 8)}`;
+    const { record } = writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Terminal row result.',
+      shortId: 'term0001',
+    });
+    record.status = 'stopped';
+    record.updatedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+
+    const parsed = parseJson(
+      formatStatus([record], true, WORK_DIR, {
+        compact: true,
+        dispatcherPath: SCRIPT,
+        singleJob: true,
+      }),
+    );
+    assert.equal(parsed.job.process.stale, false);
+    assert.equal(parsed.job.freshness.stale, false);
+    assert.equal(parsed.job.process.lastObservedAgeSeconds >= 120, true);
+    assert.equal('staleAfterSeconds' in parsed.job.process, false);
+    assert.equal('staleAfterSeconds' in parsed.job.freshness, false);
+  });
+
   it('status --stored-status uses stored status only to pre-filter before reconcile', () => {
     const shortId = '51a7f001';
     const sessionId = shortIdToSessionId(shortId);
@@ -1254,6 +1290,11 @@ describe('result for a completed job', () => {
     assert.ok(
       result.stdout.includes(resultContent),
       `expected result content "${resultContent}" in stdout; got:\n${result.stdout}`,
+    );
+    assert.ok(!result.stdout.includes('Transcript: (none)'), result.stdout);
+    assert.ok(result.stdout.includes('Transcript file: not captured'), result.stdout);
+    assert.ok(
+      result.stdout.includes(`Result file: ${join(TMP_HOME, 'jobs', `${jobId}.result.md`)}`),
     );
   });
 

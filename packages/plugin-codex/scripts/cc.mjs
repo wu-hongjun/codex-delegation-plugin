@@ -171,6 +171,61 @@ const STARTUP_ONLY_FLAGS = [
   'verbose',
 ];
 
+const PROMPT_DELIMITER_FOOTGUN_FLAGS = new Set([
+  'all',
+  'allow-edit',
+  'compact',
+  'dangerously-skip-permissions',
+  'dry-run',
+  'effort',
+  'job',
+  'json',
+  'limit',
+  'model',
+  'name',
+  'partial',
+  'permission-mode',
+  'stored-status',
+  'yes',
+  ...STARTUP_ONLY_FLAGS,
+]);
+
+function promptDelimiterFlagName(token) {
+  if (!token.startsWith('--') || token === '--') return null;
+  const name = token.slice(2).split('=')[0];
+  return PROMPT_DELIMITER_FOOTGUN_FLAGS.has(name) ? name : null;
+}
+
+function findLateDispatcherFlagInPrompt(positional, promptStartIndex = 0) {
+  let sawPromptText = false;
+  for (let i = promptStartIndex; i < positional.length; i += 1) {
+    const token = positional[i];
+    const flagName = promptDelimiterFlagName(token);
+    if (!sawPromptText) {
+      if (flagName === null) sawPromptText = true;
+      continue;
+    }
+    if (flagName !== null) return token;
+  }
+  return null;
+}
+
+function rejectLateDispatcherFlagInPrompt(positional, promptStartIndex, commandName, json) {
+  const lateFlag = findLateDispatcherFlagInPrompt(positional, promptStartIndex);
+  if (lateFlag === null) return false;
+  process.stderr.write(
+    formatError(
+      new Error(
+        `${lateFlag} appears after -- and would be sent to Claude as prompt text. Put dispatcher flags before --, for example: cc ${commandName} --json --compact -- "<prompt>"`,
+      ),
+      commandName,
+      json,
+    ) + '\n',
+  );
+  process.exit(2);
+  return true;
+}
+
 function stringFlag(flags, name) {
   const value = flags[name];
   return typeof value === 'string' && value.length > 0 ? value : undefined;
@@ -1327,6 +1382,7 @@ async function _runDelegateCore(
   { commandName, promptTransformer, extraOutput },
 ) {
   // 1. Collect prompt from positionals (after -- or all remaining).
+  rejectLateDispatcherFlagInPrompt(positional, 0, commandName, json);
   const rawPrompt = positional.join(' ').trim();
   if (!rawPrompt) {
     process.stderr.write(
@@ -2204,6 +2260,7 @@ async function cmdFollowup(flags, positional, json) {
   }
 
   // 3. Prompt (remaining positionals after the prefix — everything after --).
+  rejectLateDispatcherFlagInPrompt(positional, 1, 'followup', json);
   const promptParts = positional.slice(1);
   const prompt = promptParts.join(' ').trim();
   if (!prompt) {
@@ -3576,6 +3633,7 @@ function printUsage(commandName = '') {
       'Starts a Claude Code background session and records a cc job.',
       'Use --yes to acknowledge plugin privacy non-interactively.',
       'Use --permission-mode bypassPermissions only for explicit trusted unattended runs.',
+      'Put all dispatcher flags before --; anything after -- is the Claude prompt.',
       '',
       'Options: --yes --json --compact --name <name> --model <model> --effort <effort> --permission-mode <mode> --dangerously-skip-permissions --add-dir <dir> --mcp-config <path> --allow-edit',
     ],
@@ -3586,6 +3644,7 @@ function printUsage(commandName = '') {
       'After startup, attach to the printed Claude session short ID:',
       '  claude attach <shortId>',
       'Then choose Yes, View raw script, or No in Claude Code.',
+      'Put all dispatcher flags before --; anything after -- is the Claude prompt.',
       '',
       'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode> --dangerously-skip-permissions',
       'Note: --yes only acknowledges plugin privacy; it does not approve the Claude Code workflow gate.',
@@ -3597,6 +3656,7 @@ function printUsage(commandName = '') {
       'Current Claude Code versions may show a dynamic workflow approval gate.',
       'If prompted, attach to the printed Claude session short ID:',
       '  claude attach <shortId>',
+      'Put all dispatcher flags before --; anything after -- is the Claude prompt.',
       '',
       'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode> --dangerously-skip-permissions',
       'Note: --yes only acknowledges plugin privacy; it does not approve Claude Code workflow gates.',

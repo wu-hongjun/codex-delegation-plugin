@@ -125,14 +125,14 @@ function timestampAgeSeconds(iso, now = Date.now()) {
 
 function processFreshness(job, lastObservedAt) {
   const ageSeconds = timestampAgeSeconds(lastObservedAt);
-  const staleAfterSeconds = Math.floor(DEFAULT_STALE_AFTER_MS / 1000);
-  const stale =
-    isNonTerminalJobStatus(job.status) && ageSeconds != null && ageSeconds >= staleAfterSeconds;
+  const nonTerminal = isNonTerminalJobStatus(job.status);
+  const staleAfterSeconds = nonTerminal ? Math.floor(DEFAULT_STALE_AFTER_MS / 1000) : null;
+  const stale = staleAfterSeconds != null && ageSeconds != null && ageSeconds >= staleAfterSeconds;
   return {
     lastObservedAt,
     ageSeconds,
     stale,
-    staleAfterSeconds,
+    ...(staleAfterSeconds != null ? { staleAfterSeconds } : {}),
     ...(stale ? { noNewOutputSince: lastObservedAt } : {}),
   };
 }
@@ -245,7 +245,9 @@ function summarizeJob(job, opts = {}) {
       lastObservedAt,
       lastObservedAgeSeconds: freshness.ageSeconds,
       stale: freshness.stale,
-      staleAfterSeconds: freshness.staleAfterSeconds,
+      ...(freshness.staleAfterSeconds != null
+        ? { staleAfterSeconds: freshness.staleAfterSeconds }
+        : {}),
       ...(freshness.noNewOutputSince ? { noNewOutputSince: freshness.noNewOutputSince } : {}),
       orphaned: job.status === 'orphaned',
     },
@@ -638,7 +640,6 @@ export function formatResult(job, resultText, json, opts = {}) {
     );
   }
 
-  const transcriptLine = job.claude.transcriptPath ? job.claude.transcriptPath : '(none)';
   const logsCmd = job.claude.logsCommand ?? `claude logs ${job.claude.shortId}`;
   const compact = summarizeJob(job, opts);
 
@@ -648,7 +649,10 @@ export function formatResult(job, resultText, json, opts = {}) {
     ...(opts.partial ? ['Partial:    yes'] : []),
     `Result:     ${compact.resultState}`,
     `Next:       ${compact.recommendedNextAction}`,
-    `Transcript: ${transcriptLine}`,
+    ...(job.claude.transcriptPath
+      ? [`Transcript file: ${job.claude.transcriptPath}`]
+      : ['Transcript file: not captured']),
+    ...(job.result?.finalMessagePath ? [`Result file: ${job.result.finalMessagePath}`] : []),
     `Logs:       ${logsCmd}`,
   ];
 

@@ -20,3 +20,7 @@ dist/
 .eslintcache
 coverage/
 .omc/
+
+# Codex CLI writes this local install marker into marketplace Git clones.
+# Keep `git status --short` clean after `codex plugin marketplace upgrade`.
+.codex-marketplace-install.json

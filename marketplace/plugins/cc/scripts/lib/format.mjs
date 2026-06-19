@@ -131,6 +131,8 @@ function processFreshness(job, lastObservedAt) {
   return {
     lastObservedAt,
     ageSeconds,
+    evaluated: nonTerminal,
+    reason: nonTerminal ? 'non_terminal_process' : 'terminal_status',
     stale,
     ...(staleAfterSeconds != null ? { staleAfterSeconds } : {}),
     ...(stale ? { noNewOutputSince: lastObservedAt } : {}),
@@ -244,6 +246,8 @@ function summarizeJob(job, opts = {}) {
       shortId,
       lastObservedAt,
       lastObservedAgeSeconds: freshness.ageSeconds,
+      freshnessEvaluated: freshness.evaluated,
+      freshnessReason: freshness.reason,
       stale: freshness.stale,
       ...(freshness.staleAfterSeconds != null
         ? { staleAfterSeconds: freshness.staleAfterSeconds }

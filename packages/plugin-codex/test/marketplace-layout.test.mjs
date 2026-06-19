@@ -31,6 +31,7 @@ const SOURCE_PLUGIN_ROOT = resolve(REPO_ROOT, 'packages', 'plugin-codex');
 
 // Derived paths used across multiple tests
 const ROOT_MARKETPLACE_JSON = resolve(REPO_ROOT, '.agents', 'plugins', 'marketplace.json');
+const ROOT_GITIGNORE = resolve(REPO_ROOT, '.gitignore');
 const MARKETPLACE_JSON = resolve(MARKETPLACE_ROOT, '.agents', 'plugins', 'marketplace.json');
 const MARKETPLACE_PLUGIN_ROOT = resolve(MARKETPLACE_ROOT, 'plugins', 'cc');
 const MARKETPLACE_PLUGIN_JSON = resolve(MARKETPLACE_PLUGIN_ROOT, '.codex-plugin', 'plugin.json');
@@ -182,6 +183,11 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
       './plugins/cc',
       `marketplace.json plugins[0].source.path must be "./plugins/cc"; got "${parsed.plugins[0].source?.path}"`,
     );
+  });
+
+  it('root .gitignore ignores the Codex marketplace install marker', () => {
+    const content = readFileSync(ROOT_GITIGNORE, 'utf8');
+    assert.match(content, /^\.codex-marketplace-install\.json$/m);
   });
 
   // ========================================================================

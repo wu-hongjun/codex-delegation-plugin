@@ -1080,7 +1080,11 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
       }),
     );
     assert.equal(parsed.job.process.stale, true);
+    assert.equal(parsed.job.process.freshnessEvaluated, true);
+    assert.equal(parsed.job.process.freshnessReason, 'non_terminal_process');
     assert.equal(parsed.job.freshness.stale, true);
+    assert.equal(parsed.job.freshness.evaluated, true);
+    assert.equal(parsed.job.freshness.reason, 'non_terminal_process');
     assert.equal(parsed.job.freshness.staleAfterSeconds, 120);
     assert.equal(parsed.job.freshness.noNewOutputSince, parsed.job.process.lastObservedAt);
     assert.equal(parsed.job.latestTurn.rawStatus, 'queued');
@@ -1104,7 +1108,11 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
       }),
     );
     assert.equal(parsed.job.process.stale, false);
+    assert.equal(parsed.job.process.freshnessEvaluated, false);
+    assert.equal(parsed.job.process.freshnessReason, 'terminal_status');
     assert.equal(parsed.job.freshness.stale, false);
+    assert.equal(parsed.job.freshness.evaluated, false);
+    assert.equal(parsed.job.freshness.reason, 'terminal_status');
     assert.equal(parsed.job.process.lastObservedAgeSeconds >= 120, true);
     assert.equal('staleAfterSeconds' in parsed.job.process, false);
     assert.equal('staleAfterSeconds' in parsed.job.freshness, false);

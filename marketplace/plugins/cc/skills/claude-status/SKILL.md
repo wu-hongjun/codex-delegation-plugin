@@ -53,6 +53,13 @@ commands such as `status`, `result`, `partialResult`, `stop`, `followup`,
 finish. Check `result.isPartial` and `latestTurn.resultState` before treating
 recorded output as final.
 
+Freshness fields are heartbeat/progress hints, not result availability. For
+non-terminal rows, `freshness.evaluated: true` means `stale` was computed against
+`staleAfterSeconds`. For terminal rows such as `stopped` or `orphaned`,
+`freshness.evaluated: false` and `freshness.reason: "terminal_status"` mean the
+job is no longer heartbeat-evaluated; `lastObservedAgeSeconds` is retained only
+as historical context.
+
 When running from a cc-plugin-codex checkout, status may include a
 `versionMismatch` meta warning if the dispatcher version differs from the
 workspace plugin version. Treat that as a stale install/cache signal; refresh

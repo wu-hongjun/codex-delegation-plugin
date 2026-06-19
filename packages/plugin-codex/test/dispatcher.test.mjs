@@ -7718,7 +7718,7 @@ describe('upgrade command', () => {
 
   it('upgrade --yes --json refreshes the marketplace and reinstalls the plugin through codex', () => {
     const logPath = join(TMP_HOME, 'mock-codex-commands.jsonl');
-    const installedPath = join(TMP_HOME, 'codex-cache', 'cc-plugin-codex', 'cc', '0.3.14');
+    const installedPath = join(TMP_HOME, 'codex-cache', 'cc-plugin-codex', 'cc', '0.3.15');
     const cfgPath = writeMockCodexConfig({
       commandLogPath: logPath,
       pluginListVersion: '0.3.11',

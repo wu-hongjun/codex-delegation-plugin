@@ -12,6 +12,7 @@ const DEFAULT_CONFIG = Object.freeze({
   version: 'codex-cli 0.0.0-mock',
   versionFails: false,
   pluginListVersion: '0.0.0-mock',
+  pluginInstalledPath: '',
   pluginFailures: {},
   commandLogPath: '',
   sleepMs: 0,
@@ -81,6 +82,26 @@ function main() {
     }
 
     if (argv[1] === 'add' && argv[2]) {
+      if (argv.includes('--json')) {
+        const selector = argv[2];
+        const [name, marketplaceName = 'mock-marketplace'] = selector.split('@');
+        process.stdout.write(
+          JSON.stringify(
+            {
+              pluginId: selector,
+              name,
+              marketplaceName,
+              version: config.pluginListVersion,
+              installedPath:
+                config.pluginInstalledPath ||
+                `/tmp/mock-codex-cache/${marketplaceName}/${name}/${config.pluginListVersion}`,
+            },
+            null,
+            2,
+          ) + '\n',
+        );
+        process.exit(0);
+      }
       process.stdout.write(`Added plugin ${argv[2]}\n`);
       process.exit(0);
     }

@@ -29,16 +29,18 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
@@ -52,8 +54,8 @@ const MOCK_CLAUDE = join(REPO_ROOT, 'tools', 'mock-claude');
 const MOCK_CODEX = join(REPO_ROOT, 'tools', 'mock-codex');
 const FORMAT_LIB = join(REPO_ROOT, 'packages', 'plugin-codex', 'scripts', 'lib', 'format.mjs');
 
-/** @type {{ formatFollowup: (job: object, turnHandle: object | null, turnIndex: number, json: boolean, opts?: object) => string }} */
-const { formatFollowup } = await import(FORMAT_LIB);
+/** @type {{ formatFollowup: (job: object, turnHandle: object | null, turnIndex: number, json: boolean, opts?: object) => string, formatStatus: (jobs: object[], json: boolean, workspaceRoot: string, opts?: object) => string }} */
+const { formatFollowup, formatStatus } = await import(FORMAT_LIB);
 
 // ---------- per-test temp dirs ----------
 
@@ -204,7 +206,7 @@ function writeMockInstalledClaudePlugin(pluginRef, version = '1.2.3') {
  *   shortId?: string;
  *   sessionId?: string;
  * }} opts
- * @returns {{ jobId: string; resultContent: string }}
+ * @returns {{ jobId: string; resultContent: string; record: object }}
  */
 function writeSyntheticCompletedJob({
   jobId,
@@ -275,7 +277,7 @@ function writeSyntheticCompletedJob({
   writeFileSync(join(jobsDir, `${jobId}.json`), JSON.stringify(record, null, 2));
   writeFileSync(resultPath, resultContent);
 
-  return { jobId, resultContent };
+  return { jobId, resultContent, record };
 }
 
 // ---------- Test 1: setup --json ----------
@@ -307,9 +309,11 @@ describe('setup --json', () => {
     assert.ok(Array.isArray(parsed.probes), 'expected probes to be an array');
     assert.ok(parsed.probes.length > 0, 'expected at least one probe in the array');
 
-    // Dispatcher setup is a preflight and should not require snapshot writes.
+    // Dispatcher setup is a read-only preflight and should not require state writes.
     const doctorPath = join(TMP_HOME, 'doctor.json');
     assert.ok(!existsSync(doctorPath), `did not expect doctor.json at ${doctorPath}`);
+    assert.ok(!existsSync(join(TMP_HOME, 'jobs')), 'setup must not create the jobs directory');
+    assert.ok(!existsSync(join(TMP_HOME, 'logs')), 'setup must not create the logs directory');
   });
 
   it('exposes delegateCapability and followupCapability aggregates (plan 0002)', () => {
@@ -949,6 +953,7 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.deepEqual(parsed.job.waiting, {
       kind: 'permission',
       detail: 'permission prompt',
+      requestedAction: null,
       action: 'attach',
     });
     assert.equal(parsed.job.result.isPartial, true);
@@ -1030,7 +1035,8 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.job.status, 'orphaned');
     assert.equal(parsed.job.process.state, 'orphaned');
     assert.equal(parsed.job.process.orphaned, true);
-    assert.equal(parsed.job.latestTurn.status, 'queued');
+    assert.equal(parsed.job.latestTurn.status, 'partial_result_available');
+    assert.equal(parsed.job.latestTurn.rawStatus, 'queued');
     assert.equal(parsed.job.result.hasResult, true);
     assert.equal(parsed.job.result.isPartial, true);
     assert.equal(parsed.job.resultState, 'orphaned_partial_result_available');
@@ -1040,6 +1046,32 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
       parsed.job.exactActionHints.partialResult.endsWith(` result ${jobId} --partial`),
       true,
     );
+  });
+
+  it('status --job JSON marks stale non-terminal jobs by last observed time', () => {
+    const shortId = 'stale001';
+    const jobId = `job_stale01_${createHash('sha256').update('stale-status').digest('hex').slice(0, 8)}`;
+    const { record } = writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Early partial output.',
+      shortId,
+    });
+    record.status = 'running';
+    record.updatedAt = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+    record.turns[0].status = 'queued';
+
+    const parsed = parseJson(
+      formatStatus([record], true, WORK_DIR, {
+        compact: true,
+        dispatcherPath: SCRIPT,
+        singleJob: true,
+      }),
+    );
+    assert.equal(parsed.job.process.stale, true);
+    assert.equal(parsed.job.freshness.stale, true);
+    assert.equal(parsed.job.freshness.staleAfterSeconds, 120);
+    assert.equal(parsed.job.freshness.noNewOutputSince, parsed.job.process.lastObservedAt);
+    assert.equal(parsed.job.latestTurn.rawStatus, 'queued');
   });
 
   it('status --stored-status uses stored status only to pre-filter before reconcile', () => {
@@ -7600,7 +7632,7 @@ describe('upgrade command', () => {
       parsed.commands.map((step) => step.args),
       [
         ['plugin', 'remove', 'cc@cc-plugin-codex-local'],
-        ['plugin', 'add', 'cc@cc-plugin-codex-local'],
+        ['plugin', 'add', 'cc@cc-plugin-codex-local', '--json'],
         ['plugin', 'list'],
       ],
     );
@@ -7637,9 +7669,11 @@ describe('upgrade command', () => {
 
   it('upgrade --yes --json refreshes the marketplace and reinstalls the plugin through codex', () => {
     const logPath = join(TMP_HOME, 'mock-codex-commands.jsonl');
+    const installedPath = join(TMP_HOME, 'codex-cache', 'cc-plugin-codex', 'cc', '0.3.13');
     const cfgPath = writeMockCodexConfig({
       commandLogPath: logPath,
       pluginListVersion: '0.3.11',
+      pluginInstalledPath: installedPath,
     });
 
     const result = runDispatcher(['upgrade', '--yes', '--json'], {
@@ -7653,9 +7687,16 @@ describe('upgrade command', () => {
     assert.deepEqual(readCommandLog(logPath), [
       ['plugin', 'marketplace', 'upgrade', 'cc-plugin-codex'],
       ['plugin', 'remove', 'cc@cc-plugin-codex'],
-      ['plugin', 'add', 'cc@cc-plugin-codex'],
+      ['plugin', 'add', 'cc@cc-plugin-codex', '--json'],
       ['plugin', 'list'],
     ]);
+    assert.ok(
+      parsed.steps.some((step) => step.label === 'refresh-cache-symlink'),
+      'upgrade should report the stable cache symlink refresh',
+    );
+    const currentLink = join(dirname(installedPath), 'current');
+    assert.equal(lstatSync(currentLink).isSymbolicLink(), true);
+    assert.equal(readlinkSync(currentLink), installedPath);
   });
 
   it('upgrade falls back to marketplace add if marketplace upgrade is not registered', () => {
@@ -7676,7 +7717,7 @@ describe('upgrade command', () => {
       ['plugin', 'marketplace', 'upgrade', 'cc-plugin-codex'],
       ['plugin', 'marketplace', 'add', 'https://github.com/wu-hongjun/cc-plugin-codex'],
       ['plugin', 'remove', 'cc@cc-plugin-codex'],
-      ['plugin', 'add', 'cc@cc-plugin-codex'],
+      ['plugin', 'add', 'cc@cc-plugin-codex', '--json'],
       ['plugin', 'list'],
     ]);
   });

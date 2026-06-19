@@ -85,16 +85,64 @@ function classifyWaiting(waitingFor) {
   if (waitingFor == null || waitingFor === '') return null;
   const text = String(waitingFor);
   const lower = text.toLowerCase();
+  let parsed = null;
+  try {
+    const value = JSON.parse(text);
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      parsed = value;
+    }
+  } catch {
+    // waitingFor is commonly a plain string such as "permission prompt".
+  }
   const kind = lower.includes('permission')
     ? 'permission'
     : lower.includes('blocked') || lower.includes('waiting') || lower.includes('input')
       ? 'input'
       : 'other';
+  const requestedAction =
+    typeof parsed?.command === 'string'
+      ? parsed.command
+      : typeof parsed?.tool === 'string'
+        ? parsed.tool
+        : typeof parsed?.action === 'string'
+          ? parsed.action
+          : null;
   return {
     kind,
     detail: text,
+    requestedAction,
     action: 'attach',
   };
+}
+
+const DEFAULT_STALE_AFTER_MS = 2 * 60 * 1000;
+
+function timestampAgeSeconds(iso, now = Date.now()) {
+  const ms = Date.parse(iso ?? '');
+  if (Number.isNaN(ms)) return null;
+  return Math.max(0, Math.floor((now - ms) / 1000));
+}
+
+function processFreshness(job, lastObservedAt) {
+  const ageSeconds = timestampAgeSeconds(lastObservedAt);
+  const staleAfterSeconds = Math.floor(DEFAULT_STALE_AFTER_MS / 1000);
+  const stale =
+    isNonTerminalJobStatus(job.status) && ageSeconds != null && ageSeconds >= staleAfterSeconds;
+  return {
+    lastObservedAt,
+    ageSeconds,
+    stale,
+    staleAfterSeconds,
+    ...(stale ? { noNewOutputSince: lastObservedAt } : {}),
+  };
+}
+
+function effectiveLatestTurnStatus(job, latestTurn, latestTurnResultState) {
+  const rawStatus = latestTurn?.status ?? null;
+  if (latestTurnResultState === 'final') return 'completed';
+  if (latestTurnResultState === 'partial') return 'partial_result_available';
+  if (job.status === 'orphaned' && rawStatus === 'queued') return 'orphaned';
+  return rawStatus;
 }
 
 function formatAge(iso) {
@@ -137,6 +185,14 @@ function summarizeJob(job, opts = {}) {
   const resultIsPartial = hasResult && latestTurnResultState !== 'final';
   const resultState = classifyResultState(job, hasResult, latestTurnResultState);
   const recommended = recommendedNextAction(job, hasResult, resultState);
+  const lastObservedAt = job.updatedAt ?? job.createdAt ?? null;
+  const freshness = processFreshness(job, lastObservedAt);
+  const latestTurnRawStatus = latestTurn?.status ?? null;
+  const latestTurnEffectiveStatus = effectiveLatestTurnStatus(
+    job,
+    latestTurn,
+    latestTurnResultState,
+  );
   const actionHints = {
     status: `cc status --job ${job.jobId} --json --compact`,
     result: `cc result ${job.jobId}`,
@@ -186,9 +242,14 @@ function summarizeJob(job, opts = {}) {
     process: {
       state: job.status,
       shortId,
-      lastObservedAt: job.updatedAt ?? job.createdAt ?? null,
+      lastObservedAt,
+      lastObservedAgeSeconds: freshness.ageSeconds,
+      stale: freshness.stale,
+      staleAfterSeconds: freshness.staleAfterSeconds,
+      ...(freshness.noNewOutputSince ? { noNewOutputSince: freshness.noNewOutputSince } : {}),
       orphaned: job.status === 'orphaned',
     },
+    freshness,
     resultState,
     recommendedNextAction: recommended,
     shortId,
@@ -205,7 +266,8 @@ function summarizeJob(job, opts = {}) {
       latestTurnIndex >= 0
         ? {
             index: latestTurnIndex,
-            status: latestTurn?.status ?? null,
+            status: latestTurnEffectiveStatus,
+            rawStatus: latestTurnRawStatus,
             ...(latestKind !== undefined ? { kind: latestKind } : {}),
             startedAt: latestTurn?.startedAt ?? null,
             endedAt: latestTurn?.endedAt ?? null,

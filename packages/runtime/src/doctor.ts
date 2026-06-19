@@ -55,6 +55,7 @@ export interface DoctorExtraProbe {
 export interface DoctorOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
+  readOnly?: boolean;
   writeSnapshot?: boolean;
   timeoutMs?: number;
   extraProbes?: DoctorExtraProbe[];
@@ -439,8 +440,31 @@ export async function probeCodexPluginTrust(opts: DoctorOptions = {}): Promise<D
 }
 
 export async function probeCompanionDirWritable(
-  _opts: DoctorOptions = {},
+  opts: DoctorOptions = {},
 ): Promise<DoctorProbeResult> {
+  if (opts.readOnly === true) {
+    try {
+      const stat = statSync(getCompanionHome());
+      if (!stat.isDirectory()) {
+        return {
+          name: 'companion-dir-writable',
+          status: 'warn',
+          detail: `${getCompanionHome()} exists but is not a directory. Setup is running read-only and did not modify it; delegate/follow-up need this state directory to be writable.`,
+        };
+      }
+      return {
+        name: 'companion-dir-writable',
+        status: 'ok',
+        detail: `${getCompanionHome()} exists. Setup ran read-only and did not write a probe file.`,
+      };
+    } catch {
+      return {
+        name: 'companion-dir-writable',
+        status: 'warn',
+        detail: `${getCompanionHome()} does not exist or is not readable. Setup ran read-only and did not create it; delegate/follow-up will create it when run with filesystem access.`,
+      };
+    }
+  }
   try {
     await ensureCompanionDirs();
   } catch (err) {

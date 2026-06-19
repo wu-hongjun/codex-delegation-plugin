@@ -261,6 +261,17 @@ describe('probeCompanionDirWritable', () => {
     assert.equal(r.status, 'ok');
     assert.equal(r.detail, TMP_HOME);
   });
+
+  it('read-only mode reports missing state without creating it', async () => {
+    const missingHome = join(TMP_HOME, 'missing-state');
+    process.env.CC_PLUGIN_CODEX_HOME = missingHome;
+
+    const r = await probeCompanionDirWritable({ readOnly: true });
+
+    assert.equal(r.status, 'warn');
+    assert.match(r.detail, /read-only/i);
+    assert.equal(existsSync(missingHome), false);
+  });
 });
 
 // Plan 0002 T2 — follow-up-capability probes

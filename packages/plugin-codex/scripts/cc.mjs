@@ -6,7 +6,16 @@
 
 import { createInterface } from 'node:readline/promises';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import {
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+} from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
@@ -1128,6 +1137,7 @@ async function cmdSetup(_flags, json) {
   const report = normalizeSetupReport(
     await runDoctor({
       cwd: process.cwd(),
+      readOnly: true,
       writeSnapshot: false,
       extraProbes: [
         ptyBuildExtraProbe,
@@ -3306,7 +3316,7 @@ function upgradePlan(target) {
     {
       label: 'install-plugin',
       command: 'codex',
-      args: ['plugin', 'add', target.plugin],
+      args: ['plugin', 'add', target.plugin, '--json'],
       required: true,
     },
     {
@@ -3350,6 +3360,88 @@ function runUpgradeStep(step) {
     startedAt,
     finishedAt: new Date().toISOString(),
   };
+}
+
+function parseInstalledPathFromAddStep(result) {
+  if (result.label !== 'install-plugin' || result.status !== 0) return null;
+  try {
+    const parsed = JSON.parse(String(result.stdout ?? ''));
+    return typeof parsed.installedPath === 'string' && parsed.installedPath.length > 0
+      ? parsed.installedPath
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function currentScriptPluginRoot() {
+  return dirname(dirname(fileURLToPath(import.meta.url)));
+}
+
+function refreshSymlink(linkPath, targetPath) {
+  const startedAt = new Date().toISOString();
+  try {
+    mkdirSync(dirname(linkPath), { recursive: true });
+    if (existsSync(linkPath) || lstatSync(linkPath, { throwIfNoEntry: false })) {
+      const stat = lstatSync(linkPath);
+      if (stat.isSymbolicLink()) {
+        rmSync(linkPath, { force: true });
+      } else {
+        return {
+          label: 'refresh-cache-symlink',
+          linkPath,
+          targetPath,
+          status: 'warn',
+          detail: `${linkPath} exists and is not a symlink; left unchanged.`,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+        };
+      }
+    }
+    symlinkSync(targetPath, linkPath, 'dir');
+    return {
+      label: 'refresh-cache-symlink',
+      linkPath,
+      targetPath,
+      status: 'ok',
+      detail: `${linkPath} -> ${targetPath}`,
+      startedAt,
+      finishedAt: new Date().toISOString(),
+    };
+  } catch (err) {
+    return {
+      label: 'refresh-cache-symlink',
+      linkPath,
+      targetPath,
+      status: 'warn',
+      detail: err instanceof Error ? err.message : String(err),
+      startedAt,
+      finishedAt: new Date().toISOString(),
+    };
+  }
+}
+
+function refreshCacheSymlinks(installedPath) {
+  if (installedPath == null) {
+    return [
+      {
+        label: 'refresh-cache-symlink',
+        status: 'warn',
+        detail:
+          'codex plugin add did not return an installedPath; stable current symlink was not refreshed.',
+        startedAt: new Date().toISOString(),
+        finishedAt: new Date().toISOString(),
+      },
+    ];
+  }
+
+  const versionParent = dirname(installedPath);
+  const currentRoot = currentScriptPluginRoot();
+  const links = [join(versionParent, 'current')];
+  if (currentRoot !== installedPath && dirname(currentRoot) === versionParent) {
+    links.push(currentRoot);
+  }
+  return links.map((linkPath) => refreshSymlink(linkPath, installedPath));
 }
 
 async function cmdUpgrade(flags, positional, json) {
@@ -3440,6 +3532,9 @@ async function cmdUpgrade(flags, positional, json) {
       });
     }
     results.push(result);
+    if (result.status === 0 && result.label === 'install-plugin') {
+      results.push(...refreshCacheSymlinks(parseInstalledPathFromAddStep(result)));
+    }
 
     if (result.status !== 0 && step.required !== false) {
       const detail = result.stderr || result.stdout || result.error || `exit ${result.status}`;

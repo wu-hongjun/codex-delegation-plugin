@@ -8027,6 +8027,32 @@ describe('upgrade command', () => {
     assert.equal(readlinkSync(currentLink), installedPath);
   });
 
+  it('upgrade --yes prints human output after refreshing the stable cache symlink', () => {
+    const logPath = join(TMP_HOME, 'mock-codex-commands.jsonl');
+    const installedPath = join(TMP_HOME, 'codex-cache', 'cc-plugin-codex', 'cc', '0.3.17');
+    const cfgPath = writeMockCodexConfig({
+      commandLogPath: logPath,
+      pluginListVersion: '0.3.11',
+      pluginInstalledPath: installedPath,
+    });
+
+    const result = runDispatcher(['upgrade', '--yes'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CODEX_CONFIG: cfgPath },
+    });
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(result.stdout.includes('CC plugin refresh complete.'), result.stdout);
+    assert.ok(result.stdout.includes('ok: refresh-cache-symlink'), result.stdout);
+    assert.ok(result.stdout.includes('Next: run $claude-setup.'), result.stdout);
+    assert.ok(!result.stderr.includes('Cannot read properties'), result.stderr);
+    assert.deepEqual(readCommandLog(logPath), [
+      ['plugin', 'marketplace', 'upgrade', 'cc-plugin-codex'],
+      ['plugin', 'remove', 'cc@cc-plugin-codex'],
+      ['plugin', 'add', 'cc@cc-plugin-codex', '--json'],
+      ['plugin', 'list'],
+    ]);
+  });
+
   it('upgrade falls back to marketplace add if marketplace upgrade is not registered', () => {
     const logPath = join(TMP_HOME, 'mock-codex-commands.jsonl');
     const cfgPath = writeMockCodexConfig({

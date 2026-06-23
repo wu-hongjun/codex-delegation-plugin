@@ -3711,9 +3711,16 @@ function upgradeSourceLabel(target) {
     : 'public Git marketplace (cc-plugin-codex)';
 }
 function formatCommandForDisplay(step) {
+  if (typeof step.command !== 'string') {
+    return String(step.label ?? 'step');
+  }
+  const args = Array.isArray(step.args) ? step.args : [];
   return [
     step.command,
-    ...step.args.map((arg) => (arg.includes(' ') ? JSON.stringify(arg) : arg)),
+    ...args.map((arg) => {
+      const value = String(arg);
+      return value.includes(' ') ? JSON.stringify(value) : value;
+    }),
   ].join(' ');
 }
 
@@ -3932,12 +3939,19 @@ async function cmdUpgrade(flags, positional, json) {
   } else {
     const lines = ['CC plugin refresh complete.', ''];
     for (const step of results) {
-      const ok = step.status === 0 ? 'ok' : step.required === false ? 'warn' : 'fail';
+      const ok =
+        step.status === 0 || step.status === 'ok'
+          ? 'ok'
+          : step.status === 'warn' || step.required === false
+            ? 'warn'
+            : 'fail';
       lines.push(`${ok}: ${formatCommandForDisplay(step)}`);
       const stdout = String(step.stdout ?? '').trim();
       const stderr = String(step.stderr ?? '').trim();
+      const detail = typeof step.detail === 'string' ? step.detail.trim() : '';
       if (stdout) lines.push(`  ${stdout.split('\n')[0]}`);
       if (stderr) lines.push(`  ${stderr.split('\n')[0]}`);
+      if (!stdout && !stderr && detail) lines.push(`  ${detail.split('\n')[0]}`);
     }
     lines.push('', 'Next: run $claude-setup.');
     process.stdout.write(lines.join('\n') + '\n');

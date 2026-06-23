@@ -64,6 +64,8 @@ const DEFAULT_CONFIG = Object.freeze({
   //   attach path → "structured-review"
   //   --bg path   → "adversarial-review"
   reviewFixture: null,
+  // Setup probe fixture: "ok" | "subscription-disabled".
+  printAccess: 'ok',
 });
 
 function loadConfig() {
@@ -352,6 +354,18 @@ function cmdAuthStatus(config) {
   }
   process.stdout.write('Not logged in. Run `claude login`.\n');
   return 1;
+}
+
+function cmdPrint(config, args) {
+  if (config.printAccess === 'subscription-disabled') {
+    process.stderr.write(
+      'Your organization has disabled Claude subscription access for Claude Code · Use an Anthropic API key instead, or ask your admin to enable access\n',
+    );
+    return 1;
+  }
+  const prompt = args.filter((a) => !a.startsWith('--')).join(' ');
+  process.stdout.write(`${prompt}\n`);
+  return 0;
 }
 
 function cmdDaemonStatus(config) {
@@ -827,14 +841,16 @@ function main() {
   maybeSleep(config);
 
   if (argv[0] === '--version') return process.exit(cmdVersion(config));
+  if (argv[0] === '--print' || argv[0] === '-p')
+    return process.exit(cmdPrint(config, argv.slice(1)));
   if (argv[0] === '--help' || argv[0] === '-h') {
     if (config.helpListsBg) {
       process.stdout.write(
-        'mock-claude: --version | auth status | daemon status | --bg <prompt> | agents --json | logs <id> | stop <id>\n',
+        'mock-claude: --version | --print <prompt> | auth status | daemon status | --bg <prompt> | agents --json | logs <id> | stop <id>\n',
       );
     } else {
       process.stdout.write(
-        'mock-claude: --version | auth status | agents --json | logs <id> | stop <id>\n',
+        'mock-claude: --version | --print <prompt> | auth status | agents --json | logs <id> | stop <id>\n',
       );
     }
     return process.exit(0);
@@ -869,7 +885,7 @@ function main() {
 
   process.stderr.write(`mock-claude: unknown command: ${argv.join(' ') || '(none)'}\n`);
   process.stderr.write(
-    'Supported: --version, auth status, daemon status, --bg <prompt>, agents --json, logs <id>, stop <id>\n',
+    'Supported: --version, --print <prompt>, auth status, daemon status, --bg <prompt>, agents --json, logs <id>, stop <id>\n',
   );
   process.exit(2);
 }

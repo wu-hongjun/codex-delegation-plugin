@@ -997,6 +997,14 @@ function withAppendedDetail(probe, detail) {
   return { ...probe, detail: `${probe.detail} ${detail}` };
 }
 
+function truncateProbeText(value, max = 500) {
+  const text = String(value ?? '')
+    .trim()
+    .replace(/\s+/g, ' ');
+  if (text.length <= max) return text;
+  return `${text.slice(0, max - 1)}…`;
+}
+
 function normalizeSetupReport(report) {
   const probes = report.probes.map((probe) => {
     if (probe.name === 'sidecar-jobs-dir' && probe.status === 'warn') {
@@ -1041,6 +1049,60 @@ async function cmdSetup(_flags, json) {
   const FLOOR_OPUS_4_8 = '2.1.154';
   const FLOOR_WORKFLOWS = '2.1.153';
   const FLOOR_BG_EXEC = '2.1.154';
+  const MODEL_ACCESS_MARKER = 'CC_PLUGIN_CODEX_SETUP_MODEL_ACCESS_OK';
+
+  /** @type {import('@cc-plugin-codex/runtime').DoctorExtraProbe} */
+  const modelAccessProbe = {
+    name: 'claude-model-access',
+    capabilities: ['delegate', 'followup'],
+    run: async (opts) => {
+      const { execFile } = await import('node:child_process');
+      const { promisify } = await import('node:util');
+      const execFileAsync = promisify(execFile);
+      try {
+        const r = await execFileAsync(
+          'claude',
+          ['--print', `Return exactly: ${MODEL_ACCESS_MARKER}`],
+          {
+            cwd: opts.cwd ?? process.cwd(),
+            env: opts.env ?? process.env,
+            timeout: 10000,
+            maxBuffer: 1024 * 1024,
+          },
+        );
+        const stdout = r.stdout.trim();
+        if (stdout.includes(MODEL_ACCESS_MARKER)) {
+          return {
+            name: 'claude-model-access',
+            status: 'ok',
+            detail: 'claude --print can reach the configured Claude model',
+            evidence: truncateProbeText(stdout),
+          };
+        }
+        return {
+          name: 'claude-model-access',
+          status: 'warn',
+          detail:
+            'claude --print exited successfully but did not echo the setup marker; model access exists, but responses may be altered by policy or prompt handling',
+          evidence: truncateProbeText(stdout),
+        };
+      } catch (err) {
+        const stdout = err && typeof err === 'object' && 'stdout' in err ? err.stdout : '';
+        const stderr = err && typeof err === 'object' && 'stderr' in err ? err.stderr : '';
+        const output = truncateProbeText(`${stdout ?? ''}\n${stderr ?? ''}`);
+        const disabledSubscription =
+          /disabled Claude subscription access|Use an Anthropic API key/i.test(output);
+        return {
+          name: 'claude-model-access',
+          status: 'fail',
+          detail: disabledSubscription
+            ? 'Claude Code model access is unavailable: your organization has disabled Claude subscription access. Ask an admin to enable Claude Code access or configure an Anthropic API key before delegating.'
+            : `claude --print failed; delegation is expected to fail until Claude Code model access is fixed.${output ? ` Output: ${output}` : ''}`,
+          evidence: output || null,
+        };
+      }
+    },
+  };
 
   /** @type {import('@cc-plugin-codex/runtime').DoctorExtraProbe} */
   const opus48Probe = {
@@ -1212,6 +1274,7 @@ async function cmdSetup(_flags, json) {
       readOnly: true,
       writeSnapshot: false,
       extraProbes: [
+        modelAccessProbe,
         ptyBuildExtraProbe,
         opus48Probe,
         workflowsProbe,

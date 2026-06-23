@@ -363,6 +363,37 @@ describe('setup --json', () => {
       'demo-user-skill',
     ]);
   });
+
+  it('includes a Claude Code model-access probe in the delegate/follow-up capability gates', () => {
+    const result = runDispatcher(['setup', '--json']);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    const probe = parsed.probes.find((p) => p.name === 'claude-model-access');
+    assert.ok(
+      probe,
+      `expected claude-model-access probe in setup output; got names: ${parsed.probes.map((p) => p.name).join(', ')}`,
+    );
+    assert.equal(probe.status, 'ok');
+    assert.deepEqual(probe.capabilities, ['delegate', 'followup']);
+    assert.match(probe.detail, /claude --print can reach/);
+  });
+
+  it('fails setup before delegation when Claude Code subscription model access is disabled', () => {
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, { printAccess: 'subscription-disabled' });
+    const result = runDispatcher(['setup', '--json'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+    assert.equal(result.status, 1, `expected setup failure; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.ok, false);
+    assert.equal(parsed.status, 'fail');
+    assert.equal(parsed.delegateCapability, 'fail');
+    assert.equal(parsed.followupCapability, 'fail');
+    const probe = parsed.probes.find((p) => p.name === 'claude-model-access');
+    assert.equal(probe?.status, 'fail');
+    assert.match(probe?.detail ?? '', /disabled Claude subscription access/);
+    assert.match(probe?.detail ?? '', /Anthropic API key/);
+  });
 });
 
 // ---------- Claude Code skill catalog ----------
@@ -485,6 +516,7 @@ describe('setup (human output)', () => {
       'claude-binary',
       'claude-version',
       'claude-auth',
+      'claude-model-access',
       'claude-bg-flag',
       'claude-agents-json',
       'claude-logs',

@@ -62,11 +62,19 @@ function waitFor(predicate, timeoutMs, label = 'condition') {
 }
 
 /**
- * Read and parse a JSON file. Returns null if the file does not exist yet.
+ * Read and parse a JSON file. Returns null if the file does not exist yet or
+ * is observed mid-write while polling.
  */
 function readJson(path) {
   if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, 'utf8'));
+  const raw = readFileSync(path, 'utf8');
+  if (raw.trim().length === 0) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error instanceof SyntaxError) return null;
+    throw error;
+  }
 }
 
 /**
@@ -75,10 +83,18 @@ function readJson(path) {
  */
 function readJsonl(path) {
   if (!existsSync(path)) return [];
-  return readFileSync(path, 'utf8')
+  const parsed = [];
+  for (const line of readFileSync(path, 'utf8')
     .split('\n')
-    .filter((l) => l.trim().length > 0)
-    .map((l) => JSON.parse(l));
+    .filter((l) => l.trim().length > 0)) {
+    try {
+      parsed.push(JSON.parse(line));
+    } catch (error) {
+      if (error instanceof SyntaxError) continue;
+      throw error;
+    }
+  }
+  return parsed;
 }
 
 /**
@@ -116,6 +132,64 @@ function spawnPty(args, env) {
     term.onExit((e) => resolve(e));
   });
   return { term, exitPromise, getOut: () => out };
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function waitForPromise(promise, timeoutMs, label) {
+  let timeout;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => {
+          reject(new Error(`timed out after ${timeoutMs}ms waiting for: ${label}`));
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function withPty(args, env, fn) {
+  const { term, exitPromise, getOut } = spawnPty(args, env);
+  let exited = false;
+  const trackedExit = exitPromise.then((event) => {
+    exited = true;
+    return event;
+  });
+  const detach = async () => {
+    term.write('\x1a');
+    const { exitCode } = await waitForPromise(trackedExit, 5000, 'PTY exit after Ctrl+Z');
+    assert.equal(exitCode, 0, `expected PTY exit 0, got: ${exitCode}`);
+  };
+
+  try {
+    return await fn({ term, getOut, detach });
+  } finally {
+    if (!exited) {
+      try {
+        term.write('\x1a');
+      } catch {
+        // Best-effort cleanup only; the original assertion should stay primary.
+      }
+      const detached = await Promise.race([
+        trackedExit.then(() => true),
+        delay(250).then(() => false),
+      ]);
+      if (!detached) {
+        try {
+          term.kill();
+        } catch {
+          // Best-effort cleanup only; the original assertion should stay primary.
+        }
+        await Promise.race([trackedExit, delay(1000)]);
+      }
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -359,66 +433,62 @@ describe('attach + sidecar (plan 0002 T3)', () => {
           assert.equal(bgResult.status, 0, `--bg failed: ${bgResult.stderr}`);
           const shortId = extractShortId(bgResult.stdout);
 
-          // Spawn the mock under PTY
-          const { term, exitPromise, getOut } = spawnPty(['attach', shortId], env);
+          await withPty(['attach', shortId], env, async ({ term, getOut, detach }) => {
+            // Write a prompt and wait for the response marker
+            term.write('hello world\r');
+            await waitFor(
+              () => getOut().includes('[mock] Got:') && getOut().includes('hello world'),
+              8000,
+              '"[mock] Got: hello world" in PTY stdout',
+            );
 
-          // Write a prompt and wait for the response marker
-          term.write('hello world\r');
-          await waitFor(
-            () => getOut().includes('[mock] Got:') && getOut().includes('hello world'),
-            8000,
-            '"[mock] Got: hello world" in PTY stdout',
-          );
+            // Verify sidecar state after the turn completes
+            const statePath = sidecarStatePath(home, shortId);
+            await waitFor(
+              () => {
+                const s = readJson(statePath);
+                return s && s.state === 'done' && s.tempo === 'idle';
+              },
+              5000,
+              'sidecar state.json to show state=done',
+            );
 
-          // Verify sidecar state after the turn completes
-          const statePath = sidecarStatePath(home, shortId);
-          await waitFor(
-            () => {
-              const s = readJson(statePath);
-              return s && s.state === 'done' && s.tempo === 'idle';
-            },
-            5000,
-            'sidecar state.json to show state=done',
-          );
+            const state = readJson(statePath);
+            assert.equal(state.state, 'done');
+            assert.ok(
+              state.output?.result?.includes('hello world'),
+              `output.result must include "hello world", got: ${state.output?.result}`,
+            );
 
-          const state = readJson(statePath);
-          assert.equal(state.state, 'done');
-          assert.ok(
-            state.output?.result?.includes('hello world'),
-            `output.result must include "hello world", got: ${state.output?.result}`,
-          );
+            // Verify timeline
+            const timelinePath = sidecarTimelinePath(home, shortId);
+            const lines = readJsonl(timelinePath);
+            const doneLine = lines.find((l) => l.state === 'done');
+            assert.ok(doneLine, 'timeline.jsonl must have a "done" line');
+            assert.ok(
+              doneLine.text?.includes('hello world'),
+              `timeline done line text must include "hello world", got: ${doneLine.text}`,
+            );
 
-          // Verify timeline
-          const timelinePath = sidecarTimelinePath(home, shortId);
-          const lines = readJsonl(timelinePath);
-          const doneLine = lines.find((l) => l.state === 'done');
-          assert.ok(doneLine, 'timeline.jsonl must have a "done" line');
-          assert.ok(
-            doneLine.text?.includes('hello world'),
-            `timeline done line text must include "hello world", got: ${doneLine.text}`,
-          );
+            await detach();
 
-          // Detach with Ctrl+Z
-          term.write('\x1a');
-          const { exitCode } = await exitPromise;
-          assert.equal(exitCode, 0, `expected PTY exit 0, got: ${exitCode}`);
-
-          // Session must still be listed in `claude agents --json` after detach
-          const agents = runClaude(['agents', '--json'], { env });
-          assert.equal(agents.status, 0, `agents --json failed: ${agents.stderr}`);
-          const parsed = JSON.parse(agents.stdout);
-          assert.ok(Array.isArray(parsed), 'agents --json must return an array');
-          const sessionId = state.sessionId;
-          const derivedShort = sessionId.replace(/-/g, '').slice(0, 8);
-          const found = parsed.some(
-            (entry) =>
-              entry.sessionId === sessionId ||
-              entry.sessionId?.replace(/-/g, '').slice(0, 8) === derivedShort,
-          );
-          assert.ok(
-            found,
-            `session ${shortId} / ${sessionId} must still appear in agents --json after detach`,
-          );
+            // Session must still be listed in `claude agents --json` after detach
+            const agents = runClaude(['agents', '--json'], { env });
+            assert.equal(agents.status, 0, `agents --json failed: ${agents.stderr}`);
+            const parsed = JSON.parse(agents.stdout);
+            assert.ok(Array.isArray(parsed), 'agents --json must return an array');
+            const sessionId = state.sessionId;
+            const derivedShort = sessionId.replace(/-/g, '').slice(0, 8);
+            const found = parsed.some(
+              (entry) =>
+                entry.sessionId === sessionId ||
+                entry.sessionId?.replace(/-/g, '').slice(0, 8) === derivedShort,
+            );
+            assert.ok(
+              found,
+              `session ${shortId} / ${sessionId} must still appear in agents --json after detach`,
+            );
+          });
         });
       },
     );
@@ -438,79 +508,76 @@ describe('attach + sidecar (plan 0002 T3)', () => {
           assert.equal(bgResult.status, 0, `--bg failed: ${bgResult.stderr}`);
           const shortId = extractShortId(bgResult.stdout);
 
-          const { term, exitPromise, getOut } = spawnPty(['attach', shortId], env);
+          await withPty(['attach', shortId], env, async ({ term, getOut, detach }) => {
+            // First turn
+            term.write('first\r');
+            await waitFor(
+              () => getOut().includes('[mock] Got:') && getOut().includes('first'),
+              8000,
+              '"[mock] Got: ... first" in PTY stdout',
+            );
 
-          // First turn
-          term.write('first\r');
-          await waitFor(
-            () => getOut().includes('[mock] Got:') && getOut().includes('first'),
-            8000,
-            '"[mock] Got: ... first" in PTY stdout',
-          );
+            // Wait for sidecar to reflect done for first turn
+            const statePath = sidecarStatePath(home, shortId);
+            await waitFor(
+              () => {
+                const s = readJson(statePath);
+                return s && s.state === 'done' && s.output?.result?.includes('first');
+              },
+              5000,
+              'sidecar to show done with "first" in output',
+            );
 
-          // Wait for sidecar to reflect done for first turn
-          const statePath = sidecarStatePath(home, shortId);
-          await waitFor(
-            () => {
-              const s = readJson(statePath);
-              return s && s.state === 'done' && s.output?.result?.includes('first');
-            },
-            5000,
-            'sidecar to show done with "first" in output',
-          );
+            // Second turn
+            term.write('second\r');
+            await waitFor(
+              () => {
+                const outSoFar = getOut();
+                // The second response must appear AFTER the first response
+                const firstIdx = outSoFar.indexOf('first');
+                const secondIdx = outSoFar.indexOf('second', firstIdx + 1);
+                return secondIdx !== -1 && outSoFar.includes('[mock] Got:');
+              },
+              8000,
+              '"second" response in PTY stdout after "first" response',
+            );
 
-          // Second turn
-          term.write('second\r');
-          await waitFor(
-            () => {
-              const outSoFar = getOut();
-              // The second response must appear AFTER the first response
-              const firstIdx = outSoFar.indexOf('first');
-              const secondIdx = outSoFar.indexOf('second', firstIdx + 1);
-              return secondIdx !== -1 && outSoFar.includes('[mock] Got:');
-            },
-            8000,
-            '"second" response in PTY stdout after "first" response',
-          );
+            // Wait for sidecar to reflect done for second turn
+            await waitFor(
+              () => {
+                const s = readJson(statePath);
+                return s && s.state === 'done' && s.output?.result?.includes('second');
+              },
+              5000,
+              'sidecar to show done with "second" in output',
+            );
 
-          // Wait for sidecar to reflect done for second turn
-          await waitFor(
-            () => {
-              const s = readJson(statePath);
-              return s && s.state === 'done' && s.output?.result?.includes('second');
-            },
-            5000,
-            'sidecar to show done with "second" in output',
-          );
+            await detach();
 
-          // Detach
-          term.write('\x1a');
-          const { exitCode } = await exitPromise;
-          assert.equal(exitCode, 0, `expected PTY exit 0, got: ${exitCode}`);
+            // Verify timeline has two done lines
+            const timelinePath = sidecarTimelinePath(home, shortId);
+            const lines = readJsonl(timelinePath);
+            const doneLines = lines.filter((l) => l.state === 'done');
+            assert.ok(
+              doneLines.length >= 2,
+              `expected at least 2 "done" lines in timeline, got: ${doneLines.length}`,
+            );
+            assert.ok(
+              doneLines.some((l) => l.text?.includes('first')),
+              `a done line must have text containing "first"`,
+            );
+            assert.ok(
+              doneLines.some((l) => l.text?.includes('second')),
+              `a done line must have text containing "second"`,
+            );
 
-          // Verify timeline has two done lines
-          const timelinePath = sidecarTimelinePath(home, shortId);
-          const lines = readJsonl(timelinePath);
-          const doneLines = lines.filter((l) => l.state === 'done');
-          assert.ok(
-            doneLines.length >= 2,
-            `expected at least 2 "done" lines in timeline, got: ${doneLines.length}`,
-          );
-          assert.ok(
-            doneLines.some((l) => l.text?.includes('first')),
-            `a done line must have text containing "first"`,
-          );
-          assert.ok(
-            doneLines.some((l) => l.text?.includes('second')),
-            `a done line must have text containing "second"`,
-          );
-
-          // Latest state.json must reflect the second (most recent) response
-          const finalState = readJson(statePath);
-          assert.ok(
-            finalState.output?.result?.includes('second'),
-            `state.json output.result must match the last (second) response, got: ${finalState.output?.result}`,
-          );
+            // Latest state.json must reflect the second (most recent) response
+            const finalState = readJson(statePath);
+            assert.ok(
+              finalState.output?.result?.includes('second'),
+              `state.json output.result must match the last (second) response, got: ${finalState.output?.result}`,
+            );
+          });
         });
       },
     );
@@ -533,70 +600,67 @@ describe('attach + sidecar (plan 0002 T3)', () => {
           assert.equal(bgResult.status, 0, `--bg failed: ${bgResult.stderr}`);
           const shortId = extractShortId(bgResult.stdout);
 
-          const { term, exitPromise, getOut } = spawnPty(['attach', shortId], cfgEnv);
+          await withPty(['attach', shortId], cfgEnv, async ({ term, getOut, detach }) => {
+            // Submit a prompt — this should trigger the permission stall
+            term.write('do thing\r');
 
-          // Submit a prompt — this should trigger the permission stall
-          term.write('do thing\r');
+            // Wait for the "Permission required." prompt on stdout
+            await waitFor(
+              () => getOut().includes('Permission required'),
+              8000,
+              '"Permission required" in PTY stdout',
+            );
 
-          // Wait for the "Permission required." prompt on stdout
-          await waitFor(
-            () => getOut().includes('Permission required'),
-            8000,
-            '"Permission required" in PTY stdout',
-          );
+            // Sidecar must show state=waiting with inFlight.kinds including "permission"
+            const statePath = sidecarStatePath(home, shortId);
+            await waitFor(
+              () => {
+                const s = readJson(statePath);
+                return s && s.state === 'waiting';
+              },
+              5000,
+              'sidecar state.json to show state=waiting',
+            );
+            const waitingState = readJson(statePath);
+            assert.equal(
+              waitingState.state,
+              'waiting',
+              `state must be "waiting" during permission stall, got: ${waitingState.state}`,
+            );
+            assert.ok(
+              Array.isArray(waitingState.inFlight?.kinds) &&
+                waitingState.inFlight.kinds.includes('permission'),
+              `inFlight.kinds must include "permission", got: ${JSON.stringify(waitingState.inFlight?.kinds)}`,
+            );
 
-          // Sidecar must show state=waiting with inFlight.kinds including "permission"
-          const statePath = sidecarStatePath(home, shortId);
-          await waitFor(
-            () => {
-              const s = readJson(statePath);
-              return s && s.state === 'waiting';
-            },
-            5000,
-            'sidecar state.json to show state=waiting',
-          );
-          const waitingState = readJson(statePath);
-          assert.equal(
-            waitingState.state,
-            'waiting',
-            `state must be "waiting" during permission stall, got: ${waitingState.state}`,
-          );
-          assert.ok(
-            Array.isArray(waitingState.inFlight?.kinds) &&
-              waitingState.inFlight.kinds.includes('permission'),
-            `inFlight.kinds must include "permission", got: ${JSON.stringify(waitingState.inFlight?.kinds)}`,
-          );
+            // Answer the permission prompt
+            term.write('y\r');
 
-          // Answer the permission prompt
-          term.write('y\r');
+            // Wait for the assistant response to appear
+            await waitFor(
+              () => getOut().includes('[mock] Got:') && getOut().includes('do thing'),
+              8000,
+              '"[mock] Got: ... do thing" in PTY stdout after answering permission',
+            );
 
-          // Wait for the assistant response to appear
-          await waitFor(
-            () => getOut().includes('[mock] Got:') && getOut().includes('do thing'),
-            8000,
-            '"[mock] Got: ... do thing" in PTY stdout after answering permission',
-          );
+            // Sidecar must show done with the original prompt's output
+            await waitFor(
+              () => {
+                const s = readJson(statePath);
+                return s && s.state === 'done';
+              },
+              5000,
+              'sidecar state.json to show state=done after permission answer',
+            );
+            const doneState = readJson(statePath);
+            assert.equal(doneState.state, 'done');
+            assert.ok(
+              doneState.output?.result?.includes('do thing'),
+              `output.result must include "do thing", got: ${doneState.output?.result}`,
+            );
 
-          // Sidecar must show done with the original prompt's output
-          await waitFor(
-            () => {
-              const s = readJson(statePath);
-              return s && s.state === 'done';
-            },
-            5000,
-            'sidecar state.json to show state=done after permission answer',
-          );
-          const doneState = readJson(statePath);
-          assert.equal(doneState.state, 'done');
-          assert.ok(
-            doneState.output?.result?.includes('do thing'),
-            `output.result must include "do thing", got: ${doneState.output?.result}`,
-          );
-
-          // Detach
-          term.write('\x1a');
-          const { exitCode } = await exitPromise;
-          assert.equal(exitCode, 0, `expected PTY exit 0, got: ${exitCode}`);
+            await detach();
+          });
         });
       },
     );
@@ -618,39 +682,36 @@ describe('attach + sidecar (plan 0002 T3)', () => {
           assert.equal(bgResult.status, 0, `--bg failed: ${bgResult.stderr}`);
           const shortId = extractShortId(bgResult.stdout);
 
-          const { term, exitPromise, getOut } = spawnPty(['attach', shortId], cfgEnv);
+          await withPty(['attach', shortId], cfgEnv, async ({ term, getOut, detach }) => {
+            term.write('abc\r');
 
-          term.write('abc\r');
+            // Wait for the substituted response
+            await waitFor(
+              () => getOut().includes('ECHOED: abc!'),
+              8000,
+              '"ECHOED: abc!" in PTY stdout',
+            );
 
-          // Wait for the substituted response
-          await waitFor(
-            () => getOut().includes('ECHOED: abc!'),
-            8000,
-            '"ECHOED: abc!" in PTY stdout',
-          );
+            // Sidecar must reflect the substituted response
+            const statePath = sidecarStatePath(home, shortId);
+            await waitFor(
+              () => {
+                const s = readJson(statePath);
+                return s && s.state === 'done';
+              },
+              5000,
+              'sidecar state.json to show state=done',
+            );
 
-          // Sidecar must reflect the substituted response
-          const statePath = sidecarStatePath(home, shortId);
-          await waitFor(
-            () => {
-              const s = readJson(statePath);
-              return s && s.state === 'done';
-            },
-            5000,
-            'sidecar state.json to show state=done',
-          );
+            const state = readJson(statePath);
+            assert.equal(
+              state.output?.result,
+              'ECHOED: abc!',
+              `output.result must equal "ECHOED: abc!", got: ${state.output?.result}`,
+            );
 
-          const state = readJson(statePath);
-          assert.equal(
-            state.output?.result,
-            'ECHOED: abc!',
-            `output.result must equal "ECHOED: abc!", got: ${state.output?.result}`,
-          );
-
-          // Detach
-          term.write('\x1a');
-          const { exitCode } = await exitPromise;
-          assert.equal(exitCode, 0, `expected PTY exit 0, got: ${exitCode}`);
+            await detach();
+          });
         });
       },
     );
@@ -661,19 +722,17 @@ describe('attach + sidecar (plan 0002 T3)', () => {
         assert.equal(bgResult.status, 0, `--bg failed: ${bgResult.stderr}`);
         const shortId = extractShortId(bgResult.stdout);
 
-        const { term, exitPromise, getOut } = spawnPty(['attach', shortId], env);
+        await withPty(['attach', shortId], env, async ({ term, getOut, detach }) => {
+          term.write('testprompt\r');
 
-        term.write('testprompt\r');
+          await waitFor(
+            () => getOut().includes('[mock] Got: testprompt'),
+            8000,
+            '"[mock] Got: testprompt" in PTY stdout',
+          );
 
-        await waitFor(
-          () => getOut().includes('[mock] Got: testprompt'),
-          8000,
-          '"[mock] Got: testprompt" in PTY stdout',
-        );
-
-        term.write('\x1a');
-        const { exitCode } = await exitPromise;
-        assert.equal(exitCode, 0, `expected PTY exit 0, got: ${exitCode}`);
+          await detach();
+        });
       });
     });
   });

@@ -51,6 +51,7 @@ const SKILL_NAMES = [
   'claude-setup',
   'claude-delegate',
   'claude-status',
+  'claude-wait',
   'claude-result',
   'claude-stop',
   'claude-followup',
@@ -119,10 +120,10 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
   });
 
   // ========================================================================
-  // T9-3: script body contains all 16 skill names
+  // T9-3: script body contains all 17 skill names
   // ========================================================================
 
-  it('smoke script body contains all 16 skill names', () => {
+  it('smoke script body contains all 17 skill names', () => {
     const body = readFileSync(SMOKE_SCRIPT, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(
@@ -272,10 +273,10 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
   });
 
   // ========================================================================
-  // T9-12: RELEASING.md enumerates all 16 skills
+  // T9-12: RELEASING.md enumerates all 17 skills
   // ========================================================================
 
-  it('RELEASING.md enumerates all 16 skill names', () => {
+  it('RELEASING.md enumerates all 17 skill names', () => {
     const content = readFileSync(RELEASING_MD, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(

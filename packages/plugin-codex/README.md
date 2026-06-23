@@ -8,11 +8,12 @@ Key design choice: this v1 uses Claude Code background sessions directly and doe
 
 ## Current v1 scope
 
-Sixteen skills are available:
+Seventeen skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
 - **`$claude-delegate`** — start a new background session for a task
 - **`$claude-status`** — list all delegated jobs in the current workspace
+- **`$claude-wait`** — wait for one delegated job to produce a result, blocker, or timeout
 - **`$claude-result`** — print the final answer and transcript/log paths for a completed job
 - **`$claude-stop`** — terminate a background session explicitly
 - **`$claude-followup`** — send a follow-up instruction to an existing Claude background job (added in plan 0002)
@@ -27,7 +28,7 @@ Sixteen skills are available:
 - **`$claude-skills`** — list Claude Code skills visible to delegated Claude sessions
 - **`$claude-upgrade`** — refresh or repair the installed CC plugin through Codex plugin commands
 
-Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
+Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `wait` polls one job until it produces a result, blocker, or timeout; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
 
 ## Requirements
 
@@ -121,14 +122,26 @@ Job ID from successful delegation: `job_mpt98g9g_b61e09f1` (shown in output as `
 
 Interactive privacy acknowledgement: on first delegation in a workspace, you will be asked to confirm that delegating may send repository contents, prompts, command output, and Claude Code context to Anthropic. This is interactive by default; you can skip the prompt with `--yes` if you have intentionally pre-approved the policy.
 
-Fresh-session commands (`$claude-delegate`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, and `$claude-adversarial-review`) validate startup flags before launching Claude Code. Unknown flags fail with exit 2 instead of consuming the prompt. `--dangerously-skip-permissions` is accepted as the Claude Code alias for `--permission-mode bypassPermissions`; use it only when the operator explicitly chooses an unattended trusted run. Additional Claude Code startup controls such as `--agent`, `--agents`, `--allowedTools`, `--disallowedTools`, `--tools`, `--settings`, `--setting-sources`, `--strict-mcp-config`, `--append-system-prompt`, `--system-prompt`, `--plugin-dir`, `--plugin-url`, `--bare`, and `--safe-mode` can be forwarded when explicitly requested.
+Fresh-session commands (`$claude-delegate`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, and `$claude-adversarial-review`) validate startup flags before launching Claude Code. Unknown flags fail with exit 2 instead of consuming the prompt. `--bypass-permissions` and `--dangerously-skip-permissions` are accepted as aliases for `--permission-mode bypassPermissions`; use them when the operator explicitly chooses an unattended trusted run. Additional Claude Code startup controls such as `--agent`, `--agents`, `--allowedTools`, `--disallowedTools`, `--tools`, `--settings`, `--setting-sources`, `--strict-mcp-config`, `--append-system-prompt`, `--system-prompt`, `--plugin-dir`, `--plugin-url`, `--bare`, and `--safe-mode` can be forwarded when explicitly requested.
 
 For unattended expert-agent QA that intentionally lets Claude Code inspect a
 trusted local checkout with shell commands, pass `--permission-mode
-bypassPermissions` or `--dangerously-skip-permissions` explicitly. The plugin
-does not choose that mode automatically. Without it, Claude Code may pause on a
+bypassPermissions`, `--bypass-permissions`, or `--dangerously-skip-permissions`
+explicitly. Once the operator has approved trusted unattended Claude work for a
+task/session/project, Codex can reuse `--bypass-permissions` on future fresh
+local shell/tool automation jobs. Without it, Claude Code may pause on a
 permission prompt; inspect the job with `$claude-status --job <jobId> --json
 --compact` and attach with the returned `actionHints.attach` command.
+
+Real Chrome browser work uses Claude Code's `--chrome` startup flag. There is
+no `--real` flag, and the real-browser path is separate from Codex's in-app
+browser. If Claude asks which connected Chrome browser to use, asks you to pick
+in the extension, or reaches a passkey/login/user-gesture step, inspect the job
+with `$claude-status --job <jobId> --json --compact` and surface
+`waiting.userAction` to the operator. The background wrapper cannot safely
+choose among Chrome profiles or complete local user gestures. Permission-mode
+flags reduce Claude tool prompts for trusted unattended runs, but they do not
+select a browser or replace passkey/extension interaction.
 
 ### $claude-workflow
 
@@ -359,16 +372,39 @@ with `claude attach <shortId>` when any listed job needs input.
 Compact JSON includes `waiting.kind` plus `actionHints` for the next stable
 commands: `status`, `result`, `partialResult`, `stop`, `followup`, `attach`,
 and `logs`. If `waiting.kind` is `"permission"`, attach with
-`actionHints.attach`. If `partialResult` is present, use `$claude-result <jobId>
---partial` to read recorded progress without waiting for a terminal state.
-Check `result.isPartial` and `latestTurn.resultState` before treating recorded
-output as final.
+`actionHints.attach`. For blocked jobs, compact JSON also includes
+`operatorState`, `blockedOn`, `actionHints.restartWithBypass`, and
+`actionHints.cleanupBlocked`. Use the `actionHints.restartWithBypass` command
+for an explicit trusted unattended retry, or `cc stop --all-needs-input` to
+clean up blocked jobs in the current workspace. Restart
+commands require a fresh prompt because cc stores prompt metadata, not the full
+original prompt text. If `partialResult` is present, use `$claude-result
+<jobId> --partial` to read recorded progress without waiting for a terminal
+state. Check `result.isPartial` and `latestTurn.resultState` before treating
+recorded output as final.
 
 When status runs from a cc-plugin-codex checkout, JSON `meta.versionMismatch`
 and the human footer warn if the running dispatcher version differs from the
 workspace plugin version. That usually means Codex is using a stale installed
 plugin cache; refresh the install or run `node packages/plugin-codex/scripts/cc.mjs`
 directly for development testing.
+
+### $claude-wait
+
+Poll one delegated job until it reaches a result state, `awaiting_followup`,
+`needs_input`, `stopped`, `failed`, `orphaned`, or a timeout.
+
+```text
+$claude-wait job_mpt98g9g_b61e09f1 --json --compact --timeout 5m
+```
+
+Use this for automation that would otherwise loop across `$claude-status` and
+`$claude-result`. JSON output includes the compact status summary, `resultText`
+when final or recorded partial output exists, `transcriptTail` when a transcript
+path was captured, and blocked-job fields such as `summary.blockedOn` and
+`summary.actionHints.restartWithBypass`. If the wait times out, the dispatcher
+exits non-zero but still prints the latest JSON payload when `--json` was
+requested.
 
 ### $claude-followup
 
@@ -423,7 +459,11 @@ Terminate a background session. The job will be marked `stopped` and can still b
 $claude-stop job_mpt98g9g_b61e09f1
 ```
 
-Optional cleanup. Not required before calling `result`.
+Optional cleanup. Not required before calling `result`. For blocked-job cleanup,
+the dispatcher also supports `cc stop --all-needs-input` (current workspace) and
+`cc stop --all-needs-input --all` (all workspaces). The `$claude-stop` wrapper
+may forward `--all-needs-input` when the user explicitly asks to clean up
+permission/input-blocked jobs.
 
 ### $claude-workflows
 
@@ -512,12 +552,13 @@ node packages/plugin-codex/scripts/cc.mjs upgrade
 
 ## Direct dispatcher usage
 
-All sixteen skill commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All seventeen skill commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-codex/scripts/cc.mjs setup
 node packages/plugin-codex/scripts/cc.mjs delegate --yes -- "Inspect this repo."
 node packages/plugin-codex/scripts/cc.mjs status
+node packages/plugin-codex/scripts/cc.mjs wait <jobId> --json --compact --timeout 5m
 node packages/plugin-codex/scripts/cc.mjs skills --json
 node packages/plugin-codex/scripts/cc.mjs followup <jobId> -- "Next instruction."
 node packages/plugin-codex/scripts/cc.mjs result <jobId>

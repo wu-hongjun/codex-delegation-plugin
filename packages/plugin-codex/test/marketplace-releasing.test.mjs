@@ -37,6 +37,7 @@ const SKILL_NAMES = [
   'claude-setup',
   'claude-delegate',
   'claude-status',
+  'claude-wait',
   'claude-result',
   'claude-stop',
   'claude-followup',
@@ -211,10 +212,10 @@ describe('consolidated release checklist (Plan 0006 T11)', () => {
   });
 
   // ========================================================================
-  // T11-6: Smoke Test section enumerates all 16 skills + gate criterion
+  // T11-6: Smoke Test section enumerates all 17 skills + gate criterion
   // ========================================================================
 
-  it('Smoke Test section enumerates all 16 skills with $claude-setup as gate (ok/warn)', () => {
+  it('Smoke Test section enumerates all 17 skills with $claude-setup as gate (ok/warn)', () => {
     const content = readFileSync(RELEASING_MD, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(content.includes(`$${name}`), `Smoke Test section must enumerate skill $${name}`);

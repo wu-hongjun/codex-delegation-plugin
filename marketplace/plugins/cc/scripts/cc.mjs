@@ -44,6 +44,7 @@ import {
   formatDelegate,
   formatStatus,
   formatResult,
+  formatWait,
   formatStop,
   formatBulkStop,
   formatFollowup,
@@ -142,6 +143,7 @@ const STARTUP_ONLY_FLAGS = [
   'model',
   'effort',
   'permission-mode',
+  'bypass-permissions',
   'dangerously-skip-permissions',
   'allow-dangerously-skip-permissions',
   'add-dir',
@@ -173,8 +175,11 @@ const STARTUP_ONLY_FLAGS = [
 
 const PROMPT_DELIMITER_FOOTGUN_FLAGS = new Set([
   'all',
+  'all-blocked',
+  'all-needs-input',
   'allow-edit',
   'compact',
+  'bypass-permissions',
   'dangerously-skip-permissions',
   'dry-run',
   'effort',
@@ -186,6 +191,8 @@ const PROMPT_DELIMITER_FOOTGUN_FLAGS = new Set([
   'partial',
   'permission-mode',
   'stored-status',
+  'timeout',
+  'interval',
   'yes',
   ...STARTUP_ONLY_FLAGS,
 ]);
@@ -247,14 +254,16 @@ function stringListFlag(flags, ...names) {
 
 function normalizePermissionMode(flags, commandName, json) {
   const explicitMode = stringFlag(flags, 'permission-mode');
-  const dangerouslySkip = Boolean(flags['dangerously-skip-permissions']);
-  const permissionMode = dangerouslySkip ? 'bypassPermissions' : explicitMode;
+  const bypassPermissions = Boolean(
+    flags['bypass-permissions'] || flags['dangerously-skip-permissions'],
+  );
+  const permissionMode = bypassPermissions ? 'bypassPermissions' : explicitMode;
 
-  if (dangerouslySkip && explicitMode !== undefined && explicitMode !== 'bypassPermissions') {
+  if (bypassPermissions && explicitMode !== undefined && explicitMode !== 'bypassPermissions') {
     process.stderr.write(
       formatError(
         new Error(
-          '--dangerously-skip-permissions is an alias for --permission-mode bypassPermissions and cannot be combined with a different --permission-mode.',
+          '--bypass-permissions and --dangerously-skip-permissions are aliases for --permission-mode bypassPermissions and cannot be combined with a different --permission-mode.',
         ),
         commandName,
         json,
@@ -855,6 +864,7 @@ const KNOWN_COMMANDS = new Set([
   'deep-research',
   'status',
   'result',
+  'wait',
   'stop',
   'followup',
   'review',
@@ -862,6 +872,7 @@ const KNOWN_COMMANDS = new Set([
   'workflows',
   'skills',
   'upgrade',
+  'restart',
 ]);
 
 function inferCommandForParseError(args) {
@@ -901,6 +912,9 @@ try {
     case 'delegate':
       await cmdDelegate(flags, positional, useJson);
       break;
+    case 'restart':
+      await cmdRestart(flags, positional, useJson);
+      break;
     case 'workflow':
       await cmdWorkflow(flags, positional, useJson);
       break;
@@ -921,6 +935,9 @@ try {
       break;
     case 'result':
       await cmdResult(flags, positional, useJson);
+      break;
+    case 'wait':
+      await cmdWait(flags, positional, useJson);
       break;
     case 'stop':
       await cmdStop(flags, positional, useJson);
@@ -1373,13 +1390,14 @@ async function cmdDeepResearch(flags, positional, json) {
  *   commandName: string;
  *   promptTransformer: (raw: string) => string;
  *   extraOutput: string | ((job: object) => string) | null;
+ *   workspaceRoot?: string;
  * }} opts
  */
 async function _runDelegateCore(
   flags,
   positional,
   json,
-  { commandName, promptTransformer, extraOutput },
+  { commandName, promptTransformer, extraOutput, workspaceRoot },
 ) {
   // 1. Collect prompt from positionals (after -- or all remaining).
   rejectLateDispatcherFlagInPrompt(positional, 0, commandName, json);
@@ -1397,7 +1415,7 @@ async function _runDelegateCore(
 
   const prompt = promptTransformer(rawPrompt);
 
-  const workspace = process.cwd();
+  const workspace = workspaceRoot ?? process.cwd();
   const useYes = Boolean(flags['yes']);
   const startSessionOptions = buildStartSessionOptions(flags, commandName, json, {
     name: typeof flags['name'] === 'string' ? flags['name'] : undefined,
@@ -1498,6 +1516,119 @@ async function _runDelegateCore(
   }
 }
 
+// ---------- restart ----------
+
+function isStoppableStatus(status) {
+  return (
+    status === 'queued' ||
+    status === 'starting' ||
+    status === 'running' ||
+    status === 'needs_input' ||
+    status === 'awaiting_followup'
+  );
+}
+
+function sessionHandleFromJob(job) {
+  return {
+    driverName: job.driver.name,
+    shortId: job.claude.shortId,
+    sessionId: job.claude.sessionId,
+    sessionName: job.claude.sessionName,
+    cwd: job.claude.cwd,
+    startedAt: job.claude.startedAt ?? job.createdAt,
+  };
+}
+
+async function stopJobWithDriver(job, driver) {
+  await driver.stop(sessionHandleFromJob(job));
+  const now = new Date().toISOString();
+  const stoppedJob = await updateJob(job.jobId, (current) => ({
+    ...current,
+    status: 'stopped',
+  }));
+  await appendEvent(job.jobId, { type: 'stop.completed', at: now });
+  return stoppedJob;
+}
+
+async function cmdRestart(flags, positional, json) {
+  const prefix = positional[0];
+  if (!prefix) {
+    process.stderr.write(
+      formatError(
+        new Error('usage: cc restart <jobId-or-prefix> [fresh-session-flags] -- "<prompt>"'),
+        'restart',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  rejectLateDispatcherFlagInPrompt(positional, 1, 'restart', json);
+  const promptParts = positional.slice(1);
+  const prompt = promptParts.join(' ').trim();
+  if (!prompt) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          'restart requires a fresh prompt because cc job records store only prompt metadata. Run: cc restart <jobId> -- "<prompt>"',
+        ),
+        'restart',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  const workspace = process.cwd();
+  const showAll = Boolean(flags['all']);
+  const listResult = showAll ? await listJobs() : await listJobsForWorkspace(workspace);
+  const allIds = listResult.jobs.map((j) => j.jobId);
+  const resolved = resolveJobIdPrefix(allIds, prefix);
+
+  if ('error' in resolved) {
+    const msg =
+      resolved.error === 'ambiguous'
+        ? formatAmbiguousJobPrefix(prefix, resolved.candidates)
+        : showAll
+          ? `No job found matching "${prefix}"`
+          : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
+    process.stderr.write(formatError(new Error(msg), 'restart', json) + '\n');
+    process.exit(1);
+  }
+
+  const jobId = resolved.match;
+  const original = await readJob(jobId);
+  const targetWorkspace = original.workspace.root;
+  const driver = new ClaudeBackgroundDriver({ cwd: targetWorkspace });
+
+  let stopNote = `Original job ${jobId} was not running; no stop was needed.`;
+  if (isStoppableStatus(original.status)) {
+    try {
+      await stopJobWithDriver(original, driver);
+      stopNote = `Original job ${jobId} was stopped before restart.`;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const now = new Date().toISOString();
+      await appendEvent(jobId, { type: 'restart.stop_failed', at: now, message });
+      stopNote = `Original job ${jobId} could not be stopped first: ${message}`;
+    }
+  }
+
+  await _runDelegateCore(flags, promptParts, json, {
+    commandName: 'restart',
+    promptTransformer: (p) => p,
+    workspaceRoot: targetWorkspace,
+    extraOutput: () =>
+      [
+        '',
+        'Restart context:',
+        `  Restarted from: ${jobId}`,
+        `  Original prompt summary: ${original.prompt?.summary ?? '(not recorded)'}`,
+        `  ${stopNote}`,
+      ].join('\n'),
+  });
+}
+
 // ---------- status ----------
 
 function shouldReconcileForStatusList(job) {
@@ -1573,6 +1704,101 @@ function parseStoredStatusFilter(rawStatus, json) {
     process.exit(2);
   }
   return status;
+}
+
+function parseDurationMs(rawValue, flagName, defaultMs, commandName, json, opts = {}) {
+  if (rawValue === undefined) return defaultMs;
+  const text = typeof rawValue === 'string' ? rawValue.trim() : String(rawValue).trim();
+  const match = /^(\d+)(ms|s|m)?$/.exec(text);
+  if (!match) {
+    process.stderr.write(
+      formatError(
+        new Error(`--${flagName} must be a duration like 500ms, 30s, or 2m (got "${text}")`),
+        commandName,
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+  const amount = Number.parseInt(match[1], 10);
+  if (amount === 0 && !opts.allowZero) {
+    process.stderr.write(
+      formatError(new Error(`--${flagName} must be greater than zero`), commandName, json) + '\n',
+    );
+    process.exit(2);
+  }
+  const unit = match[2] ?? 's';
+  if (unit === 'ms') return amount;
+  if (unit === 'm') return amount * 60 * 1000;
+  return amount * 1000;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isResultTerminalStatus(status) {
+  return (
+    status === 'completed' ||
+    status === 'failed' ||
+    status === 'stopped' ||
+    status === 'orphaned' ||
+    status === 'awaiting_followup'
+  );
+}
+
+function selectReadableResult(job, allowPartial) {
+  const latestTurn = Array.isArray(job.turns) ? job.turns[job.turns.length - 1] : undefined;
+  const latestCompletedTurnResult =
+    latestTurn?.status === 'completed' &&
+    typeof latestTurn.result?.finalMessagePath === 'string' &&
+    latestTurn.result.finalMessagePath.length > 0
+      ? latestTurn.result
+      : undefined;
+  const partialResult =
+    typeof job.result?.finalMessagePath === 'string' && job.result.finalMessagePath.length > 0
+      ? job.result
+      : latestTurn?.result;
+  const canReadResult =
+    isResultTerminalStatus(job.status) ||
+    latestCompletedTurnResult !== undefined ||
+    (allowPartial && typeof partialResult?.finalMessagePath === 'string');
+  const resultContext = allowPartial
+    ? (partialResult ?? latestCompletedTurnResult)
+    : (latestCompletedTurnResult ?? job.result);
+  return {
+    latestCompletedTurnResult,
+    partialResult,
+    canReadResult,
+    resultContext,
+  };
+}
+
+async function readResultTextFromContext(resultContext) {
+  if (!resultContext?.finalMessagePath) return null;
+  try {
+    return await readFile(resultContext.finalMessagePath, 'utf8');
+  } catch {
+    return null;
+  }
+}
+
+async function readTranscriptTail(job, maxLines = 12) {
+  const transcriptPath = job.claude?.transcriptPath;
+  if (typeof transcriptPath !== 'string' || transcriptPath.length === 0) return null;
+  try {
+    const text = await readFile(transcriptPath, 'utf8');
+    const lines = text.split(/\r?\n/).filter((line) => line.length > 0);
+    return lines.slice(-maxLines);
+  } catch {
+    return null;
+  }
+}
+
+function isWaitSettled(job) {
+  return (
+    isResultTerminalStatus(job.status) || job.status === 'needs_input' || job.status === 'orphaned'
+  );
 }
 
 async function cmdStatus(flags, positional, json) {
@@ -1739,28 +1965,7 @@ async function cmdResult(flags, positional, json) {
     job = await readJob(jobId);
   }
 
-  const terminalStatuses = new Set([
-    'completed',
-    'failed',
-    'stopped',
-    'orphaned',
-    'awaiting_followup',
-  ]);
-  const latestTurn = Array.isArray(job.turns) ? job.turns[job.turns.length - 1] : undefined;
-  const latestCompletedTurnResult =
-    latestTurn?.status === 'completed' &&
-    typeof latestTurn.result?.finalMessagePath === 'string' &&
-    latestTurn.result.finalMessagePath.length > 0
-      ? latestTurn.result
-      : undefined;
-  const partialResult =
-    typeof job.result?.finalMessagePath === 'string' && job.result.finalMessagePath.length > 0
-      ? job.result
-      : latestTurn?.result;
-  const canReadResult =
-    terminalStatuses.has(job.status) ||
-    latestCompletedTurnResult !== undefined ||
-    (allowPartial && typeof partialResult?.finalMessagePath === 'string');
+  const { partialResult, canReadResult, resultContext } = selectReadableResult(job, allowPartial);
 
   if (!canReadResult) {
     const partialHint =
@@ -1783,28 +1988,106 @@ async function cmdResult(flags, positional, json) {
   // Do not treat sendFollowupTurn's immediate empty finalMessagePath as durable
   // result content; that path only becomes reliable after reconciliation writes
   // the per-turn result file.
-  const resultContext = allowPartial
-    ? (partialResult ?? latestCompletedTurnResult)
-    : (latestCompletedTurnResult ?? job.result);
   const displayJob =
     resultContext !== undefined && resultContext !== job.result
       ? { ...job, result: resultContext }
       : job;
-  let resultText = null;
-  if (resultContext?.finalMessagePath) {
-    try {
-      resultText = await readFile(resultContext.finalMessagePath, 'utf8');
-    } catch {
-      resultText = null;
-    }
-  }
+  const resultText = await readResultTextFromContext(resultContext);
 
   process.stdout.write(
     formatResult(displayJob, resultText, json, {
       compact: Boolean(flags['compact']),
-      partial: allowPartial && !terminalStatuses.has(job.status),
+      partial: allowPartial && !isResultTerminalStatus(job.status),
     }) + '\n',
   );
+}
+
+// ---------- wait ----------
+
+async function cmdWait(flags, positional, json) {
+  const prefix = positional[0];
+  if (!prefix) {
+    process.stderr.write(formatError(new Error('usage: cc wait <jobId>'), 'wait', json) + '\n');
+    process.exit(2);
+  }
+  if (positional.length > 1) {
+    process.stderr.write(
+      formatError(
+        new Error(`cc wait takes exactly one job id (got extra argument "${positional[1]}")`),
+        'wait',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  const timeoutMs = parseDurationMs(flags['timeout'], 'timeout', 5 * 60 * 1000, 'wait', json, {
+    allowZero: true,
+  });
+  const intervalMs = parseDurationMs(flags['interval'], 'interval', 2000, 'wait', json);
+  const workspace = process.cwd();
+  const showAll = Boolean(flags['all']);
+  const dispatcherPath = fileURLToPath(import.meta.url);
+  const listed = showAll ? await listJobs() : await listJobsForWorkspace(workspace);
+  const allIds = listed.jobs.map((j) => j.jobId);
+  const resolved = resolveJobIdPrefix(allIds, prefix);
+
+  if ('error' in resolved) {
+    const msg =
+      resolved.error === 'ambiguous'
+        ? formatAmbiguousJobPrefix(prefix, resolved.candidates)
+        : showAll
+          ? `No job found matching "${prefix}"`
+          : `No job found matching "${prefix}" in this workspace. Re-run with --all to search every workspace.`;
+    process.stderr.write(formatError(new Error(msg), 'wait', json) + '\n');
+    process.exit(1);
+  }
+
+  const jobId = resolved.match;
+  let job = listed.jobs.find((j) => j.jobId === jobId) ?? (await readJob(jobId));
+  const driver = new ClaudeBackgroundDriver({ cwd: job.workspace.root });
+  const adapter = makeClaudeAdapter(driver);
+  const deadline = Date.now() + timeoutMs;
+  let timedOut = false;
+
+  for (;;) {
+    try {
+      const r = await reconcileJob(jobId, adapter);
+      job = r.job;
+    } catch {
+      job = await readJob(jobId);
+    }
+
+    if (isWaitSettled(job)) break;
+
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) {
+      timedOut = true;
+      break;
+    }
+    await sleep(Math.min(intervalMs, remaining));
+  }
+
+  const { resultContext } = selectReadableResult(job, true);
+  const displayJob =
+    resultContext !== undefined && resultContext !== job.result
+      ? { ...job, result: resultContext }
+      : job;
+  const [resultText, transcriptTail] = await Promise.all([
+    readResultTextFromContext(resultContext),
+    readTranscriptTail(job),
+  ]);
+
+  process.stdout.write(
+    formatWait(displayJob, resultText, json, {
+      compact: Boolean(flags['compact']),
+      timedOut,
+      timeoutMs,
+      dispatcherPath,
+      transcriptTail,
+    }) + '\n',
+  );
+  if (timedOut) process.exit(1);
 }
 
 // ---------- stop ----------
@@ -1820,13 +2103,18 @@ async function cmdStop(flags, positional, json) {
   }
 
   const bulkAwaitingFollowup = Boolean(flags['all-awaiting-followup']);
+  const bulkNeedsInput = Boolean(flags['all-needs-input'] || flags['all-blocked']);
 
-  if (bulkAwaitingFollowup) {
+  if (bulkAwaitingFollowup || bulkNeedsInput) {
     // Bulk path — no positional argument allowed.
     if (positional[0] !== undefined) {
       process.stderr.write(
         formatError(
-          new Error('stop --all-awaiting-followup takes no positional argument'),
+          new Error(
+            bulkAwaitingFollowup
+              ? 'stop --all-awaiting-followup takes no positional argument'
+              : 'stop --all-needs-input takes no positional argument',
+          ),
           'stop',
           json,
         ) + '\n',
@@ -1862,31 +2150,18 @@ async function cmdStop(flags, positional, json) {
         current = await readJob(candidate.jobId);
       }
 
-      if (current.status !== 'awaiting_followup') {
+      const targetStatus = bulkAwaitingFollowup ? 'awaiting_followup' : 'needs_input';
+      if (current.status !== targetStatus) {
         skipped.push({
           jobId: current.jobId,
           status: current.status,
-          reason: 'not awaiting_followup',
+          reason: bulkAwaitingFollowup ? 'not awaiting_followup' : 'not needs_input',
         });
         continue;
       }
 
-      // claude.startedAt was added later; fall back to job.createdAt for records
-      // written before then so old jobs can still be stopped.
-      const sessionHandle = {
-        driverName: current.driver.name,
-        shortId: current.claude.shortId,
-        sessionId: current.claude.sessionId,
-        sessionName: current.claude.sessionName,
-        cwd: current.claude.cwd,
-        startedAt: current.claude.startedAt ?? current.createdAt,
-      };
-
       try {
-        await driver.stop(sessionHandle);
-        const now = new Date().toISOString();
-        await updateJob(current.jobId, (c) => ({ ...c, status: 'stopped' }));
-        await appendEvent(current.jobId, { type: 'stop.completed', at: now });
+        await stopJobWithDriver(current, driver);
         stopped.push({
           jobId: current.jobId,
           shortId: current.claude.shortId,
@@ -1912,7 +2187,7 @@ async function cmdStop(flags, positional, json) {
       process.stderr.write(
         formatError(
           new Error(
-            'bare --all is not allowed; use --all-awaiting-followup [--all] for bulk stop, or pass a <jobId>.',
+            'bare --all is not allowed; use --all-awaiting-followup [--all], --all-needs-input [--all], or pass a <jobId>.',
           ),
           'stop',
           json,
@@ -1944,26 +2219,8 @@ async function cmdStop(flags, positional, json) {
   const jobId = resolved.match;
   const job = await readJob(jobId);
 
-  // claude.startedAt was added later; fall back to job.createdAt for records
-  // written before then so old jobs can still be stopped.
-  const sessionHandle = {
-    driverName: job.driver.name,
-    shortId: job.claude.shortId,
-    sessionId: job.claude.sessionId,
-    sessionName: job.claude.sessionName,
-    cwd: job.claude.cwd,
-    startedAt: job.claude.startedAt ?? job.createdAt,
-  };
-
   const driver = new ClaudeBackgroundDriver({ cwd: workspace });
-  await driver.stop(sessionHandle);
-
-  const now = new Date().toISOString();
-  const stoppedJob = await updateJob(jobId, (current) => ({
-    ...current,
-    status: 'stopped',
-  }));
-  await appendEvent(jobId, { type: 'stop.completed', at: now });
+  const stoppedJob = await stopJobWithDriver(job, driver);
 
   process.stdout.write(formatStop(stoppedJob, json, { compact: Boolean(flags['compact']) }) + '\n');
 }
@@ -2054,19 +2311,18 @@ async function sendFollowupTurn({
    */
   async function readPermissionAnswer(timeoutMs) {
     const rl = createInterface({ input: process.stdin, output: process.stdout });
+    const controller = new AbortController();
+    const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      const answerPromise = rl.question('> ');
-      let timeoutHandle;
-      const timeoutPromise = new Promise((resolve) => {
-        timeoutHandle = setTimeout(() => resolve({ timedOut: true }), timeoutMs);
-      });
-      const winner = await Promise.race([
-        answerPromise.then((line) => ({ timedOut: false, line })),
-        timeoutPromise,
-      ]);
-      clearTimeout(timeoutHandle);
-      return winner;
+      const line = await rl.question('> ', { signal: controller.signal });
+      return { timedOut: false, line };
+    } catch (err) {
+      if (controller.signal.aborted || err?.name === 'AbortError') {
+        return { timedOut: true };
+      }
+      throw err;
     } finally {
+      clearTimeout(timeoutHandle);
       rl.close();
     }
   }
@@ -3632,10 +3888,20 @@ function printUsage(commandName = '') {
       '',
       'Starts a Claude Code background session and records a cc job.',
       'Use --yes to acknowledge plugin privacy non-interactively.',
-      'Use --permission-mode bypassPermissions only for explicit trusted unattended runs.',
+      'Use --bypass-permissions (or --permission-mode bypassPermissions) for explicit trusted unattended runs.',
+      'Use --chrome for Claude Code real-browser access; if Claude asks which browser to use, attach and choose interactively.',
       'Put all dispatcher flags before --; anything after -- is the Claude prompt.',
       '',
-      'Options: --yes --json --compact --name <name> --model <model> --effort <effort> --permission-mode <mode> --dangerously-skip-permissions --add-dir <dir> --mcp-config <path> --allow-edit',
+      'Options: --yes --json --compact --name <name> --model <model> --effort <effort> --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions --add-dir <dir> --mcp-config <path> --chrome --no-chrome --allow-edit',
+    ],
+    restart: [
+      'Usage: cc restart <jobId-or-prefix> [fresh-session-flags] -- "<prompt>"',
+      '',
+      'Stops the original job if it is still live, then starts a fresh Claude Code background session in the same workspace.',
+      'The original prompt is not replayed because cc stores prompt metadata, not full prompt text.',
+      'Use --bypass-permissions for explicit trusted unattended retries of permission-blocked jobs.',
+      '',
+      'Options: --all --yes --json --compact --name <name> --model <model> --effort <effort> --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions --add-dir <dir> --mcp-config <path> --chrome --no-chrome --allow-edit',
     ],
     workflow: [
       'Usage: cc workflow [options] -- "<prompt>"',
@@ -3646,7 +3912,7 @@ function printUsage(commandName = '') {
       'Then choose Yes, View raw script, or No in Claude Code.',
       'Put all dispatcher flags before --; anything after -- is the Claude prompt.',
       '',
-      'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode> --dangerously-skip-permissions',
+      'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions',
       'Note: --yes only acknowledges plugin privacy; it does not approve the Claude Code workflow gate.',
     ],
     'deep-research': [
@@ -3658,7 +3924,7 @@ function printUsage(commandName = '') {
       '  claude attach <shortId>',
       'Put all dispatcher flags before --; anything after -- is the Claude prompt.',
       '',
-      'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode> --dangerously-skip-permissions',
+      'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions',
       'Note: --yes only acknowledges plugin privacy; it does not approve Claude Code workflow gates.',
     ],
     status: [
@@ -3678,6 +3944,24 @@ function printUsage(commandName = '') {
       'Use --partial to read the latest recorded partial output from a running or blocked job.',
       '',
       'Options: --all --json --compact --partial',
+    ],
+    wait: [
+      'Usage: cc wait <jobId-or-prefix> [--all] [--json] [--compact] [--timeout <duration>] [--interval <duration>]',
+      '',
+      'Polls one Claude job until it reaches a result state, awaiting-followup, needs_input, stopped, failed, orphaned, or timeout.',
+      'Duration examples: 500ms, 30s, 2m. Bare numbers are seconds.',
+      'JSON output includes the compact job summary, any recorded result text, transcript tail when captured, and blocker details.',
+      '',
+      'Options: --all --json --compact --timeout <duration> --interval <duration>',
+    ],
+    stop: [
+      'Usage: cc stop <jobId-or-prefix> [--all] [--json] [--compact]',
+      '       cc stop --all-awaiting-followup [--all] [--json]',
+      '       cc stop --all-needs-input [--all] [--json]',
+      '',
+      'Stops one Claude job, or bulk-stops matching jobs in the current workspace.',
+      '',
+      'Options: --all --json --compact --all-awaiting-followup --all-needs-input --all-blocked',
     ],
     followup: [
       'Usage: cc followup <jobId-or-prefix> [options] -- "<prompt>"',
@@ -3727,6 +4011,7 @@ function printUsage(commandName = '') {
       'Commands:',
       '  setup                                     Run doctor probes and report status',
       '  delegate [flags] -- <prompt>              Start a Claude background session',
+      '  restart <jobId-or-prefix> [flags] -- <prompt>  Stop a job and start a fresh one in the same workspace',
       '  workflow [flags] -- <prompt>              Start a Claude Code dynamic workflow (triggers ultracode planning)',
       '  goal [flags] -- <condition>               Start a Claude Code background session with a /goal condition',
       '  fork [flags] -- <directive>               Fork a Claude Code subagent for a directive',
@@ -3736,8 +4021,10 @@ function printUsage(commandName = '') {
       '                                            List jobs for current workspace',
       '  status --job <jobId-or-prefix> [--all] [--json]  Show one job status',
       '  result <jobId-or-prefix> [--all] [--json] [--partial]  Show final or recorded partial result',
+      '  wait <jobId-or-prefix> [--all] [--json] [--timeout <duration>]  Wait for result, blocker, or timeout',
       '  stop <jobId-or-prefix> [--all] [--json]   Stop a running job',
       '  stop --all-awaiting-followup [--all]      Bulk-stop awaiting-followup jobs',
+      '  stop --all-needs-input [--all]            Bulk-stop permission/input-blocked jobs',
       '  followup <jobId-or-prefix> [flags] -- <prompt>  Send a follow-up prompt to an existing job',
       '  review <jobId-or-prefix> [--all] [--json] [--yes] [--blocking|--fail-on <gate>]',
       '                                            Same-session structured review of the latest non-review turn',
@@ -3749,12 +4036,14 @@ function printUsage(commandName = '') {
       '  version | --version                       Print the installed plugin version',
       '',
       'Flags:',
-      '  --json                       Machine-readable JSON output (status/result/stop/followup/review/adversarial-review/goal/fork/batch/deep-research/workflows/skills/upgrade)',
-      '  --compact                    Compact redacted JSON shape for delegate/status/result/stop',
+      '  --json                       Machine-readable JSON output (status/result/wait/stop/followup/review/adversarial-review/goal/fork/batch/deep-research/workflows/skills/upgrade)',
+      '  --compact                    Compact redacted JSON shape for delegate/status/result/wait/stop',
       '  --partial                    Allow result to print recorded partial output for incomplete jobs',
       '  --job <jobId-or-prefix>      Select one job for status',
       '  --limit <n>                  Limit status lists after newest-first sorting (0 = no limit)',
       '  --stored-status <state>      Pre-filter status lists by stored job status',
+      '  --timeout <duration>         Wait timeout for cc wait (examples: 500ms, 30s, 2m; bare numbers are seconds)',
+      '  --interval <duration>        Poll interval for cc wait (examples: 500ms, 2s)',
       '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/goal/fork/batch/deep-research/followup/review/adversarial-review)',
       '  --dry-run                    Print the upgrade plan without changing the Codex plugin install',
       '  --public                     Force public Git marketplace target for upgrade',
@@ -3763,7 +4052,8 @@ function printUsage(commandName = '') {
       '  --model <model>              Model selection (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
       '  --effort <effort>            Effort level (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
       '  --permission-mode <mode>     Permission mode (delegate, workflow, goal, fork, batch, deep-research, adversarial-review; bypassPermissions is for explicit trusted unattended runs)',
-      '  --dangerously-skip-permissions  Alias for --permission-mode bypassPermissions on fresh Claude sessions',
+      '  --bypass-permissions         Preferred alias for --permission-mode bypassPermissions on fresh Claude sessions',
+      '  --dangerously-skip-permissions  Claude Code alias for --permission-mode bypassPermissions on fresh Claude sessions',
       '  --allow-dangerously-skip-permissions  Allow bypass-permissions as an option without defaulting to it',
       '  --allowedTools <tools>       Claude Code allowed tools list for fresh sessions (comma-separated or quoted)',
       '  --allowed-tools <tools>      Alias for --allowedTools',
@@ -3782,7 +4072,7 @@ function printUsage(commandName = '') {
       '  --add-dir <dir>              Additional directory (delegate, workflow, goal, fork, batch, deep-research; repeatable)',
       '  --mcp-config <path>          MCP config file (delegate, workflow, goal, fork, batch, deep-research)',
       '  --bare / --safe-mode         Forward Claude Code bare or safe-mode startup toggles',
-      '  --ide / --chrome / --no-chrome  Forward Claude Code IDE/browser startup toggles',
+      '  --ide / --chrome / --no-chrome  Forward Claude Code IDE/browser startup toggles; --chrome uses real Chrome and may require interactive browser selection via claude attach',
       '  --disable-slash-commands     Disable slash commands in fresh Claude Code sessions',
       '  --exclude-dynamic-system-prompt-sections  Exclude dynamic system-prompt sections',
       '  --verbose                    Forward verbose startup mode to Claude Code',

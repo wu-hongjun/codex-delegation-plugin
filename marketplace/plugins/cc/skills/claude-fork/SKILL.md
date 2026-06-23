@@ -23,8 +23,8 @@ Behavior rules:
   directive. If empty, ask the user for a directive before running.
 - Forward only these flags **when the user explicitly requests them**:
   `--name`, `--model`, `--effort`, `--permission-mode`, `--add-dir`,
-  `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`,
-  `--mcp-config`, `--agent`, `--agents`, `--allowedTools`,
+  `--bypass-permissions`, `--dangerously-skip-permissions`,
+  `--allow-dangerously-skip-permissions`, `--mcp-config`, `--agent`, `--agents`, `--allowedTools`,
   `--allowed-tools`, `--disallowedTools`, `--disallowed-tools`, `--tools`,
   `--settings`, `--setting-sources`, `--strict-mcp-config`,
   `--append-system-prompt`, `--system-prompt`, `--plugin-dir`,
@@ -36,6 +36,10 @@ Behavior rules:
   Do NOT inject `--yes` automatically. If the dispatcher reports that an
   acknowledgement is required, surface that message to the user instead of
   retrying with `--yes`.
+- If the user explicitly asks for trusted unattended Claude work, or has already
+  approved that mode for the current task/session/project, forward
+  `--bypass-permissions` for fresh local shell/tool automation jobs. This does
+  not resolve browser selection, passkeys, or other local user-gesture prompts.
 - Do NOT forward `--allow-edit` — it is not applicable to this subcommand.
 
 Approval flow — important:

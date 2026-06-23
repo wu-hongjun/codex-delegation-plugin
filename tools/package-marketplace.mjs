@@ -62,6 +62,7 @@ const DERIVED_FILES = [
   'skills/claude-setup/SKILL.md',
   'skills/claude-delegate/SKILL.md',
   'skills/claude-status/SKILL.md',
+  'skills/claude-wait/SKILL.md',
   'skills/claude-result/SKILL.md',
   'skills/claude-stop/SKILL.md',
   'skills/claude-followup/SKILL.md',

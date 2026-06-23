@@ -72,7 +72,8 @@ function classifyResultState(job, hasResult, latestTurnResultState) {
 
 function recommendedNextAction(job, hasResult, resultState) {
   if (resultState === 'orphaned_partial_result_available') return 'result --partial';
-  if (job.status === 'needs_input') return job.claude?.shortId ? 'attach' : 'status';
+  if (job.status === 'needs_input')
+    return job.claude?.shortId ? 'attach | stop | restart' : 'status';
   if (job.status === 'awaiting_followup') return 'followup';
   if (job.status === 'completed') return hasResult ? 'result' : 'logs';
   if (hasResult && resultState === 'partial_result_available') return 'result --partial';
@@ -81,7 +82,7 @@ function recommendedNextAction(job, hasResult, resultState) {
   return hasResult ? 'result' : 'status';
 }
 
-function classifyWaiting(waitingFor) {
+function classifyWaiting(waitingFor, opts = {}) {
   if (waitingFor == null || waitingFor === '') return null;
   const text = String(waitingFor);
   const lower = text.toLowerCase();
@@ -94,9 +95,24 @@ function classifyWaiting(waitingFor) {
   } catch {
     // waitingFor is commonly a plain string such as "permission prompt".
   }
+  const browserRelated = /\b(browser|chrome|extension)\b/.test(lower);
+  const selectionRelated = /\b(choose|pick|select|selection|which|browser\s+\d|let me pick)\b/.test(
+    lower,
+  );
+  const category =
+    browserRelated && selectionRelated
+      ? 'browser_selection'
+      : lower.includes('permission')
+        ? 'permission_prompt'
+        : lower.includes('blocked') || lower.includes('waiting') || lower.includes('input')
+          ? 'input_prompt'
+          : 'other';
   const kind = lower.includes('permission')
     ? 'permission'
-    : lower.includes('blocked') || lower.includes('waiting') || lower.includes('input')
+    : category === 'browser_selection' ||
+        lower.includes('blocked') ||
+        lower.includes('waiting') ||
+        lower.includes('input')
       ? 'input'
       : 'other';
   const requestedAction =
@@ -107,12 +123,38 @@ function classifyWaiting(waitingFor) {
         : typeof parsed?.action === 'string'
           ? parsed.action
           : null;
+  const attachCommand = opts.shortId ? `claude attach ${opts.shortId}` : null;
+  const note =
+    category === 'browser_selection'
+      ? 'Claude Code requires an interactive Chrome browser selection. Choose the browser with the logged-in session in the attached TUI; the cc wrapper cannot select it safely in the background.'
+      : kind === 'permission'
+        ? 'Claude Code is waiting on a permission prompt. The cc wrapper cannot approve it non-interactively; attach to the session or restart a trusted future run with an explicit permission mode.'
+        : 'Claude Code is waiting for interactive input. Attach to the session to continue.';
+  const futureUnattendedHint =
+    category === 'browser_selection'
+      ? 'For unattended Chrome work, connect only the intended Chrome browser before starting, or start attached; permission-mode flags do not choose between browsers.'
+      : kind === 'permission'
+        ? 'For trusted unattended shell/tool work, start a new job with --bypass-permissions, --permission-mode bypassPermissions, or --dangerously-skip-permissions when appropriate.'
+        : null;
   return {
     kind,
+    category,
     detail: text,
     requestedAction,
     action: 'attach',
+    manualInputRequired: true,
+    canApproveNonInteractively: false,
+    ...(attachCommand ? { userAction: attachCommand } : {}),
+    note,
+    ...(futureUnattendedHint ? { futureUnattendedHint } : {}),
   };
+}
+
+function operatorStateForJob(job, waiting) {
+  if (job.status !== 'needs_input') return job.status;
+  if (waiting?.category === 'browser_selection') return 'blocked_on_browser_selection';
+  if (waiting?.kind === 'permission') return 'blocked_on_permission';
+  return 'needs_manual_input';
 }
 
 const DEFAULT_STALE_AFTER_MS = 2 * 60 * 1000;
@@ -176,7 +218,7 @@ function summarizeJob(job, opts = {}) {
   const latestKind = classifyTurnKind(latestTurn);
   const shortId = job.claude?.shortId ?? null;
   const waitingFor = job.claude?.waitingFor ?? null;
-  const waiting = classifyWaiting(waitingFor);
+  const waiting = classifyWaiting(waitingFor, { shortId });
   const hasResult = job.result !== undefined;
   const latestTurnHasResult = latestTurn?.result !== undefined;
   const latestTurnResultState = latestTurnHasResult
@@ -189,6 +231,7 @@ function summarizeJob(job, opts = {}) {
   const recommended = recommendedNextAction(job, hasResult, resultState);
   const lastObservedAt = job.updatedAt ?? job.createdAt ?? null;
   const freshness = processFreshness(job, lastObservedAt);
+  const operatorState = operatorStateForJob(job, waiting);
   const latestTurnRawStatus = latestTurn?.status ?? null;
   const latestTurnEffectiveStatus = effectiveLatestTurnStatus(
     job,
@@ -200,6 +243,13 @@ function summarizeJob(job, opts = {}) {
     result: `cc result ${job.jobId}`,
     ...(hasResult ? { partialResult: `cc result ${job.jobId} --partial` } : {}),
     ...(isNonTerminalJobStatus(job.status) ? { stop: `cc stop ${job.jobId}` } : {}),
+    ...(job.status === 'needs_input'
+      ? {
+          restart: `cc restart ${job.jobId} -- "<prompt>"`,
+          restartWithBypass: `cc restart ${job.jobId} --bypass-permissions -- "<prompt>"`,
+          cleanupBlocked: 'cc stop --all-needs-input',
+        }
+      : {}),
     ...(job.status === 'awaiting_followup'
       ? { followup: `cc followup ${job.jobId} -- "<prompt>"` }
       : {}),
@@ -226,6 +276,22 @@ function summarizeJob(job, opts = {}) {
           ...(isNonTerminalJobStatus(job.status)
             ? { stop: exactDispatcherCommand(opts.dispatcherPath, `stop ${job.jobId}`) }
             : {}),
+          ...(job.status === 'needs_input'
+            ? {
+                restart: exactDispatcherCommand(
+                  opts.dispatcherPath,
+                  `restart ${job.jobId} -- "<prompt>"`,
+                ),
+                restartWithBypass: exactDispatcherCommand(
+                  opts.dispatcherPath,
+                  `restart ${job.jobId} --bypass-permissions -- "<prompt>"`,
+                ),
+                cleanupBlocked: exactDispatcherCommand(
+                  opts.dispatcherPath,
+                  'stop --all-needs-input',
+                ),
+              }
+            : {}),
           ...(job.status === 'awaiting_followup'
             ? {
                 followup: exactDispatcherCommand(
@@ -241,6 +307,20 @@ function summarizeJob(job, opts = {}) {
   return {
     jobId: job.jobId,
     status: job.status,
+    operatorState,
+    ...(job.status === 'needs_input'
+      ? {
+          blockedOn: {
+            category: waiting?.category ?? 'unknown',
+            kind: waiting?.kind ?? 'unknown',
+            since: lastObservedAt,
+            ageSeconds: freshness.ageSeconds,
+            detail: waitingFor,
+            manualInputRequired: waiting?.manualInputRequired ?? true,
+            canApproveNonInteractively: false,
+          },
+        }
+      : {}),
     process: {
       state: job.status,
       shortId,
@@ -470,14 +550,25 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
     ];
     const compact = summarizeJob(j, opts);
     lines.push(`Result state:   ${compact.resultState}`);
+    lines.push(`Operator state: ${compact.operatorState}`);
     lines.push(`Next:           ${compact.recommendedNextAction}`);
     lines.push(`Last observed:  ${compact.process.lastObservedAt ?? '(unknown)'}`);
     if (j.result?.finalMessagePreview) {
       lines.push(`Result:         ${j.result.finalMessagePreview}`);
     }
     if (j.claude.waitingFor) {
+      const waiting = compact.waiting;
       lines.push(`Waiting:        ${j.claude.waitingFor}`);
-      lines.push(`Attach:         claude attach ${j.claude.shortId}`);
+      if (waiting?.category) {
+        lines.push(`Waiting type:   ${waiting.category}`);
+      }
+      lines.push(`Manual action:  ${waiting?.userAction ?? `claude attach ${j.claude.shortId}`}`);
+      if (waiting?.note) {
+        lines.push(`Note:           ${waiting.note}`);
+      }
+      lines.push(`Stop:           cc stop ${j.jobId}`);
+      lines.push(`Restart:        cc restart ${j.jobId} --bypass-permissions -- "<prompt>"`);
+      lines.push(`Prompt summary: ${j.prompt?.summary ?? '(not recorded)'}`);
       if (j.result?.finalMessagePreview) {
         lines.push(`Partial result: cc result ${j.jobId} --partial`);
       }
@@ -525,7 +616,19 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
 
   const needsInputJob = jobs.find((j) => j.status === 'needs_input' && j.claude.shortId);
   if (needsInputJob) {
-    lines.push('', `Input needed: run claude attach ${needsInputJob.claude.shortId}`);
+    const waiting = summarizeJob(needsInputJob, opts).waiting;
+    lines.push(
+      '',
+      `Input needed: run ${waiting?.userAction ?? `claude attach ${needsInputJob.claude.shortId}`}`,
+    );
+    if (waiting?.category === 'browser_selection') {
+      lines.push('Chrome browser selection must be completed in the attached Claude Code TUI.');
+    }
+    lines.push(`Stop blocked job: cc stop ${needsInputJob.jobId}`);
+    lines.push(
+      `Restart with bypass: cc restart ${needsInputJob.jobId} --bypass-permissions -- "<prompt>"`,
+    );
+    lines.push('Cleanup all blocked jobs in this workspace: cc stop --all-needs-input');
   }
 
   if (opts.hiddenCount != null && opts.hiddenCount > 0) {
@@ -671,6 +774,73 @@ export function formatResult(job, resultText, json, opts = {}) {
   if (resultText) {
     lines.push('');
     lines.push(resultText);
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * @param {import('@cc-plugin-codex/runtime').JobRecord} job
+ * @param {string | null} resultText
+ * @param {boolean} json
+ * @param {{ compact?: boolean; timedOut?: boolean; timeoutMs?: number; dispatcherPath?: string; transcriptTail?: string[] | null }} [opts]
+ * @returns {string}
+ */
+export function formatWait(job, resultText, json, opts = {}) {
+  const compact = summarizeJob(job, { ...opts, compact: true });
+  const timedOut = Boolean(opts.timedOut);
+  const transcriptTail = opts.transcriptTail ?? null;
+
+  if (json) {
+    return JSON.stringify(
+      {
+        ok: !timedOut,
+        timedOut,
+        ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
+        job: opts.compact ? compact : job,
+        summary: compact,
+        resultText,
+        transcriptTail,
+      },
+      null,
+      2,
+    );
+  }
+
+  const lines = [
+    'Claude wait',
+    `Timed out:      ${timedOut ? 'yes' : 'no'}`,
+    `Job ID:         ${job.jobId}`,
+    `Status:         ${job.status}`,
+    `Operator state: ${compact.operatorState}`,
+    `Result:         ${compact.resultState}`,
+    `Next:           ${compact.recommendedNextAction}`,
+  ];
+
+  if (compact.blockedOn) {
+    lines.push(`Blocked on:     ${compact.blockedOn.category}`);
+    lines.push(`Detail:         ${compact.blockedOn.detail}`);
+    if (compact.waiting?.userAction) {
+      lines.push(`Manual action:  ${compact.waiting.userAction}`);
+    }
+    if (compact.actionHints?.restartWithBypass) {
+      lines.push(`Restart:        ${compact.actionHints.restartWithBypass}`);
+    }
+    if (compact.actionHints?.stop) {
+      lines.push(`Stop:           ${compact.actionHints.stop}`);
+    }
+  }
+
+  if (job.result?.finalMessagePath) {
+    lines.push(`Result file:    ${job.result.finalMessagePath}`);
+  }
+
+  if (resultText) {
+    lines.push('', resultText);
+  }
+
+  if (transcriptTail && transcriptTail.length > 0) {
+    lines.push('', 'Transcript tail:', ...transcriptTail.map((line) => `  ${line}`));
   }
 
   return lines.join('\n');

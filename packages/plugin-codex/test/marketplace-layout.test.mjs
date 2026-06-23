@@ -73,6 +73,7 @@ const EXPECTED_SKILL_NAMES = [
   'claude-status',
   'claude-stop',
   'claude-upgrade',
+  'claude-wait',
   'claude-workflow',
   'claude-workflows',
 ];
@@ -474,6 +475,7 @@ const DERIVED_FILES_ALLOWLIST = [
   'skills/claude-setup/SKILL.md',
   'skills/claude-delegate/SKILL.md',
   'skills/claude-status/SKILL.md',
+  'skills/claude-wait/SKILL.md',
   'skills/claude-result/SKILL.md',
   'skills/claude-stop/SKILL.md',
   'skills/claude-followup/SKILL.md',

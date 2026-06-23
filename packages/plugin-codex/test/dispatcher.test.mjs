@@ -961,16 +961,36 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
     const parsed = parseJson(result.stdout);
     assert.equal(parsed.job.status, 'needs_input');
+    assert.equal(parsed.job.operatorState, 'blocked_on_permission');
+    assert.equal(parsed.job.blockedOn.category, 'permission_prompt');
+    assert.equal(parsed.job.blockedOn.kind, 'permission');
+    assert.equal(parsed.job.blockedOn.canApproveNonInteractively, false);
     assert.equal(parsed.job.waitingFor, 'permission prompt');
-    assert.deepEqual(parsed.job.waiting, {
-      kind: 'permission',
-      detail: 'permission prompt',
-      requestedAction: null,
-      action: 'attach',
-    });
+    assert.equal(parsed.job.waiting.kind, 'permission');
+    assert.equal(parsed.job.waiting.category, 'permission_prompt');
+    assert.equal(parsed.job.waiting.detail, 'permission prompt');
+    assert.equal(parsed.job.waiting.requestedAction, null);
+    assert.equal(parsed.job.waiting.action, 'attach');
+    assert.equal(parsed.job.waiting.manualInputRequired, true);
+    assert.equal(parsed.job.waiting.canApproveNonInteractively, false);
+    assert.equal(parsed.job.waiting.userAction, 'claude attach blk00001');
+    assert.match(parsed.job.waiting.futureUnattendedHint, /bypassPermissions/);
     assert.equal(parsed.job.result.isPartial, true);
     assert.equal(parsed.job.resultState, 'partial_result_available');
-    assert.equal(parsed.job.recommendedNextAction, 'attach');
+    assert.equal(parsed.job.recommendedNextAction, 'attach | stop | restart');
+    assert.equal(parsed.job.actionHints.stop, `cc stop ${jobId}`);
+    assert.equal(parsed.job.actionHints.restart, `cc restart ${jobId} -- "<prompt>"`);
+    assert.equal(
+      parsed.job.actionHints.restartWithBypass,
+      `cc restart ${jobId} --bypass-permissions -- "<prompt>"`,
+    );
+    assert.equal(parsed.job.actionHints.cleanupBlocked, 'cc stop --all-needs-input');
+    assert.ok(
+      parsed.job.exactActionHints.restartWithBypass.includes(
+        `restart ${jobId} --bypass-permissions -- "<prompt>"`,
+      ),
+      `expected exact restart hint; got ${JSON.stringify(parsed.job.exactActionHints)}`,
+    );
     assert.equal(parsed.job.latestTurn.resultState, 'partial');
     assert.equal(parsed.job.actionHints.attach, 'claude attach blk00001');
     assert.equal(parsed.job.actionHints.stop, `cc stop ${jobId}`);
@@ -1023,6 +1043,126 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.partial, true);
     assert.equal(parsed.job.status, 'needs_input');
     assert.equal(parsed.resultText, resultContent);
+  });
+
+  it('wait --json returns final result text for a completed job', () => {
+    const jobId = `job_waitok_${createHash('sha256').update('wait-completed').digest('hex').slice(0, 8)}`;
+    const { resultContent } = writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Wait completed answer.',
+    });
+
+    const result = runDispatcher(['wait', jobId, '--json', '--compact', '--timeout', '0s']);
+    assert.equal(result.status, 0, `expected wait success; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.timedOut, false);
+    assert.equal(parsed.job.jobId, jobId);
+    assert.equal(parsed.summary.resultState, 'final_result_available');
+    assert.equal(parsed.resultText, resultContent);
+    assert.equal(parsed.transcriptTail, null);
+  });
+
+  it('wait --json stops on needs_input and returns blocker hints plus partial text', () => {
+    const jobId = `job_waitblk_${createHash('sha256').update('wait-blocked').digest('hex').slice(0, 8)}`;
+    const { resultContent } = writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Wait partial blocked answer.',
+      shortId: 'waitblk1',
+    });
+
+    const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    record.status = 'needs_input';
+    record.claude.waitingFor = 'permission prompt';
+    record.turns[0].status = 'needs_input';
+    writeFileSync(recordPath, JSON.stringify(record, null, 2));
+    writeMockAgentSession('waitblk1', shortIdToSessionId('waitblk1'), 'idle');
+    const sidecarDir = join(MOCK_HOME, 'jobs', 'waitblk1');
+    mkdirSync(sidecarDir, { recursive: true });
+    writeFileSync(
+      join(sidecarDir, 'state.json'),
+      JSON.stringify(
+        {
+          sessionId: shortIdToSessionId('waitblk1'),
+          daemonShort: 'waitblk1',
+          state: 'waiting',
+          tempo: 'blocked',
+          intent: 'permission prompt',
+          inFlight: { tasks: 0, queued: 0, kinds: [] },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const result = runDispatcher(['wait', jobId, '--json', '--compact', '--timeout', '0s']);
+    assert.equal(result.status, 0, `expected wait success; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.timedOut, false);
+    assert.equal(parsed.summary.operatorState, 'blocked_on_permission');
+    assert.equal(parsed.summary.blockedOn.category, 'permission_prompt');
+    assert.equal(
+      parsed.summary.actionHints.restartWithBypass,
+      `cc restart ${jobId} --bypass-permissions -- "<prompt>"`,
+    );
+    assert.equal(parsed.resultText, resultContent);
+  });
+
+  it('wait --timeout returns latest running state and exits non-zero on timeout', () => {
+    const shortId = 'waitrun1';
+    const jobId = `job_waitto_${createHash('sha256').update('wait-timeout').digest('hex').slice(0, 8)}`;
+    writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Running partial answer.',
+      shortId,
+    });
+    const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    record.status = 'running';
+    record.turns[0].status = 'running';
+    writeFileSync(recordPath, JSON.stringify(record, null, 2));
+    writeMockAgentSession(shortId, shortIdToSessionId(shortId), 'working');
+
+    const result = runDispatcher(['wait', jobId, '--json', '--compact', '--timeout', '0s']);
+    assert.equal(result.status, 1, `expected wait timeout; stdout: ${result.stdout}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.ok, false);
+    assert.equal(parsed.timedOut, true);
+    assert.equal(parsed.summary.operatorState, 'running');
+    assert.equal(parsed.resultText, 'Running partial answer.');
+  });
+
+  it('status --job JSON classifies Chrome browser selection waits', () => {
+    const shortId = 'chrom001';
+    const jobId = `job_chrome_${createHash('sha256').update('chrome-browser-selection').digest('hex').slice(0, 8)}`;
+    const { record } = writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Progress before Chrome browser selection.',
+      shortId,
+    });
+    record.status = 'needs_input';
+    record.claude.waitingFor =
+      'Which Chrome browser should Claude use? Browser 1, Browser 2, or let me pick in the extension.';
+    record.turns[0].status = 'needs_input';
+
+    const parsed = parseJson(
+      formatStatus([record], true, WORK_DIR, {
+        compact: true,
+        dispatcherPath: SCRIPT,
+        singleJob: true,
+      }),
+    );
+
+    assert.equal(parsed.job.recommendedNextAction, 'attach | stop | restart');
+    assert.equal(parsed.job.waiting.kind, 'input');
+    assert.equal(parsed.job.waiting.category, 'browser_selection');
+    assert.equal(parsed.job.waiting.manualInputRequired, true);
+    assert.equal(parsed.job.waiting.canApproveNonInteractively, false);
+    assert.equal(parsed.job.waiting.userAction, `claude attach ${shortId}`);
+    assert.match(parsed.job.waiting.note, /Chrome browser selection/);
+    assert.match(parsed.job.waiting.futureUnattendedHint, /permission-mode flags do not choose/);
   });
 
   it('status --job JSON gives a clear next action for orphaned jobs with partial output', () => {
@@ -1608,6 +1748,91 @@ describe('delegate flag parsing parity (Plan 0024)', () => {
     assert.ok(session, `expected mock session ${shortId}`);
     assert.equal(session.permissionMode, 'bypassPermissions');
     assert.equal(session.prompt, 'danger alias task');
+  });
+
+  it('--bypass-permissions aliases permission-mode bypass without swallowing prompt', () => {
+    const result = runDispatcher([
+      'delegate',
+      '--json',
+      '--yes',
+      '--bypass-permissions',
+      '--',
+      'bypass alias task',
+    ]);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    const shortId = parsed.job.claude.shortId;
+    const state = JSON.parse(readFileSync(join(MOCK_HOME, 'state.json'), 'utf8'));
+    const sessions = state.sessions ?? [];
+    const session = sessions.find((s) => s.shortId === shortId);
+    assert.ok(session, `expected mock session ${shortId}`);
+    assert.equal(session.permissionMode, 'bypassPermissions');
+    assert.equal(session.prompt, 'bypass alias task');
+  });
+
+  it('restart --bypass-permissions stops the original job and starts a fresh bypass session', () => {
+    const first = runDispatcher(['delegate', '--json', '--yes', '--', 'original task']);
+    assert.equal(first.status, 0, `expected delegate success; stderr: ${first.stderr}`);
+    const firstParsed = parseJson(first.stdout);
+    const originalJobId = firstParsed.job.jobId;
+
+    const restarted = runDispatcher([
+      'restart',
+      originalJobId,
+      '--json',
+      '--yes',
+      '--bypass-permissions',
+      '--',
+      'replacement task',
+    ]);
+
+    assert.equal(restarted.status, 0, `expected restart success; stderr: ${restarted.stderr}`);
+    const restartedParsed = parseJson(restarted.stdout);
+    assert.equal(restartedParsed.ok, true);
+    assert.notEqual(restartedParsed.job.jobId, originalJobId);
+
+    const originalRecord = JSON.parse(
+      readFileSync(join(TMP_HOME, 'jobs', `${originalJobId}.json`), 'utf8'),
+    );
+    assert.equal(originalRecord.status, 'stopped');
+
+    const shortId = restartedParsed.job.claude.shortId;
+    const state = JSON.parse(readFileSync(join(MOCK_HOME, 'state.json'), 'utf8'));
+    const sessions = state.sessions ?? [];
+    const session = sessions.find((s) => s.shortId === shortId);
+    assert.ok(session, `expected mock session ${shortId}`);
+    assert.equal(session.permissionMode, 'bypassPermissions');
+    assert.equal(session.prompt, 'replacement task');
+  });
+
+  it('restart requires a fresh prompt because original prompt text is not stored', () => {
+    const result = runDispatcher(['restart', 'job_mpt98g9g_b61e09f1']);
+    assert.equal(result.status, 2, `expected exit 2; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stderr.includes('restart requires a fresh prompt'),
+      `expected fresh prompt error; got:\n${result.stderr}`,
+    );
+  });
+
+  it('rejects bypass-permissions combined with a different permission-mode', () => {
+    const result = runDispatcher([
+      'delegate',
+      '--yes',
+      '--bypass-permissions',
+      '--permission-mode',
+      'plan',
+      '--',
+      'task',
+    ]);
+
+    assert.equal(result.status, 2, `expected exit 2; stderr: ${result.stderr}`);
+    assert.ok(
+      result.stderr.includes('--bypass-permissions') &&
+        result.stderr.includes('--permission-mode bypassPermissions'),
+      `expected bypass conflict error; got:\n${result.stderr}`,
+    );
+    assert.deepEqual(listJobIds(), [], 'conflicting bypass flags must not create a job');
   });
 
   it('rejects invalid permission-mode values before creating a job', () => {
@@ -7574,6 +7799,7 @@ describe('printUsage reflects review/adversarial-review accepted flags (Stage 4 
   it('N2-1j: --help lists advanced fresh-session passthrough flags', () => {
     const result = runDispatcher(['--help']);
     const expectedFlags = [
+      '--bypass-permissions',
       '--system-prompt',
       '--append-system-prompt',
       '--plugin-dir',
@@ -7593,6 +7819,19 @@ describe('printUsage reflects review/adversarial-review accepted flags (Stage 4 
         `--help must include advanced passthrough flag "${flag}"\nActual stdout:\n${result.stdout}`,
       );
     }
+  });
+
+  it('N2-1k: --help lists wait and wait timing flags', () => {
+    const result = runDispatcher(['--help']);
+    assert.ok(
+      result.stdout.includes('wait <jobId-or-prefix>'),
+      `--help must include wait command\nActual stdout:\n${result.stdout}`,
+    );
+    assert.ok(
+      result.stdout.includes('--timeout <duration>') &&
+        result.stdout.includes('--interval <duration>'),
+      `--help must include wait timing flags\nActual stdout:\n${result.stdout}`,
+    );
   });
 });
 
@@ -7614,8 +7853,16 @@ describe('delegate/followup command-specific help', () => {
     const result = runDispatcher(['delegate', '--help']);
     assert.equal(result.status, 0, `delegate --help should exit 0; got ${result.status}`);
     assert.ok(result.stdout.startsWith('Usage: cc delegate'), result.stdout);
+    assert.ok(result.stdout.includes('--bypass-permissions'), result.stdout);
     assert.ok(result.stdout.includes('--permission-mode bypassPermissions'), result.stdout);
     assert.ok(!result.stdout.includes('Commands:'), result.stdout);
+  });
+
+  it('stop --help prints blocked cleanup usage', () => {
+    const result = runDispatcher(['stop', '--help']);
+    assert.equal(result.status, 0, `stop --help should exit 0; got ${result.status}`);
+    assert.ok(result.stdout.includes('--all-needs-input'), result.stdout);
+    assert.ok(result.stdout.includes('--all-blocked'), result.stdout);
   });
 
   it('followup --help prints focused followup usage and resultPending guidance', () => {

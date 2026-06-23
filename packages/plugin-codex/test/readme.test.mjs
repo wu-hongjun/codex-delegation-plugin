@@ -1276,29 +1276,29 @@ describe('README.md adversarial-review section uses neutral usage wording (T10-o
   });
 });
 
-// ---------- T10-optional-B. Direct dispatcher usage mentions sixteen commands ----------
+// ---------- T10-optional-B. Direct dispatcher usage mentions seventeen commands ----------
 
-describe('README.md Direct dispatcher usage mentions sixteen skill commands (T10-optional-B)', () => {
-  it('contains "sixteen skill commands" or "All sixteen skill commands"', () => {
+describe('README.md Direct dispatcher usage mentions seventeen skill commands (T10-optional-B)', () => {
+  it('contains "seventeen skill commands" or "All seventeen skill commands"', () => {
     const body = readReadme();
     const lower = body.toLowerCase();
     assert.ok(
-      lower.includes('sixteen skill commands') || lower.includes('all sixteen skill commands'),
-      'README.md Direct dispatcher usage section must say "sixteen skill commands"',
+      lower.includes('seventeen skill commands') || lower.includes('all seventeen skill commands'),
+      'README.md Direct dispatcher usage section must say "seventeen skill commands"',
     );
   });
 });
 
-// ---------- T10-optional-C. Current v1 scope lists Sixteen skills ----------
+// ---------- T10-optional-C. Current v1 scope lists Seventeen skills ----------
 
-describe('README.md Current v1 scope lists Sixteen skills (T10-optional-C)', () => {
-  it('contains "Sixteen skills" in the Current v1 scope section', () => {
+describe('README.md Current v1 scope lists Seventeen skills (T10-optional-C)', () => {
+  it('contains "Seventeen skills" in the Current v1 scope section', () => {
     const body = readReadme();
     const section = extractSection(body, '## Current v1 scope');
     assert.ok(section !== null, 'README.md must have a ## Current v1 scope section');
     assert.ok(
-      section.includes('Sixteen skills'),
-      'README.md ## Current v1 scope must say "Sixteen skills"',
+      section.includes('Seventeen skills'),
+      'README.md ## Current v1 scope must say "Seventeen skills"',
     );
   });
 });

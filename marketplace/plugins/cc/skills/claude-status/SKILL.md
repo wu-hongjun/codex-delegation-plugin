@@ -45,13 +45,29 @@ historical job records.
 Human status output includes a header row, a relative age column, and a footer
 with `claude attach <shortId>` when any listed job needs input.
 
-Compact JSON includes `waiting.kind` plus `actionHints` with stable next
-commands such as `status`, `result`, `partialResult`, `stop`, `followup`,
-`attach`, and `logs`. When `waiting.kind` is `"permission"`, surface the
-`attach` hint to the user. If `partialResult` is present, use `$claude-result
-<jobId> --partial` to inspect recorded progress without waiting for the job to
-finish. Check `result.isPartial` and `latestTurn.resultState` before treating
-recorded output as final.
+Compact JSON includes `waiting.kind`, `waiting.category`,
+`waiting.manualInputRequired`, `waiting.canApproveNonInteractively`,
+`waiting.userAction`, and `actionHints` with stable next commands such as
+`status`, `result`, `partialResult`, `stop`, `followup`, `attach`, and `logs`.
+When `waiting.kind` is `"permission"` or `waiting.manualInputRequired` is true,
+surface the `attach` hint to the user; do not try to approve from the
+background wrapper. For blocked jobs, also surface `actionHints.stop`,
+`actionHints.restartWithBypass`, and `actionHints.cleanupBlocked` (or their
+`exactActionHints` equivalents when present) so the operator can stop the job,
+restart it as a trusted unattended fresh session, or clean up all blocked jobs
+without reading separate docs. `restartWithBypass` intentionally includes a
+`"<prompt>"` placeholder because cc stores prompt metadata, not the full
+original prompt. If `partialResult` is present, use `$claude-result <jobId>
+--partial` to inspect recorded progress without waiting for the job to finish.
+Check `result.isPartial` and `latestTurn.resultState` before treating recorded
+output as final.
+
+For real Chrome work, `waiting.category: "browser_selection"` means Claude Code
+is asking the operator to pick a connected Chrome browser, choose through the
+extension UI, or perform a local user gesture such as a passkey approval. This
+must be resolved with `claude attach <shortId>` in the Claude Code TUI. The cc
+wrapper cannot safely select a browser or complete user gestures
+non-interactively, and permission-mode flags do not choose among browsers.
 
 Freshness fields are heartbeat/progress hints, not result availability. For
 non-terminal rows, `freshness.evaluated: true` means `stale` was computed against
@@ -71,6 +87,8 @@ directly for development testing.
 After checking status, the user typically wants one of:
 
 - `$claude-result` — read the output of a completed job
+- `$claude-wait <jobId> --json --compact --timeout 5m` — wait on a known job
+  until it produces a result, blocker, or timeout
 - `$claude-result <jobId> --partial` — read recorded partial output if status
   says the job is incomplete but has a result artifact
 - `$claude-followup` — continue a job that is awaiting a follow-up turn

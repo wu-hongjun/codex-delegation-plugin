@@ -30,7 +30,7 @@ $claude-skills
 
 ## Quick start
 
-- **Install and use:** follow the commands above, then use `$claude-delegate`, `$claude-status`, `$claude-result`, and `$claude-followup` inside Codex.
+- **Install and use:** follow the commands above, then use `$claude-delegate`, `$claude-wait`, `$claude-status`, `$claude-result`, and `$claude-followup` inside Codex.
 - **End-user manual:** [`marketplace/plugins/cc/README.md`](marketplace/plugins/cc/README.md) covers verify, update, uninstall, troubleshooting, and the full skill list.
 - **Developer manual:** [`packages/plugin-codex/README.md`](packages/plugin-codex/README.md) covers dispatcher commands, runtime behavior, architecture, and contributor workflows.
 - **Marketplace payload:** [`marketplace/`](marketplace/) contains the committed plugin tree that Codex installs.
@@ -55,6 +55,7 @@ After install, the main Codex skills are:
 
 ```text
 $claude-delegate "Inspect this repo and summarize the main risks."
+$claude-wait <jobId> --json --compact --timeout 5m
 $claude-status
 $claude-result <jobId>
 $claude-followup <jobId> -- "Now check the tests around that area."
@@ -68,7 +69,19 @@ $claude-skills
 $claude-upgrade
 ```
 
-The plugin currently ships 16 skills: `$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`, `$claude-skills`, `$claude-upgrade`.
+The plugin currently ships 17 skills: `$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`, `$claude-skills`, `$claude-upgrade`.
+
+---
+
+## Real Chrome And Permissions
+
+Use `--chrome` when a delegated Claude job needs the real Chrome browser. There is no `--real` flag. Real Chrome access uses Claude Code's Chrome extension / connected-browser flow, which is separate from Codex's in-app browser.
+
+Some prompts cannot be answered safely by the background wrapper. If Claude asks which Chrome browser to use, asks you to pick in the extension, or reaches a passkey/login/user-gesture step, run `$claude-status --job <jobId> --json --compact` and follow `waiting.userAction` (usually `claude attach <shortId>`). Choose the Chrome profile that already has the needed logged-in session.
+
+For trusted unattended shell/tool QA, you can explicitly start a fresh job with `--bypass-permissions`, `--permission-mode bypassPermissions`, or `--dangerously-skip-permissions`. Once you have opted into trusted unattended Claude work for a task/session/project, Codex may reuse `--bypass-permissions` on fresh local shell/tool automation jobs. That can reduce Claude tool permission prompts, but it does not choose among Chrome browsers, complete passkeys, inspect cookies/passwords/session stores, or replace local user gestures.
+
+When a job is already blocked, run `$claude-status --job <jobId> --json --compact`. Blocked jobs include `operatorState`, `blockedOn`, `actionHints.restartWithBypass`, `actionHints.stop`, and `actionHints.cleanupBlocked`. Restart commands require a fresh prompt because cc stores prompt metadata, not the full original prompt text.
 
 ---
 
@@ -203,7 +216,7 @@ node tools/package-marketplace.mjs --write
 - **One primary transport**: `ClaudeBackgroundDriver` — uses `claude --bg`, `claude agents --json`, transcript JSONL, `claude logs`, `claude attach`, and `claude stop`. It does not use `claude -p`.
 - **One host plugin**: Codex skills + manifest under `packages/plugin-codex/`.
 - **Session-per-job with follow-ups**: every `$claude-delegate` invocation creates a fresh background job. Continue an existing job with `$claude-followup <jobId>`; do not reuse `--name` as a session key.
-- **Sixteen skills**: `$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`, `$claude-skills`, `$claude-upgrade`.
+- **Seventeen skills**: `$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`, `$claude-skills`, `$claude-upgrade`.
 
 The full v1 plan, including every deliberately-deferred feature, lives at [`documentation/plan/0001-20260530-initial-plan/1-plan.md`](documentation/plan/0001-20260530-initial-plan/1-plan.md). It supersedes any conflicting framing in this README.
 

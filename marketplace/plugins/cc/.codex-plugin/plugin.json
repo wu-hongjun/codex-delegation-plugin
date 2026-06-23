@@ -15,6 +15,7 @@
       "Set up CC.",
       "Delegate a task to Claude Code.",
       "Check my Claude jobs.",
+      "Wait for a Claude job to finish or report a blocker.",
       "Show the result of a Claude job.",
       "Stop a Claude job.",
       "Send a follow-up instruction to a running Claude job.",

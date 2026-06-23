@@ -24,6 +24,12 @@ Behavior rules:
   subcommand and update state.
 - Forward `--json` for machine-readable output when the user requests it.
 - Forward `--all` only if the user explicitly asks to stop jobs across all workspaces.
+- Forward `--all-needs-input` or `--all-blocked` when the user asks to clean up
+  permission/input-blocked jobs in the current workspace. Combine with `--all`
+  only when the user explicitly asks to clean up blocked jobs across all
+  workspaces.
+- Forward `--all-awaiting-followup` when the user asks to bulk-stop idle
+  follow-up-ready jobs.
 
 ### Next steps
 

@@ -21,6 +21,7 @@ const SKILL_NAMES = [
   'claude-setup',
   'claude-delegate',
   'claude-status',
+  'claude-wait',
   'claude-result',
   'claude-stop',
   'claude-followup',
@@ -41,6 +42,7 @@ const SKILL_SUBCOMMANDS = {
   'claude-setup': 'setup',
   'claude-delegate': 'delegate',
   'claude-status': 'status',
+  'claude-wait': 'wait',
   'claude-result': 'result',
   'claude-stop': 'stop',
   'claude-followup': 'followup',
@@ -720,26 +722,26 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
     }
   });
 
-  it('has at least 16 entries after CC upgrade addition', () => {
+  it('has at least 17 entries after wait addition', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.ok(
-      dp.length >= 16,
-      `interface.defaultPrompt must have at least 16 entries; got ${dp.length}`,
+      dp.length >= 17,
+      `interface.defaultPrompt must have at least 17 entries; got ${dp.length}`,
     );
   });
 });
 
-describe('plugin.json.interface.defaultPrompt length is exactly 16 (adds claude-upgrade)', () => {
-  it('array length equals 16', () => {
+describe('plugin.json.interface.defaultPrompt length is exactly 17 (adds claude-wait)', () => {
+  it('array length equals 17', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      16,
-      `interface.defaultPrompt must have exactly 16 entries; got ${dp.length}`,
+      17,
+      `interface.defaultPrompt must have exactly 17 entries; got ${dp.length}`,
     );
   });
 });
@@ -837,14 +839,14 @@ describe('no unexpected review-adjacent skill directories exist', () => {
 // ---------- T6: OQ-C defaultPrompt rewrites (entries #6-#9) ----------
 
 describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)', () => {
-  it('array length is exactly 16', () => {
+  it('array length is exactly 17', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      16,
-      `interface.defaultPrompt must have exactly 16 entries; got ${dp.length}`,
+      17,
+      `interface.defaultPrompt must have exactly 17 entries; got ${dp.length}`,
     );
   });
 

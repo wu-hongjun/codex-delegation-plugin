@@ -77,7 +77,7 @@ If `$claude-setup` reports `ok` or `warn`, the install is complete.
 
 ## Skills
 
-After install, the plugin makes 16 skills available inside the Codex
+After install, the plugin makes 17 skills available inside the Codex
 TUI. Type the `$<name>` form at the Codex chat prompt.
 
 - `$claude-setup` — probes the local environment (Claude Code auth,
@@ -89,6 +89,9 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
 - `$claude-status` — lists delegated jobs in the current workspace
   with their live status. Use `--job <id> --json --compact` for one
   focused lookup, or `--limit <n>` to keep broad lists bounded.
+- `$claude-wait` — waits for one job to reach a result state, blocker,
+  or timeout; useful for automation that would otherwise poll status
+  and then call result.
 - `$claude-result` — prints clean recorded output for a completed job
   or latest completed turn.
 - `$claude-stop` — stops a running background session by id or
@@ -115,6 +118,34 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
   Claude sessions, including user and installed-plugin skills.
 - `$claude-upgrade` — refreshes or repairs the installed CC plugin through
   Codex plugin commands.
+
+## Real Chrome And Permissions
+
+Use `--chrome` when a delegated Claude job needs the real Chrome browser.
+There is no `--real` flag. Real Chrome access uses Claude Code's Chrome
+extension / connected-browser flow, which is separate from Codex's in-app
+browser.
+
+Some prompts cannot be answered safely by the background wrapper. If Claude
+asks which Chrome browser to use, asks you to pick in the extension, or reaches
+a passkey/login/user-gesture step, run `$claude-status --job <jobId> --json
+--compact` and follow `waiting.userAction` (usually `claude attach <shortId>`).
+Choose the Chrome profile that already has the needed logged-in session.
+
+For trusted unattended shell/tool QA, you can explicitly start a fresh job with
+`--bypass-permissions`, `--permission-mode bypassPermissions`, or
+`--dangerously-skip-permissions`. Once you have opted into trusted unattended
+Claude work for a task/session/project, Codex may reuse `--bypass-permissions`
+on fresh local shell/tool automation jobs. That can reduce Claude tool
+permission prompts, but it does not choose among Chrome browsers, complete
+passkeys, inspect cookies/passwords/session stores, or replace local user
+gestures.
+
+When a job is already blocked, run `$claude-status --job <jobId> --json
+--compact`. Blocked jobs include `operatorState`, `blockedOn`,
+`actionHints.restartWithBypass`, `actionHints.stop`, and
+`actionHints.cleanupBlocked`. Restart commands require a fresh prompt because
+cc stores prompt metadata, not the full original prompt text.
 
 ### $claude-workflow
 
@@ -319,8 +350,8 @@ reinstall.
 
 Before release, run the smoke checklist in
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md).
-It verifies the local marketplace install and all 16 skill names
-(`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-result`,
+It verifies the local marketplace install and all 17 skill names
+(`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`,
 `$claude-stop`, `$claude-followup`, `$claude-review`,
 `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`,
 `$claude-fork`, `$claude-batch`, `$claude-deep-research`,

@@ -26,8 +26,8 @@ structured review of an existing Claude background job created by
 
    Forward only these flags **when the user explicitly requests them**:
    `--all`, `--json`, `--yes`, `--model`, `--effort`, `--permission-mode`,
-   `--dangerously-skip-permissions`, `--allow-dangerously-skip-permissions`,
-   `--agent`, `--agents`, `--allowedTools`, `--allowed-tools`,
+   `--bypass-permissions`, `--dangerously-skip-permissions`,
+   `--allow-dangerously-skip-permissions`, `--agent`, `--agents`, `--allowedTools`, `--allowed-tools`,
    `--disallowedTools`, `--disallowed-tools`, `--tools`, `--settings`,
    `--setting-sources`, `--strict-mcp-config`, `--append-system-prompt`,
    `--system-prompt`, `--plugin-dir`, `--plugin-url`, `--bare`, `--safe-mode`,
@@ -39,6 +39,10 @@ structured review of an existing Claude background job created by
    they are not applicable to this subcommand. Do NOT inject `--yes`
    automatically. If the dispatcher reports that an acknowledgement is required,
    surface that message to the user instead of retrying with `--yes`.
+   If the user explicitly asks for trusted unattended Claude work, or has already
+   approved that mode for the current task/session/project, forward
+   `--bypass-permissions` for fresh local shell/tool automation jobs. This does
+   not resolve browser selection, passkeys, or other local user-gesture prompts.
 
 4. Return the dispatcher's stdout verbatim. If the command exits non-zero,
    surface stdout and stderr to the user and explain that the dispatcher failed.

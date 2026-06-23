@@ -39,6 +39,7 @@ import type { ClaudeBackgroundDriverOptions } from './types.js';
 
 const ID_CONTEXTUAL_PATTERN = /^[a-zA-Z0-9_-]{4,}$/;
 const ID_HEX_SESSION_PATTERN = /^[a-fA-F0-9]{8,}$/;
+const ID_CONTEXTUAL_HEX_PATTERN = /^[a-fA-F0-9]{4,}$/;
 const ID_WITH_DIGIT_PATTERN = /^(?=[a-zA-Z0-9_-]*\d)[a-zA-Z0-9_-]{4,}$/;
 
 // Keywords whose next ID-shaped token is a session ID.
@@ -72,7 +73,12 @@ function nextIdToken(tokens: string[], from: number, exclude?: string): string |
     // id — skip it so that, after excluding an echoed name, the scan reaches the real id
     // following a later keyword (e.g. "session <name>" then "backgrounded · <hex>").
     if (KEYWORDS_PRIMARY.includes(t.toLowerCase())) continue;
-    if (isUsableIdToken(t) && t !== exclude) return t;
+    if (t === exclude) continue;
+    if (isUsableIdToken(t)) return t;
+    // In the immediate context after "session"/"backgrounded", legacy mock IDs can be
+    // short all-letter hex strings such as "abcdef". Accept those contextual tokens
+    // while still skipping known CLI words such as "started" or "attach".
+    if (!NON_ID_TOKENS.has(t.toLowerCase()) && ID_CONTEXTUAL_HEX_PATTERN.test(t)) return t;
   }
   return undefined;
 }

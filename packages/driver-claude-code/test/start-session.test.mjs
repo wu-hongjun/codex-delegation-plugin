@@ -384,6 +384,11 @@ describe('parseShortId parser', () => {
       assert.equal(id, 'abc123');
     });
 
+    it('parses short all-letter legacy IDs after a session keyword', () => {
+      const id = parseShortId('Started background session abcdef\n', '');
+      assert.equal(id, 'abcdef');
+    });
+
     it('parses bare ID-only stdout format', () => {
       const id = parseShortId('abc123\n', '');
       assert.equal(id, 'abc123');

@@ -320,6 +320,10 @@ function buildStartSessionOptions(flags, commandName, json, overrides = {}) {
   };
 }
 
+function shouldAcknowledgeForStartSession(flags, startSessionOptions) {
+  return Boolean(flags['yes']) || startSessionOptions.permissionMode === 'bypassPermissions';
+}
+
 const REVIEW_SEVERITY_RANK = new Map([
   ['nit', 0],
   ['low', 1],
@@ -1479,10 +1483,10 @@ async function _runDelegateCore(
   const prompt = promptTransformer(rawPrompt);
 
   const workspace = workspaceRoot ?? process.cwd();
-  const useYes = Boolean(flags['yes']);
   const startSessionOptions = buildStartSessionOptions(flags, commandName, json, {
     name: typeof flags['name'] === 'string' ? flags['name'] : undefined,
   });
+  const useYes = shouldAcknowledgeForStartSession(flags, startSessionOptions);
 
   // 2. Privacy ack.
   await ensureWorkspaceAck({
@@ -3061,7 +3065,7 @@ async function cmdReview(flags, positional, json) {
 async function cmdAdversarialReview(flags, positional, json) {
   // 1. Parse args: reject inapplicable flags at parse time.
   const reviewGate = parseReviewGate(flags, 'adversarial-review', json);
-  normalizePermissionMode(flags, 'adversarial-review', json);
+  const permissionMode = normalizePermissionMode(flags, 'adversarial-review', json);
 
   // --allow-edit is categorically rejected for all review skills.
   if (flags['allow-edit'] !== undefined) {
@@ -3242,7 +3246,7 @@ async function cmdAdversarialReview(flags, positional, json) {
     workspaceRoot: targetJob.workspace.root,
     commandName: 'adversarial-review',
     json,
-    useYes: Boolean(flags['yes']),
+    useYes: Boolean(flags['yes']) || permissionMode === 'bypassPermissions',
     header: 'Privacy acknowledgement required for target workspace.',
     actionLines: [
       `This command will start an adversarial review session for job ${targetJobId}.`,
@@ -3359,6 +3363,7 @@ async function cmdAdversarialReview(flags, positional, json) {
       name: reviewSessionName,
       addDirs: [],
       mcpConfig: undefined,
+      permissionMode,
     }),
   });
 

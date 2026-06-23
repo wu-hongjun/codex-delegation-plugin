@@ -1782,6 +1782,27 @@ describe('delegate flag parsing parity (Plan 0024)', () => {
     assert.equal(session.prompt, 'danger alias task');
   });
 
+  it('--dangerously-skip-permissions implies privacy acknowledgement for fresh unattended delegate jobs', () => {
+    const result = runDispatcher([
+      'delegate',
+      '--json',
+      '--dangerously-skip-permissions',
+      '--',
+      'danger alias no yes task',
+    ]);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(existsSync(ackPath()), `expected ack file at ${ackPath()}`);
+    const parsed = parseJson(result.stdout);
+    const shortId = parsed.job.claude.shortId;
+    const state = JSON.parse(readFileSync(join(MOCK_HOME, 'state.json'), 'utf8'));
+    const sessions = state.sessions ?? [];
+    const session = sessions.find((s) => s.shortId === shortId);
+    assert.ok(session, `expected mock session ${shortId}`);
+    assert.equal(session.permissionMode, 'bypassPermissions');
+    assert.equal(session.prompt, 'danger alias no yes task');
+  });
+
   it('--bypass-permissions aliases permission-mode bypass without swallowing prompt', () => {
     const result = runDispatcher([
       'delegate',
@@ -1801,6 +1822,28 @@ describe('delegate flag parsing parity (Plan 0024)', () => {
     assert.ok(session, `expected mock session ${shortId}`);
     assert.equal(session.permissionMode, 'bypassPermissions');
     assert.equal(session.prompt, 'bypass alias task');
+  });
+
+  it('--permission-mode bypassPermissions implies privacy acknowledgement for fresh unattended delegate jobs', () => {
+    const result = runDispatcher([
+      'delegate',
+      '--json',
+      '--permission-mode',
+      'bypassPermissions',
+      '--',
+      'permission mode bypass no yes task',
+    ]);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    assert.ok(existsSync(ackPath()), `expected ack file at ${ackPath()}`);
+    const parsed = parseJson(result.stdout);
+    const shortId = parsed.job.claude.shortId;
+    const state = JSON.parse(readFileSync(join(MOCK_HOME, 'state.json'), 'utf8'));
+    const sessions = state.sessions ?? [];
+    const session = sessions.find((s) => s.shortId === shortId);
+    assert.ok(session, `expected mock session ${shortId}`);
+    assert.equal(session.permissionMode, 'bypassPermissions');
+    assert.equal(session.prompt, 'permission mode bypass no yes task');
   });
 
   it('restart --bypass-permissions stops the original job and starts a fresh bypass session', () => {

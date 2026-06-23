@@ -33,9 +33,13 @@ Behavior rules:
   `--exclude-dynamic-system-prompt-sections`, `--verbose`, `--json`.
 - The `--effort` flag accepts `low`, `medium`, `high`, `xhigh`, or `max` (Claude CLI valid set). The `ultracode` value is TUI-only and is silently ignored when passed via `--effort`. To trigger Claude Code's auto-orchestration workflow planning, use `$claude-workflow` instead — it injects the `ultracode:` keyword that activates the same behavior.
 - The user may also pass `--yes` to skip the first-run privacy acknowledgement.
-  Do NOT inject `--yes` automatically. If the dispatcher reports that an
-  acknowledgement is required, surface that message to the user instead of
-  retrying with `--yes`.
+  Do not inject `--yes` for ordinary jobs. Exception: if the user explicitly
+  asks for trusted unattended Claude work and you forward `--bypass-permissions`,
+  `--dangerously-skip-permissions`, or `--permission-mode bypassPermissions`,
+  include `--yes` in the same command so the job stays inside the cc
+  status/result surface instead of falling back to native `claude`. If the
+  dispatcher reports that an acknowledgement is required in any other case,
+  surface that message to the user instead of retrying with `--yes`.
 - If the user explicitly asks for trusted unattended Claude work, or has already
   approved that mode for the current task/session/project, forward
   `--bypass-permissions` for fresh local shell/tool automation jobs. This does

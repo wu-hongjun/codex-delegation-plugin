@@ -70,7 +70,7 @@ The cc-plugin-codex plugin follows semver `0.x.y`. Versioning rules:
   metadata, not the shipped plugin version. Do not bump them as part
   of a plugin release.
 - **Bundled `node_modules/@cc-plugin-codex/*` use the `<plugin-version>-bundled`
-  marker** (e.g., `0.3.18-bundled` while the shipped plugin is `0.3.18`).
+  marker** (e.g., `0.3.19-bundled` while the shipped plugin is `0.3.19`).
   `tools/package-marketplace.mjs --write` synthesizes this marker from
   the source plugin version. Do not edit those synthesized
   `package.json` files by hand.
@@ -78,7 +78,7 @@ The cc-plugin-codex plugin follows semver `0.x.y`. Versioning rules:
 ### Procedure to bump the shipped plugin version
 
 Replace `0.x.y` below with the new semver string. The current shipped
-version is `0.3.18` (bumped for the v0.3.18 release).
+version is `0.3.19` (bumped for the v0.3.19 release).
 
 1. Edit `packages/plugin-codex/.codex-plugin/plugin.json` and bump the
    `version` field to `0.x.y`. This is the only manual edit.
@@ -350,7 +350,7 @@ hard-coded version literals) without invoking it.
 ## Tagging
 
 Tag the release using semver `v0.x.y`. Example for the current shipped
-version: `v0.3.18`.
+version: `v0.3.19`.
 
 ```bash
 git tag v0.x.y
@@ -362,7 +362,7 @@ Rules:
 - Tag only **after** the smoke test passes **and** all four CI matrix
   legs are green. Both gates are mandatory.
 - Tag format: lowercase `v` prefix + semver. The example tag for the
-  current shipped version is `v0.3.18`.
+  current shipped version is `v0.3.19`.
 - Legacy verification tags from earlier plans use distinct schemes
   and must not be retagged as part of a plugin release.
 - Do not move or delete a published tag. If a regression is
@@ -482,7 +482,7 @@ codex plugin list
 ```
 
 After the Git flow, `codex plugin list` should report
-`cc@cc-plugin-codex` with the current version (`0.3.18`),
+`cc@cc-plugin-codex` with the current version (`0.3.19`),
 `installed, enabled`. After either local flow, it should report
 `cc@cc-plugin-codex-local` with the same version. See
 [`marketplace/plugins/cc/README.md`](../marketplace/plugins/cc/README.md)

@@ -46,8 +46,12 @@ structured review of an existing Claude background job created by
    surface that message to the user instead of retrying with `--yes`.
    If the user explicitly asks for trusted unattended Claude work, or has already
    approved that mode for the current task/session/project, forward
-   `--bypass-permissions` for fresh local shell/tool automation jobs. This does
-   not resolve browser selection, passkeys, or other local user-gesture prompts.
+   `--bypass-permissions` for fresh local shell/tool automation jobs. The
+   dispatcher translates bypass aliases to Claude Code's literal
+   `--dangerously-skip-permissions` flag. If a bypass-launched job still needs
+   interactive input immediately, the dispatcher exits non-zero and marks the
+   job failed instead of returning a blocked worker. This does not resolve
+   browser selection, passkeys, or other local user-gesture prompts.
 
 4. Return the dispatcher's stdout verbatim. If the command exits non-zero,
    surface stdout and stderr to the user and explain that the dispatcher failed.

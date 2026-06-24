@@ -59,10 +59,13 @@ Behavior rules:
   trusted unattended Claude work in the current task/session/project as
   sufficient permission to use `--bypass-permissions` for future fresh local
   shell/tool automation jobs. Do not infer that preference from ordinary
-  delegation requests. If a delegated job later shows `waitingFor: "permission
-  prompt"`, report the blocked state and the `claude attach <shortId>` command
-  from `$claude-status --job <jobId> --json --compact`; do not try to approve
-  the permission prompt yourself.
+  delegation requests. The dispatcher translates these aliases to Claude Code's
+  literal `--dangerously-skip-permissions` flag. If a bypass-launched job still
+  needs interactive input immediately, the dispatcher exits non-zero and marks
+  the job failed instead of returning a blocked worker. If a delegated job later
+  shows a permission wait, report the blocked state and the `claude attach
+  <shortId>` command from `$claude-status --job <jobId> --json --compact`; do
+  not try to approve the permission prompt yourself.
 - For real Chrome browser work, forward `--chrome` only when the user explicitly
   requests real Chrome access. There is no `--real` flag. Chrome access is
   Claude Code's real-browser/extension path, not Codex's in-app browser. If

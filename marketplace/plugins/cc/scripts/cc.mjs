@@ -289,10 +289,12 @@ function normalizePermissionMode(flags, commandName, json) {
 }
 
 function buildStartSessionOptions(flags, commandName, json, overrides = {}) {
+  const permissionMode = normalizePermissionMode(flags, commandName, json);
   return {
     model: stringFlag(flags, 'model'),
     effort: stringFlag(flags, 'effort'),
-    permissionMode: normalizePermissionMode(flags, commandName, json),
+    permissionMode,
+    dangerouslySkipPermissions: permissionMode === 'bypassPermissions',
     allowDangerouslySkipPermissions: Boolean(flags['allow-dangerously-skip-permissions']),
     addDirs: Array.isArray(flags['add-dir']) ? flags['add-dir'] : [],
     mcpConfig: stringFlag(flags, 'mcp-config'),
@@ -322,6 +324,73 @@ function buildStartSessionOptions(flags, commandName, json, overrides = {}) {
 
 function shouldAcknowledgeForStartSession(flags, startSessionOptions) {
   return Boolean(flags['yes']) || startSessionOptions.permissionMode === 'bypassPermissions';
+}
+
+function launchPolicyFromStartSessionOptions(startSessionOptions) {
+  const permissionMode =
+    typeof startSessionOptions.permissionMode === 'string'
+      ? startSessionOptions.permissionMode
+      : undefined;
+  const dangerouslySkipPermissions = Boolean(startSessionOptions.dangerouslySkipPermissions);
+  const allowDangerouslySkipPermissions = Boolean(
+    startSessionOptions.allowDangerouslySkipPermissions,
+  );
+  const unattendedRequested = permissionMode === 'bypassPermissions' || dangerouslySkipPermissions;
+  return {
+    ...(permissionMode !== undefined ? { permissionMode } : {}),
+    dangerouslySkipPermissions,
+    allowDangerouslySkipPermissions,
+    unattendedRequested,
+  };
+}
+
+async function failUnattendedBypassNeedsInput(job, driver, commandName, json) {
+  const waitingFor = job.claude?.waitingFor ?? 'interactive input';
+  const now = new Date().toISOString();
+  let stopError;
+  try {
+    await driver.stop(sessionHandleFromJob(job));
+    await appendEvent(job.jobId, {
+      type: 'session.stopped',
+      shortId: job.claude.shortId,
+      reason: 'unattended bypass still required interactive input',
+      at: now,
+    });
+  } catch (error) {
+    stopError = error;
+  }
+
+  const message =
+    `Unattended bypass was requested, but Claude Code immediately asked for interactive input (${waitingFor}). ` +
+    `Job ${job.jobId} was marked failed${stopError ? '; stopping the Claude session also failed' : ' after a stop attempt'}.`;
+
+  await updateJob(job.jobId, (current) => {
+    const turns = Array.isArray(current.turns) ? current.turns.map((turn) => ({ ...turn })) : [];
+    if (turns.length > 0) {
+      const last = turns[turns.length - 1];
+      turns[turns.length - 1] = {
+        ...last,
+        status: 'failed',
+        endedAt: last.endedAt ?? now,
+      };
+    }
+    return {
+      ...current,
+      status: 'failed',
+      errors: [
+        ...(Array.isArray(current.errors) ? current.errors : []),
+        {
+          at: now,
+          message,
+          cause: stopError instanceof Error ? stopError.message : String(waitingFor),
+        },
+      ],
+      turns,
+    };
+  });
+
+  process.stderr.write(formatError(new Error(message), commandName, json) + '\n');
+  process.exit(1);
 }
 
 const REVIEW_SEVERITY_RANK = new Map([
@@ -1553,6 +1622,7 @@ async function _runDelegateCore(
       cwd: handle.cwd,
       startedAt: handle.startedAt,
       logsCommand: `claude logs ${handle.shortId}`,
+      launchPolicy: launchPolicyFromStartSessionOptions(startSessionOptions),
     },
     prompt: { summary, sha256, bytesLen },
   });
@@ -1569,6 +1639,13 @@ async function _runDelegateCore(
     finalJob = reconciled.job;
   } catch {
     // Non-fatal: job was created; reconcile warnings are acceptable on first run.
+  }
+
+  if (
+    startSessionOptions.permissionMode === 'bypassPermissions' &&
+    finalJob.status === 'needs_input'
+  ) {
+    await failUnattendedBypassNeedsInput(finalJob, driver, commandName, json);
   }
 
   // 10. Print summary.
@@ -3355,16 +3432,17 @@ async function cmdAdversarialReview(flags, positional, json) {
   const repoBasename = basename(targetJob.workspace.root);
   const targetJobIdShort = targetJobId.slice(0, 12);
   const reviewSessionName = `codex:${repoBasename}:review-${targetJobIdShort}`;
+  const reviewStartSessionOptions = buildStartSessionOptions(flags, 'adversarial-review', json, {
+    name: reviewSessionName,
+    addDirs: [],
+    mcpConfig: undefined,
+    permissionMode,
+  });
 
   const reviewHandle = await driver.startSession({
     cwd: targetJob.workspace.root,
     prompt: adversarialPrompt,
-    ...buildStartSessionOptions(flags, 'adversarial-review', json, {
-      name: reviewSessionName,
-      addDirs: [],
-      mcpConfig: undefined,
-      permissionMode,
-    }),
+    ...reviewStartSessionOptions,
   });
 
   // 11. Create the review JobRecord via createJob.
@@ -3393,6 +3471,7 @@ async function cmdAdversarialReview(flags, positional, json) {
       cwd: reviewHandle.cwd,
       startedAt: reviewHandle.startedAt,
       logsCommand: `claude logs ${reviewHandle.shortId}`,
+      launchPolicy: launchPolicyFromStartSessionOptions(reviewStartSessionOptions),
     },
     prompt: { summary: prefixedSummary, sha256: promptMeta.sha256, bytesLen: promptMeta.bytesLen },
     reviewOf: { jobId: targetJobId, turnIndex: selectedTurnIndex },

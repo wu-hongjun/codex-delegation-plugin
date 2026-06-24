@@ -51,8 +51,11 @@ Behavior rules:
   `--dangerously-skip-permissions`. Treat an explicit user preference for
   trusted unattended Claude work in the current task/session/project as
   sufficient permission to use `--bypass-permissions` for future fresh local
-  shell/tool automation jobs. Do not infer that preference from ordinary
-  delegation requests.
+  shell/tool automation jobs. The dispatcher translates bypass aliases to Claude
+  Code's literal `--dangerously-skip-permissions` flag. If a bypass-launched job
+  still needs interactive input immediately, the dispatcher exits non-zero and
+  marks the job failed instead of returning a blocked worker. Do not infer that
+  preference from ordinary delegation requests.
 - Do NOT forward `--allow-edit` — it is not applicable to this subcommand.
 
 Approval flow — important:

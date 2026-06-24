@@ -994,6 +994,12 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     const parsed = parseJson(result.stdout);
     assert.equal(parsed.job.status, 'needs_input');
     assert.equal(parsed.job.operatorState, 'blocked_on_permission');
+    assert.deepEqual(parsed.job.launchPolicy, {
+      permissionMode: null,
+      dangerouslySkipPermissions: false,
+      allowDangerouslySkipPermissions: false,
+      unattendedRequested: false,
+    });
     assert.equal(parsed.job.blockedOn.category, 'permission_prompt');
     assert.equal(parsed.job.blockedOn.kind, 'permission');
     assert.equal(parsed.job.blockedOn.canApproveNonInteractively, false);
@@ -1027,6 +1033,57 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.job.actionHints.attach, 'claude attach blk00001');
     assert.equal(parsed.job.actionHints.stop, `cc stop ${jobId}`);
     assert.equal(parsed.job.actionHints.partialResult, `cc result ${jobId} --partial`);
+  });
+
+  it('status --job JSON reports when a permission wait happened after unattended bypass was requested', () => {
+    const jobId = `job_statubp_${createHash('sha256').update('status-unattended-bypass').digest('hex').slice(0, 8)}`;
+    writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Blocked after bypass.',
+      shortId: 'ubp00001',
+    });
+
+    const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
+    const record = JSON.parse(readFileSync(recordPath, 'utf8'));
+    record.status = 'needs_input';
+    record.claude.waitingFor = 'permission prompt';
+    record.claude.launchPolicy = {
+      permissionMode: 'bypassPermissions',
+      dangerouslySkipPermissions: true,
+      allowDangerouslySkipPermissions: false,
+      unattendedRequested: true,
+    };
+    record.turns[0].status = 'needs_input';
+    writeFileSync(recordPath, JSON.stringify(record, null, 2));
+    writeMockAgentSession('ubp00001', shortIdToSessionId('ubp00001'), 'idle');
+    const sidecarDir = join(MOCK_HOME, 'jobs', 'ubp00001');
+    mkdirSync(sidecarDir, { recursive: true });
+    writeFileSync(
+      join(sidecarDir, 'state.json'),
+      JSON.stringify(
+        {
+          sessionId: shortIdToSessionId('ubp00001'),
+          daemonShort: 'ubp00001',
+          state: 'waiting',
+          tempo: 'blocked',
+          intent: 'permission prompt',
+          inFlight: { tasks: 0, queued: 0, kinds: [] },
+        },
+        null,
+        2,
+      ),
+    );
+
+    const result = runDispatcher(['status', '--job', jobId, '--json', '--compact']);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.job.launchPolicy.unattendedRequested, true);
+    assert.equal(parsed.job.launchPolicy.dangerouslySkipPermissions, true);
+    assert.equal(parsed.job.blockedOn.unattendedRequested, true);
+    assert.equal(parsed.job.waiting.unattendedRequested, true);
+    assert.equal(parsed.job.waiting.futureUnattendedHint, undefined);
+    assert.match(parsed.job.waiting.note, /even though unattended bypass was requested/);
   });
 
   it('result --partial prints recorded output for an incomplete job', () => {
@@ -1779,7 +1836,11 @@ describe('delegate flag parsing parity (Plan 0024)', () => {
     const session = sessions.find((s) => s.shortId === shortId);
     assert.ok(session, `expected mock session ${shortId}`);
     assert.equal(session.permissionMode, 'bypassPermissions');
+    assert.equal(session.dangerouslySkipPermissions, true);
     assert.equal(session.prompt, 'danger alias task');
+    assert.equal(parsed.job.claude.launchPolicy.permissionMode, 'bypassPermissions');
+    assert.equal(parsed.job.claude.launchPolicy.dangerouslySkipPermissions, true);
+    assert.equal(parsed.job.claude.launchPolicy.unattendedRequested, true);
   });
 
   it('--dangerously-skip-permissions implies privacy acknowledgement for fresh unattended delegate jobs', () => {
@@ -1800,6 +1861,7 @@ describe('delegate flag parsing parity (Plan 0024)', () => {
     const session = sessions.find((s) => s.shortId === shortId);
     assert.ok(session, `expected mock session ${shortId}`);
     assert.equal(session.permissionMode, 'bypassPermissions');
+    assert.equal(session.dangerouslySkipPermissions, true);
     assert.equal(session.prompt, 'danger alias no yes task');
   });
 
@@ -1821,6 +1883,7 @@ describe('delegate flag parsing parity (Plan 0024)', () => {
     const session = sessions.find((s) => s.shortId === shortId);
     assert.ok(session, `expected mock session ${shortId}`);
     assert.equal(session.permissionMode, 'bypassPermissions');
+    assert.equal(session.dangerouslySkipPermissions, true);
     assert.equal(session.prompt, 'bypass alias task');
   });
 
@@ -1843,7 +1906,54 @@ describe('delegate flag parsing parity (Plan 0024)', () => {
     const session = sessions.find((s) => s.shortId === shortId);
     assert.ok(session, `expected mock session ${shortId}`);
     assert.equal(session.permissionMode, 'bypassPermissions');
+    assert.equal(session.dangerouslySkipPermissions, true);
     assert.equal(session.prompt, 'permission mode bypass no yes task');
+  });
+
+  it('--add-dir does not consume the prompt in driver argv', () => {
+    mkdirSync(join(WORK_DIR, 'extra'), { recursive: true });
+    const result = runDispatcher([
+      'delegate',
+      '--json',
+      '--yes',
+      '--add-dir',
+      join(WORK_DIR, 'extra'),
+      '--',
+      'prompt after dispatcher add dir',
+    ]);
+
+    assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    const shortId = parsed.job.claude.shortId;
+    const state = JSON.parse(readFileSync(join(MOCK_HOME, 'state.json'), 'utf8'));
+    const session = state.sessions.find((s) => s.shortId === shortId);
+    assert.ok(session, `expected mock session ${shortId}`);
+    assert.equal(session.prompt, 'prompt after dispatcher add dir');
+  });
+
+  it('bypass delegate fails fast when Claude still requires interactive input', () => {
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, { bgPermissionStall: true });
+    const result = runDispatcher(
+      [
+        'delegate',
+        '--json',
+        '--dangerously-skip-permissions',
+        '--',
+        'task that still hits a permission prompt',
+      ],
+      { env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath } },
+    );
+
+    assert.equal(result.status, 1, `expected fail-fast exit 1; stdout: ${result.stdout}`);
+    assert.match(result.stderr, /Unattended bypass was requested/);
+    assert.match(result.stderr, /permission/);
+    const jobs = listJobIds();
+    assert.equal(jobs.length, 1);
+    const record = JSON.parse(readFileSync(join(TMP_HOME, 'jobs', `${jobs[0]}.json`), 'utf8'));
+    assert.equal(record.status, 'failed');
+    assert.equal(record.claude.launchPolicy.unattendedRequested, true);
+    assert.equal(record.claude.launchPolicy.dangerouslySkipPermissions, true);
+    assert.match(record.errors.at(-1).message, /Unattended bypass was requested/);
   });
 
   it('restart --bypass-permissions stops the original job and starts a fresh bypass session', () => {
@@ -1878,6 +1988,7 @@ describe('delegate flag parsing parity (Plan 0024)', () => {
     const session = sessions.find((s) => s.shortId === shortId);
     assert.ok(session, `expected mock session ${shortId}`);
     assert.equal(session.permissionMode, 'bypassPermissions');
+    assert.equal(session.dangerouslySkipPermissions, true);
     assert.equal(session.prompt, 'replacement task');
   });
 

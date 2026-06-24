@@ -58,6 +58,8 @@ const DEFAULT_CONFIG = Object.freeze({
   // Plan 0002 T3: when true the FIRST submit under each attach transitions through
   // a "waiting" (permission) state before processing the turn.
   permissionStall: false,
+  // When true, a background prompt immediately enters a waiting permission state.
+  bgPermissionStall: false,
   // Plan 0003 T9: review fixture selection.
   // Valid values: "structured-review" | "malformed-review" | "adversarial-review".
   // When unset (null), the mock auto-selects based on the detected prompt type:
@@ -303,6 +305,7 @@ const BG_VALUE_FLAGS = new Set([
 ]);
 
 const BG_BOOLEAN_FLAGS = new Set([
+  '--dangerously-skip-permissions',
   '--allow-dangerously-skip-permissions',
   '--strict-mcp-config',
   '--bare',
@@ -318,15 +321,20 @@ const BG_BOOLEAN_FLAGS = new Set([
 function parseBgArgs(args) {
   let name;
   let permissionMode;
+  let dangerouslySkipPermissions = false;
   const positional = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
-    if (BG_VALUE_FLAGS.has(a)) {
+    if (a === '--') {
+      positional.push(...args.slice(i + 1));
+      break;
+    } else if (BG_VALUE_FLAGS.has(a)) {
       const val = args[++i];
       if (a === '--name') name = val;
       if (a === '--permission-mode') permissionMode = val;
       // Other recognized value-flags are accepted and ignored by the mock.
     } else if (BG_BOOLEAN_FLAGS.has(a)) {
+      if (a === '--dangerously-skip-permissions') dangerouslySkipPermissions = true;
       // Recognized boolean flags are accepted and ignored by the mock.
     } else if (a.startsWith('--')) {
       // Unknown flag. If the next token doesn't start with `--`, consume it as a value.
@@ -337,7 +345,10 @@ function parseBgArgs(args) {
       positional.push(a);
     }
   }
-  return { name, permissionMode, prompt: positional.join(' ') };
+  if (dangerouslySkipPermissions && permissionMode === undefined) {
+    permissionMode = 'bypassPermissions';
+  }
+  return { name, permissionMode, dangerouslySkipPermissions, prompt: positional.join(' ') };
 }
 
 // ---------- commands ----------
@@ -388,7 +399,7 @@ function cmdBg(config, args) {
     return 1;
   }
   ensureHome();
-  const { name, permissionMode, prompt } = parseBgArgs(args);
+  const { name, permissionMode, dangerouslySkipPermissions, prompt } = parseBgArgs(args);
   const cwd = process.cwd();
   const startedAt = nowISO();
 
@@ -451,6 +462,7 @@ function cmdBg(config, args) {
     transcriptPath,
     logPath,
     permissionMode,
+    dangerouslySkipPermissions,
     prompt,
   });
   saveState(state);
@@ -469,6 +481,19 @@ function cmdBg(config, args) {
       at: startedAt,
       state: 'idle',
       detail: 'session created (idle, awaiting prompt)',
+    });
+  } else if (config.bgPermissionStall) {
+    writeSidecar(shortId, {
+      ...base,
+      state: 'waiting',
+      tempo: 'blocked',
+      inFlight: { tasks: 0, queued: 0, kinds: ['permission'] },
+      intent: 'permission prompt',
+    });
+    appendTimeline(shortId, {
+      at: startedAt,
+      state: 'waiting',
+      detail: 'agent requested permission',
     });
   } else {
     // Prompt provided: working → done

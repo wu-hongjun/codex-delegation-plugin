@@ -150,6 +150,29 @@ describe('mock-claude', () => {
         assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
       });
     });
+
+    it('records literal dangerous-skip and preserves prompt after -- delimiter', () => {
+      withIsolatedHome(({ home, env }) => {
+        const cfg = legacyConfig(home);
+        const r = runClaude(
+          [
+            '--bg',
+            '--dangerously-skip-permissions',
+            '--add-dir',
+            '/tmp/extra-workspace',
+            '--',
+            'prompt after add dir',
+          ],
+          { env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg } },
+        );
+        assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
+        const state = JSON.parse(readFileSync(`${home}/state.json`, 'utf8'));
+        const s = state.sessions[0];
+        assert.equal(s.dangerouslySkipPermissions, true);
+        assert.equal(s.permissionMode, 'bypassPermissions');
+        assert.equal(s.prompt, 'prompt after add dir');
+      });
+    });
   });
 
   describe('claude agents --json (legacy mode)', () => {

@@ -84,6 +84,11 @@ function recommendedNextAction(job, hasResult, resultState) {
 
 function classifyWaiting(waitingFor, opts = {}) {
   if (waitingFor == null || waitingFor === '') return null;
+  const launchPolicy = opts.launchPolicy ?? {};
+  const unattendedRequested =
+    launchPolicy.unattendedRequested === true ||
+    launchPolicy.dangerouslySkipPermissions === true ||
+    launchPolicy.permissionMode === 'bypassPermissions';
   const text = String(waitingFor);
   const lower = text.toLowerCase();
   let parsed = null;
@@ -128,12 +133,14 @@ function classifyWaiting(waitingFor, opts = {}) {
     category === 'browser_selection'
       ? 'Claude Code requires an interactive Chrome browser selection. Choose the browser with the logged-in session in the attached TUI; the cc wrapper cannot select it safely in the background.'
       : kind === 'permission'
-        ? 'Claude Code is waiting on a permission prompt. The cc wrapper cannot approve it non-interactively; attach to the session or restart a trusted future run with an explicit permission mode.'
+        ? unattendedRequested
+          ? 'Claude Code is waiting on a permission prompt even though unattended bypass was requested. The cc wrapper cannot safely approve it non-interactively; attach to inspect, or stop and rerun after fixing the underlying Claude Code/tool configuration.'
+          : 'Claude Code is waiting on a permission prompt. The cc wrapper cannot approve it non-interactively; attach to the session or restart a trusted future run with an explicit permission mode.'
         : 'Claude Code is waiting for interactive input. Attach to the session to continue.';
   const futureUnattendedHint =
     category === 'browser_selection'
       ? 'For unattended Chrome work, connect only the intended Chrome browser before starting, or start attached; permission-mode flags do not choose between browsers.'
-      : kind === 'permission'
+      : kind === 'permission' && !unattendedRequested
         ? 'For trusted unattended shell/tool work, start a new job with --bypass-permissions, --permission-mode bypassPermissions, or --dangerously-skip-permissions when appropriate.'
         : null;
   return {
@@ -144,6 +151,7 @@ function classifyWaiting(waitingFor, opts = {}) {
     action: 'attach',
     manualInputRequired: true,
     canApproveNonInteractively: false,
+    unattendedRequested,
     ...(attachCommand ? { userAction: attachCommand } : {}),
     note,
     ...(futureUnattendedHint ? { futureUnattendedHint } : {}),
@@ -218,7 +226,17 @@ function summarizeJob(job, opts = {}) {
   const latestKind = classifyTurnKind(latestTurn);
   const shortId = job.claude?.shortId ?? null;
   const waitingFor = job.claude?.waitingFor ?? null;
-  const waiting = classifyWaiting(waitingFor, { shortId });
+  const rawLaunchPolicy = job.claude?.launchPolicy ?? {};
+  const launchPolicy = {
+    permissionMode: rawLaunchPolicy.permissionMode ?? null,
+    dangerouslySkipPermissions: rawLaunchPolicy.dangerouslySkipPermissions === true,
+    allowDangerouslySkipPermissions: rawLaunchPolicy.allowDangerouslySkipPermissions === true,
+    unattendedRequested:
+      rawLaunchPolicy.unattendedRequested === true ||
+      rawLaunchPolicy.dangerouslySkipPermissions === true ||
+      rawLaunchPolicy.permissionMode === 'bypassPermissions',
+  };
+  const waiting = classifyWaiting(waitingFor, { shortId, launchPolicy });
   const hasResult = job.result !== undefined;
   const latestTurnHasResult = latestTurn?.result !== undefined;
   const latestTurnResultState = latestTurnHasResult
@@ -318,9 +336,11 @@ function summarizeJob(job, opts = {}) {
             detail: waitingFor,
             manualInputRequired: waiting?.manualInputRequired ?? true,
             canApproveNonInteractively: false,
+            unattendedRequested: launchPolicy.unattendedRequested,
           },
         }
       : {}),
+    launchPolicy,
     process: {
       state: job.status,
       shortId,

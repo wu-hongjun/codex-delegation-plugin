@@ -12,7 +12,7 @@
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, delimiter, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -252,6 +252,35 @@ describe('startSession() with optional flags', () => {
     }
     assert.equal(handle.driverName, 'claude-background');
     assert.ok(handle.shortId.length > 0, 'shortId must be non-empty with optional flags');
+    const state = JSON.parse(readFileSync(join(MOCK_HOME, 'state.json'), 'utf8'));
+    const session = state.sessions.find((s) => s.shortId === handle.shortId);
+    assert.ok(session, `expected mock session ${handle.shortId}`);
+    assert.equal(session.permissionMode, 'default');
+    assert.equal(session.dangerouslySkipPermissions, false);
+    assert.equal(session.prompt, 'test optional flags');
+  });
+
+  it('uses literal dangerous-skip for bypass launches and preserves prompt after addDirs', async () => {
+    const extraDir = mkdtempSync(join(tmpdir(), 'start-session-bypass-dir-'));
+    let handle;
+    try {
+      const driver = new ClaudeBackgroundDriver({ env: envWithMockClaude() });
+      handle = await driver.startSession({
+        cwd: MOCK_HOME,
+        prompt: 'bypass prompt after add dir',
+        permissionMode: 'bypassPermissions',
+        dangerouslySkipPermissions: true,
+        addDirs: [extraDir],
+      });
+    } finally {
+      rmSync(extraDir, { recursive: true, force: true });
+    }
+    const state = JSON.parse(readFileSync(join(MOCK_HOME, 'state.json'), 'utf8'));
+    const session = state.sessions.find((s) => s.shortId === handle.shortId);
+    assert.ok(session, `expected mock session ${handle.shortId}`);
+    assert.equal(session.permissionMode, 'bypassPermissions');
+    assert.equal(session.dangerouslySkipPermissions, true);
+    assert.equal(session.prompt, 'bypass prompt after add dir');
   });
 });
 

@@ -48,6 +48,13 @@ export interface DriverContext {
   capabilitiesSnapshot: unknown;
 }
 
+export interface ClaudeLaunchPolicy {
+  permissionMode?: string;
+  dangerouslySkipPermissions?: boolean;
+  allowDangerouslySkipPermissions?: boolean;
+  unattendedRequested?: boolean;
+}
+
 export interface ClaudeSessionContext {
   version: string;
   shortId: string;
@@ -59,6 +66,7 @@ export interface ClaudeSessionContext {
   transcriptPath?: string;
   waitingFor?: string;
   logsCommand: string;
+  launchPolicy?: ClaudeLaunchPolicy;
 }
 
 export interface PromptContext {

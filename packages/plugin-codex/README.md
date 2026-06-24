@@ -122,7 +122,7 @@ Job ID from successful delegation: `job_mpt98g9g_b61e09f1` (shown in output as `
 
 Interactive privacy acknowledgement: on first delegation in a workspace, you will be asked to confirm that delegating may send repository contents, prompts, command output, and Claude Code context to Anthropic. This is interactive by default; you can skip the prompt with `--yes` if you have intentionally pre-approved the policy.
 
-Fresh-session commands (`$claude-delegate`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, and `$claude-adversarial-review`) validate startup flags before launching Claude Code. Unknown flags fail with exit 2 instead of consuming the prompt. `--bypass-permissions` and `--dangerously-skip-permissions` are accepted as aliases for `--permission-mode bypassPermissions`; use them when the operator explicitly chooses an unattended trusted run. Additional Claude Code startup controls such as `--agent`, `--agents`, `--allowedTools`, `--disallowedTools`, `--tools`, `--settings`, `--setting-sources`, `--strict-mcp-config`, `--append-system-prompt`, `--system-prompt`, `--plugin-dir`, `--plugin-url`, `--bare`, and `--safe-mode` can be forwarded when explicitly requested.
+Fresh-session commands (`$claude-delegate`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, and `$claude-adversarial-review`) validate startup flags before launching Claude Code. Unknown flags fail with exit 2 instead of consuming the prompt. `--bypass-permissions` and `--dangerously-skip-permissions` are accepted as aliases for `--permission-mode bypassPermissions`; they launch Claude Code with its literal `--dangerously-skip-permissions` flag and should be used only when the operator explicitly chooses an unattended trusted run. Additional Claude Code startup controls such as `--agent`, `--agents`, `--allowedTools`, `--disallowedTools`, `--tools`, `--settings`, `--setting-sources`, `--strict-mcp-config`, `--append-system-prompt`, `--system-prompt`, `--plugin-dir`, `--plugin-url`, `--bare`, and `--safe-mode` can be forwarded when explicitly requested.
 
 For unattended expert-agent QA that intentionally lets Claude Code inspect a
 trusted local checkout with shell commands, pass `--permission-mode
@@ -132,6 +132,9 @@ task/session/project, Codex can reuse `--bypass-permissions` on future fresh
 local shell/tool automation jobs. Without it, Claude Code may pause on a
 permission prompt; inspect the job with `$claude-status --job <jobId> --json
 --compact` and attach with the returned `actionHints.attach` command.
+If a bypass-launched job still asks for interactive input immediately, the
+dispatcher stops the start attempt, marks the job failed, and prints a clear
+non-zero error instead of returning a blocked background worker.
 
 Real Chrome browser work uses Claude Code's `--chrome` startup flag. There is
 no `--real` flag, and the real-browser path is separate from Codex's in-app

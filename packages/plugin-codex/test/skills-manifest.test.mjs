@@ -142,12 +142,12 @@ describe('plugin.json.version', () => {
     assert.ok(manifest.version.length > 0, 'version must be non-empty');
   });
 
-  it('is exactly "0.3.19"', () => {
+  it('is exactly "0.3.20"', () => {
     const manifest = readManifest();
     assert.equal(
       manifest.version,
-      '0.3.19',
-      `expected version "0.3.19", got "${manifest.version}"`,
+      '0.3.20',
+      `expected version "0.3.20", got "${manifest.version}"`,
     );
   });
 });

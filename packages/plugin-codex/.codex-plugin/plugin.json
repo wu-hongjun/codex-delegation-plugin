@@ -1,6 +1,6 @@
 {
   "name": "cc",
-  "version": "0.3.19",
+  "version": "0.3.20",
   "description": "Delegate tasks from Codex to Claude Code background sessions.",
   "author": {
     "name": "Hongjun Wu",

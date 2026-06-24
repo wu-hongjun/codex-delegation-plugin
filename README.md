@@ -26,6 +26,13 @@ $claude-skills
 
 `$claude-setup` should return aggregate status `ok` or `warn`. `fail` means an environment dependency is missing; follow the probe output.
 
+On macOS, do not run a bare `cc` shell command for this plugin; `/usr/bin/cc`
+is Apple clang. Use the `$claude-*` Codex skills, or use the exact dispatcher
+path reported in JSON `meta.dispatcherPath` / `exactActionHints`. After an
+upgrade, an already-running Codex session may still list stale versioned skill
+paths; either restart Codex or use the stable dispatcher path:
+`~/.codex/plugins/cache/cc-plugin-codex/cc/current/scripts/cc.mjs`.
+
 ---
 
 ## Quick start
@@ -83,6 +90,11 @@ For trusted unattended shell/tool QA, you can explicitly start a fresh job with 
 
 When a job is already blocked, run `$claude-status --job <jobId> --json --compact`. Blocked jobs include `operatorState`, `blockedOn`, `actionHints.restartWithBypass`, `actionHints.stop`, and `actionHints.cleanupBlocked`. Restart commands require a fresh prompt because cc stores prompt metadata, not the full original prompt text.
 
+If `$claude-wait --timeout ... --json --compact` times out, the job may still
+be healthy. Read `timeoutRecovery.status` and `timeoutRecovery.partialResult`
+from the JSON payload, or run `$claude-status --job <jobId> --json --compact`
+followed by `$claude-result <jobId> --partial`.
+
 ---
 
 ## Update
@@ -104,6 +116,12 @@ codex plugin remove "cc@cc-plugin-codex"
 codex plugin add "cc@cc-plugin-codex"
 codex plugin list
 ```
+
+If an older installed dispatcher crashes while running `$claude-upgrade --yes`
+or `cc upgrade --yes` (for example, `Cannot read properties of undefined
+(reading 'map')`), bypass that old dispatcher and run the shell commands above.
+Those commands use Codex's plugin manager directly and replace the broken cached
+dispatcher with the current release.
 
 ---
 

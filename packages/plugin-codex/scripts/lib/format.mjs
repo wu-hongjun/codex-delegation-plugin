@@ -63,6 +63,11 @@ function exactDispatcherCommand(dispatcherPath, command) {
   return dispatcherPath ? `node ${shellQuote(dispatcherPath)} ${command}` : command;
 }
 
+function displayDispatcherCommand(dispatcherPath, command, wrapperCommand = null) {
+  if (dispatcherPath) return exactDispatcherCommand(dispatcherPath, command);
+  return wrapperCommand ?? command;
+}
+
 function classifyResultState(job, hasResult, latestTurnResultState) {
   if (!hasResult) return 'none';
   if (latestTurnResultState === 'final') return 'final_result_available';
@@ -256,24 +261,6 @@ function summarizeJob(job, opts = {}) {
     latestTurn,
     latestTurnResultState,
   );
-  const actionHints = {
-    status: `cc status --job ${job.jobId} --json --compact`,
-    result: `cc result ${job.jobId}`,
-    ...(hasResult ? { partialResult: `cc result ${job.jobId} --partial` } : {}),
-    ...(isNonTerminalJobStatus(job.status) ? { stop: `cc stop ${job.jobId}` } : {}),
-    ...(job.status === 'needs_input'
-      ? {
-          restart: `cc restart ${job.jobId} -- "<prompt>"`,
-          restartWithBypass: `cc restart ${job.jobId} --bypass-permissions -- "<prompt>"`,
-          cleanupBlocked: 'cc stop --all-needs-input',
-        }
-      : {}),
-    ...(job.status === 'awaiting_followup'
-      ? { followup: `cc followup ${job.jobId} -- "<prompt>"` }
-      : {}),
-    ...(shortId != null ? { attach: `claude attach ${shortId}` } : {}),
-    ...(shortId != null ? { logs: job.claude?.logsCommand ?? `claude logs ${shortId}` } : {}),
-  };
   const exactActionHints =
     opts.dispatcherPath == null
       ? null
@@ -321,6 +308,64 @@ function summarizeJob(job, opts = {}) {
           ...(shortId != null ? { attach: `claude attach ${shortId}` } : {}),
           ...(shortId != null ? { logs: job.claude?.logsCommand ?? `claude logs ${shortId}` } : {}),
         };
+  const actionHints = {
+    status: displayDispatcherCommand(
+      opts.dispatcherPath,
+      `status --job ${job.jobId} --json --compact`,
+      `$claude-status --job ${job.jobId} --json --compact`,
+    ),
+    result: displayDispatcherCommand(
+      opts.dispatcherPath,
+      `result ${job.jobId}`,
+      `$claude-result ${job.jobId}`,
+    ),
+    ...(hasResult
+      ? {
+          partialResult: displayDispatcherCommand(
+            opts.dispatcherPath,
+            `result ${job.jobId} --partial`,
+            `$claude-result ${job.jobId} --partial`,
+          ),
+        }
+      : {}),
+    ...(isNonTerminalJobStatus(job.status)
+      ? {
+          stop: displayDispatcherCommand(
+            opts.dispatcherPath,
+            `stop ${job.jobId}`,
+            `$claude-stop ${job.jobId}`,
+          ),
+        }
+      : {}),
+    ...(job.status === 'needs_input'
+      ? {
+          restart: displayDispatcherCommand(
+            opts.dispatcherPath,
+            `restart ${job.jobId} -- "<prompt>"`,
+          ),
+          restartWithBypass: displayDispatcherCommand(
+            opts.dispatcherPath,
+            `restart ${job.jobId} --bypass-permissions -- "<prompt>"`,
+          ),
+          cleanupBlocked: displayDispatcherCommand(
+            opts.dispatcherPath,
+            'stop --all-needs-input',
+            '$claude-stop --all-needs-input',
+          ),
+        }
+      : {}),
+    ...(job.status === 'awaiting_followup'
+      ? {
+          followup: displayDispatcherCommand(
+            opts.dispatcherPath,
+            `followup ${job.jobId} -- "<prompt>"`,
+            `$claude-followup ${job.jobId} -- "<prompt>"`,
+          ),
+        }
+      : {}),
+    ...(shortId != null ? { attach: `claude attach ${shortId}` } : {}),
+    ...(shortId != null ? { logs: job.claude?.logsCommand ?? `claude logs ${shortId}` } : {}),
+  };
 
   return {
     jobId: job.jobId,
@@ -389,6 +434,26 @@ function summarizeJob(job, opts = {}) {
       finalMessagePath: job.result?.finalMessagePath ?? null,
       touchedFiles: Array.isArray(job.result?.touchedFiles) ? job.result.touchedFiles : [],
     },
+  };
+}
+
+function waitTimeoutRecovery(compact, resultText) {
+  const partialResultAvailable =
+    compact.resultState === 'partial_result_available' ||
+    compact.resultState === 'orphaned_partial_result_available' ||
+    (typeof resultText === 'string' && resultText.length > 0);
+  return {
+    message:
+      'Wait timed out before the job reached a terminal or follow-up state. The Claude job may still be healthy; inspect status or read the latest recorded partial output.',
+    status: compact.actionHints?.status ?? null,
+    partialResult: partialResultAvailable ? (compact.actionHints?.partialResult ?? null) : null,
+    result: compact.actionHints?.result ?? null,
+    stop: compact.actionHints?.stop ?? null,
+    attach: compact.actionHints?.attach ?? null,
+    lastObservedAt: compact.process?.lastObservedAt ?? null,
+    lastObservedAgeSeconds: compact.process?.lastObservedAgeSeconds ?? null,
+    resultState: compact.resultState,
+    operatorState: compact.operatorState,
   };
 }
 
@@ -586,11 +651,11 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
       if (waiting?.note) {
         lines.push(`Note:           ${waiting.note}`);
       }
-      lines.push(`Stop:           cc stop ${j.jobId}`);
-      lines.push(`Restart:        cc restart ${j.jobId} --bypass-permissions -- "<prompt>"`);
+      lines.push(`Stop:           ${compact.actionHints.stop}`);
+      lines.push(`Restart:        ${compact.actionHints.restartWithBypass}`);
       lines.push(`Prompt summary: ${j.prompt?.summary ?? '(not recorded)'}`);
       if (j.result?.finalMessagePreview) {
-        lines.push(`Partial result: cc result ${j.jobId} --partial`);
+        lines.push(`Partial result: ${compact.actionHints.partialResult}`);
       }
     }
     if (opts.versionMismatch) {
@@ -644,11 +709,10 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
     if (waiting?.category === 'browser_selection') {
       lines.push('Chrome browser selection must be completed in the attached Claude Code TUI.');
     }
-    lines.push(`Stop blocked job: cc stop ${needsInputJob.jobId}`);
-    lines.push(
-      `Restart with bypass: cc restart ${needsInputJob.jobId} --bypass-permissions -- "<prompt>"`,
-    );
-    lines.push('Cleanup all blocked jobs in this workspace: cc stop --all-needs-input');
+    const compact = summarizeJob(needsInputJob, opts);
+    lines.push(`Stop blocked job: ${compact.actionHints.stop}`);
+    lines.push(`Restart with bypass: ${compact.actionHints.restartWithBypass}`);
+    lines.push(`Cleanup all blocked jobs in this workspace: ${compact.actionHints.cleanupBlocked}`);
   }
 
   if (opts.hiddenCount != null && opts.hiddenCount > 0) {
@@ -719,7 +783,7 @@ export function formatFollowup(job, turnHandle, turnIndex, json, opts = {}) {
                 stalePreview: true,
                 resultPending: true,
                 previousTurnPreview,
-                resultHint: `cc result ${job.jobId}`,
+                resultHint: `$claude-result ${job.jobId}`,
               }
             : {}),
         },
@@ -810,6 +874,7 @@ export function formatWait(job, resultText, json, opts = {}) {
   const compact = summarizeJob(job, { ...opts, compact: true });
   const timedOut = Boolean(opts.timedOut);
   const transcriptTail = opts.transcriptTail ?? null;
+  const timeoutRecovery = timedOut ? waitTimeoutRecovery(compact, resultText) : null;
 
   if (json) {
     return JSON.stringify(
@@ -819,6 +884,7 @@ export function formatWait(job, resultText, json, opts = {}) {
         ...(opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {}),
         job: opts.compact ? compact : job,
         summary: compact,
+        ...(timeoutRecovery ? { timeoutRecovery } : {}),
         resultText,
         transcriptTail,
       },
@@ -836,6 +902,18 @@ export function formatWait(job, resultText, json, opts = {}) {
     `Result:         ${compact.resultState}`,
     `Next:           ${compact.recommendedNextAction}`,
   ];
+
+  if (timeoutRecovery) {
+    lines.push(
+      '',
+      'Timeout recovery:',
+      `  Status:  ${timeoutRecovery.status}`,
+      ...(timeoutRecovery.partialResult ? [`  Partial: ${timeoutRecovery.partialResult}`] : []),
+      `  Result:  ${timeoutRecovery.result}`,
+      ...(timeoutRecovery.stop ? [`  Stop:    ${timeoutRecovery.stop}`] : []),
+      ...(timeoutRecovery.attach ? [`  Attach:  ${timeoutRecovery.attach}`] : []),
+    );
+  }
 
   if (compact.blockedOn) {
     lines.push(`Blocked on:     ${compact.blockedOn.category}`);

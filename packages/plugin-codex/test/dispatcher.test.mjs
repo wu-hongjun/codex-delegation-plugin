@@ -147,6 +147,10 @@ function parseJson(stdout) {
   return JSON.parse(stdout.trim());
 }
 
+function dispatcherCmd(command) {
+  return `node ${JSON.stringify(SCRIPT)} ${command}`;
+}
+
 function writeMockClaudeSkill(root, name, description, extraFrontmatter = '') {
   const skillDir = join(root, name);
   mkdirSync(skillDir, { recursive: true });
@@ -592,7 +596,7 @@ describe('delegate prompt delimiter flag placement', () => {
     const combined = result.stdout + result.stderr;
     assert.match(combined, /--json appears after --/);
     assert.match(combined, /Put dispatcher flags before --/);
-    assert.match(combined, /cc delegate --json --compact -- "<prompt>"/);
+    assert.ok(combined.includes(dispatcherCmd('delegate --json --compact -- "<prompt>"')));
   });
 });
 
@@ -776,8 +780,8 @@ describe('status with a job id positional (Plan 0020 F3)', () => {
       `expected exit 2 for status <jobId>, got ${result.status}; stdout:\n${result.stdout}`,
     );
     assert.ok(
-      result.stderr.includes('cc status --job job_bogus_deadbeef') &&
-        result.stderr.includes('cc result job_bogus_deadbeef'),
+      result.stderr.includes(dispatcherCmd('status --job job_bogus_deadbeef --json --compact')) &&
+        result.stderr.includes(dispatcherCmd('result job_bogus_deadbeef')),
       `expected stderr to suggest status --job and result forms; got:\n${result.stderr}`,
     );
   });
@@ -807,8 +811,8 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.job.process.state, 'completed');
     assert.equal(parsed.job.process.orphaned, false);
     assert.equal(parsed.job.latestTurn.resultState, 'final');
-    assert.equal(parsed.job.actionHints.result, `cc result ${jobId}`);
-    assert.equal(parsed.job.actionHints.partialResult, `cc result ${jobId} --partial`);
+    assert.equal(parsed.job.actionHints.result, dispatcherCmd(`result ${jobId}`));
+    assert.equal(parsed.job.actionHints.partialResult, dispatcherCmd(`result ${jobId} --partial`));
     assert.equal(parsed.job.actionHints.attach, 'claude attach aabbcc');
     assert.equal(
       parsed.meta.dispatcherPath.endsWith('/packages/plugin-codex/scripts/cc.mjs'),
@@ -1016,13 +1020,13 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.job.result.isPartial, true);
     assert.equal(parsed.job.resultState, 'partial_result_available');
     assert.equal(parsed.job.recommendedNextAction, 'attach | stop | restart');
-    assert.equal(parsed.job.actionHints.stop, `cc stop ${jobId}`);
-    assert.equal(parsed.job.actionHints.restart, `cc restart ${jobId} -- "<prompt>"`);
+    assert.equal(parsed.job.actionHints.stop, dispatcherCmd(`stop ${jobId}`));
+    assert.equal(parsed.job.actionHints.restart, dispatcherCmd(`restart ${jobId} -- "<prompt>"`));
     assert.equal(
       parsed.job.actionHints.restartWithBypass,
-      `cc restart ${jobId} --bypass-permissions -- "<prompt>"`,
+      dispatcherCmd(`restart ${jobId} --bypass-permissions -- "<prompt>"`),
     );
-    assert.equal(parsed.job.actionHints.cleanupBlocked, 'cc stop --all-needs-input');
+    assert.equal(parsed.job.actionHints.cleanupBlocked, dispatcherCmd('stop --all-needs-input'));
     assert.ok(
       parsed.job.exactActionHints.restartWithBypass.includes(
         `restart ${jobId} --bypass-permissions -- "<prompt>"`,
@@ -1031,8 +1035,8 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     );
     assert.equal(parsed.job.latestTurn.resultState, 'partial');
     assert.equal(parsed.job.actionHints.attach, 'claude attach blk00001');
-    assert.equal(parsed.job.actionHints.stop, `cc stop ${jobId}`);
-    assert.equal(parsed.job.actionHints.partialResult, `cc result ${jobId} --partial`);
+    assert.equal(parsed.job.actionHints.stop, dispatcherCmd(`stop ${jobId}`));
+    assert.equal(parsed.job.actionHints.partialResult, dispatcherCmd(`result ${jobId} --partial`));
   });
 
   it('status --job JSON reports when a permission wait happened after unattended bypass was requested', () => {
@@ -1122,7 +1126,7 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     const rejected = runDispatcher(['result', jobId, '--json']);
     assert.equal(rejected.status, 1, 'result without --partial should reject incomplete jobs');
     assert.ok(
-      rejected.stderr.includes(`cc result ${jobId} --partial`),
+      rejected.stderr.includes('node') && rejected.stderr.includes(`result ${jobId} --partial`),
       `expected partial hint; got:\n${rejected.stderr}`,
     );
 
@@ -1194,7 +1198,7 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.summary.blockedOn.category, 'permission_prompt');
     assert.equal(
       parsed.summary.actionHints.restartWithBypass,
-      `cc restart ${jobId} --bypass-permissions -- "<prompt>"`,
+      dispatcherCmd(`restart ${jobId} --bypass-permissions -- "<prompt>"`),
     );
     assert.equal(parsed.resultText, resultContent);
   });
@@ -1221,6 +1225,12 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.timedOut, true);
     assert.equal(parsed.summary.operatorState, 'running');
     assert.equal(parsed.resultText, 'Running partial answer.');
+    assert.equal(
+      parsed.timeoutRecovery.status,
+      dispatcherCmd(`status --job ${jobId} --json --compact`),
+    );
+    assert.equal(parsed.timeoutRecovery.partialResult, dispatcherCmd(`result ${jobId} --partial`));
+    assert.equal(parsed.timeoutRecovery.resultState, 'partial_result_available');
   });
 
   it('status --job JSON classifies Chrome browser selection waits', () => {
@@ -1282,7 +1292,7 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.job.result.isPartial, true);
     assert.equal(parsed.job.resultState, 'orphaned_partial_result_available');
     assert.equal(parsed.job.recommendedNextAction, 'result --partial');
-    assert.equal(parsed.job.actionHints.partialResult, `cc result ${jobId} --partial`);
+    assert.equal(parsed.job.actionHints.partialResult, dispatcherCmd(`result ${jobId} --partial`));
     assert.equal(
       parsed.job.exactActionHints.partialResult.endsWith(` result ${jobId} --partial`),
       true,
@@ -1375,7 +1385,10 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.jobs[0].resultState, 'final_result_available');
     assert.equal(parsed.jobs[0].recommendedNextAction, 'followup');
     assert.equal(parsed.jobs[0].latestTurn.resultState, 'final');
-    assert.equal(parsed.jobs[0].actionHints.followup, `cc followup ${jobId} -- "<prompt>"`);
+    assert.equal(
+      parsed.jobs[0].actionHints.followup,
+      dispatcherCmd(`followup ${jobId} -- "<prompt>"`),
+    );
     assert.equal(
       parsed.jobs[0].exactActionHints.followup.endsWith(` followup ${jobId} -- "<prompt>"`),
       true,
@@ -1473,7 +1486,7 @@ describe('result for a running job', () => {
       `expected "not complete" hint in output; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
     assert.ok(
-      combined.includes(`cc status --job ${jobId}`),
+      combined.includes(dispatcherCmd(`status --job ${jobId} --json --compact`)),
       `expected single-job status hint; got stdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
     );
   });
@@ -2572,7 +2585,7 @@ describe('followup immediate preview honesty (Plan 0022 friction polish)', () =>
     assert.equal(parsed.turn.stalePreview, true);
     assert.equal(parsed.turn.resultPending, true);
     assert.equal(parsed.turn.previousTurnPreview, 'PREVIOUS_TURN_PREVIEW');
-    assert.equal(parsed.turn.resultHint, 'cc result job_preview_12345678');
+    assert.equal(parsed.turn.resultHint, '$claude-result job_preview_12345678');
   });
 
   it('formatFollowup prefers a distinct sendResult preview over a stale reconciled preview', () => {
@@ -8146,7 +8159,8 @@ describe('upgrade command', () => {
     const result = runDispatcher(['upgrade']);
     assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
     assert.ok(result.stdout.includes('CC upgrade plan'), result.stdout);
-    assert.ok(result.stdout.includes('cc upgrade --yes'), result.stdout);
+    assert.ok(result.stdout.includes(dispatcherCmd('upgrade --yes')), result.stdout);
+    assert.ok(result.stdout.includes('$claude-upgrade --yes'), result.stdout);
   });
 
   it('upgrade --yes --json refreshes the marketplace and reinstalls the plugin through codex', () => {

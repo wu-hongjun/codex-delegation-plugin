@@ -91,7 +91,8 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
   focused lookup, or `--limit <n>` to keep broad lists bounded.
 - `$claude-wait` — waits for one job to reach a result state, blocker,
   or timeout; useful for automation that would otherwise poll status
-  and then call result.
+  and then call result. Timeout JSON includes `timeoutRecovery` with
+  exact status and partial-result commands.
 - `$claude-result` — prints clean recorded output for a completed job
   or latest completed turn.
 - `$claude-stop` — stops a running background session by id or
@@ -119,6 +120,10 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
 - `$claude-upgrade` — refreshes or repairs the installed CC plugin through
   Codex plugin commands.
 
+On macOS, do not run a bare `cc` shell command for this plugin; `/usr/bin/cc`
+is Apple clang. Use the `$claude-*` skills, or use the exact dispatcher path
+from JSON `meta.dispatcherPath` / `exactActionHints`.
+
 ## Real Chrome And Permissions
 
 Use `--chrome` when a delegated Claude job needs the real Chrome browser.
@@ -144,8 +149,10 @@ gestures.
 When a job is already blocked, run `$claude-status --job <jobId> --json
 --compact`. Blocked jobs include `operatorState`, `blockedOn`,
 `actionHints.restartWithBypass`, `actionHints.stop`, and
-`actionHints.cleanupBlocked`. Restart commands require a fresh prompt because
-cc stores prompt metadata, not the full original prompt text.
+`actionHints.cleanupBlocked`. These hints avoid the bare `cc` shell command on
+macOS and use the stable dispatcher path when it is available. Restart commands
+require a fresh prompt because cc stores prompt metadata, not the full original
+prompt text.
 
 ### $claude-workflow
 
@@ -419,6 +426,12 @@ will still return the un-redacted content. This is by design. Prefer
 the raw Claude Code stream and can include TUI control sequences around
 permission prompts.
 
+If `claude logs <shortId>` returns `job not found` after a background job
+exits, use `$claude-status`, `$claude-wait`, `$claude-result`, or
+`$claude-result --partial` instead. Post-exit Claude logs lookup is a
+best-effort Claude Code surface; the plugin-owned status/result artifacts are
+the supported operator path.
+
 ## Upgrade
 
 Codex 0.136.0 does not expose an in-place `codex plugin upgrade` or
@@ -433,6 +446,18 @@ codex plugin remove "cc@cc-plugin-codex"
 codex plugin add "cc@cc-plugin-codex"
 codex plugin list
 ```
+
+Rescue upgrade: if an older installed dispatcher crashes while running
+`$claude-upgrade --yes` or `cc upgrade --yes` (for example, `Cannot read
+properties of undefined (reading 'map')`), do not keep retrying the old
+dispatcher. Run the Git marketplace shell commands above; they use Codex's
+plugin manager directly and replace the broken cached dispatcher with the
+current release.
+
+After a successful upgrade, an already-running Codex session can still display
+old versioned `SKILL.md` paths. Restart Codex to refresh the generated skill
+catalog, or use the stable dispatcher path:
+`~/.codex/plugins/cache/cc-plugin-codex/cc/current/scripts/cc.mjs`.
 
 Codex also exposes `codex plugin marketplace upgrade`, but that
 subcommand refreshes Git marketplace snapshots only. It is not used

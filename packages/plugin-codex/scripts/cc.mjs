@@ -220,10 +220,11 @@ function findLateDispatcherFlagInPrompt(positional, promptStartIndex = 0) {
 function rejectLateDispatcherFlagInPrompt(positional, promptStartIndex, commandName, json) {
   const lateFlag = findLateDispatcherFlagInPrompt(positional, promptStartIndex);
   if (lateFlag === null) return false;
+  const example = dispatcherCommandForHints(`${commandName} --json --compact -- "<prompt>"`);
   process.stderr.write(
     formatError(
       new Error(
-        `${lateFlag} appears after -- and would be sent to Claude as prompt text. Put dispatcher flags before --, for example: cc ${commandName} --json --compact -- "<prompt>"`,
+        `${lateFlag} appears after -- and would be sent to Claude as prompt text. Put dispatcher flags before --, for example: ${example}`,
       ),
       commandName,
       json,
@@ -498,6 +499,17 @@ function writeRuntimeError(err, commandName, json) {
 
 function shellQuote(value) {
   return JSON.stringify(value);
+}
+
+function dispatcherPathForHints() {
+  const versioned = fileURLToPath(import.meta.url);
+  const pluginRoot = dirname(dirname(versioned));
+  const currentDispatcher = join(dirname(pluginRoot), 'current', 'scripts', 'cc.mjs');
+  return existsSync(currentDispatcher) ? currentDispatcher : versioned;
+}
+
+function dispatcherCommandForHints(command) {
+  return `node ${shellQuote(dispatcherPathForHints())} ${command}`;
 }
 
 function privacyAckRetryCommand(commandName) {
@@ -1313,7 +1325,7 @@ async function cmdSetup(_flags, json) {
       return {
         name: 'claude-skills',
         status: catalog.warnings.length > 0 ? 'warn' : 'ok',
-        detail: `found ${counts.total} Claude Code skill(s) (${counts.project} project, ${counts.user} user, ${counts.plugin} plugin; ${counts.uniqueNames} unique); run $claude-skills or cc skills --json for the catalog`,
+        detail: `found ${counts.total} Claude Code skill(s) (${counts.project} project, ${counts.user} user, ${counts.plugin} plugin; ${counts.uniqueNames} unique); run $claude-skills or the dispatcher skills --json command for the catalog`,
         evidence: catalog,
       };
     },
@@ -1584,7 +1596,7 @@ async function _runDelegateCore(
       ...(failedProbes ? ['\nFailed probes:', failedProbes] : []),
       ...(!caps.backgroundSessions ? ['\n  - backgroundSessions: not supported'] : []),
       ...(!caps.agentsJson ? ['\n  - agentsJson: not supported'] : []),
-      '\nRun: cc setup',
+      '\nRun: $claude-setup',
     ].join('');
     process.stderr.write(formatError(new Error(detail), commandName, json) + '\n');
     process.exit(1);
@@ -1650,7 +1662,10 @@ async function _runDelegateCore(
 
   // 10. Print summary.
   process.stdout.write(
-    formatDelegate(finalJob, json, { compact: Boolean(flags['compact']) }) + '\n',
+    formatDelegate(finalJob, json, {
+      compact: Boolean(flags['compact']),
+      dispatcherPath: dispatcherPathForHints(),
+    }) + '\n',
   );
 
   // 11. Workflow-specific note (appended after the standard job block).
@@ -1711,10 +1726,11 @@ async function cmdRestart(flags, positional, json) {
   const promptParts = positional.slice(1);
   const prompt = promptParts.join(' ').trim();
   if (!prompt) {
+    const restartExample = dispatcherCommandForHints('restart <jobId> -- "<prompt>"');
     process.stderr.write(
       formatError(
         new Error(
-          'restart requires a fresh prompt because cc job records store only prompt metadata. Run: cc restart <jobId> -- "<prompt>"',
+          `restart requires a fresh prompt because cc job records store only prompt metadata. Run: ${restartExample}`,
         ),
         'restart',
         json,
@@ -1947,7 +1963,7 @@ function isWaitSettled(job) {
 
 async function cmdStatus(flags, positional, json) {
   const workspace = process.cwd();
-  const dispatcherPath = fileURLToPath(import.meta.url);
+  const dispatcherPath = dispatcherPathForHints();
   const showAll = Boolean(flags['all']);
   const compact = Boolean(flags['compact']);
   const jobFlag = flags['job'];
@@ -1964,8 +1980,8 @@ async function cmdStatus(flags, positional, json) {
       formatError(
         new Error(
           `cc status does not take a job id (got "${positional[0]}"). ` +
-            `For one job use: cc status --job ${positional[0]}  ` +
-            `(or cc result ${positional[0]} for final output; cc status --all lists every workspace).`,
+            `For one job use: ${dispatcherCommandForHints(`status --job ${positional[0]} --json --compact`)}  ` +
+            `(or ${dispatcherCommandForHints(`result ${positional[0]}`)} for final output; use status --all to list every workspace).`,
         ),
         'status',
         json,
@@ -2075,6 +2091,7 @@ async function cmdStatus(flags, positional, json) {
 async function cmdResult(flags, positional, json) {
   const prefix = positional[0];
   const allowPartial = Boolean(flags['partial']);
+  const dispatcherPath = dispatcherPathForHints();
   if (!prefix) {
     process.stderr.write(formatError(new Error('usage: cc result <jobId>'), 'result', json) + '\n');
     process.exit(2);
@@ -2114,12 +2131,12 @@ async function cmdResult(flags, positional, json) {
   if (!canReadResult) {
     const partialHint =
       typeof partialResult?.finalMessagePath === 'string'
-        ? ` Partial output exists; run: cc result ${jobId} --partial`
+        ? ` Partial output exists; run: ${dispatcherCommandForHints(`result ${jobId} --partial`)}`
         : '';
     process.stderr.write(
       formatError(
         new Error(
-          `Job ${jobId} is not complete yet (status: ${job.status}). Run: cc status --job ${jobId}.${partialHint}`,
+          `Job ${jobId} is not complete yet (status: ${job.status}). Run: ${dispatcherCommandForHints(`status --job ${jobId} --json --compact`)}.${partialHint}`,
         ),
         'result',
         json,
@@ -2142,6 +2159,7 @@ async function cmdResult(flags, positional, json) {
     formatResult(displayJob, resultText, json, {
       compact: Boolean(flags['compact']),
       partial: allowPartial && !isResultTerminalStatus(job.status),
+      dispatcherPath,
     }) + '\n',
   );
 }
@@ -2171,7 +2189,7 @@ async function cmdWait(flags, positional, json) {
   const intervalMs = parseDurationMs(flags['interval'], 'interval', 2000, 'wait', json);
   const workspace = process.cwd();
   const showAll = Boolean(flags['all']);
-  const dispatcherPath = fileURLToPath(import.meta.url);
+  const dispatcherPath = dispatcherPathForHints();
   const listed = showAll ? await listJobs() : await listJobsForWorkspace(workspace);
   const allIds = listed.jobs.map((j) => j.jobId);
   const resolved = resolveJobIdPrefix(allIds, prefix);
@@ -2366,7 +2384,12 @@ async function cmdStop(flags, positional, json) {
   const driver = new ClaudeBackgroundDriver({ cwd: workspace });
   const stoppedJob = await stopJobWithDriver(job, driver);
 
-  process.stdout.write(formatStop(stoppedJob, json, { compact: Boolean(flags['compact']) }) + '\n');
+  process.stdout.write(
+    formatStop(stoppedJob, json, {
+      compact: Boolean(flags['compact']),
+      dispatcherPath: dispatcherPathForHints(),
+    }) + '\n',
+  );
 }
 
 // ---------- sendFollowupTurn (shared helper) ----------
@@ -3696,7 +3719,7 @@ async function cmdWorkflows(flags, positional, json) {
             'No workflow sessions found.',
             '',
             'Workflow sessions are background jobs started via $claude-workflow or $claude-deep-research.',
-            'Use `cc status` to list all background sessions.',
+            `Use \`${dispatcherCommandForHints('status')}\` to list all background sessions.`,
           ].join('\n') + '\n',
         );
       } else {
@@ -3705,7 +3728,10 @@ async function cmdWorkflows(flags, positional, json) {
           const kind = String(s.kind ?? 'unknown').padEnd(16);
           lines.push(`  ${s.shortId}  ${s.status.padEnd(10)}  ${kind}  ${s.name.slice(0, 60)}`);
         }
-        lines.push('', 'Run `cc workflows <sessionId>` to drill into a session.');
+        lines.push(
+          '',
+          `Run \`${dispatcherCommandForHints('workflows <sessionId>')}\` to drill into a session.`,
+        );
         process.stdout.write(lines.join('\n') + '\n');
       }
     }
@@ -3960,7 +3986,7 @@ async function cmdUpgrade(flags, positional, json) {
       version: PLUGIN_VERSION,
       target,
       commands,
-      next: 'Run `cc upgrade --yes` to execute this plan.',
+      next: `Run \`${dispatcherCommandForHints('upgrade --yes')}\` or $claude-upgrade --yes to execute this plan.`,
     };
     if (json) {
       process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
@@ -3980,7 +4006,10 @@ async function cmdUpgrade(flags, positional, json) {
           lines.push(`    fallback: ${formatCommandForDisplay(step.fallback)}`);
         }
       }
-      lines.push('', 'Run `cc upgrade --yes` to execute this plan.');
+      lines.push(
+        '',
+        `Run \`${dispatcherCommandForHints('upgrade --yes')}\` or $claude-upgrade --yes to execute this plan.`,
+      );
       process.stdout.write(lines.join('\n') + '\n');
     }
     return;
@@ -4128,7 +4157,7 @@ function printUsage(commandName = '') {
       'Usage: cc followup <jobId-or-prefix> [options] -- "<prompt>"',
       '',
       'Sends a follow-up prompt to an awaiting Claude job in the existing session.',
-      'If JSON output reports resultPending:true, run cc result <jobId> after status settles.',
+      'If JSON output reports resultPending:true, run $claude-result <jobId> after status settles.',
       '',
       'Options: --all --yes --json --allow-edit',
     ],
@@ -4203,8 +4232,8 @@ function printUsage(commandName = '') {
       '  --job <jobId-or-prefix>      Select one job for status',
       '  --limit <n>                  Limit status lists after newest-first sorting (0 = no limit)',
       '  --stored-status <state>      Pre-filter status lists by stored job status',
-      '  --timeout <duration>         Wait timeout for cc wait (examples: 500ms, 30s, 2m; bare numbers are seconds)',
-      '  --interval <duration>        Poll interval for cc wait (examples: 500ms, 2s)',
+      '  --timeout <duration>         Wait timeout (examples: 500ms, 30s, 2m; bare numbers are seconds)',
+      '  --interval <duration>        Poll interval for wait (examples: 500ms, 2s)',
       '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/goal/fork/batch/deep-research/followup/review/adversarial-review)',
       '  --dry-run                    Print the upgrade plan without changing the Codex plugin install',
       '  --public                     Force public Git marketplace target for upgrade',

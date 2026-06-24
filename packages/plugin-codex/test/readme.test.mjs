@@ -1141,6 +1141,44 @@ describe('README.md known limitations include best-effort structured parsing (T1
   });
 });
 
+// ---------- T10-22b. README documents post-exit claude logs fallback ----------
+
+describe('README.md documents plugin-owned result/status as the post-exit logs fallback', () => {
+  it('mentions `claude logs <shortId>` job-not-found and points to plugin artifacts', () => {
+    const body = readReadme();
+    assert.ok(
+      body.includes('claude logs <shortId>') && body.includes('job not found'),
+      'README.md must document that raw Claude logs can be unavailable after job exit',
+    );
+    assert.ok(
+      body.includes('$claude-status') &&
+        body.includes('$claude-wait') &&
+        body.includes('$claude-result') &&
+        body.includes('$claude-result --partial'),
+      'README.md must point users at plugin-owned result/status artifacts',
+    );
+  });
+});
+
+// ---------- T10-22c. README documents old-dispatcher upgrade rescue ----------
+
+describe('README.md documents old-dispatcher upgrade rescue', () => {
+  it('mentions the known TypeError and direct Codex plugin-manager commands', () => {
+    const body = readReadme();
+    assert.ok(body.includes('cc upgrade --yes'), 'README.md must mention cc upgrade --yes');
+    assert.ok(
+      /Cannot read\s+properties of undefined\s+\(reading 'map'\)/.test(body),
+      'README.md must mention the known old-dispatcher TypeError',
+    );
+    assert.ok(
+      body.includes('codex plugin marketplace upgrade "cc-plugin-codex"') &&
+        body.includes('codex plugin remove "cc@cc-plugin-codex"') &&
+        body.includes('codex plugin add "cc@cc-plugin-codex"'),
+      'README.md must include the direct Codex plugin-manager rescue commands',
+    );
+  });
+});
+
 // ---------- T10-23. README known limitations mention no stop-time review gate yet ----------
 
 describe('README.md known limitations mention no stop-time review gate yet (T10-23)', () => {
@@ -1696,6 +1734,27 @@ describe('claude-status/SKILL.md documents claude attach interactive path (Plan 
     assert.ok(
       body.includes('claude attach'),
       'claude-status/SKILL.md must mention claude attach as the interactive path per Plan 0015 T2',
+    );
+  });
+});
+
+describe('README.md documents macOS-safe dispatcher and wait timeout recovery', () => {
+  it('warns that bare cc is Apple clang and points at exact dispatcher hints', () => {
+    const body = readFileSync(README_PATH, 'utf8');
+    assert.ok(body.includes('/usr/bin/cc'), 'README.md must mention the macOS cc collision');
+    assert.ok(body.includes('Apple clang'), 'README.md must identify Apple clang');
+    assert.ok(
+      body.includes('exactActionHints'),
+      'README.md must point automation at exactActionHints',
+    );
+  });
+
+  it('documents timeoutRecovery for wait timeouts and the stable current dispatcher path', () => {
+    const body = readFileSync(README_PATH, 'utf8');
+    assert.ok(body.includes('timeoutRecovery'), 'README.md must document wait timeoutRecovery');
+    assert.ok(
+      body.includes('cc/current/scripts/cc.mjs'),
+      'README.md must mention the stable current dispatcher path',
     );
   });
 });

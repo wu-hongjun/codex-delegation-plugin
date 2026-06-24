@@ -322,6 +322,7 @@ const SOURCE_PLUGIN_JSON_PATH = resolve(
   'plugin.json',
 );
 const UPGRADE_VERSION_STRING = JSON.parse(readFileSync(SOURCE_PLUGIN_JSON_PATH, 'utf8')).version;
+const OLD_UPGRADE_TYPEERROR = /Cannot read\s+properties of undefined\s+\(reading 'map'\)/;
 
 describe('marketplace upgrade procedure docs (Plan 0006 T7)', () => {
   // ========================================================================
@@ -383,6 +384,25 @@ describe('marketplace upgrade procedure docs (Plan 0006 T7)', () => {
     assert.ok(
       content.includes(CMD_GIT_PLUGIN_ADD),
       `README.md must contain the Git plugin add command: ${CMD_GIT_PLUGIN_ADD}`,
+    );
+  });
+
+  it('README documents rescue upgrade for old broken dispatchers', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(content.includes('Rescue upgrade'), 'README.md must name the rescue upgrade path');
+    assert.ok(
+      content.includes('cc upgrade --yes'),
+      'README.md must mention the old dispatcher command that can fail',
+    );
+    assert.ok(
+      OLD_UPGRADE_TYPEERROR.test(content),
+      `README.md must mention the known old-dispatcher TypeError: ${OLD_UPGRADE_TYPEERROR}`,
+    );
+    assert.ok(
+      content.includes('codex plugin marketplace upgrade "cc-plugin-codex"') &&
+        content.includes(CMD_GIT_PLUGIN_REMOVE) &&
+        content.includes(CMD_GIT_PLUGIN_ADD),
+      'README.md rescue upgrade must point at the direct Codex plugin-manager flow',
     );
   });
 
@@ -481,6 +501,10 @@ describe('marketplace upgrade procedure docs (Plan 0006 T7)', () => {
       content.includes(CMD_MARKETPLACE_ADD),
       `RELEASING.md must contain the marketplace add command: ${CMD_MARKETPLACE_ADD}`,
     );
+    assert.ok(
+      content.includes('Rescue upgrade') && content.includes('cc upgrade --yes'),
+      'RELEASING.md must document the old-dispatcher rescue upgrade path',
+    );
     assert.doesNotMatch(
       content,
       CMD_PLUGIN_UPGRADE_BARE_LINE,
@@ -490,6 +514,23 @@ describe('marketplace upgrade procedure docs (Plan 0006 T7)', () => {
       content,
       CMD_PLUGIN_UPDATE_BARE_LINE,
       'RELEASING.md must not present `codex plugin update` as a runnable command line',
+    );
+  });
+});
+
+describe('marketplace troubleshooting docs for Claude logs fallback', () => {
+  it('README tells users to prefer plugin result/status when `claude logs` cannot find an exited job', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes('claude logs <shortId>') && content.includes('job not found'),
+      'README.md must describe the post-exit `claude logs <shortId>` job-not-found case',
+    );
+    assert.ok(
+      content.includes('$claude-status') &&
+        content.includes('$claude-wait') &&
+        content.includes('$claude-result') &&
+        content.includes('$claude-result --partial'),
+      'README.md must direct operators to plugin-owned status/wait/result artifacts',
     );
   });
 });
@@ -678,5 +719,31 @@ describe('marketplace uninstall procedure docs (Plan 0006 T8)', () => {
         `RELEASING.md contains forbidden Plan 0004 benchmark/cutover token: "${token}"`,
       );
     }
+  });
+});
+
+describe('marketplace README documents macOS-safe dispatcher and wait timeout recovery', () => {
+  it('warns that bare cc is Apple clang and points at exact dispatcher hints', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes('/usr/bin/cc') && content.includes('Apple clang'),
+      'marketplace README must explain the macOS cc command collision',
+    );
+    assert.ok(
+      content.includes('exactActionHints'),
+      'marketplace README must point automation at exactActionHints',
+    );
+  });
+
+  it('documents timeoutRecovery and the stable current dispatcher path', () => {
+    const content = readFileSync(MARKETPLACE_README, 'utf8');
+    assert.ok(
+      content.includes('timeoutRecovery'),
+      'marketplace README must document wait timeoutRecovery',
+    );
+    assert.ok(
+      content.includes('cc/current/scripts/cc.mjs'),
+      'marketplace README must mention the stable current dispatcher path',
+    );
   });
 });

@@ -43,10 +43,14 @@ includes:
 - `transcriptTail` — recent transcript lines when a transcript path was captured
 - blocker/action fields such as `summary.blockedOn`,
   `summary.actionHints.restartWithBypass`, and `summary.actionHints.stop`
+- `timeoutRecovery` — present on timeout; includes exact status, partial-result,
+  stop, and attach commands for the next recovery step
 
 If the wait times out, the dispatcher exits non-zero but still prints the latest
 JSON status/result payload when `--json` was requested. Surface that payload to
-the user rather than discarding it.
+the user rather than discarding it. A timeout does not prove the Claude job is
+dead; inspect `timeoutRecovery.status`, read `timeoutRecovery.partialResult` if
+present, or poll `$claude-status --job <jobId> --json --compact`.
 
 ### Next steps
 

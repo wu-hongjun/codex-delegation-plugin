@@ -1537,6 +1537,49 @@ describe('plugin.json interface.defaultPrompt contains CC upgrade entry', () => 
   });
 });
 
+describe('claude-upgrade/SKILL.md documents rescue upgrade for old dispatchers', () => {
+  it('mentions the known old-dispatcher TypeError and direct Codex plugin-manager commands', () => {
+    const body = readFileSync(skillPath('claude-upgrade'), 'utf8');
+    assert.ok(
+      body.includes("Cannot read properties of undefined (reading 'map')"),
+      'claude-upgrade skill must mention the known old-dispatcher TypeError',
+    );
+    assert.ok(
+      body.includes('codex plugin marketplace upgrade "cc-plugin-codex"') &&
+        body.includes('codex plugin remove "cc@cc-plugin-codex"') &&
+        body.includes('codex plugin add "cc@cc-plugin-codex"') &&
+        body.includes('codex plugin list'),
+      'claude-upgrade skill must provide the direct Codex plugin-manager rescue flow',
+    );
+  });
+});
+
+describe('operator-friction skill docs mention safe dispatcher paths and timeout recovery', () => {
+  it('claude-status warns not to rewrite action hints to bare cc on macOS', () => {
+    const body = readFileSync(skillPath('claude-status'), 'utf8');
+    assert.ok(
+      body.includes('Apple clang') && body.includes('exactActionHints'),
+      'claude-status skill must warn about bare cc on macOS and mention exactActionHints',
+    );
+  });
+
+  it('claude-wait documents timeoutRecovery for timeout handling', () => {
+    const body = readFileSync(skillPath('claude-wait'), 'utf8');
+    assert.ok(
+      body.includes('timeoutRecovery') && body.includes('partialResult'),
+      'claude-wait skill must document timeoutRecovery partial-result handling',
+    );
+  });
+
+  it('claude-upgrade documents the stable current dispatcher path after upgrades', () => {
+    const body = readFileSync(skillPath('claude-upgrade'), 'utf8');
+    assert.ok(
+      body.includes('cc/current/scripts/cc.mjs'),
+      'claude-upgrade skill must mention the stable current dispatcher path',
+    );
+  });
+});
+
 describe('claude-workflows/SKILL.md: strict frontmatter parse (Plan 0016)', () => {
   it('strict frontmatter parse does not throw and name/description are correct', () => {
     const body = readFileSync(skillPath('claude-workflows'), 'utf8');

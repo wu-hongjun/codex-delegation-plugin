@@ -374,17 +374,21 @@ with `claude attach <shortId>` when any listed job needs input.
 
 Compact JSON includes `waiting.kind` plus `actionHints` for the next stable
 commands: `status`, `result`, `partialResult`, `stop`, `followup`, `attach`,
-and `logs`. If `waiting.kind` is `"permission"`, attach with
+and `logs`. On macOS, `actionHints` intentionally avoid the bare `cc` shell
+command because `/usr/bin/cc` is Apple clang; when the dispatcher path is known
+they use `node <dispatcher>/scripts/cc.mjs ...`. `exactActionHints` repeats the
+same dispatcher-safe commands for automation. If `waiting.kind` is
+`"permission"`, attach with
 `actionHints.attach`. For blocked jobs, compact JSON also includes
 `operatorState`, `blockedOn`, `actionHints.restartWithBypass`, and
 `actionHints.cleanupBlocked`. Use the `actionHints.restartWithBypass` command
-for an explicit trusted unattended retry, or `cc stop --all-needs-input` to
-clean up blocked jobs in the current workspace. Restart
-commands require a fresh prompt because cc stores prompt metadata, not the full
-original prompt text. If `partialResult` is present, use `$claude-result
-<jobId> --partial` to read recorded progress without waiting for a terminal
-state. Check `result.isPartial` and `latestTurn.resultState` before treating
-recorded output as final.
+for an explicit trusted unattended retry, or `actionHints.cleanupBlocked` to
+clean up blocked jobs in the current workspace. Restart commands require a
+fresh prompt because cc stores prompt metadata, not the full original prompt
+text. If `partialResult` is present, use `$claude-result <jobId> --partial` or
+the `actionHints.partialResult` command to read recorded progress without
+waiting for a terminal state. Check `result.isPartial` and
+`latestTurn.resultState` before treating recorded output as final.
 
 When status runs from a cc-plugin-codex checkout, JSON `meta.versionMismatch`
 and the human footer warn if the running dispatcher version differs from the
@@ -408,6 +412,9 @@ path was captured, and blocked-job fields such as `summary.blockedOn` and
 `summary.actionHints.restartWithBypass`. If the wait times out, the dispatcher
 exits non-zero but still prints the latest JSON payload when `--json` was
 requested.
+When the wait times out, JSON includes `timeoutRecovery` with the exact status,
+partial-result, stop, and attach commands to try next. A timeout means the wait
+budget expired, not necessarily that the Claude job is dead.
 
 ### $claude-followup
 
@@ -448,7 +455,11 @@ $claude-result job_mpt98g9g_b61e09f1 --partial
 Prints the assistant's final answer, list of touched files, and paths to
 transcript (if available) and raw logs. Prefer `$claude-result` over
 `claude logs <shortId>` for clean output; logs are the raw Claude Code stream
-and may contain TUI control sequences around permission prompts.
+and may contain TUI control sequences around permission prompts. If
+`claude logs <shortId>` returns `job not found` after a job exits, use
+`$claude-status`, `$claude-wait`, `$claude-result`, or
+`$claude-result --partial`; those plugin-owned artifacts are the supported
+post-exit operator path.
 
 `--partial` allows the command to print the latest recorded result artifact for
 a running, stopped, or permission-blocked job. Without `--partial`, incomplete
@@ -463,10 +474,9 @@ $claude-stop job_mpt98g9g_b61e09f1
 ```
 
 Optional cleanup. Not required before calling `result`. For blocked-job cleanup,
-the dispatcher also supports `cc stop --all-needs-input` (current workspace) and
-`cc stop --all-needs-input --all` (all workspaces). The `$claude-stop` wrapper
-may forward `--all-needs-input` when the user explicitly asks to clean up
-permission/input-blocked jobs.
+use `$claude-stop --all-needs-input` for the current workspace or
+`$claude-stop --all-needs-input --all` for all workspaces. Compact status JSON
+also prints the exact cleanup command in `actionHints.cleanupBlocked`.
 
 ### $claude-workflows
 
@@ -546,6 +556,23 @@ present, reinstall it, and print `codex plugin list`. Local cached installs use
 edit Codex config files directly.
 
 Use `--public` or `--local` only when you need to override auto-detection.
+
+After a successful upgrade, an already-running Codex session can still display
+the old versioned `SKILL.md` paths in its generated skill catalog. Restart
+Codex to refresh the catalog, or use the stable dispatcher path created by the
+upgrade: `~/.codex/plugins/cache/cc-plugin-codex/cc/current/scripts/cc.mjs`.
+
+Rescue path: if an older installed dispatcher crashes while running
+`$claude-upgrade --yes` or `cc upgrade --yes` (for example, `Cannot read
+properties of undefined (reading 'map')`), bypass that old dispatcher and run
+the direct Codex plugin-manager commands below from a shell.
+
+```bash
+codex plugin marketplace upgrade "cc-plugin-codex"
+codex plugin remove "cc@cc-plugin-codex"
+codex plugin add "cc@cc-plugin-codex"
+codex plugin list
+```
 
 Direct dispatcher equivalent:
 

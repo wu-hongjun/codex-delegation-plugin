@@ -463,6 +463,12 @@ codex plugin add "cc@cc-plugin-codex"
 codex plugin list
 ```
 
+Rescue upgrade: if an installed historical dispatcher crashes while running
+`$claude-upgrade --yes` or `cc upgrade --yes`, do not rely on that old cached
+dispatcher to repair itself. Use the Git marketplace shell commands above so
+Codex's plugin manager refreshes the marketplace and installs the current
+payload directly.
+
 Local same-path upgrade (after pulling new commits in cc-plugin-codex):
 
 ```bash

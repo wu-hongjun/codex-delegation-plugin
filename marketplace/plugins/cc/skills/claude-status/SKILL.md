@@ -49,6 +49,9 @@ Compact JSON includes `waiting.kind`, `waiting.category`,
 `waiting.manualInputRequired`, `waiting.canApproveNonInteractively`,
 `waiting.userAction`, and `actionHints` with stable next commands such as
 `status`, `result`, `partialResult`, `stop`, `followup`, `attach`, and `logs`.
+On macOS, do not rewrite those hints to a bare `cc ...` shell command; that
+usually resolves to Apple clang. Prefer `actionHints` as printed, and use
+`exactActionHints` when present.
 When `waiting.kind` is `"permission"` or `waiting.manualInputRequired` is true,
 surface the `attach` hint to the user; do not try to approve from the
 background wrapper. For blocked jobs, also surface `actionHints.stop`,

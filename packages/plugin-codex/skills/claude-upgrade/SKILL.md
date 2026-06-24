@@ -26,8 +26,27 @@ local cached installs; use `--public` or `--local` only when the user explicitly
 override that target.
 
 Return the dispatcher's stdout verbatim. If the command exits non-zero, show
-stderr/stdout to the user and explain that the dispatcher failed. Do not
-reimplement the command logic yourself.
+stderr/stdout to the user and explain that the dispatcher failed.
+
+After a successful upgrade, the active Codex session may still show old
+versioned `SKILL.md` paths in its generated skill catalog. If that happens,
+restart Codex to refresh the catalog, or use the stable dispatcher path created
+by the upgrade:
+
+    ~/.codex/plugins/cache/cc-plugin-codex/cc/current/scripts/cc.mjs
+
+If the dispatcher crashes before printing an upgrade plan with an internal
+JavaScript error such as `Cannot read properties of undefined (reading 'map')`,
+this is an old cached dispatcher failing before it can repair itself. Do not
+retry the same dispatcher. Tell the user to run the Codex plugin-manager rescue
+flow from a shell:
+
+    codex plugin marketplace upgrade "cc-plugin-codex"
+    codex plugin remove "cc@cc-plugin-codex"
+    codex plugin add "cc@cc-plugin-codex"
+    codex plugin list
+
+Do not invent a different recovery sequence.
 
 ### Next steps
 

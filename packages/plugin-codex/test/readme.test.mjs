@@ -41,6 +41,7 @@ const REQUIRED_HEADINGS = [
 
 const REQUIRED_SKILLS = [
   '$claude-setup',
+  '$claude-doctor',
   '$claude-delegate',
   '$claude-status',
   '$claude-result',
@@ -118,9 +119,9 @@ describe('README.md contains all required section headings in order', () => {
   });
 });
 
-// ---------- 3. All six skills mentioned ----------
+// ---------- 3. Core skills mentioned ----------
 
-describe('README.md mentions all six skill names', () => {
+describe('README.md mentions the core skill names', () => {
   for (const skill of REQUIRED_SKILLS) {
     it(`contains substring "${skill}"`, () => {
       const body = readReadme();
@@ -1314,29 +1315,29 @@ describe('README.md adversarial-review section uses neutral usage wording (T10-o
   });
 });
 
-// ---------- T10-optional-B. Direct dispatcher usage mentions seventeen commands ----------
+// ---------- T10-optional-B. Direct dispatcher usage mentions eighteen commands ----------
 
-describe('README.md Direct dispatcher usage mentions seventeen skill commands (T10-optional-B)', () => {
-  it('contains "seventeen skill commands" or "All seventeen skill commands"', () => {
+describe('README.md Direct dispatcher usage mentions eighteen skill commands (T10-optional-B)', () => {
+  it('contains "eighteen skill commands" or "All eighteen skill commands"', () => {
     const body = readReadme();
     const lower = body.toLowerCase();
     assert.ok(
-      lower.includes('seventeen skill commands') || lower.includes('all seventeen skill commands'),
-      'README.md Direct dispatcher usage section must say "seventeen skill commands"',
+      lower.includes('eighteen skill commands') || lower.includes('all eighteen skill commands'),
+      'README.md Direct dispatcher usage section must say "eighteen skill commands"',
     );
   });
 });
 
-// ---------- T10-optional-C. Current v1 scope lists Seventeen skills ----------
+// ---------- T10-optional-C. Current v1 scope lists Eighteen skills ----------
 
-describe('README.md Current v1 scope lists Seventeen skills (T10-optional-C)', () => {
-  it('contains "Seventeen skills" in the Current v1 scope section', () => {
+describe('README.md Current v1 scope lists Eighteen skills (T10-optional-C)', () => {
+  it('contains "Eighteen skills" in the Current v1 scope section', () => {
     const body = readReadme();
     const section = extractSection(body, '## Current v1 scope');
     assert.ok(section !== null, 'README.md must have a ## Current v1 scope section');
     assert.ok(
-      section.includes('Seventeen skills'),
-      'README.md ## Current v1 scope must say "Seventeen skills"',
+      section.includes('Eighteen skills'),
+      'README.md ## Current v1 scope must say "Eighteen skills"',
     );
   });
 });

@@ -60,6 +60,7 @@ const DERIVED_FILES = [
   'scripts/lib/review-result-source.mjs',
   'scripts/lib/workflows-inspector.mjs',
   'skills/claude-setup/SKILL.md',
+  'skills/claude-doctor/SKILL.md',
   'skills/claude-delegate/SKILL.md',
   'skills/claude-status/SKILL.md',
   'skills/claude-wait/SKILL.md',

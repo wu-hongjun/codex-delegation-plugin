@@ -8,9 +8,10 @@ Key design choice: this v1 uses Claude Code background sessions directly and doe
 
 ## Current v1 scope
 
-Seventeen skills are available:
+Eighteen skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
+- **`$claude-doctor`** — preflight Claude Code auth, model access, browser readiness, workspace, and permission mode before long jobs
 - **`$claude-delegate`** — start a new background session for a task
 - **`$claude-status`** — list all delegated jobs in the current workspace
 - **`$claude-wait`** — wait for one delegated job to produce a result, blocker, or timeout
@@ -109,6 +110,31 @@ Check cc-plugin-codex readiness. Probes Node version, Codex, Claude binary, auth
 ```text
 $claude-setup
 ```
+
+### $claude-doctor
+
+Run this before long-running, browser-backed, unattended, or high-stakes
+delegated jobs:
+
+```text
+$claude-doctor
+```
+
+The doctor preflight is read-only. It checks Claude Code CLI auth, Claude model
+access, real Chrome launch readiness when requested, the current workspace path,
+and permission-mode intent. JSON output distinguishes `cli_auth`,
+`model_access`, `browser_auth`, `workspace`, and `permissions` checks so Codex
+can stop before launching a doomed long job.
+
+For browser-backed work, pass `--real` to the dispatcher form:
+
+```bash
+node "<plugin-root>/scripts/cc.mjs" doctor --claude-access --real --json
+```
+
+`--real` is a doctor-only alias for the future `--chrome` launch path. It does
+not inspect cookies, passwords, or Chrome session stores, and it cannot choose
+among connected Chrome profiles.
 
 ### $claude-delegate
 
@@ -582,10 +608,11 @@ node packages/plugin-codex/scripts/cc.mjs upgrade
 
 ## Direct dispatcher usage
 
-All seventeen skill commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All eighteen skill commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-codex/scripts/cc.mjs setup
+node packages/plugin-codex/scripts/cc.mjs doctor --claude-access --json
 node packages/plugin-codex/scripts/cc.mjs delegate --yes -- "Inspect this repo."
 node packages/plugin-codex/scripts/cc.mjs status
 node packages/plugin-codex/scripts/cc.mjs wait <jobId> --json --compact --timeout 5m

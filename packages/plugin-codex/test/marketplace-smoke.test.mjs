@@ -49,6 +49,7 @@ const EXPECTED_VERSION = JSON.parse(readFileSync(SOURCE_PLUGIN_JSON, 'utf8')).ve
 
 const SKILL_NAMES = [
   'claude-setup',
+  'claude-doctor',
   'claude-delegate',
   'claude-status',
   'claude-wait',
@@ -120,10 +121,10 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
   });
 
   // ========================================================================
-  // T9-3: script body contains all 17 skill names
+  // T9-3: script body contains all 18 skill names
   // ========================================================================
 
-  it('smoke script body contains all 17 skill names', () => {
+  it('smoke script body contains all 18 skill names', () => {
     const body = readFileSync(SMOKE_SCRIPT, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(
@@ -273,10 +274,10 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
   });
 
   // ========================================================================
-  // T9-12: RELEASING.md enumerates all 17 skills
+  // T9-12: RELEASING.md enumerates all 18 skills
   // ========================================================================
 
-  it('RELEASING.md enumerates all 17 skill names', () => {
+  it('RELEASING.md enumerates all 18 skill names', () => {
     const content = readFileSync(RELEASING_MD, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(

@@ -78,6 +78,10 @@ function loadPluginVersion() {
 }
 
 const PLUGIN_VERSION = loadPluginVersion();
+const FLOOR_OPUS_4_8 = '2.1.154';
+const FLOOR_WORKFLOWS = '2.1.153';
+const FLOOR_BG_EXEC = '2.1.154';
+const MODEL_ACCESS_MARKER = 'CC_PLUGIN_CODEX_SETUP_MODEL_ACCESS_OK';
 
 const UPGRADE_TARGETS = Object.freeze({
   public: Object.freeze({
@@ -941,6 +945,7 @@ if (versionRequested) {
 
 const KNOWN_COMMANDS = new Set([
   'setup',
+  'doctor',
   'delegate',
   'workflow',
   'goal',
@@ -989,10 +994,23 @@ if (!command) {
   process.exit(2);
 }
 
+if (command !== 'doctor' && (flags['real'] !== undefined || flags['claude-access'] !== undefined)) {
+  const badFlag = flags['real'] !== undefined ? '--real' : '--claude-access';
+  const message =
+    badFlag === '--real'
+      ? '--real is only supported by cc doctor as a preflight alias; use --chrome when launching Claude Code.'
+      : '--claude-access is only supported by cc doctor.';
+  process.stderr.write(formatError(new Error(message), command, useJson) + '\n');
+  process.exit(2);
+}
+
 try {
   switch (command) {
     case 'setup':
       await cmdSetup(flags, useJson);
+      break;
+    case 'doctor':
+      await cmdDoctor(flags, positional, useJson);
       break;
     case 'delegate':
       await cmdDelegate(flags, positional, useJson);
@@ -1122,7 +1140,7 @@ function normalizeSetupReport(report) {
   };
 }
 
-async function cmdSetup(_flags, json) {
+function makeSetupExtraProbes() {
   // Inject the driver-owned pty-build probe so the unified setup report covers both
   // Plan 0001 (delegate) and Plan 0002 (follow-up) capability groups. The runtime
   // never imports node-pty directly — the driver supplies the probe via DI.
@@ -1131,11 +1149,6 @@ async function cmdSetup(_flags, json) {
   // based on the locally installed Claude Code version. Floors diverge per empirical
   // evidence on Claude Code v2.1.153: workflows are available, but --bg --exec is
   // silently dropped. Opus 4.8 is unverified at v2.1.153.
-  const FLOOR_OPUS_4_8 = '2.1.154';
-  const FLOOR_WORKFLOWS = '2.1.153';
-  const FLOOR_BG_EXEC = '2.1.154';
-  const MODEL_ACCESS_MARKER = 'CC_PLUGIN_CODEX_SETUP_MODEL_ACCESS_OK';
-
   /** @type {import('@cc-plugin-codex/runtime').DoctorExtraProbe} */
   const modelAccessProbe = {
     name: 'claude-model-access',
@@ -1353,24 +1366,301 @@ async function cmdSetup(_flags, json) {
     },
   };
 
-  const report = normalizeSetupReport(
+  return [
+    modelAccessProbe,
+    ptyBuildExtraProbe,
+    opus48Probe,
+    workflowsProbe,
+    bgExecProbe,
+    claudeSkillsProbe,
+    worktreeVersionProbe,
+  ];
+}
+
+async function runSetupDoctorReport() {
+  return normalizeSetupReport(
     await runDoctor({
       cwd: process.cwd(),
       readOnly: true,
       writeSnapshot: false,
-      extraProbes: [
-        modelAccessProbe,
-        ptyBuildExtraProbe,
-        opus48Probe,
-        workflowsProbe,
-        bgExecProbe,
-        claudeSkillsProbe,
-        worktreeVersionProbe,
-      ],
+      extraProbes: makeSetupExtraProbes(),
     }),
   );
+}
+
+async function cmdSetup(_flags, json) {
+  const report = await runSetupDoctorReport();
   process.stdout.write(formatSetup(report, json) + '\n');
   if (report.status === 'fail') {
+    process.exit(1);
+  }
+}
+
+function findProbe(report, name) {
+  return report.probes.find((probe) => probe.name === name) ?? null;
+}
+
+function gitShaForCwd(cwd) {
+  const result = spawnSync('git', ['rev-parse', '--short', 'HEAD'], {
+    cwd,
+    encoding: 'utf8',
+    timeout: 3000,
+  });
+  if (result.status !== 0) return null;
+  const sha = result.stdout.trim();
+  return sha.length > 0 ? sha : null;
+}
+
+function buildProbeCheck(report, name, category, label = name) {
+  const probe = findProbe(report, name);
+  if (probe === null) {
+    return {
+      name: label,
+      category,
+      status: 'fail',
+      detail: `setup probe ${name} was not present`,
+      remediation: 'Run $claude-setup and report the missing probe as a plugin bug.',
+    };
+  }
+  return {
+    name: label,
+    category,
+    status: probe.status,
+    detail: probe.detail,
+    ...(probe.evidence !== undefined ? { evidence: probe.evidence } : {}),
+    ...(probe.status === 'fail' && name === 'claude-model-access'
+      ? {
+          remediation:
+            'Ask an org admin to enable Claude Code subscription access, or configure an Anthropic API key before starting a long delegated job.',
+        }
+      : {}),
+    ...(probe.status === 'fail' && name === 'claude-auth'
+      ? { remediation: 'Run `claude login` or fix Claude Code auth before delegating.' }
+      : {}),
+  };
+}
+
+function buildWorkspaceCheck(cwd) {
+  try {
+    const stat = statSync(cwd);
+    return {
+      name: 'workspace',
+      category: 'workspace',
+      status: stat.isDirectory() ? 'ok' : 'fail',
+      detail: stat.isDirectory()
+        ? `workspace path exists: ${cwd}`
+        : `workspace path is not a directory: ${cwd}`,
+      evidence: {
+        cwd,
+        gitSha: gitShaForCwd(cwd),
+        writeCheck: 'not_performed_read_only',
+      },
+    };
+  } catch (err) {
+    return {
+      name: 'workspace',
+      category: 'workspace',
+      status: 'fail',
+      detail: `workspace path is not readable: ${cwd}`,
+      evidence: {
+        cwd,
+        error: err instanceof Error ? err.message : String(err),
+        writeCheck: 'not_performed_read_only',
+      },
+      remediation: 'Start Codex from the target workspace or pass the correct working directory.',
+    };
+  }
+}
+
+function buildPermissionModeCheck(flags, json) {
+  const permissionMode = normalizePermissionMode(flags, 'doctor', json) ?? 'default';
+  const bypass =
+    permissionMode === 'bypassPermissions' ||
+    flags['bypass-permissions'] === true ||
+    flags['dangerously-skip-permissions'] === true;
+  return {
+    name: 'permission-mode',
+    category: 'permissions',
+    status: bypass ? 'ok' : 'warn',
+    detail: bypass
+      ? 'trusted unattended permission bypass is requested for future delegated jobs'
+      : 'default Claude Code permission mode may block unattended jobs on tool prompts',
+    evidence: {
+      permissionMode,
+      unattended: bypass,
+      dangerouslySkipPermissions: bypass,
+    },
+    ...(bypass
+      ? {
+          launchFlags: [
+            '--bypass-permissions',
+            '--permission-mode bypassPermissions',
+            '--dangerously-skip-permissions',
+          ],
+        }
+      : {
+          remediation:
+            'For trusted unattended shell/tool work, start the future job with --bypass-permissions or --permission-mode bypassPermissions.',
+        }),
+  };
+}
+
+function buildRealBrowserCheck(flags) {
+  const requested = flags['real'] === true || flags['chrome'] === true;
+  const disabled = flags['no-chrome'] === true;
+  if (!requested && !disabled) {
+    return {
+      name: 'real-browser',
+      category: 'browser_auth',
+      status: 'ok',
+      detail:
+        'real Chrome access not requested; pass --real or --chrome to preflight browser-backed jobs',
+      evidence: { requested: false },
+    };
+  }
+  if (requested && disabled) {
+    return {
+      name: 'real-browser',
+      category: 'browser_auth',
+      status: 'fail',
+      detail: '--real/--chrome conflicts with --no-chrome',
+      evidence: { requested: true, noChrome: true },
+      remediation: 'Use either --real/--chrome for real browser access or --no-chrome, not both.',
+    };
+  }
+
+  const help = spawnSync('claude', ['--help'], {
+    cwd: process.cwd(),
+    env: process.env,
+    encoding: 'utf8',
+    timeout: 5000,
+  });
+  const output = `${help.stdout ?? ''}\n${help.stderr ?? ''}`;
+  const advertisesChrome = output.includes('--chrome');
+  if (help.error || help.status !== 0) {
+    return {
+      name: 'real-browser',
+      category: 'browser_auth',
+      status: 'fail',
+      detail: help.error
+        ? `cannot check Claude Code Chrome support: ${help.error.message}`
+        : `claude --help exited ${help.status}; cannot verify Chrome support`,
+      evidence: { requested: true, alias: flags['real'] === true ? '--real -> --chrome' : null },
+      remediation: 'Fix Claude Code installation before starting browser-backed delegated jobs.',
+    };
+  }
+
+  return {
+    name: 'real-browser',
+    category: 'browser_auth',
+    status: 'warn',
+    detail: advertisesChrome
+      ? 'Claude Code advertises --chrome. Connected Chrome profile/session auth still cannot be verified non-interactively; browser selection, passkeys, and login gestures may require claude attach.'
+      : 'Claude Code help did not advertise --chrome. Browser-backed delegation may fail or require an interactive attach; verify the Claude Code Chrome extension and connected browser before launching a long job.',
+    evidence: {
+      requested: true,
+      launchFlag: '--chrome',
+      alias: flags['real'] === true ? '--real -> --chrome' : null,
+      advertisedByHelp: advertisesChrome,
+      canInspectCookies: false,
+      canVerifyProfileLogin: false,
+    },
+    remediation:
+      'Connect only the intended Chrome browser/profile before launch, or start attached and choose the browser interactively.',
+  };
+}
+
+function aggregateDoctorChecks(checks) {
+  if (checks.some((check) => check.status === 'fail')) return 'fail';
+  if (checks.some((check) => check.status === 'warn')) return 'warn';
+  return 'ok';
+}
+
+function buildDoctorPreflight(report, flags, json) {
+  const permissionCheck = buildPermissionModeCheck(flags, json);
+  const checks = [
+    buildWorkspaceCheck(process.cwd()),
+    buildProbeCheck(report, 'claude-auth', 'cli_auth', 'claude-cli-auth'),
+    buildProbeCheck(report, 'claude-model-access', 'model_access', 'claude-model-access'),
+    buildRealBrowserCheck(flags),
+    permissionCheck,
+  ];
+  const status = aggregateDoctorChecks(checks);
+  const blockers = checks.filter((check) => check.status === 'fail').map((check) => check.name);
+  const warnings = checks.filter((check) => check.status === 'warn').map((check) => check.name);
+  return {
+    ok: status !== 'fail',
+    status,
+    generatedAt: new Date().toISOString(),
+    version: PLUGIN_VERSION,
+    intent: {
+      claudeAccess: flags['claude-access'] === true ? 'required' : 'checked',
+      realBrowser: flags['real'] === true || flags['chrome'] === true,
+      chromeLaunchFlag:
+        flags['real'] === true || flags['chrome'] === true
+          ? '--chrome'
+          : flags['no-chrome'] === true
+            ? '--no-chrome'
+            : null,
+      permissionMode: permissionCheck.evidence.permissionMode,
+      unattended: permissionCheck.evidence.unattended,
+      cwd: process.cwd(),
+    },
+    checks,
+    blockers,
+    warnings,
+    setup: {
+      status: report.status,
+      delegateCapability: report.delegateCapability,
+      followupCapability: report.followupCapability,
+    },
+    nextAction:
+      status === 'fail'
+        ? 'fix blockers before starting a long delegated job'
+        : status === 'warn'
+          ? 'review warnings; browser/profile or permission prompts may still require attach'
+          : 'safe to start the requested delegated job',
+  };
+}
+
+function formatDoctor(preflight, json) {
+  if (json) return JSON.stringify(preflight, null, 2);
+  const label = preflight.status.toUpperCase();
+  const lines = [
+    `CC doctor preflight — ${label}`,
+    `  summary: ${preflight.nextAction}`,
+    `  cwd: ${preflight.intent.cwd}`,
+    `  Claude access: ${preflight.intent.claudeAccess}`,
+    `  real browser: ${preflight.intent.realBrowser ? preflight.intent.chromeLaunchFlag : 'not requested'}`,
+    `  permission mode: ${preflight.intent.permissionMode}`,
+    '',
+    'Checks:',
+  ];
+  for (const check of preflight.checks) {
+    lines.push(`  ${check.status.padEnd(4)}  ${check.name.padEnd(22)} ${check.detail}`);
+    if (check.remediation) lines.push(`        next: ${check.remediation}`);
+  }
+  if (preflight.blockers.length > 0) {
+    lines.push('', `Blockers: ${preflight.blockers.join(', ')}`);
+  }
+  if (preflight.warnings.length > 0) {
+    lines.push('', `Warnings: ${preflight.warnings.join(', ')}`);
+  }
+  lines.push('', 'Use this before long `delegate`, `workflow`, `batch`, or browser-backed jobs.');
+  return lines.join('\n');
+}
+
+async function cmdDoctor(flags, positional, json) {
+  if (positional.length > 0) {
+    process.stderr.write(
+      formatError(new Error('cc doctor does not take positional arguments'), 'doctor', json) + '\n',
+    );
+    process.exit(2);
+  }
+  const report = await runSetupDoctorReport();
+  const preflight = buildDoctorPreflight(report, flags, json);
+  process.stdout.write(formatDoctor(preflight, json) + '\n');
+  if (preflight.status === 'fail') {
     process.exit(1);
   }
 }
@@ -4073,6 +4363,15 @@ async function cmdUpgrade(flags, positional, json) {
 
 function printUsage(commandName = '') {
   const commandHelp = {
+    doctor: [
+      'Usage: cc doctor [--claude-access] [--real|--chrome|--no-chrome] [permission flags] [--json]',
+      '',
+      'Runs a focused read-only preflight before long or browser-backed Claude jobs.',
+      'Checks workspace path, Claude Code CLI auth, Claude model access, real Chrome launch readiness, and permission-mode intent.',
+      'Use --real as a doctor-only alias for the Claude Code --chrome launch path.',
+      '',
+      'Options: --json --claude-access --real --chrome --no-chrome --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions',
+    ],
     delegate: [
       'Usage: cc delegate [options] -- "<prompt>"',
       '',
@@ -4200,6 +4499,7 @@ function printUsage(commandName = '') {
       '',
       'Commands:',
       '  setup                                     Run doctor probes and report status',
+      '  doctor [--claude-access] [--real] [--json]  Preflight auth, model access, browser, workspace, and permission mode',
       '  delegate [flags] -- <prompt>              Start a Claude background session',
       '  restart <jobId-or-prefix> [flags] -- <prompt>  Stop a job and start a fresh one in the same workspace',
       '  workflow [flags] -- <prompt>              Start a Claude Code dynamic workflow (triggers ultracode planning)',
@@ -4226,7 +4526,7 @@ function printUsage(commandName = '') {
       '  version | --version                       Print the installed plugin version',
       '',
       'Flags:',
-      '  --json                       Machine-readable JSON output (status/result/wait/stop/followup/review/adversarial-review/goal/fork/batch/deep-research/workflows/skills/upgrade)',
+      '  --json                       Machine-readable JSON output (doctor/status/result/wait/stop/followup/review/adversarial-review/goal/fork/batch/deep-research/workflows/skills/upgrade)',
       '  --compact                    Compact redacted JSON shape for delegate/status/result/wait/stop',
       '  --partial                    Allow result to print recorded partial output for incomplete jobs',
       '  --job <jobId-or-prefix>      Select one job for status',
@@ -4236,6 +4536,8 @@ function printUsage(commandName = '') {
       '  --interval <duration>        Poll interval for wait (examples: 500ms, 2s)',
       '  --yes                        Acknowledge privacy disclosure automatically (delegate/workflow/goal/fork/batch/deep-research/followup/review/adversarial-review)',
       '  --dry-run                    Print the upgrade plan without changing the Codex plugin install',
+      '  --claude-access              Doctor preflight: require Claude Code CLI auth and model access before launch',
+      '  --real                       Doctor preflight alias for future --chrome real-browser launch checks',
       '  --public                     Force public Git marketplace target for upgrade',
       '  --local                      Force local marketplace target for upgrade',
       '  --name <name>                Session name (delegate, workflow, goal, fork, batch, deep-research)',

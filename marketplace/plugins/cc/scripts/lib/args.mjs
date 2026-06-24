@@ -21,6 +21,8 @@ const BOOLEAN_FLAGS = new Set([
   'dry-run',
   'public',
   'local',
+  'claude-access',
+  'real',
   'help',
   'all-awaiting-followup',
   'all-needs-input',

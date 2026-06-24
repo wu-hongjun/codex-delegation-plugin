@@ -564,6 +564,61 @@ describe('setup (human output)', () => {
   });
 });
 
+// ---------- doctor preflight ----------
+
+describe('doctor preflight', () => {
+  it('doctor --claude-access --real --bypass-permissions --json reports focused launch checks', () => {
+    const result = runDispatcher([
+      'doctor',
+      '--claude-access',
+      '--real',
+      '--bypass-permissions',
+      '--json',
+    ]);
+    assert.equal(result.status, 0, `stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.status, 'warn');
+    assert.equal(parsed.intent.claudeAccess, 'required');
+    assert.equal(parsed.intent.realBrowser, true);
+    assert.equal(parsed.intent.chromeLaunchFlag, '--chrome');
+    assert.equal(parsed.intent.permissionMode, 'bypassPermissions');
+    assert.equal(parsed.intent.unattended, true);
+
+    const categories = parsed.checks.map((check) => check.category).sort();
+    assert.deepEqual(categories, [
+      'browser_auth',
+      'cli_auth',
+      'model_access',
+      'permissions',
+      'workspace',
+    ]);
+
+    const model = parsed.checks.find((check) => check.name === 'claude-model-access');
+    assert.equal(model?.status, 'ok');
+    const browser = parsed.checks.find((check) => check.name === 'real-browser');
+    assert.equal(browser?.status, 'warn');
+    assert.equal(browser?.evidence.launchFlag, '--chrome');
+  });
+
+  it('doctor fails before a long job when Claude Code model access is disabled', () => {
+    const cfgPath = writeMockClaudeConfig(MOCK_HOME, { printAccess: 'subscription-disabled' });
+    const result = runDispatcher(['doctor', '--claude-access', '--json'], {
+      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfgPath },
+    });
+    assert.equal(result.status, 1, `expected doctor failure; stderr: ${result.stderr}`);
+    const parsed = parseJson(result.stdout);
+    assert.equal(parsed.ok, false);
+    assert.equal(parsed.status, 'fail');
+    assert.deepEqual(parsed.blockers, ['claude-model-access']);
+    const model = parsed.checks.find((check) => check.name === 'claude-model-access');
+    assert.equal(model?.category, 'model_access');
+    assert.equal(model?.status, 'fail');
+    assert.match(model?.detail ?? '', /disabled Claude subscription access/);
+    assert.match(model?.remediation ?? '', /Anthropic API key/);
+  });
+});
+
 // ---------- Test 3: delegate --yes -- "hello" (human output) ----------
 
 describe('delegate --yes -- "hello"', () => {

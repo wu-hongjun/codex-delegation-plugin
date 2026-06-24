@@ -13,6 +13,7 @@
     "capabilities": ["Interactive"],
     "defaultPrompt": [
       "Set up CC.",
+      "Preflight Claude Code auth, model access, browser, workspace, and permission mode.",
       "Delegate a task to Claude Code.",
       "Check my Claude jobs.",
       "Wait for a Claude job to finish or report a blocker.",

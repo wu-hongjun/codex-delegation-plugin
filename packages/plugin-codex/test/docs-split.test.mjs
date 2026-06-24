@@ -53,6 +53,7 @@ const RELEASING_MD = resolve(REPO_ROOT, 'documentation', 'RELEASING.md');
 
 const SKILL_NAMES = [
   'claude-setup',
+  'claude-doctor',
   'claude-delegate',
   'claude-status',
   'claude-wait',
@@ -157,8 +158,8 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
       }
     });
 
-    // T12-3: Skills section lists all 17 skills with $-prefix
-    it('Skills section enumerates all 17 skill names with $-prefix and a one-line description', () => {
+    // T12-3: Skills section lists all 18 skills with $-prefix
+    it('Skills section enumerates all 18 skill names with $-prefix and a one-line description', () => {
       const content = readFileSync(MARKETPLACE_README, 'utf8');
       // Extract the Skills section body.
       const match = content.match(/^## Skills\b[\s\S]*?(?=^## )/m);
@@ -555,13 +556,13 @@ describe('$claude-workflow documentation — plugin README (Plan 0008 T5)', () =
     );
   });
 
-  it('plugin README Current v1 scope section says "Seventeen skills"', () => {
+  it('plugin README Current v1 scope section says "Eighteen skills"', () => {
     const content = readFileSync(PLUGIN_README, 'utf8');
     const match = content.match(/^## Current v1 scope\b[\s\S]*?(?=^## )/m);
     assert.ok(match, 'plugin README must have a "## Current v1 scope" section');
     assert.ok(
-      match[0].includes('Seventeen skills'),
-      'plugin README ## Current v1 scope must say "Seventeen skills"',
+      match[0].includes('Eighteen skills'),
+      'plugin README ## Current v1 scope must say "Eighteen skills"',
     );
   });
 

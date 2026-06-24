@@ -19,6 +19,7 @@ const PLUGIN_ROOT = resolve(here, '..', '..');
 
 const SKILL_NAMES = [
   'claude-setup',
+  'claude-doctor',
   'claude-delegate',
   'claude-status',
   'claude-wait',
@@ -40,6 +41,7 @@ const SKILL_NAMES = [
 /** Subcommand each skill must reference in its body. */
 const SKILL_SUBCOMMANDS = {
   'claude-setup': 'setup',
+  'claude-doctor': 'doctor',
   'claude-delegate': 'delegate',
   'claude-status': 'status',
   'claude-wait': 'wait',
@@ -722,26 +724,26 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
     }
   });
 
-  it('has at least 17 entries after wait addition', () => {
+  it('has at least 18 entries after doctor addition', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.ok(
-      dp.length >= 17,
-      `interface.defaultPrompt must have at least 17 entries; got ${dp.length}`,
+      dp.length >= 18,
+      `interface.defaultPrompt must have at least 18 entries; got ${dp.length}`,
     );
   });
 });
 
-describe('plugin.json.interface.defaultPrompt length is exactly 17 (adds claude-wait)', () => {
-  it('array length equals 17', () => {
+describe('plugin.json.interface.defaultPrompt length is exactly 18 (adds claude-doctor)', () => {
+  it('array length equals 18', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      17,
-      `interface.defaultPrompt must have exactly 17 entries; got ${dp.length}`,
+      18,
+      `interface.defaultPrompt must have exactly 18 entries; got ${dp.length}`,
     );
   });
 });
@@ -839,14 +841,14 @@ describe('no unexpected review-adjacent skill directories exist', () => {
 // ---------- T6: OQ-C defaultPrompt rewrites (entries #6-#9) ----------
 
 describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)', () => {
-  it('array length is exactly 17', () => {
+  it('array length is exactly 18', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      17,
-      `interface.defaultPrompt must have exactly 17 entries; got ${dp.length}`,
+      18,
+      `interface.defaultPrompt must have exactly 18 entries; got ${dp.length}`,
     );
   });
 
@@ -1533,6 +1535,18 @@ describe('plugin.json interface.defaultPrompt contains CC upgrade entry', () => 
     assert.ok(
       dp.includes('Upgrade or refresh the installed CC plugin.'),
       `interface.defaultPrompt must contain "Upgrade or refresh the installed CC plugin."; got: ${JSON.stringify(dp)}`,
+    );
+  });
+});
+
+describe('plugin.json interface.defaultPrompt contains CC doctor entry', () => {
+  it('includes a Claude Code preflight entry', () => {
+    const manifest = readManifest();
+    const dp = manifest.interface?.defaultPrompt;
+    assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
+    assert.ok(
+      dp.some((entry) => entry.includes('Preflight Claude Code auth')),
+      `interface.defaultPrompt must contain the doctor preflight entry; got: ${JSON.stringify(dp)}`,
     );
   });
 });

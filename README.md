@@ -21,10 +21,11 @@ Inside Codex, run:
 
 ```text
 $claude-setup
+$claude-doctor
 $claude-skills
 ```
 
-`$claude-setup` should return aggregate status `ok` or `warn`. `fail` means an environment dependency is missing; follow the probe output.
+`$claude-setup` should return aggregate status `ok` or `warn`. `fail` means an environment dependency is missing; follow the probe output. Before long, browser-backed, or unattended jobs, run `$claude-doctor` to preflight Claude Code CLI auth, model access, real-browser readiness, workspace path, and permission mode.
 
 On macOS, do not run a bare `cc` shell command for this plugin; `/usr/bin/cc`
 is Apple clang. Use the `$claude-*` Codex skills, or use the exact dispatcher
@@ -72,11 +73,12 @@ Useful discovery and maintenance commands:
 
 ```text
 $claude-setup
+$claude-doctor
 $claude-skills
 $claude-upgrade
 ```
 
-The plugin currently ships 17 skills: `$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`, `$claude-skills`, `$claude-upgrade`.
+The plugin currently ships 18 skills: `$claude-setup`, `$claude-doctor`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`, `$claude-skills`, `$claude-upgrade`.
 
 ---
 
@@ -234,7 +236,7 @@ node tools/package-marketplace.mjs --write
 - **One primary transport**: `ClaudeBackgroundDriver` — uses `claude --bg`, `claude agents --json`, transcript JSONL, `claude logs`, `claude attach`, and `claude stop`. It does not use `claude -p`.
 - **One host plugin**: Codex skills + manifest under `packages/plugin-codex/`.
 - **Session-per-job with follow-ups**: every `$claude-delegate` invocation creates a fresh background job. Continue an existing job with `$claude-followup <jobId>`; do not reuse `--name` as a session key.
-- **Seventeen skills**: `$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`, `$claude-skills`, `$claude-upgrade`.
+- **Eighteen skills**: `$claude-setup`, `$claude-doctor`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`, `$claude-skills`, `$claude-upgrade`.
 
 The full v1 plan, including every deliberately-deferred feature, lives at [`documentation/plan/0001-20260530-initial-plan/1-plan.md`](documentation/plan/0001-20260530-initial-plan/1-plan.md). It supersedes any conflicting framing in this README.
 

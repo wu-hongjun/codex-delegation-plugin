@@ -63,6 +63,7 @@ const EXPECTED_SKILL_NAMES = [
   'claude-batch',
   'claude-deep-research',
   'claude-delegate',
+  'claude-doctor',
   'claude-followup',
   'claude-fork',
   'claude-goal',
@@ -277,7 +278,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   // Check 4: marketplace skills/ contains exactly the 8 expected directories
   // ========================================================================
 
-  it('marketplace skills/ contains exactly the 16 expected skill directories', () => {
+  it('marketplace skills/ contains exactly the expected skill directories', () => {
     assert.ok(
       existsSync(MARKETPLACE_SKILLS_DIR),
       `marketplace skills/ directory not found at ${MARKETPLACE_SKILLS_DIR}`,
@@ -458,7 +459,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
 const MANIFEST_MD = resolve(MARKETPLACE_ROOT, 'MANIFEST.md');
 const PACKAGE_SCRIPT = resolve(REPO_ROOT, 'tools', 'package-marketplace.mjs');
 
-// Authoritative allowlist of the 27 derived files (relative to marketplace plugin root).
+// Authoritative allowlist of the derived files (relative to marketplace plugin root).
 const DERIVED_FILES_ALLOWLIST = [
   '.codex-plugin/plugin.json',
   'scripts/cc.mjs',
@@ -473,6 +474,7 @@ const DERIVED_FILES_ALLOWLIST = [
   'scripts/lib/review-result-source.mjs',
   'scripts/lib/workflows-inspector.mjs',
   'skills/claude-setup/SKILL.md',
+  'skills/claude-doctor/SKILL.md',
   'skills/claude-delegate/SKILL.md',
   'skills/claude-status/SKILL.md',
   'skills/claude-wait/SKILL.md',
@@ -610,10 +612,10 @@ describe('marketplace packaging procedure (Plan 0006 T4)', () => {
   });
 
   // ========================================================================
-  // T4-4: Source <-> marketplace byte-identity for all 27 derived files
+  // T4-4: Source <-> marketplace byte-identity for all derived files
   // ========================================================================
 
-  it('all 27 derived files are byte-identical between source and marketplace', () => {
+  it('all derived files are byte-identical between source and marketplace', () => {
     for (const rel of DERIVED_FILES_ALLOWLIST) {
       const srcPath = resolve(SOURCE_PLUGIN_ROOT, rel);
       const dstPath = resolve(MARKETPLACE_PLUGIN_ROOT, rel);

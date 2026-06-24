@@ -63,6 +63,7 @@ Then open Codex inside any repository and run:
 
 ```
 $claude-setup
+$claude-doctor
 ```
 
 `$claude-setup` checks Claude Code authentication, Codex version,
@@ -73,16 +74,22 @@ status:
 - `warn` — usable with caveats (e.g., daemon status unavailable)
 - `fail` — something blocks delegation; follow the setup output
 
-If `$claude-setup` reports `ok` or `warn`, the install is complete.
+If `$claude-setup` reports `ok` or `warn`, the install is complete. Before
+long-running, browser-backed, unattended, or high-stakes delegated jobs, run
+`$claude-doctor`; it preflights Claude Code CLI auth, model access, real Chrome
+readiness, workspace path, and permission-mode intent.
 
 ## Skills
 
-After install, the plugin makes 17 skills available inside the Codex
+After install, the plugin makes 18 skills available inside the Codex
 TUI. Type the `$<name>` form at the Codex chat prompt.
 
 - `$claude-setup` — probes the local environment (Claude Code auth,
   Codex version, Node.js, `node-pty` availability, background-session
   support). Returns `ok`, `warn`, or `fail` aggregate.
+- `$claude-doctor` — focused read-only preflight before long jobs. It separates
+  CLI auth, Claude model access, browser readiness, workspace, and permission
+  mode so Codex can stop before launching a doomed delegated job.
 - `$claude-delegate` — starts a Claude Code background session with
   the provided prompt and returns a job id you can use with the other
   skills.
@@ -357,8 +364,8 @@ reinstall.
 
 Before release, run the smoke checklist in
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md).
-It verifies the local marketplace install and all 17 skill names
-(`$claude-setup`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`,
+It verifies the local marketplace install and all 18 skill names
+(`$claude-setup`, `$claude-doctor`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`,
 `$claude-stop`, `$claude-followup`, `$claude-review`,
 `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`,
 `$claude-fork`, `$claude-batch`, `$claude-deep-research`,

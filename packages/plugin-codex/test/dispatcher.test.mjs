@@ -8220,7 +8220,7 @@ describe('upgrade command', () => {
 
   it('upgrade --yes --json refreshes the marketplace and reinstalls the plugin through codex', () => {
     const logPath = join(TMP_HOME, 'mock-codex-commands.jsonl');
-    const installedPath = join(TMP_HOME, 'codex-cache', 'cc-plugin-codex', 'cc', '0.3.20');
+    const installedPath = join(TMP_HOME, 'codex-cache', 'cc-plugin-codex', 'cc', '0.3.21');
     const cfgPath = writeMockCodexConfig({
       commandLogPath: logPath,
       pluginListVersion: '0.3.11',
@@ -8252,7 +8252,7 @@ describe('upgrade command', () => {
 
   it('upgrade --yes prints human output after refreshing the stable cache symlink', () => {
     const logPath = join(TMP_HOME, 'mock-codex-commands.jsonl');
-    const installedPath = join(TMP_HOME, 'codex-cache', 'cc-plugin-codex', 'cc', '0.3.20');
+    const installedPath = join(TMP_HOME, 'codex-cache', 'cc-plugin-codex', 'cc', '0.3.21');
     const cfgPath = writeMockCodexConfig({
       commandLogPath: logPath,
       pluginListVersion: '0.3.11',

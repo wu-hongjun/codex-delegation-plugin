@@ -913,6 +913,51 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(job.result.finalMessagePreview, 'Compact status preview.');
   });
 
+  it('status compact JSON suppresses stale waiting metadata for terminal jobs', () => {
+    const jobId = `job_stale_wait_${createHash('sha256').update('stale-waiting-terminal').digest('hex').slice(0, 8)}`;
+    const { record } = writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Finished despite stale waiting metadata.',
+      shortId: 'stale001',
+    });
+    record.status = 'stopped';
+    record.claude.waitingFor = 'permission prompt from an earlier state';
+
+    const parsed = parseJson(
+      formatStatus([record], true, WORK_DIR, {
+        compact: true,
+        dispatcherPath: SCRIPT,
+        singleJob: true,
+      }),
+    );
+
+    assert.equal(parsed.job.status, 'stopped');
+    assert.equal(parsed.job.operatorState, 'stopped');
+    assert.equal(parsed.job.waitingFor, null);
+    assert.equal(parsed.job.waiting, null);
+    assert.equal(parsed.job.blockedOn, undefined);
+    assert.equal(parsed.job.actionHints.stop, undefined);
+    assert.equal(parsed.job.resultState, 'final_result_available');
+  });
+
+  it('status human output suppresses stale waiting text for terminal jobs', () => {
+    const jobId = `job_hum_stale_${createHash('sha256').update('human-stale-waiting-terminal').digest('hex').slice(0, 8)}`;
+    const { record } = writeSyntheticCompletedJob({
+      jobId,
+      resultContent: 'Terminal human row.',
+      shortId: 'stale002',
+    });
+    record.status = 'completed';
+    record.claude.waitingFor = 'permission prompt from an earlier state';
+
+    const output = formatStatus([record], false, WORK_DIR, { dispatcherPath: SCRIPT });
+
+    assert.match(output, new RegExp(jobId));
+    assert.doesNotMatch(output, /waiting:/i);
+    assert.doesNotMatch(output, /Input needed:/);
+    assert.doesNotMatch(output, /Manual action:/);
+  });
+
   it('status human list includes headers, age, and attach footer for needs_input jobs', () => {
     const jobId = `job_stathum_${createHash('sha256').update('status-human-needs-input').digest('hex').slice(0, 8)}`;
     writeSyntheticCompletedJob({

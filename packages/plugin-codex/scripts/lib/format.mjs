@@ -230,7 +230,7 @@ function summarizeJob(job, opts = {}) {
   const latestTurn = latestTurnIndex >= 0 ? job.turns[latestTurnIndex] : undefined;
   const latestKind = classifyTurnKind(latestTurn);
   const shortId = job.claude?.shortId ?? null;
-  const waitingFor = job.claude?.waitingFor ?? null;
+  const waitingFor = job.status === 'needs_input' ? (job.claude?.waitingFor ?? null) : null;
   const rawLaunchPolicy = job.claude?.launchPolicy ?? {};
   const launchPolicy = {
     permissionMode: rawLaunchPolicy.permissionMode ?? null,
@@ -641,7 +641,7 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
     if (j.result?.finalMessagePreview) {
       lines.push(`Result:         ${j.result.finalMessagePreview}`);
     }
-    if (j.claude.waitingFor) {
+    if (j.status === 'needs_input' && j.claude.waitingFor) {
       const waiting = compact.waiting;
       lines.push(`Waiting:        ${j.claude.waitingFor}`);
       if (waiting?.category) {
@@ -677,7 +677,8 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
   ].join('  ');
   const rows = jobs.map((j) => {
     const annotation = reviewOfLabel(j.reviewOf);
-    const waiting = j.claude.waitingFor ? ` (waiting: ${j.claude.waitingFor})` : '';
+    const waiting =
+      j.status === 'needs_input' && j.claude.waitingFor ? ` (waiting: ${j.claude.waitingFor})` : '';
     const cols = [
       j.jobId.padEnd(32),
       j.status.padEnd(14),

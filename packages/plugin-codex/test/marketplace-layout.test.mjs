@@ -215,15 +215,15 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   });
 
   // ========================================================================
-  // Check 2b: marketplace plugin.json version is exactly "0.3.21"
+  // Check 2b: marketplace plugin.json version is exactly "0.3.22"
   // ========================================================================
 
-  it('marketplace plugin.json version is exactly "0.3.21"', () => {
+  it('marketplace plugin.json version is exactly "0.3.22"', () => {
     const parsed = JSON.parse(readFileSync(MARKETPLACE_PLUGIN_JSON, 'utf8'));
     assert.equal(
       parsed.version,
-      '0.3.21',
-      `marketplace plugin.json version must be "0.3.21"; got "${parsed.version}"`,
+      '0.3.22',
+      `marketplace plugin.json version must be "0.3.22"; got "${parsed.version}"`,
     );
   });
 

@@ -486,14 +486,19 @@ export async function attachAndSend(
 
     termRef.write('\x1a');
 
-    // Wait for child exit with ~2 s timeout; if it doesn't exit, proceed anyway.
-    // `.unref()` so a stuck mock doesn't keep the test process's event loop alive
-    // past the function return.
+    // Wait for child exit with ~2 s timeout, then force-close the local PTY.
+    // Ctrl+Z detaches the background session, but some PTY implementations can
+    // report an exit event while leaving the attach process or descriptor alive.
     const detachTimeout = new Promise<null>((res) => {
       const t = setTimeout(() => res(null), 2000);
       t.unref();
     });
     await Promise.race([exitPromise, detachTimeout]);
+    try {
+      termRef.kill();
+    } catch {
+      // Already exited after the graceful detach.
+    }
 
     return {
       driverName: DRIVER_NAME,

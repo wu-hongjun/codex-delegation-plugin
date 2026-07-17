@@ -32,6 +32,28 @@ const stderrFd = openSync(state.errorPath, 'a', 0o600);
 let stopping = false;
 let finished = false;
 
+const HEADLESS_PERMISSION_DENIED =
+  /no output produced[\s\S]*headless mode cannot prompt[\s\S]*auto-denied/i;
+
+async function classifyExit(code: number | null): Promise<{
+  status: AgyRunnerState['status'];
+  error?: string;
+}> {
+  if (code !== 0) return { status: 'failed' };
+  const [stdout, stderr] = await Promise.all([
+    readFile(state.resultPath, 'utf8').catch(() => ''),
+    readFile(state.errorPath, 'utf8').catch(() => ''),
+  ]);
+  if (!stdout.trim() && HEADLESS_PERMISSION_DENIED.test(stderr)) {
+    return {
+      status: 'failed',
+      error:
+        'agy auto-denied a headless permission request; configure permissions.allow or explicitly use --dangerously-skip-permissions for a trusted job',
+    };
+  }
+  return { status: 'completed' };
+}
+
 const child = spawn(request.executable, request.args, {
   cwd: request.cwd,
   env: process.env,
@@ -77,7 +99,12 @@ child.once('error', async (error) => {
 });
 
 child.once('close', async (code, signal) => {
-  await finish(stopping ? 'stopped' : code === 0 ? 'completed' : 'failed', code, signal);
+  if (stopping) {
+    await finish('stopped', code, signal);
+    return;
+  }
+  const outcome = await classifyExit(code);
+  await finish(outcome.status, code, signal, outcome.error);
 });
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {

@@ -24,6 +24,12 @@ Behavior rules:
 - `--mode` accepts `accept-edits` or `plan`. `--permission-mode acceptEdits` and
   `--permission-mode plan` map to the same Antigravity modes.
 - Forward `--sandbox` when the user asks for Antigravity's OS-level terminal sandbox.
+- The driver always adds the current Codex workspace with `--add-dir`; forward additional
+  `--add-dir` values only when the user requests more workspace roots.
+- Antigravity print mode cannot prompt for command permission. If a job needs terminal commands,
+  explain that the user must either configure a narrow `permissions.allow` rule in Antigravity or
+  explicitly request a trusted `--dangerously-skip-permissions` run. `--sandbox` restricts terminal
+  execution but does not itself approve commands.
 - Never add `--dangerously-skip-permissions` or `--bypass-permissions` unless the user explicitly
   requests a trusted unattended run. Include `--yes` when forwarding an explicit bypass request.
 - For ordinary jobs, do not inject `--yes`. Surface the dispatcher's workspace privacy

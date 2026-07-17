@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,7 +17,7 @@ let workspace;
 
 beforeEach(() => {
   testHome = mkdtempSync(join(tmpdir(), 'agy-driver-home-'));
-  workspace = mkdtempSync(join(tmpdir(), 'agy-driver-workspace-'));
+  workspace = realpathSync(mkdtempSync(join(tmpdir(), 'agy-driver-workspace-')));
   process.env.CC_PLUGIN_CODEX_HOME = testHome;
 });
 
@@ -71,6 +71,8 @@ describe('AgyCliDriver probe and arguments', () => {
         '--agent',
         'reviewer',
         '--add-dir',
+        workspace,
+        '--add-dir',
         '/one',
         '--add-dir',
         '/two',
@@ -92,6 +94,8 @@ describe('AgyCliDriver probe and arguments', () => {
 
   it('maps --allow-edit and rejects conflicting provider modes', () => {
     assert.deepEqual(buildAgyArgs({ cwd: workspace, prompt: 'edit safely', allowEdit: true }), [
+      '--add-dir',
+      workspace,
       '--mode',
       'accept-edits',
       '--print',
@@ -134,6 +138,24 @@ describe('AgyCliDriver lifecycle', () => {
     assert.match(await readAgyOutput(handle.resultPath), /Antigravity completed: finish this task/);
   });
 
+  it('binds the supervised agy process to the Codex workspace exactly once', async () => {
+    const invocationsPath = join(testHome, 'invocations.jsonl');
+    const env = { ...process.env, CC_PLUGIN_CODEX_MOCK_AGY_INVOCATIONS: invocationsPath };
+    const driver = new AgyCliDriver({ executable: mockAgy, cwd: workspace, env });
+    const handle = await driver.startSession({
+      cwd: workspace,
+      prompt: 'inspect workspace',
+      addDirs: [workspace, '/extra'],
+    });
+    await waitFor(driver, handle, ['completed']);
+    const invocation = JSON.parse(readFileSync(invocationsPath, 'utf8').trim());
+    assert.equal(invocation.cwd, workspace);
+    assert.deepEqual(
+      invocation.args.filter((value, index, args) => args[index - 1] === '--add-dir'),
+      [workspace, '/extra'],
+    );
+  });
+
   it('stops a running supervised process', async () => {
     const configPath = join(testHome, 'config.json');
     writeFileSync(configPath, JSON.stringify({ delayMs: 10_000 }));
@@ -157,6 +179,24 @@ describe('AgyCliDriver lifecycle', () => {
     const status = await waitFor(driver, handle, ['failed']);
     assert.equal(status.value, 'failed');
     assert.match(await readAgyOutput(handle.errorPath), /auth failed/);
+  });
+
+  it('reports exit-zero headless permission auto-denials as failed', async () => {
+    const configPath = join(testHome, 'config.json');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        response: '',
+        stderr:
+          'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.',
+      }),
+    );
+    const env = { ...process.env, CC_PLUGIN_CODEX_MOCK_AGY_CONFIG: configPath };
+    const driver = new AgyCliDriver({ executable: mockAgy, cwd: workspace, env });
+    const handle = await driver.startSession({ cwd: workspace, prompt: 'inspect workspace' });
+    const status = await waitFor(driver, handle, ['failed']);
+    assert.equal(status.raw.exitCode, 0);
+    assert.match(status.raw.error, /auto-denied a headless permission request/i);
   });
 
   it('rejects unsafe global follow-up semantics explicitly', async () => {

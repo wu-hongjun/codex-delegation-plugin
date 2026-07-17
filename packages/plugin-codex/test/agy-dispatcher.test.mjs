@@ -156,6 +156,51 @@ describe('agy dispatcher integration', () => {
     assert.equal('claude' in stored, false);
   });
 
+  it('persists a failed job when agy auto-denies a headless permission request', () => {
+    const configPath = join(companionHome, 'agy-config.json');
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        response: '',
+        stderr:
+          'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.',
+      }),
+    );
+    const env = { CC_PLUGIN_CODEX_MOCK_AGY_CONFIG: configPath };
+    const delegated = json(
+      run(
+        ['delegate', '--provider', 'agy', '--yes', '--json', '--compact', '--', 'inspect repo'],
+        env,
+      ),
+    );
+
+    const waited = json(
+      run(
+        [
+          'wait',
+          delegated.job.jobId,
+          '--json',
+          '--compact',
+          '--timeout',
+          '5s',
+          '--interval',
+          '25ms',
+        ],
+        env,
+      ),
+    );
+    assert.equal(waited.job.status, 'failed');
+
+    const stored = JSON.parse(
+      readFileSync(join(companionHome, 'jobs', `${delegated.job.jobId}.json`), 'utf8'),
+    );
+    assert.equal(stored.status, 'failed');
+    assert.equal(stored.turns.at(-1).status, 'failed');
+    const runnerState = JSON.parse(readFileSync(stored.session.statePath, 'utf8'));
+    assert.equal(runnerState.exitCode, 0);
+    assert.match(runnerState.error, /auto-denied a headless permission request/i);
+  });
+
   it('auto selects agy when its print mode is available', () => {
     const delegated = json(
       run(['delegate', '--provider', 'auto', '--yes', '--json', '--compact', '--', 'auto task']),

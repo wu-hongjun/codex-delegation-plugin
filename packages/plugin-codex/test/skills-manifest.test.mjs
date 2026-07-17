@@ -156,12 +156,12 @@ describe('plugin.json.version', () => {
     assert.ok(manifest.version.length > 0, 'version must be non-empty');
   });
 
-  it('keeps the 0.4.0 release base with optional local cachebuster metadata', () => {
+  it('keeps the 0.4.1 release base with optional local cachebuster metadata', () => {
     const manifest = readManifest();
     assert.match(
       manifest.version,
-      /^0\.4\.0(?:\+codex\.[0-9]+)?$/,
-      `expected 0.4.0 release base, got "${manifest.version}"`,
+      /^0\.4\.1(?:\+codex\.[0-9]+)?$/,
+      `expected 0.4.1 release base, got "${manifest.version}"`,
     );
   });
 });

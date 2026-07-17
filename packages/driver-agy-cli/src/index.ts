@@ -91,7 +91,14 @@ export function buildAgyArgs(opts: StartSessionOpts): string[] {
   const args: string[] = [];
   if (opts.model) args.push('--model', opts.model);
   if (opts.agent) args.push('--agent', opts.agent);
-  for (const dir of opts.addDirs ?? []) args.push('--add-dir', dir);
+  const workspaceDirs = Array.from(
+    new Set(
+      [opts.cwd, ...(opts.addDirs ?? [])].filter(
+        (dir): dir is string => typeof dir === 'string' && dir.length > 0,
+      ),
+    ),
+  );
+  for (const dir of workspaceDirs) args.push('--add-dir', dir);
   const mode = modeFor(opts);
   if (mode) args.push('--mode', mode);
   if (opts.sandbox || opts.safeMode) args.push('--sandbox');

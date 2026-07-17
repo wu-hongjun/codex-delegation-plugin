@@ -156,6 +156,13 @@ accept-edits|plan`, `--sandbox`, `--print-timeout`, `--project`, `--new-project`
 Use `--provider auto` with the dispatcher to prefer an available agy installation and fall back to
 Claude Code.
 
+The driver always adds the current Codex workspace with `--add-dir`. Antigravity print mode cannot
+show interactive command-permission prompts, so unapproved commands are auto-denied and the plugin
+marks the job failed. Configure a narrow `permissions.allow` rule in
+`~/.gemini/antigravity-cli/settings.json`, or explicitly request
+`--dangerously-skip-permissions` for a trusted unattended job. `--sandbox` restricts terminal
+execution but does not approve commands by itself.
+
 ## Privacy
 
 Delegation may send repository contents, prompts, command output, and file metadata to the selected
@@ -528,4 +535,4 @@ codex plugin list
 ```
 
 You should see `cc@cc-plugin-codex-local` with version
-`0.4.0` (the current plugin version), reported as `installed, enabled`.
+`0.4.1` (the current plugin version), reported as `installed, enabled`.

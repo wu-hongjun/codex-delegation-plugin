@@ -92,7 +92,12 @@ read results, or stop the process. `agy` does not expose stable conversation IDs
 so Antigravity jobs are single-turn and the plugin does not use the workspace-global
 `--continue` flag. Supported launch flags include `--model`, `--agent`, repeatable `--add-dir`,
 `--mode accept-edits|plan`, `--sandbox`, `--print-timeout`, `--project`, `--new-project`, and
-`--log-file`. Permission bypass is forwarded only when explicitly requested.
+`--log-file`. The current Codex workspace is always forwarded with `--add-dir`. Antigravity print
+mode auto-denies command permissions that would require an interactive prompt; those jobs are
+reported as failed. Configure a narrow Antigravity `permissions.allow` rule or explicitly request
+`--dangerously-skip-permissions` for a trusted unattended job. `--sandbox` restricts terminal
+execution but does not approve commands. Permission bypass is forwarded only when explicitly
+requested.
 
 ---
 

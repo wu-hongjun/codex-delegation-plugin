@@ -39,6 +39,13 @@ Lifecycle: `delegate` creates one fresh background session; `status` reconciles 
 
 Antigravity lifecycle: `delegate --provider agy` starts a new detached supervisor, `status` reads its atomic state, `wait` polls it, `result` reads captured stdout, and `stop` signals the supervisor and child. Print mode does not return a stable conversation ID, so Antigravity jobs do not support follow-up. The plugin intentionally does not use global `agy --continue` state.
 
+The driver adds the current Codex workspace to every agy session with `--add-dir`. Antigravity
+print mode cannot display interactive command-permission prompts, so an unapproved command is
+auto-denied and the job is marked failed. Configure a narrow `permissions.allow` rule in
+`~/.gemini/antigravity-cli/settings.json`, or explicitly request
+`--dangerously-skip-permissions` for a trusted unattended job. `--sandbox` restricts terminal
+execution but does not grant command permission by itself.
+
 ## Requirements
 
 - **Node.js 20+** (tested on v25.1.0)

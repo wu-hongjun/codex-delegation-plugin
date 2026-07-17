@@ -51,6 +51,7 @@ const DERIVED_FILES = [
   'scripts/cc.mjs',
   'scripts/lib/ack.mjs',
   'scripts/lib/adapter.mjs',
+  'scripts/lib/agy-adapter.mjs',
   'scripts/lib/args.mjs',
   'scripts/lib/claude-version.mjs',
   'scripts/lib/format.mjs',
@@ -77,6 +78,12 @@ const DERIVED_FILES = [
   'skills/claude-workflows/SKILL.md',
   'skills/claude-skills/SKILL.md',
   'skills/claude-upgrade/SKILL.md',
+  'skills/agy-setup/SKILL.md',
+  'skills/agy-delegate/SKILL.md',
+  'skills/agy-status/SKILL.md',
+  'skills/agy-wait/SKILL.md',
+  'skills/agy-result/SKILL.md',
+  'skills/agy-stop/SKILL.md',
 ];
 
 /**
@@ -114,11 +121,18 @@ const RUNTIME_SRC_DIST = 'packages/runtime/dist';
 const RUNTIME_DEST_BASE = 'node_modules/@cc-plugin-codex/runtime';
 
 /**
- * Bundled driver files — `packages/driver-claude-code/dist/*.{js,d.ts}` copied
+ * Bundled Claude driver files — `packages/driver-claude-code/dist/*.{js,d.ts}` copied
  * to `marketplace/plugins/cc/node_modules/@cc-plugin-codex/driver-claude-code/dist/`.
  */
-const DRIVER_SRC_DIST = 'packages/driver-claude-code/dist';
-const DRIVER_DEST_BASE = 'node_modules/@cc-plugin-codex/driver-claude-code';
+const CLAUDE_DRIVER_SRC_DIST = 'packages/driver-claude-code/dist';
+const CLAUDE_DRIVER_DEST_BASE = 'node_modules/@cc-plugin-codex/driver-claude-code';
+
+/**
+ * Bundled Antigravity driver files, including the detached runner used to
+ * supervise `agy --print` after the dispatcher exits.
+ */
+const AGY_DRIVER_SRC_DIST = 'packages/driver-agy-cli/dist';
+const AGY_DRIVER_DEST_BASE = 'node_modules/@cc-plugin-codex/driver-agy-cli';
 
 /**
  * Bundled node-pty layout. Sourced from the workspace's npm-installed
@@ -153,7 +167,7 @@ const SOURCE_PLUGIN_VERSION = readSourcePluginVersion();
 const BUNDLED_VERSION_MARKER = `${SOURCE_PLUGIN_VERSION}-bundled`;
 
 /**
- * Synthesised `package.json` bodies for the two workspace packages.
+ * Synthesised `package.json` bodies for the runtime and driver packages.
  *
  * Version marker: `<plugin-version>-bundled`. The workspace source stays at `0.0.0` so
  * `npm` keeps recognising it as the in-tree workspace; the `-bundled` suffix
@@ -174,7 +188,7 @@ const SYNTH_RUNTIME_PKG = {
   engines: { node: '>=20' },
 };
 
-const SYNTH_DRIVER_PKG = {
+const SYNTH_CLAUDE_DRIVER_PKG = {
   name: '@cc-plugin-codex/driver-claude-code',
   version: BUNDLED_VERSION_MARKER,
   type: 'module',
@@ -189,6 +203,24 @@ const SYNTH_DRIVER_PKG = {
   dependencies: {
     '@cc-plugin-codex/runtime': BUNDLED_VERSION_MARKER,
     'node-pty': '1.2.0-beta.13',
+  },
+  engines: { node: '>=20' },
+};
+
+const SYNTH_AGY_DRIVER_PKG = {
+  name: '@cc-plugin-codex/driver-agy-cli',
+  version: BUNDLED_VERSION_MARKER,
+  type: 'module',
+  main: './dist/index.js',
+  types: './dist/index.d.ts',
+  exports: {
+    '.': {
+      types: './dist/index.d.ts',
+      import: './dist/index.js',
+    },
+  },
+  dependencies: {
+    '@cc-plugin-codex/runtime': BUNDLED_VERSION_MARKER,
   },
   engines: { node: '>=20' },
 };
@@ -228,7 +260,8 @@ const NODEPTY_PKG_KEEP_FIELDS = [
  */
 function computeBundledFiles() {
   const runtimeAbsDist = join(REPO_ROOT, RUNTIME_SRC_DIST);
-  const driverAbsDist = join(REPO_ROOT, DRIVER_SRC_DIST);
+  const claudeDriverAbsDist = join(REPO_ROOT, CLAUDE_DRIVER_SRC_DIST);
+  const agyDriverAbsDist = join(REPO_ROOT, AGY_DRIVER_SRC_DIST);
   const nodeptyAbsBase = join(REPO_ROOT, NODEPTY_SRC_BASE);
 
   const runtimeDistRel = readdirSync(runtimeAbsDist, { withFileTypes: true })
@@ -236,10 +269,16 @@ function computeBundledFiles() {
     .map((e) => `${RUNTIME_DEST_BASE}/dist/${e.name}`)
     .sort();
 
-  const driverDistRel = readdirSync(driverAbsDist, { withFileTypes: true })
+  const claudeDriverDistRel = readdirSync(claudeDriverAbsDist, { withFileTypes: true })
     .filter((e) => e.isFile() && (e.name.endsWith('.js') || e.name.endsWith('.d.ts')))
-    .map((e) => `${DRIVER_DEST_BASE}/dist/${e.name}`)
+    .map((e) => `${CLAUDE_DRIVER_DEST_BASE}/dist/${e.name}`)
     .sort();
+
+  const agyDriverDistRel = readdirSync(agyDriverAbsDist, { withFileTypes: true })
+    .filter((e) => e.isFile() && (e.name.endsWith('.js') || e.name.endsWith('.d.ts')))
+    .map((e) => `${AGY_DRIVER_DEST_BASE}/dist/${e.name}`)
+    .sort();
+  const driverDistRel = [...claudeDriverDistRel, ...agyDriverDistRel];
 
   const nodeptyRel = [];
   for (const dir of NODEPTY_INCLUDE_DIRS) {
@@ -254,7 +293,8 @@ function computeBundledFiles() {
 
   const packageJsons = [
     `${RUNTIME_DEST_BASE}/package.json`,
-    `${DRIVER_DEST_BASE}/package.json`,
+    `${CLAUDE_DRIVER_DEST_BASE}/package.json`,
+    `${AGY_DRIVER_DEST_BASE}/package.json`,
     `${NODEPTY_DEST_BASE}/package.json`,
   ];
 
@@ -542,9 +582,13 @@ function bundledSourceFor(rel) {
     const basename = norm.slice(`${RUNTIME_DEST_BASE}/dist/`.length);
     return join(REPO_ROOT, RUNTIME_SRC_DIST, basename);
   }
-  if (norm.startsWith(`${DRIVER_DEST_BASE}/dist/`)) {
-    const basename = norm.slice(`${DRIVER_DEST_BASE}/dist/`.length);
-    return join(REPO_ROOT, DRIVER_SRC_DIST, basename);
+  if (norm.startsWith(`${CLAUDE_DRIVER_DEST_BASE}/dist/`)) {
+    const basename = norm.slice(`${CLAUDE_DRIVER_DEST_BASE}/dist/`.length);
+    return join(REPO_ROOT, CLAUDE_DRIVER_SRC_DIST, basename);
+  }
+  if (norm.startsWith(`${AGY_DRIVER_DEST_BASE}/dist/`)) {
+    const basename = norm.slice(`${AGY_DRIVER_DEST_BASE}/dist/`.length);
+    return join(REPO_ROOT, AGY_DRIVER_SRC_DIST, basename);
   }
   if (norm.startsWith(`${NODEPTY_DEST_BASE}/`)) {
     const subpath = norm.slice(`${NODEPTY_DEST_BASE}/`.length);
@@ -564,8 +608,11 @@ function synthesizedPackageJsonBytes(rel) {
   if (rel === `${RUNTIME_DEST_BASE}/package.json`) {
     return Buffer.from(JSON.stringify(SYNTH_RUNTIME_PKG, null, 2) + '\n', 'utf8');
   }
-  if (rel === `${DRIVER_DEST_BASE}/package.json`) {
-    return Buffer.from(JSON.stringify(SYNTH_DRIVER_PKG, null, 2) + '\n', 'utf8');
+  if (rel === `${CLAUDE_DRIVER_DEST_BASE}/package.json`) {
+    return Buffer.from(JSON.stringify(SYNTH_CLAUDE_DRIVER_PKG, null, 2) + '\n', 'utf8');
+  }
+  if (rel === `${AGY_DRIVER_DEST_BASE}/package.json`) {
+    return Buffer.from(JSON.stringify(SYNTH_AGY_DRIVER_PKG, null, 2) + '\n', 'utf8');
   }
   if (rel === `${NODEPTY_DEST_BASE}/package.json`) {
     const srcAbs = join(REPO_ROOT, NODEPTY_SRC_BASE, 'package.json');

@@ -36,6 +36,10 @@ import {
   DRIVER_VERSION,
   ptyBuildExtraProbe,
 } from '@cc-plugin-codex/driver-claude-code';
+import {
+  AgyCliDriver,
+  DRIVER_VERSION as AGY_DRIVER_VERSION,
+} from '@cc-plugin-codex/driver-agy-cli';
 
 import { parseArgs, resolveJobIdPrefix } from './lib/args.mjs';
 import { listWorkflows, inspectWorkflow } from './lib/workflows-inspector.mjs';
@@ -54,6 +58,7 @@ import {
   formatError,
 } from './lib/format.mjs';
 import { makeClaudeAdapter } from './lib/adapter.mjs';
+import { makeAgyAdapter } from './lib/agy-adapter.mjs';
 import { recordAck, resolveWorkspaceAck } from './lib/ack.mjs';
 import { makePromptMeta } from './lib/prompt-meta.mjs';
 import { SAME_SESSION_REVIEW_PROMPT, ADVERSARIAL_REVIEW_PROMPT } from './lib/review-prompts.mjs';
@@ -82,6 +87,24 @@ const FLOOR_OPUS_4_8 = '2.1.154';
 const FLOOR_WORKFLOWS = '2.1.153';
 const FLOOR_BG_EXEC = '2.1.154';
 const MODEL_ACCESS_MARKER = 'CC_PLUGIN_CODEX_SETUP_MODEL_ACCESS_OK';
+const PROVIDERS = new Set(['claude', 'agy', 'auto']);
+const AGY_MODES = new Set(['accept-edits', 'plan']);
+const AGY_STARTUP_FLAGS = new Set([
+  'provider',
+  'model',
+  'permission-mode',
+  'bypass-permissions',
+  'dangerously-skip-permissions',
+  'add-dir',
+  'name',
+  'agent',
+  'mode',
+  'sandbox',
+  'print-timeout',
+  'project',
+  'new-project',
+  'log-file',
+]);
 
 const UPGRADE_TARGETS = Object.freeze({
   public: Object.freeze({
@@ -144,6 +167,7 @@ const PERMISSION_MODES = new Set([
 ]);
 
 const STARTUP_ONLY_FLAGS = [
+  'provider',
   'model',
   'effort',
   'permission-mode',
@@ -175,6 +199,12 @@ const STARTUP_ONLY_FLAGS = [
   'disable-slash-commands',
   'exclude-dynamic-system-prompt-sections',
   'verbose',
+  'mode',
+  'sandbox',
+  'print-timeout',
+  'project',
+  'new-project',
+  'log-file',
 ];
 
 const PROMPT_DELIMITER_FOOTGUN_FLAGS = new Set([
@@ -228,7 +258,7 @@ function rejectLateDispatcherFlagInPrompt(positional, promptStartIndex, commandN
   process.stderr.write(
     formatError(
       new Error(
-        `${lateFlag} appears after -- and would be sent to Claude as prompt text. Put dispatcher flags before --, for example: ${example}`,
+        `${lateFlag} appears after -- and would be sent to the delegated provider as prompt text. Put dispatcher flags before --, for example: ${example}`,
       ),
       commandName,
       json,
@@ -255,6 +285,58 @@ function stringListFlag(flags, ...names) {
     }
   }
   return values.length > 0 ? values : undefined;
+}
+
+function requestedProvider(flags, commandName, json, fallback = 'claude') {
+  const value = stringFlag(flags, 'provider') ?? fallback;
+  if (!PROVIDERS.has(value)) {
+    process.stderr.write(
+      formatError(
+        new Error(`--provider must be one of: claude, agy, auto (got "${value}")`),
+        commandName,
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+  return value;
+}
+
+function providerForJob(job) {
+  return job.session?.provider === 'agy' || job.driver?.name === 'agy-cli' ? 'agy' : 'claude';
+}
+
+function sessionForJob(job) {
+  return job.session ?? { ...job.claude, provider: 'claude' };
+}
+
+function runtimeForProvider(provider, cwd) {
+  if (provider === 'agy') {
+    const driver = new AgyCliDriver({ cwd });
+    return { provider, driver, adapter: makeAgyAdapter(driver), driverVersion: AGY_DRIVER_VERSION };
+  }
+  const driver = new ClaudeBackgroundDriver({ cwd });
+  return {
+    provider: 'claude',
+    driver,
+    adapter: makeClaudeAdapter(driver),
+    driverVersion: DRIVER_VERSION,
+  };
+}
+
+function runtimeForJob(job) {
+  return runtimeForProvider(providerForJob(job), job.workspace.root);
+}
+
+async function resolveStartRuntime(flags, commandName, json, cwd) {
+  const requested = requestedProvider(flags, commandName, json);
+  if (requested !== 'auto') return runtimeForProvider(requested, cwd);
+  const agy = runtimeForProvider('agy', cwd);
+  const agyCaps = await agy.driver.probe();
+  if (agyCaps.health.status !== 'fail' && agyCaps.features.start) {
+    return { ...agy, caps: agyCaps };
+  }
+  return runtimeForProvider('claude', cwd);
 }
 
 function normalizePermissionMode(flags, commandName, json) {
@@ -295,12 +377,24 @@ function normalizePermissionMode(flags, commandName, json) {
 
 function buildStartSessionOptions(flags, commandName, json, overrides = {}) {
   const permissionMode = normalizePermissionMode(flags, commandName, json);
+  const mode = stringFlag(flags, 'mode');
+  if (mode !== undefined && !AGY_MODES.has(mode)) {
+    process.stderr.write(
+      formatError(
+        new Error(`--mode must be one of: accept-edits, plan (got "${mode}")`),
+        commandName,
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
   return {
     model: stringFlag(flags, 'model'),
     effort: stringFlag(flags, 'effort'),
     permissionMode,
     dangerouslySkipPermissions: permissionMode === 'bypassPermissions',
     allowDangerouslySkipPermissions: Boolean(flags['allow-dangerously-skip-permissions']),
+    allowEdit: Boolean(flags['allow-edit']),
     addDirs: Array.isArray(flags['add-dir']) ? flags['add-dir'] : [],
     mcpConfig: stringFlag(flags, 'mcp-config'),
     agent: stringFlag(flags, 'agent'),
@@ -323,8 +417,72 @@ function buildStartSessionOptions(flags, commandName, json, overrides = {}) {
     disableSlashCommands: Boolean(flags['disable-slash-commands']),
     excludeDynamicSystemPromptSections: Boolean(flags['exclude-dynamic-system-prompt-sections']),
     verbose: Boolean(flags['verbose']),
+    mode,
+    sandbox: Boolean(flags['sandbox']),
+    printTimeout: stringFlag(flags, 'print-timeout'),
+    project: stringFlag(flags, 'project'),
+    newProject: Boolean(flags['new-project']),
+    logFile: stringFlag(flags, 'log-file'),
     ...overrides,
   };
+}
+
+function validateProviderStartOptions(provider, flags, startSessionOptions, commandName, json) {
+  if (provider !== 'agy') return;
+  const unsupported = STARTUP_ONLY_FLAGS.filter(
+    (flag) => flags[flag] !== undefined && !AGY_STARTUP_FLAGS.has(flag),
+  );
+  if (unsupported.length > 0) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Antigravity does not support these startup flags: ${unsupported.map((flag) => `--${flag}`).join(', ')}`,
+        ),
+        commandName,
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  const permissionMode = startSessionOptions.permissionMode;
+  if (
+    permissionMode !== undefined &&
+    !['default', 'acceptEdits', 'plan', 'bypassPermissions'].includes(permissionMode)
+  ) {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Antigravity --permission-mode must be one of: default, acceptEdits, plan, bypassPermissions (got "${permissionMode}")`,
+        ),
+        commandName,
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+
+  const mappedPermissionMode =
+    permissionMode === 'acceptEdits'
+      ? 'accept-edits'
+      : permissionMode === 'plan'
+        ? 'plan'
+        : undefined;
+  const requestedModes = [
+    startSessionOptions.mode,
+    mappedPermissionMode,
+    startSessionOptions.allowEdit ? 'accept-edits' : undefined,
+  ].filter(Boolean);
+  if (new Set(requestedModes).size > 1) {
+    process.stderr.write(
+      formatError(
+        new Error('--mode, --permission-mode, and --allow-edit request conflicting agy modes.'),
+        commandName,
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
 }
 
 function shouldAcknowledgeForStartSession(flags, startSessionOptions) {
@@ -346,6 +504,8 @@ function launchPolicyFromStartSessionOptions(startSessionOptions) {
     dangerouslySkipPermissions,
     allowDangerouslySkipPermissions,
     unattendedRequested,
+    ...(startSessionOptions.mode ? { mode: startSessionOptions.mode } : {}),
+    ...(startSessionOptions.sandbox ? { sandbox: true } : {}),
   };
 }
 
@@ -532,7 +692,7 @@ function makePrivacyAckError({ message, workspaceRoot, commandName, useYes }) {
     workspaceRoot,
     retryCommand: privacyAckRetryCommand(commandName),
     persistence: useYes ? 'already_requested' : 'workspace',
-    note: '--yes records a persistent plugin privacy acknowledgement for this workspace only; it does not approve Claude Code permission prompts.',
+    note: '--yes records a persistent plugin privacy acknowledgement for this workspace only; it does not approve provider permission prompts.',
   };
   return err;
 }
@@ -543,6 +703,7 @@ function makePrivacyAckError({ message, workspaceRoot, commandName, useYes }) {
  *   commandName: string;
  *   json: boolean;
  *   useYes: boolean;
+ *   provider?: string;
  *   header?: string;
  *   actionLines: string[];
  *   workspaceLabel?: string;
@@ -553,6 +714,7 @@ async function ensureWorkspaceAck({
   commandName,
   json,
   useYes,
+  provider = 'claude',
   header = 'Privacy acknowledgement required.',
   actionLines,
   workspaceLabel = 'Workspace',
@@ -561,6 +723,7 @@ async function ensureWorkspaceAck({
     workspaceRoot,
     useYes,
     isTTY: process.stdin.isTTY === true,
+    provider,
   });
   if (ackResult.verdict !== 'rejected') return;
 
@@ -605,7 +768,7 @@ async function ensureWorkspaceAck({
   }
 
   if (/^y(?:es)?$/i.test(answer.trim())) {
-    recordAck(ackResult.workspaceRoot);
+    recordAck(ackResult.workspaceRoot, provider);
     return;
   }
 
@@ -945,6 +1108,7 @@ if (versionRequested) {
 
 const KNOWN_COMMANDS = new Set([
   'setup',
+  'agy-setup',
   'doctor',
   'delegate',
   'workflow',
@@ -1008,6 +1172,9 @@ try {
   switch (command) {
     case 'setup':
       await cmdSetup(flags, useJson);
+      break;
+    case 'agy-setup':
+      await cmdAgySetup(flags, useJson);
       break;
     case 'doctor':
       await cmdDoctor(flags, positional, useJson);
@@ -1394,6 +1561,38 @@ async function cmdSetup(_flags, json) {
   if (report.status === 'fail') {
     process.exit(1);
   }
+}
+
+async function cmdAgySetup(_flags, json) {
+  const driver = new AgyCliDriver({ cwd: process.cwd() });
+  const capabilities = await driver.probe();
+  const report = {
+    ok: capabilities.health.status !== 'fail',
+    provider: 'agy',
+    driver: capabilities.driverName,
+    version: capabilities.cliVersion,
+    execution: capabilities.execution,
+    features: capabilities.features,
+    health: capabilities.health,
+  };
+  if (json) {
+    process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+  } else {
+    const lines = [
+      `Antigravity CLI setup - ${capabilities.health.status}`,
+      `  version: ${capabilities.cliVersion ?? 'unavailable'}`,
+      `  execution: ${capabilities.execution}`,
+      `  delegate: ${capabilities.features.start ? 'available' : 'unavailable'}`,
+      `  status/stop: ${capabilities.features.status && capabilities.features.stop ? 'available' : 'unavailable'}`,
+      `  follow-up: ${capabilities.features.followup ? 'available' : 'not exposed by agy print mode'}`,
+      '',
+      ...capabilities.health.probes.map(
+        (probe) => `  ${probe.status.padEnd(4)} ${probe.name}: ${probe.detail}`,
+      ),
+    ];
+    process.stdout.write(lines.join('\n') + '\n');
+  }
+  if (!report.ok) process.exit(1);
 }
 
 function findProbe(report, name) {
@@ -1837,6 +2036,17 @@ async function _runDelegateCore(
   json,
   { commandName, promptTransformer, extraOutput, workspaceRoot },
 ) {
+  const requested = requestedProvider(flags, commandName, json);
+  if (!['delegate', 'restart'].includes(commandName) && requested !== 'claude') {
+    process.stderr.write(
+      formatError(
+        new Error(`cc ${commandName} is a Claude Code workflow and requires --provider claude.`),
+        commandName,
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
   // 1. Collect prompt from positionals (after -- or all remaining).
   rejectLateDispatcherFlagInPrompt(positional, 0, commandName, json);
   const rawPrompt = positional.join(' ').trim();
@@ -1859,34 +2069,38 @@ async function _runDelegateCore(
   });
   const useYes = shouldAcknowledgeForStartSession(flags, startSessionOptions);
 
+  // Resolve auto before disclosure so the user sees the actual external provider.
+  const runtime = await resolveStartRuntime(flags, commandName, json, workspace);
+  const { provider, driver } = runtime;
+  const providerLabel = provider === 'agy' ? 'Google Antigravity' : 'Claude Code';
+  validateProviderStartOptions(provider, flags, startSessionOptions, commandName, json);
+
   // 2. Privacy ack.
   await ensureWorkspaceAck({
     workspaceRoot: workspace,
     commandName,
     json,
     useYes,
+    provider,
     actionLines: [
-      'This command will send your prompt to Claude Code as a background session.',
-      'Claude Code will have access to files in the current workspace.',
+      `This command will send your prompt to ${providerLabel} as an asynchronous job.`,
+      `${providerLabel} will have access to files allowed by its CLI permission settings.`,
     ],
   });
 
-  // 3. Build driver.
-  const driver = new ClaudeBackgroundDriver({ cwd: workspace });
-
-  // 4. Probe.
-  const caps = await driver.probe();
-  if (caps.health.status === 'fail' || !caps.backgroundSessions || !caps.agentsJson) {
+  // 3. Probe unless auto resolution already did so.
+  const caps = runtime.caps ?? (await driver.probe());
+  if (caps.health.status === 'fail' || !caps.features.start || !caps.features.status) {
     const failedProbes = caps.health.probes
       .filter((p) => p.status === 'fail')
       .map((p) => `  - ${p.name}: ${p.detail}`)
       .join('\n');
     const detail = [
-      'Claude Code is not ready for background sessions.',
+      `${providerLabel} is not ready for delegated jobs.`,
       ...(failedProbes ? ['\nFailed probes:', failedProbes] : []),
-      ...(!caps.backgroundSessions ? ['\n  - backgroundSessions: not supported'] : []),
-      ...(!caps.agentsJson ? ['\n  - agentsJson: not supported'] : []),
-      '\nRun: $claude-setup',
+      ...(!caps.features.start ? ['\n  - start: not supported'] : []),
+      ...(!caps.features.status ? ['\n  - status: not supported'] : []),
+      `\nRun: ${provider === 'agy' ? '$agy-setup' : '$claude-setup'}`,
     ].join('');
     process.stderr.write(formatError(new Error(detail), commandName, json) + '\n');
     process.exit(1);
@@ -1900,10 +2114,27 @@ async function _runDelegateCore(
     cwd: workspace,
     prompt,
     ...startSessionOptions,
-    allowEdit: Boolean(flags['allow-edit']),
   });
 
   // 7. Create job record.
+  const session = {
+    provider,
+    version: caps.cliVersion ?? caps.claudeVersion ?? 'unknown',
+    shortId: handle.shortId,
+    ...(handle.sessionId ? { sessionId: handle.sessionId } : {}),
+    sessionName: handle.sessionName,
+    ...(handle.pid ? { pid: handle.pid } : {}),
+    cwd: handle.cwd,
+    startedAt: handle.startedAt,
+    ...(handle.statePath ? { statePath: handle.statePath } : {}),
+    ...(handle.resultPath ? { resultPath: handle.resultPath } : {}),
+    ...(handle.errorPath ? { errorPath: handle.errorPath } : {}),
+    logsCommand:
+      provider === 'agy'
+        ? `cat ${shellQuote(handle.errorPath ?? '')}`
+        : `claude logs ${handle.shortId}`,
+    launchPolicy: launchPolicyFromStartSessionOptions(startSessionOptions),
+  };
   const job = await createJob({
     codex: {
       cwd: workspace,
@@ -1913,26 +2144,20 @@ async function _runDelegateCore(
       root: workspace,
     },
     driver: {
-      name: 'claude-background',
-      version: DRIVER_VERSION,
+      name: caps.driverName,
+      version: runtime.driverVersion,
       capabilitiesSnapshot: caps,
     },
-    claude: {
-      version: caps.claudeVersion ?? 'unknown',
-      shortId: handle.shortId,
-      sessionName: handle.sessionName,
-      cwd: handle.cwd,
-      startedAt: handle.startedAt,
-      logsCommand: `claude logs ${handle.shortId}`,
-      launchPolicy: launchPolicyFromStartSessionOptions(startSessionOptions),
-    },
+    session,
+    ...(provider === 'claude' ? { claude: session } : {}),
     prompt: { summary, sha256, bytesLen },
   });
 
   // 8. Build adapter.
-  const adapter = makeClaudeAdapter(driver, {
-    startedAt: handle.startedAt,
-  });
+  const adapter =
+    provider === 'agy'
+      ? makeAgyAdapter(driver)
+      : makeClaudeAdapter(driver, { startedAt: handle.startedAt });
 
   // 9. Reconcile once.
   let finalJob = job;
@@ -1978,13 +2203,18 @@ function isStoppableStatus(status) {
 }
 
 function sessionHandleFromJob(job) {
+  const session = sessionForJob(job);
   return {
     driverName: job.driver.name,
-    shortId: job.claude.shortId,
-    sessionId: job.claude.sessionId,
-    sessionName: job.claude.sessionName,
-    cwd: job.claude.cwd,
-    startedAt: job.claude.startedAt ?? job.createdAt,
+    shortId: session.shortId,
+    sessionId: session.sessionId,
+    sessionName: session.sessionName,
+    cwd: session.cwd,
+    startedAt: session.startedAt ?? job.createdAt,
+    pid: session.pid,
+    statePath: session.statePath,
+    resultPath: session.resultPath,
+    errorPath: session.errorPath,
   };
 }
 
@@ -2049,7 +2279,7 @@ async function cmdRestart(flags, positional, json) {
   const jobId = resolved.match;
   const original = await readJob(jobId);
   const targetWorkspace = original.workspace.root;
-  const driver = new ClaudeBackgroundDriver({ cwd: targetWorkspace });
+  const { driver } = runtimeForJob(original);
 
   let stopNote = `Original job ${jobId} was not running; no stop was needed.`;
   if (isStoppableStatus(original.status)) {
@@ -2064,7 +2294,11 @@ async function cmdRestart(flags, positional, json) {
     }
   }
 
-  await _runDelegateCore(flags, promptParts, json, {
+  const restartFlags =
+    stringFlag(flags, 'provider') === undefined
+      ? { ...flags, provider: providerForJob(original) }
+      : flags;
+  await _runDelegateCore(restartFlags, promptParts, json, {
     commandName: 'restart',
     promptTransformer: (p) => p,
     workspaceRoot: targetWorkspace,
@@ -2234,7 +2468,7 @@ async function readResultTextFromContext(resultContext) {
 }
 
 async function readTranscriptTail(job, maxLines = 12) {
-  const transcriptPath = job.claude?.transcriptPath;
+  const transcriptPath = sessionForJob(job)?.transcriptPath;
   if (typeof transcriptPath !== 'string' || transcriptPath.length === 0) return null;
   try {
     const text = await readFile(transcriptPath, 'utf8');
@@ -2260,6 +2494,9 @@ async function cmdStatus(flags, positional, json) {
   const limit = parseStatusLimit(flags['limit'], json);
   const storedStatusFilter = parseStoredStatusFilter(flags['stored-status'], json);
   const versionMismatch = worktreeVersionMismatch(workspace);
+  const providerQuery =
+    flags['provider'] === undefined ? null : requestedProvider(flags, 'status', json);
+  const providerFilter = providerQuery === 'auto' ? null : providerQuery;
 
   // `status` is a list command (current workspace, or every workspace with --all).
   // It does not take a <jobId>; silently ignoring one (printing the full list with
@@ -2289,7 +2526,14 @@ async function cmdStatus(flags, positional, json) {
       process.exit(2);
     }
 
-    const listed = showAll ? await listJobs() : await listJobsForWorkspace(workspace);
+    const listedRaw = showAll ? await listJobs() : await listJobsForWorkspace(workspace);
+    const listed = {
+      ...listedRaw,
+      jobs:
+        providerFilter === null
+          ? listedRaw.jobs
+          : listedRaw.jobs.filter((job) => providerForJob(job) === providerFilter),
+    };
     const allIds = listed.jobs.map((j) => j.jobId);
     const resolved = resolveJobIdPrefix(allIds, prefix);
     if ('error' in resolved) {
@@ -2303,12 +2547,11 @@ async function cmdStatus(flags, positional, json) {
       process.exit(1);
     }
 
-    const driver = new ClaudeBackgroundDriver({ cwd: workspace });
-    const adapter = makeClaudeAdapter(driver);
     let job =
       listed.jobs.find((j) => j.jobId === resolved.match) ?? (await readJob(resolved.match));
     if (shouldReconcileForStatusList(job)) {
       try {
+        const { adapter } = runtimeForJob(job);
         const r = await reconcileJob(job.jobId, adapter);
         job = r.job;
       } catch {
@@ -2336,8 +2579,9 @@ async function cmdStatus(flags, positional, json) {
     jobRecords = result.jobs;
   }
 
-  const driver = new ClaudeBackgroundDriver({ cwd: workspace });
-  const adapter = makeClaudeAdapter(driver);
+  if (providerFilter !== null) {
+    jobRecords = jobRecords.filter((job) => providerForJob(job) === providerFilter);
+  }
 
   let recordsForDisplay = sortNewestFirst(jobRecords);
   if (storedStatusFilter !== null) {
@@ -2355,6 +2599,7 @@ async function cmdStatus(flags, positional, json) {
       continue;
     }
     try {
+      const { adapter } = runtimeForJob(job);
       const r = await reconcileJob(job.jobId, adapter);
       reconciled.push(r.job);
     } catch {
@@ -2405,11 +2650,10 @@ async function cmdResult(flags, positional, json) {
   }
 
   const jobId = resolved.match;
-  const driver = new ClaudeBackgroundDriver({ cwd: workspace });
-  const adapter = makeClaudeAdapter(driver);
-
   let job;
   try {
+    const stored = await readJob(jobId);
+    const { adapter } = runtimeForJob(stored);
     const r = await reconcileJob(jobId, adapter);
     job = r.job;
   } catch {
@@ -2497,8 +2741,7 @@ async function cmdWait(flags, positional, json) {
 
   const jobId = resolved.match;
   let job = listed.jobs.find((j) => j.jobId === jobId) ?? (await readJob(jobId));
-  const driver = new ClaudeBackgroundDriver({ cwd: job.workspace.root });
-  const adapter = makeClaudeAdapter(driver);
+  const { adapter } = runtimeForJob(job);
   const deadline = Date.now() + timeoutMs;
   let timedOut = false;
 
@@ -2580,9 +2823,6 @@ async function cmdStop(flags, positional, json) {
       ? (await listJobs()).jobs
       : (await listJobsForWorkspace(workspace)).jobs;
 
-    const driver = new ClaudeBackgroundDriver({ cwd: workspace });
-    const adapter = makeClaudeAdapter(driver);
-
     /** @type {Array<{ jobId: string; shortId: string; status: string }>} */
     const stopped = [];
     /** @type {Array<{ jobId: string; status: string; reason: string }>} */
@@ -2596,6 +2836,7 @@ async function cmdStop(flags, positional, json) {
       // Reconcile to get fresh status, mirroring cmdFollowup pattern.
       let current;
       try {
+        const { adapter } = runtimeForJob(candidate);
         const r = await reconcileJob(candidate.jobId, adapter);
         current = r.job;
       } catch {
@@ -2613,10 +2854,11 @@ async function cmdStop(flags, positional, json) {
       }
 
       try {
+        const { driver } = runtimeForJob(current);
         await stopJobWithDriver(current, driver);
         stopped.push({
           jobId: current.jobId,
-          shortId: current.claude.shortId,
+          shortId: sessionForJob(current).shortId,
           status: 'stopped',
         });
       } catch (err) {
@@ -2671,7 +2913,7 @@ async function cmdStop(flags, positional, json) {
   const jobId = resolved.match;
   const job = await readJob(jobId);
 
-  const driver = new ClaudeBackgroundDriver({ cwd: workspace });
+  const { driver } = runtimeForJob(job);
   const stoppedJob = await stopJobWithDriver(job, driver);
 
   process.stdout.write(
@@ -3008,7 +3250,20 @@ async function cmdFollowup(flags, positional, json) {
   const jobId = resolved.match;
 
   // 5. Reconcile to get fresh status.
-  const driver = new ClaudeBackgroundDriver({ cwd: workspace });
+  const storedJob = await readJob(jobId);
+  if (providerForJob(storedJob) !== 'claude') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Job ${jobId} uses agy CLI. Antigravity print mode does not expose a stable conversation ID, so follow-up is unavailable; start a new $agy-delegate job instead.`,
+        ),
+        'followup',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+  const driver = new ClaudeBackgroundDriver({ cwd: storedJob.workspace.root });
   const adapter = makeClaudeAdapter(driver);
 
   let job;
@@ -3054,14 +3309,7 @@ async function cmdFollowup(flags, positional, json) {
 
   if (status === 'completed') {
     // Require a live idle Claude session.
-    const sessionHandle = {
-      driverName: job.driver.name,
-      shortId: job.claude.shortId,
-      sessionId: job.claude.sessionId,
-      sessionName: job.claude.sessionName,
-      cwd: job.claude.cwd,
-      startedAt: job.claude.startedAt ?? job.createdAt,
-    };
+    const sessionHandle = sessionHandleFromJob(job);
     let driverStatus;
     try {
       driverStatus = await driver.status(sessionHandle);
@@ -3101,14 +3349,7 @@ async function cmdFollowup(flags, positional, json) {
   });
 
   // 8. Reconstitute session handle.
-  const sessionHandle = {
-    driverName: job.driver.name,
-    shortId: job.claude.shortId,
-    sessionId: job.claude.sessionId,
-    sessionName: job.claude.sessionName,
-    cwd: job.claude.cwd,
-    startedAt: job.claude.startedAt ?? job.createdAt,
-  };
+  const sessionHandle = sessionHandleFromJob(job);
 
   // 9-13. Send the follow-up turn and record all events (delegated to shared helper).
   const { finalJob, sendResult, newTurnIndex, previousTurnPreview } = await sendFollowupTurn({
@@ -3217,7 +3458,20 @@ async function cmdReview(flags, positional, json) {
   const jobId = resolved.match;
 
   // 4. Reconcile to get fresh status.
-  const driver = new ClaudeBackgroundDriver({ cwd: workspace });
+  const storedJob = await readJob(jobId);
+  if (providerForJob(storedJob) !== 'claude') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `$claude-review reuses a live Claude session and cannot target agy job ${jobId}; use $claude-adversarial-review for an independent review.`,
+        ),
+        'review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+  const driver = new ClaudeBackgroundDriver({ cwd: storedJob.workspace.root });
   const adapter = makeClaudeAdapter(driver);
 
   let job;
@@ -3285,14 +3539,7 @@ async function cmdReview(flags, positional, json) {
 
   if (status === 'completed') {
     // Require a live idle Claude session.
-    const sessionHandleForStatus = {
-      driverName: job.driver.name,
-      shortId: job.claude.shortId,
-      sessionId: job.claude.sessionId,
-      sessionName: job.claude.sessionName,
-      cwd: job.claude.cwd,
-      startedAt: job.claude.startedAt ?? job.createdAt,
-    };
+    const sessionHandleForStatus = sessionHandleFromJob(job);
     let driverStatus;
     try {
       driverStatus = await driver.status(sessionHandleForStatus);
@@ -3366,14 +3613,7 @@ async function cmdReview(flags, positional, json) {
   });
 
   // 9. Reconstitute session handle.
-  const sessionHandle = {
-    driverName: job.driver.name,
-    shortId: job.claude.shortId,
-    sessionId: job.claude.sessionId,
-    sessionName: job.claude.sessionName,
-    cwd: job.claude.cwd,
-    startedAt: job.claude.startedAt ?? job.createdAt,
-  };
+  const sessionHandle = sessionHandleFromJob(job);
 
   // 10. Call shared helper to send the review turn.
   const { finalJob, sendResult, newTurnIndex } = await sendFollowupTurn({
@@ -3456,6 +3696,16 @@ async function cmdAdversarialReview(flags, positional, json) {
   // 1. Parse args: reject inapplicable flags at parse time.
   const reviewGate = parseReviewGate(flags, 'adversarial-review', json);
   const permissionMode = normalizePermissionMode(flags, 'adversarial-review', json);
+  if (requestedProvider(flags, 'adversarial-review', json) !== 'claude') {
+    process.stderr.write(
+      formatError(
+        new Error('$claude-adversarial-review always starts an independent Claude session.'),
+        'adversarial-review',
+        json,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
 
   // --allow-edit is categorically rejected for all review skills.
   if (flags['allow-edit'] !== undefined) {
@@ -3565,11 +3815,9 @@ async function cmdAdversarialReview(flags, positional, json) {
   const targetJobId = resolved.match;
 
   // 4. Reconcile to get fresh status of the target job.
-  const driver = new ClaudeBackgroundDriver({ cwd: workspace });
-  const adapter = makeClaudeAdapter(driver);
-
-  let targetJob;
+  let targetJob = await readJob(targetJobId);
   try {
+    const { adapter } = runtimeForJob(targetJob);
     const r = await reconcileJob(targetJobId, adapter);
     targetJob = r.job;
   } catch {
@@ -3752,6 +4000,7 @@ async function cmdAdversarialReview(flags, positional, json) {
     permissionMode,
   });
 
+  const driver = new ClaudeBackgroundDriver({ cwd: targetJob.workspace.root });
   const reviewHandle = await driver.startSession({
     cwd: targetJob.workspace.root,
     prompt: adversarialPrompt,
@@ -3763,6 +4012,17 @@ async function cmdAdversarialReview(flags, positional, json) {
   const prefixedSummary = `[adversarial-review] ${promptMeta.summary}`;
 
   const caps = await driver.probe();
+
+  const reviewSession = {
+    provider: 'claude',
+    version: caps.cliVersion ?? caps.claudeVersion ?? 'unknown',
+    shortId: reviewHandle.shortId,
+    sessionName: reviewHandle.sessionName,
+    cwd: reviewHandle.cwd,
+    startedAt: reviewHandle.startedAt,
+    logsCommand: `claude logs ${reviewHandle.shortId}`,
+    launchPolicy: launchPolicyFromStartSessionOptions(reviewStartSessionOptions),
+  };
 
   const reviewJob = await createJob({
     codex: {
@@ -3777,15 +4037,8 @@ async function cmdAdversarialReview(flags, positional, json) {
       version: DRIVER_VERSION,
       capabilitiesSnapshot: caps,
     },
-    claude: {
-      version: caps.claudeVersion ?? 'unknown',
-      shortId: reviewHandle.shortId,
-      sessionName: reviewHandle.sessionName,
-      cwd: reviewHandle.cwd,
-      startedAt: reviewHandle.startedAt,
-      logsCommand: `claude logs ${reviewHandle.shortId}`,
-      launchPolicy: launchPolicyFromStartSessionOptions(reviewStartSessionOptions),
-    },
+    session: reviewSession,
+    claude: reviewSession,
     prompt: { summary: prefixedSummary, sha256: promptMeta.sha256, bytesLen: promptMeta.bytesLen },
     reviewOf: { jobId: targetJobId, turnIndex: selectedTurnIndex },
   });
@@ -4363,6 +4616,13 @@ async function cmdUpgrade(flags, positional, json) {
 
 function printUsage(commandName = '') {
   const commandHelp = {
+    'agy-setup': [
+      'Usage: cc agy-setup [--json]',
+      '',
+      'Checks the agy binary and non-interactive print-mode surface without invoking a model.',
+      '',
+      'Options: --json',
+    ],
     doctor: [
       'Usage: cc doctor [--claude-access] [--real|--chrome|--no-chrome] [permission flags] [--json]',
       '',
@@ -4375,11 +4635,12 @@ function printUsage(commandName = '') {
     delegate: [
       'Usage: cc delegate [options] -- "<prompt>"',
       '',
-      'Starts a Claude Code background session and records a cc job.',
+      'Starts a delegated provider job and records it in the cc job store.',
+      'Use --provider claude (default), --provider agy, or --provider auto.',
       'Use --yes to acknowledge plugin privacy non-interactively.',
       'Use --bypass-permissions (or --permission-mode bypassPermissions) for explicit trusted unattended runs.',
       'Use --chrome for Claude Code real-browser access; if Claude asks which browser to use, attach and choose interactively.',
-      'Put all dispatcher flags before --; anything after -- is the Claude prompt.',
+      'Put all dispatcher flags before --; anything after -- is the provider prompt.',
       '',
       'Options: --yes --json --compact --name <name> --model <model> --effort <effort> --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions --add-dir <dir> --mcp-config <path> --chrome --no-chrome --allow-edit',
     ],
@@ -4420,16 +4681,16 @@ function printUsage(commandName = '') {
       'Usage: cc status [--all] [--json] [--compact] [--limit <n>] [--stored-status <state>]',
       '       cc status --job <jobId-or-prefix> [--all] [--json]',
       '',
-      'Lists Claude jobs for the current workspace by default.',
+      'Lists delegated jobs for the current workspace by default.',
       'Use --job for one focused lookup; use --limit to keep broad lists small.',
       'The --job form already returns the compact public job shape.',
       '',
-      'Options: --all --json --compact --job <jobId-or-prefix> --limit <n> --stored-status <state>',
+      'Options: --all --json --compact --job <jobId-or-prefix> --limit <n> --stored-status <state> --provider <claude|agy>',
     ],
     result: [
       'Usage: cc result <jobId-or-prefix> [--all] [--json] [--compact] [--partial]',
       '',
-      'Shows the final result of a completed Claude job.',
+      'Shows the final result of a completed delegated job.',
       'Use --partial to read the latest recorded partial output from a running or blocked job.',
       '',
       'Options: --all --json --compact --partial',
@@ -4437,7 +4698,7 @@ function printUsage(commandName = '') {
     wait: [
       'Usage: cc wait <jobId-or-prefix> [--all] [--json] [--compact] [--timeout <duration>] [--interval <duration>]',
       '',
-      'Polls one Claude job until it reaches a result state, awaiting-followup, needs_input, stopped, failed, orphaned, or timeout.',
+      'Polls one delegated job until it reaches a result state, blocker, stop, failure, orphan, or timeout.',
       'Duration examples: 500ms, 30s, 2m. Bare numbers are seconds.',
       'JSON output includes the compact job summary, any recorded result text, transcript tail when captured, and blocker details.',
       '',
@@ -4448,7 +4709,7 @@ function printUsage(commandName = '') {
       '       cc stop --all-awaiting-followup [--all] [--json]',
       '       cc stop --all-needs-input [--all] [--json]',
       '',
-      'Stops one Claude job, or bulk-stops matching jobs in the current workspace.',
+      'Stops one delegated job, or bulk-stops matching jobs in the current workspace.',
       '',
       'Options: --all --json --compact --all-awaiting-followup --all-needs-input --all-blocked',
     ],
@@ -4499,8 +4760,9 @@ function printUsage(commandName = '') {
       '',
       'Commands:',
       '  setup                                     Run doctor probes and report status',
+      '  agy-setup                                 Check Antigravity CLI print-mode readiness',
       '  doctor [--claude-access] [--real] [--json]  Preflight auth, model access, browser, workspace, and permission mode',
-      '  delegate [flags] -- <prompt>              Start a Claude background session',
+      '  delegate [flags] -- <prompt>              Start a Claude or Antigravity job',
       '  restart <jobId-or-prefix> [flags] -- <prompt>  Stop a job and start a fresh one in the same workspace',
       '  workflow [flags] -- <prompt>              Start a Claude Code dynamic workflow (triggers ultracode planning)',
       '  goal [flags] -- <condition>               Start a Claude Code background session with a /goal condition',
@@ -4540,19 +4802,20 @@ function printUsage(commandName = '') {
       '  --real                       Doctor preflight alias for future --chrome real-browser launch checks',
       '  --public                     Force public Git marketplace target for upgrade',
       '  --local                      Force local marketplace target for upgrade',
+      '  --provider <provider>        Delegation provider: claude, agy, or auto; also filters status',
       '  --name <name>                Session name (delegate, workflow, goal, fork, batch, deep-research)',
       '  --model <model>              Model selection (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
       '  --effort <effort>            Effort level (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
       '  --permission-mode <mode>     Permission mode (delegate, workflow, goal, fork, batch, deep-research, adversarial-review; bypassPermissions is for explicit trusted unattended runs)',
       '  --bypass-permissions         Preferred alias for --permission-mode bypassPermissions on fresh Claude sessions',
-      '  --dangerously-skip-permissions  Claude Code alias for --permission-mode bypassPermissions on fresh Claude sessions',
+      '  --dangerously-skip-permissions  Explicitly bypass provider permission prompts for a trusted fresh job',
       '  --allow-dangerously-skip-permissions  Allow bypass-permissions as an option without defaulting to it',
       '  --allowedTools <tools>       Claude Code allowed tools list for fresh sessions (comma-separated or quoted)',
       '  --allowed-tools <tools>      Alias for --allowedTools',
       '  --disallowedTools <tools>    Claude Code disallowed tools list for fresh sessions (comma-separated or quoted)',
       '  --disallowed-tools <tools>   Alias for --disallowedTools',
       '  --tools <tools>              Claude Code built-in tool list for fresh sessions',
-      '  --agent <agent>              Claude Code agent for fresh sessions',
+      '  --agent <agent>              Provider agent for fresh sessions',
       '  --agents <json-or-file>      Claude Code agents configuration for fresh sessions',
       '  --settings <file-or-json>    Claude Code settings file or JSON for fresh sessions',
       '  --setting-sources <sources>  Claude Code setting sources for fresh sessions',
@@ -4562,6 +4825,12 @@ function printUsage(commandName = '') {
       '  --plugin-dir <dir>           Claude Code plugin directory for fresh sessions',
       '  --plugin-url <url>           Claude Code plugin URL for fresh sessions',
       '  --add-dir <dir>              Additional directory (delegate, workflow, goal, fork, batch, deep-research; repeatable)',
+      '  --mode <mode>                Antigravity mode: accept-edits or plan',
+      '  --sandbox                    Enable the Antigravity terminal sandbox',
+      '  --print-timeout <duration>   Antigravity non-interactive print timeout',
+      '  --project <project>          Select an Antigravity project',
+      '  --new-project                Create a new Antigravity project',
+      '  --log-file <path>            Antigravity diagnostic log path',
       '  --mcp-config <path>          MCP config file (delegate, workflow, goal, fork, batch, deep-research)',
       '  --bare / --safe-mode         Forward Claude Code bare or safe-mode startup toggles',
       '  --ide / --chrome / --no-chrome  Forward Claude Code IDE/browser startup toggles; --chrome uses real Chrome and may require interactive browser selection via claude attach',

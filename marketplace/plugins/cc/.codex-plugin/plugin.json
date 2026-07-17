@@ -1,7 +1,7 @@
 {
   "name": "cc",
-  "version": "0.3.22",
-  "description": "Delegate tasks from Codex to Claude Code background sessions.",
+  "version": "0.4.0",
+  "description": "Delegate tasks from Codex to Claude Code or Google Antigravity.",
   "author": {
     "name": "Hongjun Wu",
     "url": "https://github.com/wu-hongjun"
@@ -9,6 +9,9 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "CC",
+    "shortDescription": "Delegate Codex tasks to Claude Code or Google Antigravity.",
+    "longDescription": "Run and supervise delegated coding jobs through Claude Code background sessions or Google Antigravity's agy CLI, with shared status, wait, result, restart, and stop workflows.",
+    "developerName": "Hongjun Wu",
     "category": "Coding",
     "capabilities": ["Interactive"],
     "defaultPrompt": [
@@ -29,7 +32,13 @@
       "Run a Claude Code dynamic deep-research workflow on a question.",
       "List my Claude Code workflow sessions.",
       "List installed Claude Code skills.",
-      "Upgrade or refresh the installed CC plugin."
+      "Upgrade or refresh the installed CC plugin.",
+      "Check Google Antigravity CLI readiness.",
+      "Delegate a task to Google Antigravity.",
+      "Check my Antigravity jobs.",
+      "Wait for an Antigravity job to finish.",
+      "Show the result of an Antigravity job.",
+      "Stop an Antigravity job."
     ],
     "brandColor": "#D97706"
   }

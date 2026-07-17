@@ -17,6 +17,7 @@
     "clean": "tsc --build --clean"
   },
   "dependencies": {
+    "@cc-plugin-codex/driver-agy-cli": "0.0.0",
     "@cc-plugin-codex/driver-claude-code": "0.0.0",
     "@cc-plugin-codex/runtime": "0.0.0"
   },

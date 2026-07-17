@@ -65,12 +65,12 @@ The cc-plugin-codex plugin follows semver `0.x.y`. Versioning rules:
   enforced byte-identical by `--check`.
 - **Workspace package versions are decoupled.** The root `package.json`
   and the per-package
-  `packages/{plugin-codex,runtime,driver-claude-code}/package.json`
+  `packages/{plugin-codex,runtime,driver-claude-code,driver-agy-cli}/package.json`
   files stay at `"version": "0.0.0"`. They are internal workspace
   metadata, not the shipped plugin version. Do not bump them as part
   of a plugin release.
 - **Bundled `node_modules/@cc-plugin-codex/*` use the `<plugin-version>-bundled`
-  marker** (e.g., `0.3.22-bundled` while the shipped plugin is `0.3.22`).
+  marker** (e.g., `0.4.0-bundled` while the shipped plugin is `0.4.0`).
   `tools/package-marketplace.mjs --write` synthesizes this marker from
   the source plugin version. Do not edit those synthesized
   `package.json` files by hand.
@@ -78,7 +78,7 @@ The cc-plugin-codex plugin follows semver `0.x.y`. Versioning rules:
 ### Procedure to bump the shipped plugin version
 
 Replace `0.x.y` below with the new semver string. The current shipped
-version is `0.3.22` (bumped for the v0.3.22 release).
+version is `0.4.0` (bumped for the v0.4.0 release).
 
 1. Edit `packages/plugin-codex/.codex-plugin/plugin.json` and bump the
    `version` field to `0.x.y`. This is the only manual edit.
@@ -90,7 +90,7 @@ version is `0.3.22` (bumped for the v0.3.22 release).
    ```
 
    This refreshes the marketplace plugin.json copy and the bundled
-   `node_modules/@cc-plugin-codex/{runtime,driver-claude-code}/package.json`
+   `node_modules/@cc-plugin-codex/{runtime,driver-claude-code,driver-agy-cli}/package.json`
    files to use the new `<new-version>-bundled` marker. It is
    idempotent — re-running against the just-written tree produces no
    changes.
@@ -145,19 +145,21 @@ node tools/package-marketplace.mjs --write
 `--write` performs (in order):
 
 1. `npm run build` to refresh the source dist outputs
-   (`packages/{runtime,driver-claude-code}/dist/`). Skip the build via
+   (`packages/{runtime,driver-claude-code,driver-agy-cli}/dist/`). Skip the build via
    `CC_PLUGIN_CODEX_SKIP_BUILD=1` only when the dist outputs are known
    to be current.
-2. Copy 30 source-derived files (T2-T5 allowlist) into the
+2. Copy 37 source-derived files (T2-T5 allowlist) into the
    marketplace tree byte-identically.
-3. Copy 64 bundled-dep files (T9.5 allowlist:
+3. Copy 74 bundled-dep files (T9.5 allowlist:
    `@cc-plugin-codex/runtime/dist/`,
-   `@cc-plugin-codex/driver-claude-code/dist/`, and `node-pty/`'s
+   `@cc-plugin-codex/driver-claude-code/dist/`,
+   `@cc-plugin-codex/driver-agy-cli/dist/`, and `node-pty/`'s
    `lib/`, `typings/`, and darwin / linux prebuilds) into
    `marketplace/plugins/cc/node_modules/`.
-4. Synthesize the 3 minimal `package.json` files
+4. Synthesize the 4 minimal `package.json` files
    (`@cc-plugin-codex/runtime`, `@cc-plugin-codex/driver-claude-code`,
-   `node-pty`) with the `<plugin-version>-bundled` marker derived from
+   `@cc-plugin-codex/driver-agy-cli`, `node-pty`) with the
+   `<plugin-version>-bundled` marker derived from
    the source plugin.json.
 
 It is idempotent: re-running `--write` against the just-written tree
@@ -171,19 +173,19 @@ node tools/package-marketplace.mjs --check
 
 `--check` enforces:
 
-- Source ↔ marketplace byte-identity for all 30 derived files
+- Source ↔ marketplace byte-identity for all 37 derived files
   (`marketplace/MANIFEST.md` allowlist).
 - No excluded categories appear under
   `marketplace/plugins/cc/` (`marketplace/EXCLUSIONS.md`
   defense-in-depth).
-- All 64 bundled-dep files match their source byte-identically.
-- The 3 synthesized `package.json` files match canonical shape.
+- All 74 bundled-dep files match their source byte-identically.
+- The 4 synthesized `package.json` files match canonical shape.
 - The marketplace root manifest at
   `marketplace/.agents/plugins/marketplace.json` parses and has the
   expected `name`.
 
-Expected output: `check: OK — 30 derived files match source, 64
-bundled-dep files match source, 3 synthesized package.json files
+Expected output: `check: OK — 37 derived files match source, 74
+bundled-dep files match source, 4 synthesized package.json files
 match canonical shape, 1 marketplace-owned files present, no
 unexpected files.`
 
@@ -263,7 +265,7 @@ pushed.
 ### Manual skill discovery
 
 Codex 0.136.0 does not expose a documented non-interactive
-skill-invocation interface, so the eighteen-skill discovery check must be
+skill-invocation interface, so the twenty-four-skill discovery check must be
 run manually inside the Codex TUI. With the smoke helper's isolated
 `CODEX_HOME` preserved (`--keep-home`), open Codex and verify each
 skill is recognized:
@@ -286,12 +288,20 @@ skill is recognized:
 - `$claude-workflows`
 - `$claude-skills`
 - `$claude-upgrade`
+- `$agy-setup`
+- `$agy-delegate`
+- `$agy-status`
+- `$agy-wait`
+- `$agy-result`
+- `$agy-stop`
 
 Pass criteria:
 
 - `$claude-setup` is the gate skill: it must return an `ok` or `warn`
   aggregate status, not an unknown-skill error.
-- The other seventeen skills must not return `unknown skill` or
+- `$agy-setup` must be recognized. It should report ready when `agy` is installed and a clear
+  unavailable result when it is not.
+- The other twenty-two skills must not return `unknown skill` or
   `unrecognized skill` when invoked or shown in Codex skill discovery.
 - A skill that requires a job-id may stop at its expected
   usage-or-error message. That still counts as recognized for smoke
@@ -351,7 +361,7 @@ hard-coded version literals) without invoking it.
 ## Tagging
 
 Tag the release using semver `v0.x.y`. Example for the current shipped
-version: `v0.3.22`.
+version: `v0.4.0`.
 
 ```bash
 git tag v0.x.y
@@ -363,7 +373,7 @@ Rules:
 - Tag only **after** the smoke test passes **and** all four CI matrix
   legs are green. Both gates are mandatory.
 - Tag format: lowercase `v` prefix + semver. The example tag for the
-  current shipped version is `v0.3.22`.
+  current shipped version is `v0.4.0`.
 - Legacy verification tags from earlier plans use distinct schemes
   and must not be retagged as part of a plugin release.
 - Do not move or delete a published tag. If a regression is
@@ -489,7 +499,7 @@ codex plugin list
 ```
 
 After the Git flow, `codex plugin list` should report
-`cc@cc-plugin-codex` with the current version (`0.3.22`),
+`cc@cc-plugin-codex` with the current version (`0.4.0`),
 `installed, enabled`. After either local flow, it should report
 `cc@cc-plugin-codex-local` with the same version. See
 [`marketplace/plugins/cc/README.md`](../marketplace/plugins/cc/README.md)

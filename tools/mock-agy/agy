@@ -1,0 +1,61 @@
+#!/usr/bin/env node
+
+import { appendFileSync, readFileSync } from 'node:fs';
+
+const args = process.argv.slice(2);
+const config = (() => {
+  const path = process.env.CC_PLUGIN_CODEX_MOCK_AGY_CONFIG;
+  if (!path) return {};
+  try {
+    return JSON.parse(readFileSync(path, 'utf8'));
+  } catch {
+    return {};
+  }
+})();
+
+if (process.env.CC_PLUGIN_CODEX_MOCK_AGY_INVOCATIONS) {
+  appendFileSync(
+    process.env.CC_PLUGIN_CODEX_MOCK_AGY_INVOCATIONS,
+    JSON.stringify({ args, cwd: process.cwd() }) + '\n',
+  );
+}
+
+if (args.includes('--version')) {
+  process.stdout.write(`${config.version ?? '1.1.3'}\n`);
+  process.exit(config.versionExitCode ?? 0);
+}
+
+if (args.includes('--help')) {
+  process.stdout.write(`Usage: agy [flags]\n\n  -p, --print string\n  --print-timeout duration\n`);
+  process.exit(config.helpExitCode ?? 0);
+}
+
+const printIndex = args.indexOf('--print');
+if (printIndex === -1 || args[printIndex + 1] === undefined) {
+  process.stderr.write('mock agy: --print requires a prompt\n');
+  process.exit(2);
+}
+
+const delayMs = Number(config.delayMs ?? process.env.CC_PLUGIN_CODEX_MOCK_AGY_DELAY_MS ?? 0);
+const response =
+  config.response ??
+  process.env.CC_PLUGIN_CODEX_MOCK_AGY_RESPONSE ??
+  `Antigravity completed: ${args[printIndex + 1]}`;
+const stderr = config.stderr ?? process.env.CC_PLUGIN_CODEX_MOCK_AGY_STDERR ?? '';
+const exitCode = Number(config.exitCode ?? process.env.CC_PLUGIN_CODEX_MOCK_AGY_EXIT_CODE ?? 0);
+
+let stopped = false;
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => {
+    stopped = true;
+    process.stderr.write(`mock agy stopped by ${signal}\n`);
+    process.exit(143);
+  });
+}
+
+await new Promise((resolve) => setTimeout(resolve, Math.max(0, delayMs)));
+if (!stopped) {
+  if (stderr) process.stderr.write(stderr);
+  if (response) process.stdout.write(`${response}\n`);
+  process.exit(exitCode);
+}

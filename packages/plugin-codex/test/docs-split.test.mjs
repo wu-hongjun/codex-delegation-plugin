@@ -556,13 +556,13 @@ describe('$claude-workflow documentation — plugin README (Plan 0008 T5)', () =
     );
   });
 
-  it('plugin README Current v1 scope section says "Eighteen skills"', () => {
+  it('plugin README Current v1 scope section says "Twenty-four skills"', () => {
     const content = readFileSync(PLUGIN_README, 'utf8');
     const match = content.match(/^## Current v1 scope\b[\s\S]*?(?=^## )/m);
     assert.ok(match, 'plugin README must have a "## Current v1 scope" section');
     assert.ok(
-      match[0].includes('Eighteen skills'),
-      'plugin README ## Current v1 scope must say "Eighteen skills"',
+      match[0].includes('Twenty-four skills'),
+      'plugin README ## Current v1 scope must say "Twenty-four skills"',
     );
   });
 

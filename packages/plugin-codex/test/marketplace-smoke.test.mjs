@@ -66,6 +66,12 @@ const SKILL_NAMES = [
   'claude-workflows',
   'claude-skills',
   'claude-upgrade',
+  'agy-setup',
+  'agy-delegate',
+  'agy-status',
+  'agy-wait',
+  'agy-result',
+  'agy-stop',
 ];
 
 // ---------- forbidden tokens (shared with T6/T7/T8) ----------
@@ -121,10 +127,10 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
   });
 
   // ========================================================================
-  // T9-3: script body contains all 18 skill names
+  // T9-3: script body contains all 24 skill names
   // ========================================================================
 
-  it('smoke script body contains all 18 skill names', () => {
+  it('smoke script body contains all 24 skill names', () => {
     const body = readFileSync(SMOKE_SCRIPT, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(
@@ -274,10 +280,10 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
   });
 
   // ========================================================================
-  // T9-12: RELEASING.md enumerates all 18 skills
+  // T9-12: RELEASING.md enumerates all 24 skills
   // ========================================================================
 
-  it('RELEASING.md enumerates all 18 skill names', () => {
+  it('RELEASING.md enumerates all 24 skill names', () => {
     const content = readFileSync(RELEASING_MD, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(
@@ -459,12 +465,14 @@ const ROOT_PACKAGE_JSON = resolve(REPO_ROOT, 'package.json');
 const PLUGIN_PACKAGE_JSON = resolve(REPO_ROOT, 'packages', 'plugin-codex', 'package.json');
 const RUNTIME_PACKAGE_JSON = resolve(REPO_ROOT, 'packages', 'runtime', 'package.json');
 const DRIVER_PACKAGE_JSON = resolve(REPO_ROOT, 'packages', 'driver-claude-code', 'package.json');
+const AGY_DRIVER_PACKAGE_JSON = resolve(REPO_ROOT, 'packages', 'driver-agy-cli', 'package.json');
 
 const WORKSPACE_PACKAGE_JSON_FILES = [
   { label: 'root', path: ROOT_PACKAGE_JSON },
   { label: 'packages/plugin-codex', path: PLUGIN_PACKAGE_JSON },
   { label: 'packages/runtime', path: RUNTIME_PACKAGE_JSON },
   { label: 'packages/driver-claude-code', path: DRIVER_PACKAGE_JSON },
+  { label: 'packages/driver-agy-cli', path: AGY_DRIVER_PACKAGE_JSON },
 ];
 
 describe('plugin versioning scheme (Plan 0006 T10)', () => {

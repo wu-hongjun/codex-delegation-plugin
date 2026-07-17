@@ -68,6 +68,39 @@ function displayDispatcherCommand(dispatcherPath, command, wrapperCommand = null
   return wrapperCommand ?? command;
 }
 
+function jobSession(job) {
+  return job.session ?? { ...job.claude, provider: 'claude' };
+}
+
+function jobProvider(job) {
+  return jobSession(job).provider === 'agy' || job.driver?.name === 'agy-cli' ? 'agy' : 'claude';
+}
+
+function providerUi(job) {
+  const provider = jobProvider(job);
+  const session = jobSession(job);
+  if (provider === 'agy') {
+    return {
+      provider,
+      name: 'Antigravity',
+      sessionLabel: 'Agy process',
+      skillPrefix: 'agy',
+      supportsFollowup: false,
+      attachCommand: null,
+      logsCommand: session.logsCommand ?? null,
+    };
+  }
+  return {
+    provider,
+    name: 'Claude',
+    sessionLabel: 'Claude session',
+    skillPrefix: 'claude',
+    supportsFollowup: true,
+    attachCommand: session.shortId ? `claude attach ${session.shortId}` : null,
+    logsCommand: session.logsCommand ?? (session.shortId ? `claude logs ${session.shortId}` : null),
+  };
+}
+
 function classifyResultState(job, hasResult, latestTurnResultState) {
   if (!hasResult) return 'none';
   if (latestTurnResultState === 'final') return 'final_result_available';
@@ -76,13 +109,14 @@ function classifyResultState(job, hasResult, latestTurnResultState) {
 }
 
 function recommendedNextAction(job, hasResult, resultState) {
+  const ui = providerUi(job);
   if (resultState === 'orphaned_partial_result_available') return 'result --partial';
   if (job.status === 'needs_input')
-    return job.claude?.shortId ? 'attach | stop | restart' : 'status';
-  if (job.status === 'awaiting_followup') return 'followup';
+    return ui.attachCommand ? 'attach | stop | restart' : 'stop | restart';
+  if (job.status === 'awaiting_followup') return ui.supportsFollowup ? 'followup' : 'result';
   if (job.status === 'completed') return hasResult ? 'result' : 'logs';
   if (hasResult && resultState === 'partial_result_available') return 'result --partial';
-  if (job.status === 'orphaned') return job.claude?.shortId ? 'logs' : 'stop';
+  if (job.status === 'orphaned') return ui.logsCommand ? 'logs' : 'stop';
   if (isNonTerminalJobStatus(job.status)) return 'status';
   return hasResult ? 'result' : 'status';
 }
@@ -229,9 +263,11 @@ function summarizeJob(job, opts = {}) {
   const latestTurnIndex = turnCount > 0 ? turnCount - 1 : -1;
   const latestTurn = latestTurnIndex >= 0 ? job.turns[latestTurnIndex] : undefined;
   const latestKind = classifyTurnKind(latestTurn);
-  const shortId = job.claude?.shortId ?? null;
-  const waitingFor = job.status === 'needs_input' ? (job.claude?.waitingFor ?? null) : null;
-  const rawLaunchPolicy = job.claude?.launchPolicy ?? {};
+  const session = jobSession(job);
+  const ui = providerUi(job);
+  const shortId = session.shortId ?? null;
+  const waitingFor = job.status === 'needs_input' ? (session.waitingFor ?? null) : null;
+  const rawLaunchPolicy = session.launchPolicy ?? {};
   const launchPolicy = {
     permissionMode: rawLaunchPolicy.permissionMode ?? null,
     dangerouslySkipPermissions: rawLaunchPolicy.dangerouslySkipPermissions === true,
@@ -297,7 +333,7 @@ function summarizeJob(job, opts = {}) {
                 ),
               }
             : {}),
-          ...(job.status === 'awaiting_followup'
+          ...(job.status === 'awaiting_followup' && ui.supportsFollowup
             ? {
                 followup: exactDispatcherCommand(
                   opts.dispatcherPath,
@@ -305,26 +341,26 @@ function summarizeJob(job, opts = {}) {
                 ),
               }
             : {}),
-          ...(shortId != null ? { attach: `claude attach ${shortId}` } : {}),
-          ...(shortId != null ? { logs: job.claude?.logsCommand ?? `claude logs ${shortId}` } : {}),
+          ...(ui.attachCommand ? { attach: ui.attachCommand } : {}),
+          ...(ui.logsCommand ? { logs: ui.logsCommand } : {}),
         };
   const actionHints = {
     status: displayDispatcherCommand(
       opts.dispatcherPath,
       `status --job ${job.jobId} --json --compact`,
-      `$claude-status --job ${job.jobId} --json --compact`,
+      `$${ui.skillPrefix}-status --job ${job.jobId} --json --compact`,
     ),
     result: displayDispatcherCommand(
       opts.dispatcherPath,
       `result ${job.jobId}`,
-      `$claude-result ${job.jobId}`,
+      `$${ui.skillPrefix}-result ${job.jobId}`,
     ),
     ...(hasResult
       ? {
           partialResult: displayDispatcherCommand(
             opts.dispatcherPath,
             `result ${job.jobId} --partial`,
-            `$claude-result ${job.jobId} --partial`,
+            `$${ui.skillPrefix}-result ${job.jobId} --partial`,
           ),
         }
       : {}),
@@ -333,7 +369,7 @@ function summarizeJob(job, opts = {}) {
           stop: displayDispatcherCommand(
             opts.dispatcherPath,
             `stop ${job.jobId}`,
-            `$claude-stop ${job.jobId}`,
+            `$${ui.skillPrefix}-stop ${job.jobId}`,
           ),
         }
       : {}),
@@ -354,7 +390,7 @@ function summarizeJob(job, opts = {}) {
           ),
         }
       : {}),
-    ...(job.status === 'awaiting_followup'
+    ...(job.status === 'awaiting_followup' && ui.supportsFollowup
       ? {
           followup: displayDispatcherCommand(
             opts.dispatcherPath,
@@ -363,12 +399,13 @@ function summarizeJob(job, opts = {}) {
           ),
         }
       : {}),
-    ...(shortId != null ? { attach: `claude attach ${shortId}` } : {}),
-    ...(shortId != null ? { logs: job.claude?.logsCommand ?? `claude logs ${shortId}` } : {}),
+    ...(ui.attachCommand ? { attach: ui.attachCommand } : {}),
+    ...(ui.logsCommand ? { logs: ui.logsCommand } : {}),
   };
 
   return {
     jobId: job.jobId,
+    provider: ui.provider,
     status: job.status,
     operatorState,
     ...(job.status === 'needs_input'
@@ -404,7 +441,7 @@ function summarizeJob(job, opts = {}) {
     resultState,
     recommendedNextAction: recommended,
     shortId,
-    sessionName: job.claude?.sessionName ?? null,
+    sessionName: session.sessionName ?? null,
     waitingFor,
     waiting,
     createdAt: job.createdAt,
@@ -562,17 +599,18 @@ export function formatDelegate(job, json, opts = {}) {
     return JSON.stringify({ ok: true, job: opts.compact ? summarizeJob(job, opts) : job }, null, 2);
   }
 
-  const logsCmd = job.claude.logsCommand ?? `claude logs ${job.claude.shortId}`;
+  const session = jobSession(job);
+  const ui = providerUi(job);
   return [
-    'Claude job started',
+    `${ui.name} job started`,
     `Job ID:         ${job.jobId}`,
     `Status:         ${job.status}`,
-    `Claude session: ${job.claude.shortId}`,
-    `Name:           ${job.claude.sessionName}`,
-    `Raw logs:       ${logsCmd}`,
+    `${`${ui.sessionLabel}:`.padEnd(16)}${session.shortId}`,
+    `Name:           ${session.sessionName}`,
+    ...(ui.logsCommand ? [`Raw logs:       ${ui.logsCommand}`] : []),
     'Run:',
-    `  $claude-status`,
-    `  $claude-result ${job.jobId}`,
+    `  $${ui.skillPrefix}-status`,
+    `  $${ui.skillPrefix}-result ${job.jobId}`,
   ].join('\n');
 }
 
@@ -619,19 +657,21 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
   }
 
   if (jobs.length === 0) {
-    return 'No Claude jobs found for this workspace.';
+    return 'No delegated jobs found for this workspace.';
   }
 
   if (opts.singleJob) {
     const j = jobs[0];
+    const session = jobSession(j);
+    const ui = providerUi(j);
     const annotation = reviewOfLabel(j.reviewOf);
     const lines = [
-      'Claude job',
+      `${ui.name} job`,
       `Job ID:         ${j.jobId}`,
       `Status:         ${j.status}`,
       `Process:        ${j.status}`,
-      `Claude session: ${j.claude.shortId}`,
-      `Name:           ${j.claude.sessionName}${annotation}`,
+      `${`${ui.sessionLabel}:`.padEnd(16)}${session.shortId}`,
+      `Name:           ${session.sessionName}${annotation}`,
     ];
     const compact = summarizeJob(j, opts);
     lines.push(`Result state:   ${compact.resultState}`);
@@ -641,13 +681,13 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
     if (j.result?.finalMessagePreview) {
       lines.push(`Result:         ${j.result.finalMessagePreview}`);
     }
-    if (j.status === 'needs_input' && j.claude.waitingFor) {
+    if (j.status === 'needs_input' && session.waitingFor) {
       const waiting = compact.waiting;
-      lines.push(`Waiting:        ${j.claude.waitingFor}`);
+      lines.push(`Waiting:        ${session.waitingFor}`);
       if (waiting?.category) {
         lines.push(`Waiting type:   ${waiting.category}`);
       }
-      lines.push(`Manual action:  ${waiting?.userAction ?? `claude attach ${j.claude.shortId}`}`);
+      lines.push(`Manual action:  ${waiting?.userAction ?? compact.actionHints.stop}`);
       if (waiting?.note) {
         lines.push(`Note:           ${waiting.note}`);
       }
@@ -667,24 +707,28 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
     return lines.join('\n');
   }
 
-  const header = `Claude jobs for ${workspaceRoot}`;
+  const header = `Delegated jobs for ${workspaceRoot}`;
   const columnHeader = [
     'JOB ID'.padEnd(32),
     'STATUS'.padEnd(14),
     'AGE'.padEnd(6),
-    'CLAUDE'.padEnd(16),
+    'PROVIDER'.padEnd(12),
+    'SESSION'.padEnd(16),
     'NAME',
   ].join('  ');
   const rows = jobs.map((j) => {
+    const session = jobSession(j);
+    const ui = providerUi(j);
     const annotation = reviewOfLabel(j.reviewOf);
     const waiting =
-      j.status === 'needs_input' && j.claude.waitingFor ? ` (waiting: ${j.claude.waitingFor})` : '';
+      j.status === 'needs_input' && session.waitingFor ? ` (waiting: ${session.waitingFor})` : '';
     const cols = [
       j.jobId.padEnd(32),
       j.status.padEnd(14),
       formatAge(j.updatedAt ?? j.createdAt).padEnd(6),
-      (j.claude.shortId ?? '').padEnd(16),
-      (j.claude.sessionName ?? '') + annotation + waiting,
+      ui.provider.padEnd(12),
+      (session.shortId ?? '').padEnd(16),
+      (session.sessionName ?? '') + annotation + waiting,
     ];
     return `  ${cols.join('  ')}`.trimEnd();
   });
@@ -692,7 +736,9 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
   const lines = [header, '', `  ${columnHeader}`, ...rows];
 
   // Footer hint when any job is awaiting a follow-up (human output only).
-  const awaitingJob = jobs.find((j) => j.status === 'awaiting_followup');
+  const awaitingJob = jobs.find(
+    (j) => j.status === 'awaiting_followup' && providerUi(j).supportsFollowup,
+  );
   if (awaitingJob) {
     lines.push(
       '',
@@ -700,17 +746,14 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
     );
   }
 
-  const needsInputJob = jobs.find((j) => j.status === 'needs_input' && j.claude.shortId);
+  const needsInputJob = jobs.find((j) => j.status === 'needs_input' && jobSession(j).shortId);
   if (needsInputJob) {
-    const waiting = summarizeJob(needsInputJob, opts).waiting;
-    lines.push(
-      '',
-      `Input needed: run ${waiting?.userAction ?? `claude attach ${needsInputJob.claude.shortId}`}`,
-    );
+    const compact = summarizeJob(needsInputJob, opts);
+    const waiting = compact.waiting;
+    lines.push('', `Input needed: run ${waiting?.userAction ?? compact.actionHints.stop}`);
     if (waiting?.category === 'browser_selection') {
       lines.push('Chrome browser selection must be completed in the attached Claude Code TUI.');
     }
-    const compact = summarizeJob(needsInputJob, opts);
     lines.push(`Stop blocked job: ${compact.actionHints.stop}`);
     lines.push(`Restart with bypass: ${compact.actionHints.restartWithBypass}`);
     lines.push(`Cleanup all blocked jobs in this workspace: ${compact.actionHints.cleanupBlocked}`);
@@ -719,7 +762,7 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
   if (opts.hiddenCount != null && opts.hiddenCount > 0) {
     lines.push(
       '',
-      `${opts.hiddenCount} older Claude job${opts.hiddenCount === 1 ? '' : 's'} hidden by --limit ${opts.limit}. Use --limit 0 to show all matched jobs.`,
+      `${opts.hiddenCount} older delegated job${opts.hiddenCount === 1 ? '' : 's'} hidden by --limit ${opts.limit}. Use --limit 0 to show all matched jobs.`,
     );
   }
 
@@ -832,7 +875,8 @@ export function formatResult(job, resultText, json, opts = {}) {
     );
   }
 
-  const logsCmd = job.claude.logsCommand ?? `claude logs ${job.claude.shortId}`;
+  const session = jobSession(job);
+  const ui = providerUi(job);
   const compact = summarizeJob(job, opts);
 
   const lines = [
@@ -841,11 +885,11 @@ export function formatResult(job, resultText, json, opts = {}) {
     ...(opts.partial ? ['Partial:    yes'] : []),
     `Result:     ${compact.resultState}`,
     `Next:       ${compact.recommendedNextAction}`,
-    ...(job.claude.transcriptPath
-      ? [`Transcript file: ${job.claude.transcriptPath}`]
+    ...(session.transcriptPath
+      ? [`Transcript file: ${session.transcriptPath}`]
       : ['Transcript file: not captured']),
     ...(job.result?.finalMessagePath ? [`Result file: ${job.result.finalMessagePath}`] : []),
-    `Logs:       ${logsCmd}`,
+    ...(ui.logsCommand ? [`Logs:       ${ui.logsCommand}`] : []),
   ];
 
   if (job.result?.touchedFiles && job.result.touchedFiles.length > 0) {
@@ -895,7 +939,7 @@ export function formatWait(job, resultText, json, opts = {}) {
   }
 
   const lines = [
-    'Claude wait',
+    `${providerUi(job).name} wait`,
     `Timed out:      ${timedOut ? 'yes' : 'no'}`,
     `Job ID:         ${job.jobId}`,
     `Status:         ${job.status}`,
@@ -956,11 +1000,13 @@ export function formatStop(job, json, opts = {}) {
     return JSON.stringify({ ok: true, job: opts.compact ? summarizeJob(job, opts) : job }, null, 2);
   }
 
+  const session = jobSession(job);
+  const ui = providerUi(job);
   return [
-    'Claude job stopped',
+    `${ui.name} job stopped`,
     `Job ID:         ${job.jobId}`,
     `Status:         ${job.status}`,
-    `Claude session: ${job.claude.shortId}`,
+    `${`${ui.sessionLabel}:`.padEnd(16)}${session.shortId}`,
   ].join('\n');
 }
 

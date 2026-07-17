@@ -29,6 +29,13 @@ export function getLogsDir(): string {
   return join(getCompanionHome(), 'logs');
 }
 
+export function getProviderSessionsDir(provider: string): string {
+  if (!/^[a-z0-9-]+$/.test(provider)) {
+    throw new Error(`Invalid provider session directory: ${provider}`);
+  }
+  return join(getCompanionHome(), 'sessions', provider);
+}
+
 export function getDoctorPath(): string {
   return join(getCompanionHome(), 'doctor.json');
 }
@@ -56,4 +63,10 @@ export function getJobLockPath(jobId: string): string {
 export async function ensureCompanionDirs(): Promise<void> {
   await mkdir(getJobsDir(), { recursive: true });
   await mkdir(getLogsDir(), { recursive: true });
+}
+
+export async function ensureProviderSessionsDir(provider: string): Promise<string> {
+  const path = getProviderSessionsDir(provider);
+  await mkdir(path, { recursive: true });
+  return path;
 }

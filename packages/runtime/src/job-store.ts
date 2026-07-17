@@ -28,6 +28,8 @@ import {
   getJobsDir,
 } from './paths.js';
 import type {
+  AgentSessionContext,
+  ClaudeSessionContext,
   CreateJobInput,
   JobRecord,
   JobStatus,
@@ -146,6 +148,31 @@ interface LegacyJobRecordV1 {
   errors?: unknown[];
 }
 
+function normalizeClaudeSession(value: unknown): ClaudeSessionContext {
+  const raw = (value ?? {}) as Omit<ClaudeSessionContext, 'provider'> & { provider?: string };
+  return {
+    ...raw,
+    provider: 'claude',
+    logsCommand:
+      typeof raw.logsCommand === 'string' ? raw.logsCommand : `claude logs ${raw.shortId ?? ''}`,
+  } as ClaudeSessionContext;
+}
+
+function providerFromDriverName(name: unknown): string {
+  return name === 'agy-cli' ? 'agy' : 'claude';
+}
+
+function normalizeSession(value: unknown, driverName: unknown): AgentSessionContext {
+  const raw = (value ?? {}) as AgentSessionContext;
+  return {
+    ...raw,
+    provider:
+      typeof raw.provider === 'string' && raw.provider.length > 0
+        ? raw.provider
+        : providerFromDriverName(driverName),
+  };
+}
+
 const TERMINAL_JOB_STATUSES: ReadonlySet<string> = new Set([
   'completed',
   'failed',
@@ -198,6 +225,11 @@ export function syncCompatAliases(record: JobRecord): JobRecord {
   } else {
     delete record.result;
   }
+  if (record.session.provider === 'claude') {
+    record.claude = normalizeClaudeSession(record.session);
+  } else {
+    delete record.claude;
+  }
   return record;
 }
 
@@ -233,8 +265,8 @@ function migrateJobRecord(raw: unknown, path: string): { record: JobRecord; migr
   if (obj['driver'] == null) {
     throw new CorruptJobRecordError(path, new Error('missing driver'));
   }
-  if (obj['claude'] == null) {
-    throw new CorruptJobRecordError(path, new Error('missing claude'));
+  if (obj['session'] == null && obj['claude'] == null) {
+    throw new CorruptJobRecordError(path, new Error('missing provider session context'));
   }
 
   const schemaVersion = obj['schemaVersion'];
@@ -249,7 +281,14 @@ function migrateJobRecord(raw: unknown, path: string): { record: JobRecord; migr
       );
     }
 
-    const record = raw as JobRecord;
+    const driverName = (obj['driver'] as { name?: unknown })?.name;
+    const hadSession = obj['session'] != null;
+    const session = normalizeSession(obj['session'] ?? obj['claude'], driverName);
+    const record = {
+      ...(raw as JobRecord),
+      session,
+      ...(session.provider === 'claude' ? { claude: normalizeClaudeSession(session) } : {}),
+    } as JobRecord;
     // Check if compat aliases are in sync; repair if not
     // turns is validated non-empty above
     const expectedPrompt = record.turns[0]!.prompt;
@@ -269,10 +308,10 @@ function migrateJobRecord(raw: unknown, path: string): { record: JobRecord; migr
         void _dropped;
         return { record: syncCompatAliases({ ...withoutResult } as JobRecord), migrated: true };
       }
-      return { record: repaired, migrated: true };
+      return { record: syncCompatAliases(repaired), migrated: true };
     }
 
-    return { record, migrated: false };
+    return { record: syncCompatAliases(record), migrated: !hadSession };
   }
 
   // 4. Schema v1 (or missing schemaVersion treated as v1-shaped)
@@ -296,6 +335,7 @@ function migrateJobRecord(raw: unknown, path: string): { record: JobRecord; migr
       status: turnStatus,
     };
 
+    const claude = normalizeClaudeSession(v1.claude);
     const record: JobRecord = {
       jobId: v1.jobId,
       schemaVersion: 2,
@@ -305,7 +345,8 @@ function migrateJobRecord(raw: unknown, path: string): { record: JobRecord; migr
       codex: v1.codex as JobRecord['codex'],
       workspace: v1.workspace as JobRecord['workspace'],
       driver: v1.driver as JobRecord['driver'],
-      claude: v1.claude as JobRecord['claude'],
+      session: claude,
+      claude,
       prompt: v1.prompt,
       turns: [turn0],
       ...(v1.result !== undefined ? { result: v1.result } : {}),
@@ -372,6 +413,11 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
     startedAt: now,
     status: deriveTurnStatusFromJobStatus(initialStatus),
   };
+  const sessionInput = input.session ?? input.claude;
+  if (sessionInput === undefined) {
+    throw new CorruptJobRecordError(getJobRecordPath(jobId), new Error('missing session'));
+  }
+  const session = normalizeSession(sessionInput, input.driver.name);
   const record: JobRecord = {
     jobId,
     schemaVersion: 2,
@@ -381,7 +427,8 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
     codex: input.codex,
     workspace: input.workspace,
     driver: input.driver,
-    claude: input.claude,
+    session,
+    ...(session.provider === 'claude' ? { claude: normalizeClaudeSession(session) } : {}),
     prompt: input.prompt, // compat alias = turns[0].prompt
     turns: [turn0],
     ...(input.reviewOf !== undefined ? { reviewOf: input.reviewOf } : {}),
@@ -443,7 +490,14 @@ export async function updateJob(jobId: string, updater: JobUpdater): Promise<Job
     }
     const { record: current } = migrateJobRecord(raw, path);
 
+    const beforeSession = JSON.stringify(current.session);
+    const beforeClaude = JSON.stringify(current.claude);
     const updated = await updater(current);
+    const sessionChanged = JSON.stringify(updated.session) !== beforeSession;
+    const claudeChanged = JSON.stringify(updated.claude) !== beforeClaude;
+    if (!sessionChanged && claudeChanged && updated.claude !== undefined) {
+      updated.session = normalizeClaudeSession(updated.claude);
+    }
     // Sync compat aliases in case updater touched turns[]
     syncCompatAliases(updated);
     const stamped: JobRecord = { ...updated, updatedAt: nowISO() };

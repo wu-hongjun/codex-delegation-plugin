@@ -51,6 +51,9 @@ export interface ReconcilerSessionRef {
   sessionName: string;
   cwd: string;
   transcriptPath?: string;
+  statePath?: string;
+  resultPath?: string;
+  errorPath?: string;
 }
 
 export interface ReconcilerTranscriptResult {
@@ -124,11 +127,14 @@ export interface ReconcileWorkspaceResult {
 function refFromJob(job: JobRecord): ReconcilerSessionRef {
   return {
     driverName: job.driver.name,
-    shortId: job.claude.shortId,
-    sessionId: job.claude.sessionId,
-    sessionName: job.claude.sessionName,
-    cwd: job.claude.cwd,
-    transcriptPath: job.claude.transcriptPath,
+    shortId: job.session.shortId,
+    sessionId: job.session.sessionId,
+    sessionName: job.session.sessionName,
+    cwd: job.session.cwd,
+    transcriptPath: job.session.transcriptPath,
+    statePath: job.session.statePath,
+    resultPath: job.session.resultPath,
+    errorPath: job.session.errorPath,
   };
 }
 
@@ -454,7 +460,7 @@ export async function reconcileJob(
   const latestTurnHadResultAtStart = latestTurnAtStart?.result !== undefined;
 
   // Working copy we'll mutate
-  const patched: JobRecord = { ...job, claude: { ...job.claude } };
+  const patched: JobRecord = { ...job, session: { ...job.session } };
 
   // Step 2: call adapter.status
   let sessionStatus: SessionStatus | null = null;
@@ -502,39 +508,42 @@ export async function reconcileJob(
     };
     nextStatus = mapStatus(statusMappingInput);
 
-    // Non-destructively update claude fields
+    // Non-destructively update provider session fields.
     if (sessionStatus.sessionId != null) {
-      patched.claude.sessionId = sessionStatus.sessionId;
+      patched.session.sessionId = sessionStatus.sessionId;
     }
     if (sessionStatus.pid != null) {
-      patched.claude.pid = sessionStatus.pid;
+      patched.session.pid = sessionStatus.pid;
     }
     if (sessionStatus.transcriptPath != null) {
-      patched.claude.transcriptPath = sessionStatus.transcriptPath;
+      patched.session.transcriptPath = sessionStatus.transcriptPath;
     }
     if (sessionStatus.cwd && sessionStatus.cwd.length > 0) {
-      patched.claude.cwd = sessionStatus.cwd;
+      patched.session.cwd = sessionStatus.cwd;
     }
     const waitingFor =
       stringifyWaitingFor(sessionStatus.waitingFor) ?? waitingForFromSidecar(sidecar);
     if (nextStatus === 'needs_input' && waitingFor !== undefined) {
-      patched.claude.waitingFor = waitingFor;
+      patched.session.waitingFor = waitingFor;
     } else {
-      delete patched.claude.waitingFor;
+      delete patched.session.waitingFor;
     }
     // Usually the original handle is canonical. Repair only the observed nested
     // Claude Code pseudo-id shape where `claude --bg` output was parsed as the
     // literal command word "claude"; the status row's sessionId gives us the real
     // first-8-hex short id used by attach/logs/stop.
     const derivedShortId = deriveShortIdFromSessionId(sessionStatus.sessionId);
-    if (shouldRepairPseudoShortId(patched.claude.shortId, derivedShortId)) {
-      const previousShortId = patched.claude.shortId;
-      patched.claude.shortId = derivedShortId!;
+    if (
+      patched.session.provider === 'claude' &&
+      shouldRepairPseudoShortId(patched.session.shortId, derivedShortId)
+    ) {
+      const previousShortId = patched.session.shortId;
+      patched.session.shortId = derivedShortId!;
       if (
-        patched.claude.logsCommand === undefined ||
-        patched.claude.logsCommand === `claude logs ${previousShortId}`
+        patched.session.logsCommand === undefined ||
+        patched.session.logsCommand === `claude logs ${previousShortId}`
       ) {
-        patched.claude.logsCommand = `claude logs ${derivedShortId}`;
+        patched.session.logsCommand = `claude logs ${derivedShortId}`;
       }
     }
   }
@@ -788,14 +797,14 @@ export async function reconcileJob(
   // Step 5: idempotency check — skip updateJob if nothing changed
   const statusChanged = nextStatus !== previousStatus;
   const resultChanged = !resultContextEqual(previousResult, newResult);
-  const claudeChanged =
-    patched.claude.shortId !== job.claude.shortId ||
-    patched.claude.sessionId !== job.claude.sessionId ||
-    patched.claude.pid !== job.claude.pid ||
-    patched.claude.logsCommand !== job.claude.logsCommand ||
-    patched.claude.transcriptPath !== job.claude.transcriptPath ||
-    patched.claude.cwd !== job.claude.cwd ||
-    patched.claude.waitingFor !== job.claude.waitingFor;
+  const sessionChanged =
+    patched.session.shortId !== job.session.shortId ||
+    patched.session.sessionId !== job.session.sessionId ||
+    patched.session.pid !== job.session.pid ||
+    patched.session.logsCommand !== job.session.logsCommand ||
+    patched.session.transcriptPath !== job.session.transcriptPath ||
+    patched.session.cwd !== job.session.cwd ||
+    patched.session.waitingFor !== job.session.waitingFor;
 
   const statusImpliesTurnSync =
     statusChanged &&
@@ -805,13 +814,13 @@ export async function reconcileJob(
       nextStatus === 'awaiting_followup');
   const turnsChanged = turnSnapshotsChanged || turnStateChanged || statusImpliesTurnSync;
 
-  const needsUpdate = statusChanged || resultChanged || claudeChanged || turnsChanged;
+  const needsUpdate = statusChanged || resultChanged || sessionChanged || turnsChanged;
 
   let finalJob: JobRecord = patched;
   if (needsUpdate) {
     // Merge our patch onto the LOCKED current record (re-read by updateJob) so a
     // concurrent reconciler's writes are preserved. Only fields the reconciler owns
-    // (`status`, `claude`, `result`) are overwritten; everything else is taken from
+    // (`status`, `session`, `result`) are overwritten; everything else is taken from
     // the locked read.
     finalJob = await updateJob(jobId, (current) => {
       // Build the merged record. current.turns is the locked on-disk version;
@@ -826,7 +835,7 @@ export async function reconcileJob(
       const merged = {
         ...current,
         status: patched.status,
-        claude: patched.claude,
+        session: patched.session,
         result: patched.result,
         turns: mergedTurns,
       };

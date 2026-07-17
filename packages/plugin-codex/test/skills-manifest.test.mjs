@@ -36,6 +36,12 @@ const SKILL_NAMES = [
   'claude-workflows',
   'claude-skills',
   'claude-upgrade',
+  'agy-setup',
+  'agy-delegate',
+  'agy-status',
+  'agy-wait',
+  'agy-result',
+  'agy-stop',
 ];
 
 /** Subcommand each skill must reference in its body. */
@@ -58,6 +64,12 @@ const SKILL_SUBCOMMANDS = {
   'claude-workflows': 'workflows',
   'claude-skills': 'skills',
   'claude-upgrade': 'upgrade',
+  'agy-setup': 'agy-setup',
+  'agy-delegate': 'delegate',
+  'agy-status': 'status',
+  'agy-wait': 'wait',
+  'agy-result': 'result',
+  'agy-stop': 'stop',
 };
 
 function skillPath(name) {
@@ -144,12 +156,12 @@ describe('plugin.json.version', () => {
     assert.ok(manifest.version.length > 0, 'version must be non-empty');
   });
 
-  it('is exactly "0.3.22"', () => {
+  it('keeps the 0.4.0 release base with optional local cachebuster metadata', () => {
     const manifest = readManifest();
-    assert.equal(
+    assert.match(
       manifest.version,
-      '0.3.22',
-      `expected version "0.3.22", got "${manifest.version}"`,
+      /^0\.4\.0(?:\+codex\.[0-9]+)?$/,
+      `expected 0.4.0 release base, got "${manifest.version}"`,
     );
   });
 });
@@ -724,26 +736,26 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
     }
   });
 
-  it('has at least 18 entries after doctor addition', () => {
+  it('has at least 24 entries after Antigravity addition', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.ok(
-      dp.length >= 18,
-      `interface.defaultPrompt must have at least 18 entries; got ${dp.length}`,
+      dp.length >= 24,
+      `interface.defaultPrompt must have at least 24 entries; got ${dp.length}`,
     );
   });
 });
 
-describe('plugin.json.interface.defaultPrompt length is exactly 18 (adds claude-doctor)', () => {
-  it('array length equals 18', () => {
+describe('plugin.json.interface.defaultPrompt length includes all provider skills', () => {
+  it('array length equals 24', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      18,
-      `interface.defaultPrompt must have exactly 18 entries; got ${dp.length}`,
+      24,
+      `interface.defaultPrompt must have exactly 24 entries; got ${dp.length}`,
     );
   });
 });
@@ -841,14 +853,14 @@ describe('no unexpected review-adjacent skill directories exist', () => {
 // ---------- T6: OQ-C defaultPrompt rewrites (entries #6-#9) ----------
 
 describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)', () => {
-  it('array length is exactly 18', () => {
+  it('array length is exactly 24', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      18,
-      `interface.defaultPrompt must have exactly 18 entries; got ${dp.length}`,
+      24,
+      `interface.defaultPrompt must have exactly 24 entries; got ${dp.length}`,
     );
   });
 
@@ -947,16 +959,17 @@ describe('each SKILL.md ends with a "Next steps" subsection (T1 Plan 0009)', () 
   }
 });
 
-describe('each SKILL.md Next steps subsection references at least one $claude-* skill (T1 Plan 0009)', () => {
+describe('each SKILL.md Next steps subsection references a skill from the same provider', () => {
   for (const name of SKILL_NAMES) {
-    it(`${name}: "### Next steps" section mentions at least one $claude- skill`, () => {
+    it(`${name}: "### Next steps" section mentions a provider-local skill`, () => {
       const body = readFileSync(skillPath(name), 'utf8');
       const nextStepsIdx = body.indexOf('### Next steps');
       assert.ok(nextStepsIdx !== -1, `${name}/SKILL.md missing "### Next steps" subsection`);
       const afterNextSteps = body.slice(nextStepsIdx);
+      const providerPrefix = name.startsWith('agy-') ? '$agy-' : '$claude-';
       assert.ok(
-        /\$claude-/.test(afterNextSteps),
-        `${name}/SKILL.md "### Next steps" section does not reference any $claude-* skill`,
+        afterNextSteps.includes(providerPrefix),
+        `${name}/SKILL.md "### Next steps" section does not reference any ${providerPrefix}* skill`,
       );
     });
   }

@@ -59,6 +59,12 @@ const FORBIDDEN_COST_TOKENS = [
 // ---------- expected skill names ----------
 
 const EXPECTED_SKILL_NAMES = [
+  'agy-delegate',
+  'agy-result',
+  'agy-setup',
+  'agy-status',
+  'agy-stop',
+  'agy-wait',
   'claude-adversarial-review',
   'claude-batch',
   'claude-deep-research',
@@ -215,15 +221,15 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   });
 
   // ========================================================================
-  // Check 2b: marketplace plugin.json version is exactly "0.3.22"
+  // Check 2b: marketplace plugin.json version matches the source manifest
   // ========================================================================
 
-  it('marketplace plugin.json version is exactly "0.3.22"', () => {
+  it('marketplace plugin.json version matches the source manifest', () => {
     const parsed = JSON.parse(readFileSync(MARKETPLACE_PLUGIN_JSON, 'utf8'));
     assert.equal(
       parsed.version,
-      '0.3.22',
-      `marketplace plugin.json version must be "0.3.22"; got "${parsed.version}"`,
+      SOURCE_PLUGIN_VERSION,
+      `marketplace plugin.json version must be "${SOURCE_PLUGIN_VERSION}"; got "${parsed.version}"`,
     );
   });
 
@@ -275,7 +281,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   });
 
   // ========================================================================
-  // Check 4: marketplace skills/ contains exactly the 8 expected directories
+  // Check 4: marketplace skills/ contains exactly the expected directories
   // ========================================================================
 
   it('marketplace skills/ contains exactly the expected skill directories', () => {
@@ -299,7 +305,7 @@ describe('marketplace/ layout (Plan 0006 T2)', () => {
   // Check 5: each skill directory contains a non-empty SKILL.md
   // ========================================================================
 
-  it('each of the 16 skill directories contains a non-empty SKILL.md', () => {
+  it('each skill directory contains a non-empty SKILL.md', () => {
     for (const skillName of EXPECTED_SKILL_NAMES) {
       const skillMdPath = join(MARKETPLACE_SKILLS_DIR, skillName, 'SKILL.md');
       assert.ok(
@@ -465,6 +471,7 @@ const DERIVED_FILES_ALLOWLIST = [
   'scripts/cc.mjs',
   'scripts/lib/ack.mjs',
   'scripts/lib/adapter.mjs',
+  'scripts/lib/agy-adapter.mjs',
   'scripts/lib/args.mjs',
   'scripts/lib/claude-version.mjs',
   'scripts/lib/format.mjs',
@@ -491,6 +498,12 @@ const DERIVED_FILES_ALLOWLIST = [
   'skills/claude-workflows/SKILL.md',
   'skills/claude-skills/SKILL.md',
   'skills/claude-upgrade/SKILL.md',
+  'skills/agy-setup/SKILL.md',
+  'skills/agy-delegate/SKILL.md',
+  'skills/agy-status/SKILL.md',
+  'skills/agy-wait/SKILL.md',
+  'skills/agy-result/SKILL.md',
+  'skills/agy-stop/SKILL.md',
 ];
 
 // Marketplace-owned files (present in plugin root but NOT derived from source).
@@ -1135,10 +1148,12 @@ describe('marketplace exclusion enforcement (Plan 0006 T5)', () => {
 const BUNDLED_ROOT = resolve(MARKETPLACE_PLUGIN_ROOT, 'node_modules');
 const BUNDLED_RUNTIME = resolve(BUNDLED_ROOT, '@cc-plugin-codex', 'runtime');
 const BUNDLED_DRIVER = resolve(BUNDLED_ROOT, '@cc-plugin-codex', 'driver-claude-code');
+const BUNDLED_AGY_DRIVER = resolve(BUNDLED_ROOT, '@cc-plugin-codex', 'driver-agy-cli');
 const BUNDLED_NODEPTY = resolve(BUNDLED_ROOT, 'node-pty');
 
 const SOURCE_RUNTIME_DIST = resolve(REPO_ROOT, 'packages', 'runtime', 'dist');
 const SOURCE_DRIVER_DIST = resolve(REPO_ROOT, 'packages', 'driver-claude-code', 'dist');
+const SOURCE_AGY_DRIVER_DIST = resolve(REPO_ROOT, 'packages', 'driver-agy-cli', 'dist');
 const SOURCE_NODEPTY_LIB = resolve(REPO_ROOT, 'node_modules', 'node-pty', 'lib');
 
 /**
@@ -1294,6 +1309,44 @@ describe('marketplace bundled-dependency tree (Plan 0006 T9.5)', () => {
       const src = readFileSync(resolve(SOURCE_DRIVER_DIST, f));
       const dst = readFileSync(resolve(bundledDistDir, f));
       assert.ok(src.equals(dst), `byte mismatch for bundled driver dist/${f}`);
+    }
+  });
+
+  it('bundled @cc-plugin-codex/driver-agy-cli package has the required shape', () => {
+    const pkgPath = resolve(BUNDLED_AGY_DRIVER, 'package.json');
+    assert.ok(existsSync(pkgPath), `agy driver package.json not found at ${pkgPath}`);
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    assert.equal(pkg.name, '@cc-plugin-codex/driver-agy-cli', 'agy driver package.json name');
+    assert.equal(pkg.version, BUNDLED_VERSION_MARKER, 'agy driver package.json version marker');
+    assert.equal(pkg.type, 'module', 'agy driver package.json type');
+    assert.equal(pkg.main, './dist/index.js', 'agy driver package.json main');
+    assert.equal(pkg?.engines?.node, '>=20', 'agy driver package.json engines.node');
+    assert.equal(
+      pkg?.dependencies?.['@cc-plugin-codex/runtime'],
+      BUNDLED_VERSION_MARKER,
+      `agy driver must pin @cc-plugin-codex/runtime to ${BUNDLED_VERSION_MARKER}`,
+    );
+    assert.equal(
+      pkg?.dependencies?.['node-pty'],
+      undefined,
+      'agy driver must not depend on node-pty',
+    );
+  });
+
+  it('bundled agy driver dist is complete and byte-identical to source', () => {
+    const bundledDistDir = resolve(BUNDLED_AGY_DRIVER, 'dist');
+    assert.ok(existsSync(bundledDistDir), `bundled agy driver dist not found at ${bundledDistDir}`);
+    const sourceFiles = readdirSync(SOURCE_AGY_DRIVER_DIST)
+      .filter((f) => f.endsWith('.js') || f.endsWith('.d.ts'))
+      .sort();
+    const bundledFiles = readdirSync(bundledDistDir)
+      .filter((f) => f.endsWith('.js') || f.endsWith('.d.ts'))
+      .sort();
+    assert.deepEqual(bundledFiles, sourceFiles, 'bundled agy driver files must match source');
+    for (const file of sourceFiles) {
+      const src = readFileSync(resolve(SOURCE_AGY_DRIVER_DIST, file));
+      const dst = readFileSync(resolve(bundledDistDir, file));
+      assert.ok(src.equals(dst), `byte mismatch for bundled agy driver dist/${file}`);
     }
   });
 
@@ -1477,6 +1530,20 @@ describe('marketplace bundled-dependency tree (Plan 0006 T9.5)', () => {
     assert.ok(
       ptyProbeSrc.includes('ptyBuildExtraProbe'),
       'bundled driver dist/pty-probe.js must contain ptyBuildExtraProbe',
+    );
+  });
+
+  it('bundled agy driver exports AgyCliDriver and includes its detached runner', () => {
+    const distDir = resolve(BUNDLED_AGY_DRIVER, 'dist');
+    const indexSrc = readFileSync(resolve(distDir, 'index.js'), 'utf8');
+    assert.ok(indexSrc.includes('AgyCliDriver'), 'agy driver index.js must contain AgyCliDriver');
+    assert.ok(
+      indexSrc.includes('DRIVER_VERSION'),
+      'agy driver index.js must export DRIVER_VERSION',
+    );
+    assert.ok(
+      existsSync(resolve(distDir, 'runner.js')),
+      'agy driver dist/runner.js must be bundled',
     );
   });
 

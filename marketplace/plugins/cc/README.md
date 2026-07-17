@@ -1,7 +1,8 @@
-# cc - Delegate Codex Tasks to Claude Code
+# cc - Delegate Codex Tasks to Claude Code or Antigravity
 
-A Codex plugin that lets Codex delegate tasks to Claude Code background
-sessions, with structured review and follow-up flows.
+A Codex plugin that lets Codex delegate tasks to Claude Code background sessions or Google
+Antigravity `agy --print` processes. Claude supports structured review and follow-up flows;
+Antigravity supports supervised delegate, status, wait, result, and stop operations.
 
 This is the cc-plugin-codex marketplace distribution copy. The development
 source of truth lives at `packages/plugin-codex/` in the cc-plugin-codex
@@ -10,7 +11,8 @@ repository.
 ## Requirements
 
 - Codex CLI with plugin marketplace support (`codex-cli 0.135.0` or later; 0.136.0 is the tested version).
-- Claude Code installed and authenticated locally (`claude auth login`).
+- At least one provider CLI installed and authenticated locally: Claude Code (`claude`) or Google
+  Antigravity (`agy`).
 - Node.js available on `PATH` (Node 20 or later).
 
 ## Install
@@ -64,6 +66,7 @@ Then open Codex inside any repository and run:
 ```
 $claude-setup
 $claude-doctor
+$agy-setup
 ```
 
 `$claude-setup` checks Claude Code authentication, Codex version,
@@ -79,9 +82,12 @@ long-running, browser-backed, unattended, or high-stakes delegated jobs, run
 `$claude-doctor`; it preflights Claude Code CLI auth, model access, real Chrome
 readiness, workspace path, and permission-mode intent.
 
+`$agy-setup` checks the installed agy version and print-mode options without making a model call.
+Use it when Antigravity will handle delegated jobs.
+
 ## Skills
 
-After install, the plugin makes 18 skills available inside the Codex
+After install, the plugin makes 24 skills available inside the Codex
 TUI. Type the `$<name>` form at the Codex chat prompt.
 
 - `$claude-setup` — probes the local environment (Claude Code auth,
@@ -126,10 +132,36 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
   Claude sessions, including user and installed-plugin skills.
 - `$claude-upgrade` — refreshes or repairs the installed CC plugin through
   Codex plugin commands.
+- `$agy-setup` — probes agy version and print-mode support without invoking a model.
+- `$agy-delegate` — starts a detached, supervised Antigravity print-mode job.
+- `$agy-status` — lists or inspects stored Antigravity jobs.
+- `$agy-wait` — waits for an Antigravity job to settle or time out.
+- `$agy-result` — prints captured stdout from an Antigravity job.
+- `$agy-stop` — terminates the supervisor and its agy child process.
 
 On macOS, do not run a bare `cc` shell command for this plugin; `/usr/bin/cc`
-is Apple clang. Use the `$claude-*` skills, or use the exact dispatcher path
+is Apple clang. Use the `$claude-*` or `$agy-*` skills, or use the exact dispatcher path
 from JSON `meta.dispatcherPath` / `exactActionHints`.
+
+## Antigravity Jobs
+
+`$agy-delegate` launches `agy --print` under a detached supervisor owned by the plugin. The
+supervisor records atomic state plus separate stdout and stderr artifacts, allowing later Codex
+sessions to inspect, wait for, read, restart, or stop the job. Print mode does not expose a stable
+conversation ID, so agy jobs are single-turn and the plugin does not use global `agy --continue`
+state.
+
+Supported launch options include `--model`, `--agent`, repeatable `--add-dir`, `--mode
+accept-edits|plan`, `--sandbox`, `--print-timeout`, `--project`, `--new-project`, and `--log-file`.
+Use `--provider auto` with the dispatcher to prefer an available agy installation and fall back to
+Claude Code.
+
+## Privacy
+
+Delegation may send repository contents, prompts, command output, and file metadata to the selected
+provider through the user's local account. The first delegation requires acknowledgment for that
+workspace and provider. Claude Code and Antigravity acknowledgments are separate; use `--yes` only
+for intentional non-interactive approval.
 
 ## Real Chrome And Permissions
 
@@ -364,12 +396,13 @@ reinstall.
 
 Before release, run the smoke checklist in
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md).
-It verifies the local marketplace install and all 18 skill names
+It verifies the local marketplace install and all 24 skill names
 (`$claude-setup`, `$claude-doctor`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`,
 `$claude-stop`, `$claude-followup`, `$claude-review`,
 `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`,
 `$claude-fork`, `$claude-batch`, `$claude-deep-research`,
-`$claude-workflows`, `$claude-skills`, `$claude-upgrade`) under an isolated `CODEX_HOME`.
+`$claude-workflows`, `$claude-skills`, `$claude-upgrade`, `$agy-setup`, `$agy-delegate`,
+`$agy-status`, `$agy-wait`, `$agy-result`, `$agy-stop`) under an isolated `CODEX_HOME`.
 
 ## Troubleshooting
 
@@ -495,4 +528,4 @@ codex plugin list
 ```
 
 You should see `cc@cc-plugin-codex-local` with version
-`0.3.22` (the current plugin version), reported as `installed, enabled`.
+`0.4.0` (the current plugin version), reported as `installed, enabled`.

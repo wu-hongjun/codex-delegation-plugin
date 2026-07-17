@@ -6,12 +6,13 @@
 
 ## Plugin-tree files (sourced from `packages/plugin-codex/`)
 
-The following 29 files are copied byte-for-byte from `packages/plugin-codex/` into `marketplace/plugins/cc/`:
+The following 37 files are copied byte-for-byte from `packages/plugin-codex/` into `marketplace/plugins/cc/`:
 
 - `.codex-plugin/plugin.json`
 - `scripts/cc.mjs`
 - `scripts/lib/ack.mjs`
 - `scripts/lib/adapter.mjs`
+- `scripts/lib/agy-adapter.mjs`
 - `scripts/lib/args.mjs`
 - `scripts/lib/claude-version.mjs`
 - `scripts/lib/format.mjs`
@@ -38,6 +39,12 @@ The following 29 files are copied byte-for-byte from `packages/plugin-codex/` in
 - `skills/claude-workflows/SKILL.md`
 - `skills/claude-skills/SKILL.md`
 - `skills/claude-upgrade/SKILL.md`
+- `skills/agy-setup/SKILL.md`
+- `skills/agy-delegate/SKILL.md`
+- `skills/agy-status/SKILL.md`
+- `skills/agy-wait/SKILL.md`
+- `skills/agy-result/SKILL.md`
+- `skills/agy-stop/SKILL.md`
 
 Note: `scripts/cc.mjs` is copied from source and the packaging script sets the user-executable bit (chmod 0755) on the marketplace copy unconditionally, since the source file has mode 644 but the marketplace copy must be executable.
 
@@ -63,6 +70,12 @@ All paths are relative to `marketplace/plugins/cc/`.
   { "@cc-plugin-codex/runtime": "<plugin-version>-bundled", "node-pty": "1.2.0-beta.13" }`.
 - `dist/*.js` and `dist/*.d.ts` — copied byte-for-byte from
   `packages/driver-claude-code/dist/` after `npm run build`.
+
+### `node_modules/@cc-plugin-codex/driver-agy-cli/`
+- `package.json` — synthesized minimal shape with the bundled runtime dependency.
+- `dist/*.js` and `dist/*.d.ts` — copied byte-for-byte from
+  `packages/driver-agy-cli/dist/` after `npm run build`, including the detached
+  print-mode supervisor runner.
 
 ### `node_modules/node-pty/`
 Bundled from the workspace's npm-installed `node-pty@1.2.0-beta.13`:

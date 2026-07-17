@@ -1,0 +1,25 @@
+{
+  "name": "@cc-plugin-codex/driver-agy-cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Supervised asynchronous driver for the Google Antigravity agy CLI print mode.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean"
+  },
+  "dependencies": {
+    "@cc-plugin-codex/runtime": "0.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

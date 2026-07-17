@@ -3,6 +3,7 @@
   "references": [
     { "path": "./packages/runtime" },
     { "path": "./packages/driver-claude-code" },
+    { "path": "./packages/driver-agy-cli" },
     { "path": "./packages/plugin-codex" }
   ]
 }

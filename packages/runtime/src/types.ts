@@ -1,6 +1,5 @@
-// Runtime type definitions. Keep this surface focused on what plan 0001 actually needs.
-// Driver capability and event types live in the driver package(s); the runtime treats them
-// as `unknown` in v1 to avoid circular design pressure.
+// Runtime types shared across delegated providers. Capability snapshots remain unknown here
+// so the job store does not import concrete driver packages.
 
 export type JobSchemaVersion = 1 | 2;
 
@@ -43,19 +42,22 @@ export interface WorkspaceContext {
 }
 
 export interface DriverContext {
-  name: 'claude-background';
+  name: string;
   version: string;
   capabilitiesSnapshot: unknown;
 }
 
-export interface ClaudeLaunchPolicy {
+export interface AgentLaunchPolicy {
   permissionMode?: string;
   dangerouslySkipPermissions?: boolean;
   allowDangerouslySkipPermissions?: boolean;
   unattendedRequested?: boolean;
+  mode?: string;
+  sandbox?: boolean;
 }
 
-export interface ClaudeSessionContext {
+export interface AgentSessionContext {
+  provider: 'claude' | 'agy' | string;
   version: string;
   shortId: string;
   sessionId?: string;
@@ -65,8 +67,20 @@ export interface ClaudeSessionContext {
   startedAt?: string;
   transcriptPath?: string;
   waitingFor?: string;
+  logsCommand?: string;
+  statePath?: string;
+  resultPath?: string;
+  errorPath?: string;
+  launchPolicy?: AgentLaunchPolicy;
+}
+
+/** @deprecated Use AgentLaunchPolicy. */
+export type ClaudeLaunchPolicy = AgentLaunchPolicy;
+
+/** @deprecated Use JobRecord.session. */
+export interface ClaudeSessionContext extends AgentSessionContext {
+  provider: 'claude';
   logsCommand: string;
-  launchPolicy?: ClaudeLaunchPolicy;
 }
 
 export interface PromptContext {
@@ -108,7 +122,9 @@ export interface JobRecord {
   codex: CodexContext;
   workspace: WorkspaceContext;
   driver: DriverContext;
-  claude: ClaudeSessionContext;
+  session: AgentSessionContext;
+  /** Compatibility alias retained on Claude jobs. */
+  claude?: ClaudeSessionContext;
   /** @deprecated use turns[0].prompt */
   prompt: PromptContext; // compat alias of turns[0].prompt
   /** @deprecated use the explicit `turns[i].result` you care about */
@@ -131,7 +147,9 @@ export interface CreateJobInput {
   codex: CodexContext;
   workspace: WorkspaceContext;
   driver: DriverContext;
-  claude: ClaudeSessionContext;
+  session?: AgentSessionContext;
+  /** Legacy create shape accepted for compatibility. */
+  claude?: ClaudeSessionContext;
   prompt: PromptContext;
   reviewOf?: ReviewOfContext;
 }

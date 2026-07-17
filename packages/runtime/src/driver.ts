@@ -1,8 +1,5 @@
-// Public driver contract. v1 only implements `ClaudeBackgroundDriver`, but the interface
-// is shaped so future drivers (Gemini, Grok, Qwen, DeepSeek) can plug in without runtime
-// changes. v1-out methods (`startSession`, `watch`, `status`, `stop`) still appear here
-// because they are part of the v1 contract — only their implementations are deferred to
-// later tasks. See `documentation/plan/0001-20260530-initial-plan/1-plan.md` § 3.3.
+// Public driver contract shared by native background-session drivers and supervised
+// non-interactive CLI drivers.
 
 import type { DoctorProbeResult, DoctorProbeStatus } from './doctor.js';
 import type { DriverEvent } from './events.js';
@@ -17,16 +14,32 @@ export interface DriverHealth {
 export interface DriverCapabilities {
   driverName: string;
   driverVersion: string;
-  claudeVersion: string | null;
+  /** Executable version reported by the provider CLI. */
+  cliVersion: string | null;
+  /** How asynchronous execution is implemented by this driver. */
+  execution: 'native-background' | 'supervised-process';
+  /** Whether the driver can start, inspect, stop, and continue jobs. */
+  features: {
+    start: boolean;
+    status: boolean;
+    stop: boolean;
+    followup: boolean;
+    logs: boolean;
+  };
+  /** @deprecated Claude-specific compatibility alias. */
+  claudeVersion?: string | null;
+  /** @deprecated Use execution and features.start. */
   backgroundSessions: boolean;
+  /** @deprecated Claude-specific discovery capability. */
   agentsJson: boolean;
+  /** @deprecated Use features.logs. */
   logsCommand: boolean;
   transcriptPath: boolean;
   /** v1 always false. Flipped only when the driver supports `claude attach`. */
   attach: false;
-  structuredStream: 'transcript' | 'none';
+  structuredStream: 'transcript' | 'output' | 'none';
   toolEvents: 'transcript' | 'none';
-  permissions: 'human-attach' | 'none';
+  permissions: 'human-attach' | 'cli-policy' | 'none';
   health: DriverHealth;
 }
 
@@ -70,6 +83,18 @@ export interface StartSessionOpts {
   disableSlashCommands?: boolean;
   excludeDynamicSystemPromptSections?: boolean;
   verbose?: boolean;
+  /** Antigravity CLI execution mode. */
+  mode?: 'accept-edits' | 'plan';
+  /** Run Antigravity tool execution in its OS sandbox. */
+  sandbox?: boolean;
+  /** Antigravity print-mode timeout, passed through as a CLI duration. */
+  printTimeout?: string;
+  /** Select an Antigravity project by ID or path. */
+  project?: string;
+  /** Create a new Antigravity project for the invocation. */
+  newProject?: boolean;
+  /** Ask Antigravity to write its own diagnostic log. */
+  logFile?: string;
 }
 
 export interface SessionHandle {
@@ -79,6 +104,10 @@ export interface SessionHandle {
   sessionName: string;
   cwd: string;
   startedAt: string;
+  pid?: number;
+  statePath?: string;
+  resultPath?: string;
+  errorPath?: string;
 }
 
 export interface SendInput {

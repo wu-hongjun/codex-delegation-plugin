@@ -2,13 +2,13 @@
 
 ## What this is
 
-A Codex plugin that lets a Codex session delegate a task to Claude Code using Claude Code background sessions. The plugin spawns a fresh background session per job, tracks execution state in `~/.codex/cc-plugin-codex`, and retrieves results via a command-line dispatcher that calls `claude --bg`, `claude agents --json`, and transcript/log readers.
+A Codex plugin that delegates tasks to Claude Code background sessions or Google Antigravity through the `agy` CLI. It tracks both providers under `~/.codex/cc-plugin-codex` and routes status, wait, result, restart, and stop operations through the stored job's driver.
 
-Key design choice: this v1 uses Claude Code background sessions directly and does not use `claude -p`. The architecture is designed to preserve the foundation for future session/cache reuse experiments.
+Claude uses its native background-session APIs. Antigravity uses a plugin-owned detached supervisor around `agy --print`, with atomic state and captured stdout/stderr. The dispatcher never scrapes either interactive TUI.
 
 ## Current v1 scope
 
-Eighteen skills are available:
+Twenty-four skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
 - **`$claude-doctor`** — preflight Claude Code auth, model access, browser readiness, workspace, and permission mode before long jobs
@@ -28,15 +28,24 @@ Eighteen skills are available:
 - **`$claude-workflows`** — list and inspect Claude Code workflow background sessions started via `$claude-workflow` (added in plan 0016)
 - **`$claude-skills`** — list Claude Code skills visible to delegated Claude sessions
 - **`$claude-upgrade`** — refresh or repair the installed CC plugin through Codex plugin commands
+- **`$agy-setup`** — check `agy` version and print-mode availability without a model call
+- **`$agy-delegate`** — start a supervised Antigravity print-mode job
+- **`$agy-status`** — list Antigravity jobs in the current workspace
+- **`$agy-wait`** — wait for an Antigravity job to settle or time out
+- **`$agy-result`** — read captured Antigravity output
+- **`$agy-stop`** — terminate a supervised Antigravity process
 
 Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `wait` polls one job until it produces a result, blocker, or timeout; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
+
+Antigravity lifecycle: `delegate --provider agy` starts a new detached supervisor, `status` reads its atomic state, `wait` polls it, `result` reads captured stdout, and `stop` signals the supervisor and child. Print mode does not return a stable conversation ID, so Antigravity jobs do not support follow-up. The plugin intentionally does not use global `agy --continue` state.
 
 ## Requirements
 
 - **Node.js 20+** (tested on v25.1.0)
 - **npm** (comes with Node)
 - **Codex CLI** (0.135.0 or later; tested on 0.136.0)
-- **Claude Code CLI** (tested on 2.1.149), authenticated locally
+- **At least one provider CLI**, authenticated locally: Claude Code (tested on 2.1.149) or
+  Antigravity `agy` (tested on 1.1.3)
 - **`$claude-setup` feature-probes** background-session support and reports warnings if the environment is degraded but usable
 
 ## Install locally
@@ -608,7 +617,7 @@ node packages/plugin-codex/scripts/cc.mjs upgrade
 
 ## Direct dispatcher usage
 
-All eighteen skill commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All twenty-four skill commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-codex/scripts/cc.mjs setup
@@ -629,6 +638,12 @@ node packages/plugin-codex/scripts/cc.mjs batch -- "migrate all usages of the ol
 node packages/plugin-codex/scripts/cc.mjs deep-research -- "What are the main tradeoffs between B-trees and LSM-trees for write-heavy workloads?"
 node packages/plugin-codex/scripts/cc.mjs workflows
 node packages/plugin-codex/scripts/cc.mjs upgrade
+node packages/plugin-codex/scripts/cc.mjs agy-setup
+node packages/plugin-codex/scripts/cc.mjs delegate --provider agy --yes -- "Inspect this repo."
+node packages/plugin-codex/scripts/cc.mjs status --provider agy
+node packages/plugin-codex/scripts/cc.mjs wait <agy-jobId> --timeout 5m
+node packages/plugin-codex/scripts/cc.mjs result <agy-jobId>
+node packages/plugin-codex/scripts/cc.mjs stop <agy-jobId>
 ```
 
 All commands support `--json` for machine-readable output. The `--yes` flag on `delegate` and `followup` skips the interactive privacy acknowledgement; `--allow-edit` is a policy/framing flag and does NOT bypass that acknowledgement.
@@ -642,9 +657,11 @@ node packages/plugin-codex/scripts/cc.mjs stop --all-awaiting-followup --all
 
 ## Privacy and workspace disclosure
 
-Delegating a task may send repository contents, prompts, command output, file metadata, and Claude Code context to Anthropic through the user's local Claude Code account.
+Delegating a task may send repository contents, prompts, command output, and file metadata to the selected provider through the user's local Claude Code or Google Antigravity account.
 
-On first delegation in a workspace, you will be prompted to acknowledge this policy. Acknowledgement is stored in `~/.codex/cc-plugin-codex/acks/` and is workspace-specific.
+On first delegation to each provider in a workspace, you will be prompted to acknowledge this
+policy. Acknowledgement is stored in `~/.codex/cc-plugin-codex/acks/` and is scoped to both the
+workspace and provider, so approving Claude Code does not also approve Antigravity.
 
 The `--yes` flag skips this prompt for intentional non-interactive use only.
 

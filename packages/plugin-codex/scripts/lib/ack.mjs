@@ -1,7 +1,8 @@
 // ack.mjs — privacy acknowledgement helpers.
 //
-// Acks are stored per-workspace as JSON files under
-// <companionHome>/acks/<sha256(workspaceRoot)[0:16]>.json.
+// Acks are stored per-workspace and external provider as JSON files under
+// <companionHome>/acks/. Claude keeps the legacy unsuffixed filename so
+// existing acknowledgements remain valid; other providers use a suffix.
 
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
@@ -25,22 +26,37 @@ function acksDir() {
 
 /**
  * @param {string} workspaceRoot
- * @returns {boolean}
+ * @param {string} provider
+ * @returns {string}
  */
-export function hasAck(workspaceRoot) {
-  const path = join(acksDir(), `${workspaceHash(workspaceRoot)}.json`);
-  return existsSync(path);
+function ackPath(workspaceRoot, provider) {
+  const normalizedProvider = String(provider || 'claude')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '_');
+  const suffix = normalizedProvider === 'claude' ? '' : `.${normalizedProvider}`;
+  return join(acksDir(), `${workspaceHash(workspaceRoot)}${suffix}.json`);
 }
 
 /**
  * @param {string} workspaceRoot
+ * @param {string} [provider]
+ * @returns {boolean}
  */
-export function recordAck(workspaceRoot) {
+export function hasAck(workspaceRoot, provider = 'claude') {
+  return existsSync(ackPath(workspaceRoot, provider));
+}
+
+/**
+ * @param {string} workspaceRoot
+ * @param {string} [provider]
+ */
+export function recordAck(workspaceRoot, provider = 'claude') {
   mkdirSync(acksDir(), { recursive: true });
-  const path = join(acksDir(), `${workspaceHash(workspaceRoot)}.json`);
+  const path = ackPath(workspaceRoot, provider);
   writeFileSync(
     path,
-    JSON.stringify({ workspaceRoot, ackedAt: new Date().toISOString() }, null, 2),
+    JSON.stringify({ workspaceRoot, provider, ackedAt: new Date().toISOString() }, null, 2),
   );
 }
 
@@ -59,15 +75,15 @@ export function recordAck(workspaceRoot) {
  * `isTTY` is accepted for compatibility with older call sites, but TTY status
  * alone must never record an acknowledgement.
  *
- * @param {{ workspaceRoot: string; useYes: boolean; isTTY: boolean }} input
+ * @param {{ workspaceRoot: string; useYes: boolean; isTTY: boolean; provider?: string }} input
  * @returns {{ verdict: 'satisfied' | 'recorded' | 'rejected'; workspaceRoot: string }}
  */
-export function resolveWorkspaceAck({ workspaceRoot, useYes, isTTY: _isTTY }) {
-  if (hasAck(workspaceRoot)) {
+export function resolveWorkspaceAck({ workspaceRoot, useYes, isTTY: _isTTY, provider = 'claude' }) {
+  if (hasAck(workspaceRoot, provider)) {
     return { verdict: 'satisfied', workspaceRoot };
   }
   if (useYes) {
-    recordAck(workspaceRoot);
+    recordAck(workspaceRoot, provider);
     return { verdict: 'recorded', workspaceRoot };
   }
   return { verdict: 'rejected', workspaceRoot };

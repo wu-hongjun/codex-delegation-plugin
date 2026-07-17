@@ -994,7 +994,7 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     const result = runDispatcher(['status', '--stored-status', 'needs_input']);
 
     assert.equal(result.status, 0, `expected exit 0; stderr: ${result.stderr}`);
-    assert.match(result.stdout, /JOB ID\s+STATUS\s+AGE\s+CLAUDE\s+NAME/);
+    assert.match(result.stdout, /JOB ID\s+STATUS\s+AGE\s+PROVIDER\s+SESSION\s+NAME/);
     assert.ok(result.stdout.includes(jobId), result.stdout);
     assert.ok(result.stdout.includes('Input needed: run claude attach hum00001'), result.stdout);
   });

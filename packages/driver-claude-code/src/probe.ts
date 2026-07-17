@@ -64,6 +64,17 @@ export async function probeClaudeBackgroundDriver(
   return {
     driverName: DRIVER_NAME,
     driverVersion: DRIVER_VERSION,
+    cliVersion: claudeVersion,
+    execution: 'native-background',
+    features: {
+      start:
+        isOk(probes, 'claude-bg-flag') ||
+        (statusOf(probes, 'claude-bg-flag') === 'warn' && isOk(probes, 'claude-agents-json')),
+      status: isOk(probes, 'claude-agents-json'),
+      stop: isOk(probes, 'claude-agents-json'),
+      followup: isOk(probes, 'claude-agents-json'),
+      logs: isOk(probes, 'claude-logs'),
+    },
     claudeVersion,
     backgroundSessions:
       isOk(probes, 'claude-bg-flag') ||

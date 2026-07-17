@@ -1,6 +1,6 @@
 # cc-plugin-codex
 
-> **Delegate coding work to Claude Code from inside the OpenAI Codex CLI, through Claude Code's native background sessions.**
+> **Delegate coding work from OpenAI Codex to Claude Code or Google Antigravity.**
 
 ## Install
 
@@ -23,12 +23,13 @@ Inside Codex, run:
 $claude-setup
 $claude-doctor
 $claude-skills
+$agy-setup
 ```
 
 `$claude-setup` should return aggregate status `ok` or `warn`. `fail` means an environment dependency is missing; follow the probe output. Before long, browser-backed, or unattended jobs, run `$claude-doctor` to preflight Claude Code CLI auth, model access, real-browser readiness, workspace path, and permission mode.
 
 On macOS, do not run a bare `cc` shell command for this plugin; `/usr/bin/cc`
-is Apple clang. Use the `$claude-*` Codex skills, or use the exact dispatcher
+is Apple clang. Use the `$claude-*` or `$agy-*` Codex skills, or use the exact dispatcher
 path reported in JSON `meta.dispatcherPath` / `exactActionHints`. After an
 upgrade, an already-running Codex session may still list stale versioned skill
 paths; either restart Codex or use the stable dispatcher path:
@@ -38,7 +39,7 @@ paths; either restart Codex or use the stable dispatcher path:
 
 ## Quick start
 
-- **Install and use:** follow the commands above, then use `$claude-delegate`, `$claude-wait`, `$claude-status`, `$claude-result`, and `$claude-followup` inside Codex.
+- **Install and use:** use `$claude-*` for Claude Code or `$agy-*` for Google Antigravity.
 - **End-user manual:** [`marketplace/plugins/cc/README.md`](marketplace/plugins/cc/README.md) covers verify, update, uninstall, troubleshooting, and the full skill list.
 - **Developer manual:** [`packages/plugin-codex/README.md`](packages/plugin-codex/README.md) covers dispatcher commands, runtime behavior, architecture, and contributor workflows.
 - **Marketplace payload:** [`marketplace/`](marketplace/) contains the committed plugin tree that Codex installs.
@@ -50,7 +51,7 @@ paths; either restart Codex or use the stable dispatcher path:
 ## Requirements
 
 - Codex CLI with plugin marketplace support (`codex --version`).
-- Claude Code installed and authenticated locally (`claude auth login`).
+- At least one provider CLI installed and authenticated locally: Claude Code (`claude`) or Google Antigravity (`agy`).
 - Node.js 20 or later on `PATH`.
 
 No `npm install` or manual clone is needed for normal users.
@@ -67,6 +68,11 @@ $claude-wait <jobId> --json --compact --timeout 5m
 $claude-status
 $claude-result <jobId>
 $claude-followup <jobId> -- "Now check the tests around that area."
+
+$agy-delegate "Inspect this repo and summarize the main risks."
+$agy-wait <jobId> --json --compact --timeout 5m
+$agy-status
+$agy-result <jobId>
 ```
 
 Useful discovery and maintenance commands:
@@ -78,7 +84,15 @@ $claude-skills
 $claude-upgrade
 ```
 
-The plugin currently ships 18 skills: `$claude-setup`, `$claude-doctor`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`, `$claude-skills`, `$claude-upgrade`.
+The plugin ships 24 skills: 18 `$claude-*` skills plus `$agy-setup`, `$agy-delegate`, `$agy-status`, `$agy-wait`, `$agy-result`, and `$agy-stop`.
+
+Antigravity jobs run through `agy --print` under a detached supervisor owned by the plugin. The
+supervisor captures stdout/stderr and lifecycle state so separate Codex invocations can wait,
+read results, or stop the process. `agy` does not expose stable conversation IDs from print mode,
+so Antigravity jobs are single-turn and the plugin does not use the workspace-global
+`--continue` flag. Supported launch flags include `--model`, `--agent`, repeatable `--add-dir`,
+`--mode accept-edits|plan`, `--sandbox`, `--print-timeout`, `--project`, `--new-project`, and
+`--log-file`. Permission bypass is forwarded only when explicitly requested.
 
 ---
 
@@ -140,11 +154,11 @@ This removes the Codex plugin registration and marketplace pointer. It does not 
 
 ## What This Is
 
-This repository is a **Codex-native plugin and runtime** that lets the OpenAI Codex CLI orchestrate Claude Code as a delegated coding agent. The transport is Claude Code's first-party background-session surface (`claude --bg`, `claude agents --json`, transcript JSONL, `claude logs`, `claude attach`, `claude stop`) — **not** `claude -p`.
+This repository is a **Codex-native plugin and runtime** that lets the OpenAI Codex CLI orchestrate Claude Code and Google Antigravity as delegated coding agents.
 
 This plugin delegates work to Claude Code through background sessions (`claude --bg`) rather than `claude -p`. It is designed to preserve the architecture needed for session/cache reuse, but savings have not yet been benchmarked.
 
-The runtime is structured as a `Driver` interface with one implementation today (`ClaudeBackgroundDriver`). Adding a future driver for Gemini CLI / Grok Code / Qwen Code / DeepSeek CLI is a localized addition, not a refactor — but only Claude Code ships in v1.
+The runtime has two driver implementations: `ClaudeBackgroundDriver` for Claude Code's native background sessions and `AgyCliDriver` for supervised Antigravity print-mode processes.
 
 ---
 
@@ -232,11 +246,12 @@ node tools/package-marketplace.mjs --write
 
 ## Current scope (what actually ships)
 
-- **One direction**: Codex → Claude Code.
-- **One primary transport**: `ClaudeBackgroundDriver` — uses `claude --bg`, `claude agents --json`, transcript JSONL, `claude logs`, `claude attach`, and `claude stop`. It does not use `claude -p`.
+- **One direction**: Codex to delegated provider.
+- **Two transports**: native Claude Code background sessions and supervised Antigravity `agy --print` processes.
 - **One host plugin**: Codex skills + manifest under `packages/plugin-codex/`.
 - **Session-per-job with follow-ups**: every `$claude-delegate` invocation creates a fresh background job. Continue an existing job with `$claude-followup <jobId>`; do not reuse `--name` as a session key.
-- **Eighteen skills**: `$claude-setup`, `$claude-doctor`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`, `$claude-stop`, `$claude-followup`, `$claude-review`, `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`, `$claude-fork`, `$claude-batch`, `$claude-deep-research`, `$claude-workflows`, `$claude-skills`, `$claude-upgrade`.
+- **Single-turn Antigravity jobs**: `$agy-delegate` creates a supervised print-mode process with status, wait, result, and stop support.
+- **Twenty-four skills**: 18 Claude skills and 6 Antigravity skills.
 
 The full v1 plan, including every deliberately-deferred feature, lives at [`documentation/plan/0001-20260530-initial-plan/1-plan.md`](documentation/plan/0001-20260530-initial-plan/1-plan.md). It supersedes any conflicting framing in this README.
 
@@ -254,9 +269,9 @@ This project takes a different approach: drive Claude Code through its first-par
 
 ## Design pillars
 
-### 1. Driver abstraction (`Driver` interface) — *design seam; v1 ships one implementation*
+### 1. Driver abstraction (`Driver` interface)
 
-A single interface that every supported coding agent could implement. In v1, only `ClaudeBackgroundDriver` is built. The interface exists so a future second driver is a localized addition, not a rewrite — and so Codex-specific assumptions do not leak into the runtime.
+A single interface covers both `ClaudeBackgroundDriver` and `AgyCliDriver`. Provider-neutral job session records let status, wait, result, restart, and stop dispatch to the correct implementation.
 
 ```
 Driver
@@ -346,7 +361,8 @@ Update with `git submodule update --remote --merge`.
 
 - **Not a fork of `pejmanjohn/cc-plugin-codex`.** That repo is a useful reference; the runtime, transport, and plugin model here are different.
 - **Not a wrapper around `claude -p`.** v1 does not use `claude -p` at all — not as primary transport, and not as fallback.
-- **Not Claude-Code-specific.** Claude Code is the only driver in v1, but the runtime is designed so additional drivers (Gemini, Grok, Qwen, DeepSeek) are localized additions later.
+- **Not Claude-Code-specific.** The runtime currently ships Claude Code and Antigravity drivers;
+  additional providers remain localized driver additions.
 - **Not a re-implementation of `openai/codex-plugin-cc`.** That plugin goes CC→Codex; this one goes Codex→CC.
 - **Not a TUI parser.** The Claude Code interactive TUI is a human rendering layer; this plugin uses background-session APIs as the semantic source.
 
@@ -370,7 +386,9 @@ Plans 0001-0003 and Plan 0006 are complete; Plan 0004 is paused pending post-cut
 
 - **`claude agents --json` schema or transcript path may change between Claude Code versions.** The driver uses a tolerant parser, the doctor feature-probes at every run, and tests pin recorded fixtures so version drift is caught fast.
 - **The maintainer's local Claude Code version is the de-facto v1 floor** until the benchmark harness lands; the doctor reports the exact running version every time it runs, and `2-implement.md` records it.
-- **Private-repo contents are delegated to Anthropic via the user's Claude Code account.** `$claude-delegate` discloses this on first run per workspace and records the acknowledgement in the job store. Plugin defaults preserve Claude Code's permission system; no bypass flags are ever passed.
+- **Private-repo contents may be delegated to Anthropic or Google through the selected local CLI.**
+  The plugin discloses this on first use per workspace and provider, and stores separate
+  acknowledgements so approval for one provider never authorizes another.
 - **`--allow-edit` is a policy/UX flag, not a filesystem sandbox.** The safety boundary is Claude Code's permission system + workspace trust, which this plugin must not undermine.
 
 ---

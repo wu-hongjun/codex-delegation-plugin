@@ -1,0 +1,37 @@
+export const DRIVER_NAME = 'agy-cli';
+export const DRIVER_VERSION = '0.0.0';
+
+export interface AgyCliDriverOptions {
+  cwd?: string;
+  env?: NodeJS.ProcessEnv;
+  timeoutMs?: number;
+  executable?: string;
+}
+
+export type AgyRunnerStatus = 'starting' | 'running' | 'completed' | 'failed' | 'stopped';
+
+export interface AgyRunnerState {
+  schemaVersion: 1;
+  driverName: typeof DRIVER_NAME;
+  shortId: string;
+  sessionName: string;
+  cwd: string;
+  status: AgyRunnerStatus;
+  runnerPid: number;
+  agyPid?: number;
+  startedAt: string;
+  updatedAt: string;
+  endedAt?: string;
+  exitCode?: number | null;
+  signal?: NodeJS.Signals | null;
+  error?: string;
+  resultPath: string;
+  errorPath: string;
+}
+
+export interface AgyLaunchRequest {
+  executable: string;
+  args: string[];
+  cwd: string;
+  state: AgyRunnerState;
+}

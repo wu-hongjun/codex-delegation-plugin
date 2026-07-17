@@ -40,6 +40,8 @@ const BOOLEAN_FLAGS = new Set([
   'disable-slash-commands',
   'exclude-dynamic-system-prompt-sections',
   'verbose',
+  'sandbox',
+  'new-project',
 ]);
 
 /** @type {Set<string>} */
@@ -71,6 +73,11 @@ const VALUE_FLAGS = new Set([
   'plugin-dir',
   'plugin-url',
   'fail-on',
+  'provider',
+  'mode',
+  'print-timeout',
+  'project',
+  'log-file',
 ]);
 
 function ensureKnownFlag(key) {

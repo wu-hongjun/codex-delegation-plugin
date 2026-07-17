@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Codex-native Claude Code background-session driver. See README.md.",
+  "description": "Codex delegation runtime for Claude Code and Google Antigravity. See README.md.",
   "workspaces": [
     "packages/*"
   ],
@@ -16,10 +16,10 @@
     "build": "tsc --build",
     "clean": "tsc --build --clean && rimraf packages/*/dist",
     "test": "npm run test:mock && npm run test:runtime && npm run test:driver && npm run test:plugin",
-    "test:mock": "node --test tools/mock-claude/test/*.test.mjs tools/mock-codex/test/*.test.mjs",
+    "test:mock": "node --test tools/mock-claude/test/*.test.mjs tools/mock-codex/test/*.test.mjs tools/mock-agy/test/*.test.mjs",
     "test:runtime": "npm run build && node --test packages/runtime/test/*.test.mjs",
     "test:doctor": "npm run build && node --test packages/runtime/test/doctor.test.mjs",
-    "test:driver": "npm run build && node --test packages/driver-claude-code/test/*.test.mjs",
+    "test:driver": "npm run build && node --test --test-concurrency=4 packages/driver-claude-code/test/*.test.mjs packages/driver-agy-cli/test/*.test.mjs",
     "test:plugin": "npm run build && node --test packages/plugin-codex/test/*.test.mjs",
     "test:attach": "npm run build && node --test packages/driver-claude-code/test/send.test.mjs",
     "test:bench": "node --test tools/bench/test/*.test.mjs tools/bench/test/runners/*.test.mjs"

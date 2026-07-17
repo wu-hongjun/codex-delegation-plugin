@@ -1,61 +1,85 @@
-# Real-Codex test recipe
+# Real Codex acceptance test
 
-**Audience**: maintainer (or anyone) installing the plugin into a fresh / real Codex CLI to validate the 12 skills end-to-end. Self-contained — no other docs required.
-**Tested commit**: `main` at or after [`0386b54`](https://github.com/wu-hongjun/cc-plugin-codex/commit/0386b54) (Plan 0011 close — 12 skills, 1729 tests green).
-**Plugin version on disk**: `0.2.0` (the version field hasn't been bumped since Plan 0006; the code includes everything from Plans 0007-0011).
+Use this recipe to validate a packaged `delegate` plugin in a real Codex process. It covers installation,
+all 24 skill names, one live Claude Code job, and one live Antigravity job. Historical test findings
+under `documentation/testing/` are evidence from earlier releases, not current instructions.
 
-## 1. Prerequisites on the test machine
+## 1. Record the environment
 
-| Dep | Minimum | How to check |
-|---|---|---|
-| Codex CLI | `0.136.0` | `codex --version` |
-| Claude Code CLI | `2.1.153`+ (recommend `2.1.165`) | `claude --version` |
-| Claude Code auth | logged in | `claude auth status` |
-| Node.js | `20` or `22` (matches CI) | `node -v` |
-| Git | any recent | `git --version` |
-
-If `claude` isn't installed: `curl -fsSL https://claude.ai/install.sh \| bash` (puts it at `~/.local/bin/claude`; ensure that's on PATH ahead of any brew install).
-
-The plugin doesn't require any other ambient deps — its runtime is bundled in `marketplace/plugins/cc/node_modules/`.
-
-## 2. Install (4 commands)
-
-> **Migrating from `claude-companion` (pre-Plan-0014)**: the plugin was renamed from `claude-companion` to `cc` in Plan 0014. If you have the old plugin installed, remove it first:
->
-> ```bash
-> codex plugin remove claude-companion --marketplace cc-plugin-codex-local
-> codex plugin marketplace remove cc-plugin-codex-local
-> ```
->
-> Then follow the install steps below with the new `cc` id.
+Run from the repository root:
 
 ```bash
-# 1. Clone the repo somewhere durable
-git clone https://github.com/wu-hongjun/cc-plugin-codex.git
-cd cc-plugin-codex
+node --version
+codex --version
+claude --version || true
+agy --version || true
+node -e "console.log(require('./packages/plugin-delegate/.codex-plugin/plugin.json').version)"
+git rev-parse HEAD
+git status --short
+```
 
-# 2. Register the committed local marketplace
-codex plugin marketplace add "$(pwd)/marketplace"
+Supported release environments use macOS or Linux, Node.js 20 or 22, and Codex CLI 0.136.0 or
+later. The most recent live smoke used Codex 0.144.5, Claude Code 2.1.211, and `agy` 1.1.3. Treat
+those as recorded test versions rather than hard minimums for either provider. At least one provider
+CLI must be installed and authenticated; a full release acceptance pass tests both.
 
-# 3. Install the plugin from that marketplace
-codex plugin add "cc@cc-plugin-codex-local"
+## 2. Run deterministic gates
 
-# 4. Confirm it's installed + enabled
+First run the static gates, which do not invoke a provider model:
+
+```bash
+node tools/package-marketplace.mjs --check
+npm run lint
+npm run typecheck
+npm run format
+npm test
+npm run test:attach
+npm run test:bench
+```
+
+Then run the marketplace smoke:
+
+```bash
+node tools/smoke-marketplace.mjs --marketplace-root "$(pwd)/marketplace"
+```
+
+The marketplace smoke uses an isolated temporary `CODEX_HOME`, installs the packaged plugin,
+executes its dispatcher from Codex's cache, and cleans up. Its `$claude-setup` cache-execution check
+includes the configured Claude model-access probe, so it requires authenticated Claude Code and may
+consume provider usage. `$agy-setup` itself remains a no-model-call probe.
+
+## 3. Install the plugin
+
+For a public-release test:
+
+```bash
+codex plugin marketplace add https://github.com/wu-hongjun/codex-delegation-plugin
+codex plugin add "delegate@codex-delegation-plugin"
 codex plugin list
 ```
 
-You should see one row with id `cc`, source `cc-plugin-codex-local`, version `0.2.0`, status `installed, enabled`.
+For contributor testing from the current checkout instead:
 
-If `codex plugin add` fails on a fresh box, re-run `codex plugin marketplace add "$(pwd)/marketplace"` first — Codex sometimes caches a stale marketplace listing.
-
-## 3. First-time skill discovery sanity check
-
-In a Codex session inside any workspace, type `$` and the autocomplete should show all 12 skill names:
-
+```bash
+codex plugin marketplace add "$(pwd)/marketplace"
+codex plugin add "delegate@codex-delegation-plugin-local"
+codex plugin list
 ```
+
+Use only one install target for a test run. `codex plugin list` must show `delegate` as installed and
+enabled at the version reported by the source manifest. Restart Codex after installing or upgrading
+so its generated skill catalog does not retain versioned paths from an older cache entry.
+
+## 4. Verify skill discovery
+
+Open Codex, type `$`, and confirm these 24 skills appear:
+
+```text
 $claude-setup
+$claude-doctor
 $claude-delegate
 $claude-status
+$claude-wait
 $claude-result
 $claude-stop
 $claude-followup
@@ -65,176 +89,154 @@ $claude-workflow
 $claude-goal
 $claude-fork
 $claude-batch
+$claude-deep-research
+$claude-workflows
+$claude-skills
+$claude-upgrade
+$agy-setup
+$agy-delegate
+$agy-status
+$agy-wait
+$agy-result
+$agy-stop
 ```
 
-If only 7 or 9 or 10 show, the install hit a stale cache — `codex plugin remove cc`, then re-run step 3 above.
+Fresh-process setup invocation can also be checked from a shell:
 
-## 4. Golden-path test sequence
-
-Run these in order in a Codex chat. Each builds on the previous one. **First time you delegate, you'll see a privacy disclosure prompt** — answer "yes" (or pass `--yes` to skip future prompts).
-
-**Terminal states for background jobs**: `complete`, `idle`, `awaiting_followup`, `failed`, `stopped`, `orphaned`. The most common terminal state for bg-flow skills (delegate / workflow / goal / fork / batch) is `awaiting_followup` — that means the model finished its turn and is waiting for either a followup or a stop. Poll until you hit one of these states (do NOT poll forever expecting `complete` or `idle` alone).
-
-### 4.1 `$claude-setup` — environment probe
-
+```bash
+codex exec --ephemeral '$claude-setup'
+codex exec --ephemeral '$agy-setup'
 ```
+
+An unavailable provider may produce a clear setup failure, but the skill itself must be recognized.
+If skill paths point to an older version, restart Codex before treating it as an install defect.
+
+## 5. Privacy and permissions
+
+The first delegation for each provider and workspace requires a privacy acknowledgement. Claude Code
+and Antigravity acknowledgements are separate. Use `--yes` only for an intentional non-interactive
+test; do not remove user profile data to force a first-run state.
+
+Permission bypass is never an ordinary default. For a trusted unattended test, request the provider's
+bypass flag explicitly. Antigravity's `--sandbox` limits terminal execution but does not approve a
+command. Prefer a narrow Antigravity `permissions.allow` rule when the test needs shell access.
+
+## 6. Claude Code golden path
+
+Start with read-only probes:
+
+```text
 $claude-setup
+$claude-doctor
+$claude-skills
 ```
 
-Expected: aggregate status `ok` (or `warn` with a clear caveat). Look for:
-- `claude binary: 2.1.165` (or `2.1.153`)
-- `claude auth: ok`
-- `bg-exec-supported: ok` (was `warn` pre-2.1.153)
-- `workflows-supported: ok`
-- `opus-4-8-supported: ok` (was the latest gate to flip)
-- `agents-json: ok`
+`$claude-setup` must return aggregate `ok` or a usable `warn`; a `fail` should identify the blocking
+probe. `$claude-doctor` should separate CLI auth, model access, browser readiness, workspace, and
+permission intent.
 
-If any probe is `fail`, that's the real blocker; everything downstream depends on it.
+Start a bounded job and retain the returned `job_<id>`:
 
-### 4.2 `$claude-delegate` — basic background session
-
-```
-$claude-delegate "Inspect this repo and summarize TODOs. Do not edit files."
+```text
+$claude-delegate "Inspect this repository's README files and report one documentation inconsistency. Do not edit files."
+$claude-wait <jobId> --json --compact --timeout 5m
+$claude-status --job <jobId> --json --compact
+$claude-result <jobId>
 ```
 
-Expected output ends with `Job ID: job_<id>`. **First run will show a privacy disclosure** — answer yes, then re-run. Subsequent delegations skip the prompt for this workspace.
+A completed turn normally reaches `awaiting_followup`, then displays as `completed` after its
+follow-up window. `needs_input`, `failed`, `stopped`, and `orphaned` require operator action rather
+than indefinite polling. A wait timeout does not stop a healthy job; inspect its returned recovery
+actions and use `$claude-result <jobId> --partial` when useful.
 
-### 4.3 `$claude-status` — check the job's progress
+Exercise same-session continuation, then clean up:
 
-```
-$claude-status
-```
-
-Expected: a list of this workspace's jobs (add `--all` to span every workspace), each
-with `state: running` (or `complete`), session info, and current activity.
-
-`status` is a **list** command — it does not take a `<jobId>`. To inspect one job, use
-`$claude-result <jobId>` (output) or `$claude-status --all` (cross-workspace list). Passing
-a job id to `status` is rejected with exit 2 (it used to be silently ignored — fixed in
-v0.3.2, deep-test Finding 3).
-
-### 4.4 `$claude-result` — fetch final output
-
-Wait until status shows `complete`, `idle`, or `awaiting_followup` (see the terminal-state note above — `awaiting_followup` is the most common final state). Then:
-
-```
-$claude-result job_<id>
+```text
+$claude-followup <jobId> -- "Return only the affected file path."
+$claude-wait <jobId> --timeout 5m
+$claude-result <jobId>
+$claude-stop <jobId>
 ```
 
-Expected: the model's final message text. If empty / partial, the model is still mid-stream — wait and re-run.
+For a release that changes review behavior, also run `$claude-review <jobId>` and
+`$claude-adversarial-review <jobId>`. Run workflow, goal, fork, batch, and deep-research live tests
+only when their implementation changed or the release specifically needs those expensive paths;
+their dispatcher and manifest contracts remain covered by the deterministic suite.
 
-### 4.5 `$claude-followup` — send another instruction mid-session
+## 7. Antigravity golden path
 
-```
-$claude-followup job_<id> "Also list any files larger than 100 lines."
-```
+First verify the binary and print-mode surface without a model call:
 
-Expected: confirmation that the followup was queued. `$claude-status` will show activity again. `$claude-result` will eventually include the new turn.
-
-### 4.6 `$claude-review` — same-session review of a completed job
-
-**Important**: `$claude-review` takes a `<jobId-or-prefix>` of an existing background job (from delegate / workflow / goal / fork / batch), NOT a freeform prompt. It sends a review prompt INTO that job's existing Claude Code session and reviews the most recent non-review turn. Use the delegate job from steps 4.2-4.5:
-
-```
-$claude-review job_<id-from-4.2>
+```text
+$agy-setup
 ```
 
-Expected: a same-session review of the delegate job's output. Status becomes `awaiting_followup` again once the review turn completes. Re-read with `$claude-result <jobId>`.
+Start a bounded, read-only planning job and retain the returned `job_<id>`:
 
-### 4.7 `$claude-adversarial-review` — fresh-session second-opinion pass
-
-Same input shape as `$claude-review` — takes a `<jobId-or-prefix>`. Spawns a FRESH Claude Code session that reads the original job's transcript and reviews it independently. Heavier-weight model can be selected with `--model opus`.
-
-```
-$claude-adversarial-review job_<id-from-4.2>
-```
-
-Expected: a new job ID (the fresh adversarial-review session). Poll its status; `$claude-result` returns the independent verdict.
-
-### 4.8 `$claude-stop` — terminate the delegate session
-
-```
-$claude-stop job_<id-from-4.2>
+```text
+$agy-delegate --mode plan -- "Inspect this repository's README files and report one documentation inconsistency. Do not edit files."
+$agy-wait <jobId> --json --compact --timeout 5m
+$agy-status --job <jobId> --json --compact
+$agy-result <jobId>
 ```
 
-Expected: confirmation the session was stopped.
+The job should retain `provider: "agy"`, settle as `completed`, and return captured stdout. Use
+`$agy-result <jobId> --partial` after a failed, stopped, orphaned, or still-running job when partial
+output matters.
 
-### 4.9 `$claude-workflow` — dynamic multi-agent workflow
+Antigravity print mode is single-turn: there is no `$agy-followup`, and the plugin does not use the
+workspace-global `agy --continue` state. Start another `$agy-delegate` for another instruction.
 
-```
-$claude-workflow "Survey the test suite organization across packages/plugin-codex/test/ and recommend reorganization."
-```
+To test cancellation, start a deliberately long job, stop it promptly, and inspect the stored state:
 
-Expected: returns a Job ID like delegate. The runtime triggers ultracode planning + parallel subagents. **This one shows the biggest Claude Code-over-Codex advantage** — fan-out across many subagents.
-
-Verify via `$claude-status <job-id>` that you see workflow-style phase tracking, then `$claude-result <job-id>` once complete.
-
-### 4.10 `$claude-goal` — set a stop-condition
-
-```
-$claude-goal "Keep iterating until all TODO comments in scripts/ are converted to GitHub issues. Do not edit other files."
+```text
+$agy-stop <jobId>
+$agy-status --job <jobId> --json --compact
+$agy-result <jobId> --partial
 ```
 
-Expected: Job ID returned. The runtime injects a `/goal` slash command — the session keeps working until the goal is met (Stop hook fires when met) or the user stops it. Track progress with `$claude-status <jobId>` / `$claude-result <jobId>`; there is no dedicated `goal_status` field in the status output (the goal state lives inside the Claude Code session, not the bg job record).
+## 8. Edge cases
 
-### 4.11 `$claude-fork` — spawn a forked subagent
+Probe these when the release touches shared lifecycle behavior:
 
+1. Start two jobs quickly and verify each receives a distinct ID.
+2. Confirm default status is workspace-scoped and `--all` crosses workspaces only when requested.
+3. Resolve jobs by a unique ID prefix and verify an ambiguous prefix fails clearly.
+4. Confirm `--json --compact` output parses as JSON for status, wait, result, and stop.
+5. Verify a short wait timeout reports recovery actions without terminating the job.
+6. Verify Claude and Antigravity privacy acknowledgement records are provider-scoped.
+7. Verify permission-blocked jobs report an actionable failure instead of hanging indefinitely.
+
+Do not delete `~/.codex`, `~/.claude`, or `~/.gemini` data for an edge-case test. Use a temporary
+workspace, an isolated `CODEX_HOME`, or the test suite's mock binaries.
+
+## 9. Report findings
+
+Create `documentation/testing/findings-YYYYMMDD.md` with:
+
+- commit, plugin version, OS, Node, Codex, Claude Code, and `agy` versions
+- install target: public Git marketplace or local checkout
+- one row per tested flow with `pass`, `partial`, or `fail`
+- exact command, job ID, final stored status, and relevant output or error
+- severity for defects: blocker, high, medium, or low
+- deterministic gate results and the GitHub Actions run URL for a release candidate
+
+Do not include provider credentials, private prompts, full repository contents, or unredacted local
+paths that should not be committed.
+
+## 10. Uninstall or restore
+
+Remove the target used by the test:
+
+```bash
+# Public install
+codex plugin remove "delegate@codex-delegation-plugin"
+codex plugin marketplace remove "codex-delegation-plugin"
+
+# Local contributor install
+codex plugin remove "delegate@codex-delegation-plugin-local"
+codex plugin marketplace remove "codex-delegation-plugin-local"
 ```
-$claude-fork "Read packages/plugin-codex/scripts/cc.mjs L1-L100 and explain the dispatcher architecture in 5 bullet points."
-```
 
-Expected: Job ID returned. A subagent runs to completion (30k tokens baseline for a trivial directive — designed behavior). `$claude-result <job-id>` returns the subagent's final output.
-
-### 4.12 `$claude-batch` — parallel-work orchestration
-
-```
-$claude-batch "Add a JSDoc one-liner comment above every exported function in packages/plugin-codex/scripts/cc.mjs that doesn't already have one. Do not change function bodies."
-```
-
-Expected: Job ID returned. The runtime injects the `# Batch: Parallel Work Orchestration` system prompt — the session goes into plan mode → decomposes → parallel execution. This is the heaviest skill; it can run for many minutes. Track via `$claude-status`. If you want to abort: `$claude-stop`.
-
-## 5. Edge cases worth probing
-
-Once the golden path works, try these to surface real issues:
-
-1. **`--allow-edit` rejection**: try `$claude-fork --allow-edit "anything"` — expected to be rejected with exit 2 ("not applicable to this subcommand"). Same for `workflow`, `goal`, `batch`, `review`, `adversarial-review`.
-2. **Multiple parallel delegations**: run `$claude-delegate "..."` three times rapidly. Verify each gets a distinct Job ID and `$claude-status --all` lists all three.
-3. **Bulk stop** — `$claude-stop --all-awaiting-followup` stops every `awaiting_followup` job in this workspace. Add `--all` for cross-workspace bulk-stop: `$claude-stop --all-awaiting-followup --all`. Note: a bare `$claude-stop --all` (without `--all-awaiting-followup`) is intentionally rejected — the dispatcher requires either a `<jobId>` or the explicit bulk-stop flag, to prevent accidentally killing every session.
-4. **Workspace isolation**: run delegations from two different workspaces. `$claude-status` in workspace A should NOT show workspace B's jobs unless you pass `--all`.
-5. **`$claude-result --json`**: machine-readable JSON output. Should be valid parseable JSON across all background-flow skills.
-6. **Non-TTY rejection**: pipe input into a skill (`echo "test" \| $claude-delegate`) — should be rejected cleanly, not silently misbehave.
-7. **First-run on a fresh workspace**: delete `~/.codex/data/codex-openai-codex/sessions/` to simulate a fresh first run, then verify the privacy disclosure fires properly.
-
-## 6. Known caveats / not-bugs
-
-- **Plugin version reporting is inconsistent** — `codex plugin list` shows `0.2.0` (the value in `.codex-plugin/plugin.json`); dispatcher / package metadata reports `0.0.0` (the workspace `package.json` is intentionally pinned to `0.0.0` per `documentation/RELEASING.md` § "Version Bump"). The `marketplace --check` script enforces byte-identity of the committed marketplace tree, not the version string. Plan 0012 candidate: surface `0.2.0` consistently across both report paths.
-- **`$claude-tasks` is intentionally not shipped** — Plan 0011 probed it (verdict B); `/tasks` opens a TUI dialog that blocks on keyboard input. Deferred to a future plan with PTY-injection fallback design.
-- **Fork token cost is high** (~30k tokens baseline for a trivial directive). This is `/fork`'s designed cost — it spawns a full subagent with its own context.
-- **Batch sessions can run for many minutes**. The `# Batch: Parallel Work Orchestration` system prompt drives multi-phase work. Stop early with `$claude-stop` if it goes off-rails.
-- **`MessageDisplay` hooks don't affect `$claude-result`** — by design, `$claude-result` reads canonical JSONL storage, not the display layer.
-- **`--fallback-model` silent fallback** — if `--model opus` isn't installed and Claude Code's `--fallback-model` is configured, the review proceeds on the fallback model without warning in skill output. Note in your test report which model actually ran (visible via `$claude-status --json`).
-
-## 7. How to report findings back
-
-For each skill you test, capture:
-
-1. **Skill name** (e.g. `$claude-fork`)
-2. **Status**: `pass` / `partial` / `fail`
-3. **What you ran** (exact command + args)
-4. **What happened** (output excerpt; for failures, the full error)
-5. **Environment**: `claude --version`, `codex --version`, OS
-
-Group failures by severity:
-- **Blocker**: skill doesn't work at all on a fresh install
-- **High**: skill works but exhibits unexpected behavior (wrong output, wrong job state, etc.)
-- **Medium**: rough UX (confusing error message, unclear progress, etc.)
-- **Low**: cosmetic / docs gaps
-
-A simple format works: paste a markdown table into the next conversation, or write to `documentation/testing/findings-YYYYMMDD.md` if you want a persistent record. Anything that hits Blocker/High level becomes a Plan 0012+ candidate; Medium/Low can roll into a polish plan.
-
-## 8. After testing
-
-Two paths depending on results:
-
-- **All green** → cut `v0.3.0`: bump `packages/plugin-codex/.codex-plugin/plugin.json` version field, follow `documentation/RELEASING.md` Plan 0006 T10 procedure, tag + GitHub release. The plugin will then have a stable tagged version for any future installs that want to pin.
-- **Issues surface** → fix-and-iterate on `main`, re-test, then cut `v0.3.0` when stable. The committed marketplace tree updates automatically as part of the fix cycle (`node tools/package-marketplace.mjs --write` resyncs).
+Uninstall removes Codex's plugin registration and marketplace pointer. It intentionally leaves
+provider transcripts and `~/.codex/codex-delegation-plugin/` job records intact.

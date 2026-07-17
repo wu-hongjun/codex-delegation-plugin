@@ -1,6 +1,6 @@
 # mock-claude
 
-A deterministic stand-in for the real `claude` (Claude Code) CLI, used by `cc-plugin-codex` tests so they never make network calls or touch the user's real Claude Code state.
+A deterministic stand-in for the real `claude` (Claude Code) CLI, used by `codex-delegation-plugin` tests so they never make network calls or touch the user's real Claude Code state.
 
 ## Contract
 
@@ -27,8 +27,8 @@ Any other invocation prints a usage line to stderr and exits 2.
 
 Configured via two env vars:
 
-- `CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME` — state directory. Tests MUST set this to an isolated temp path. Defaults to `${os.tmpdir()}/cc-plugin-codex-mock-claude` for safety, never to `~/.claude`.
-- `CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG` — optional path to a JSON config controlling fixture behavior. Merged onto the defaults below.
+- `CODEX_DELEGATION_MOCK_CLAUDE_HOME` — state directory. Tests MUST set this to an isolated temp path. Defaults to `${os.tmpdir()}/codex-delegation-plugin-mock-claude` for safety, never to `~/.claude`.
+- `CODEX_DELEGATION_MOCK_CLAUDE_CONFIG` — optional path to a JSON config controlling fixture behavior. Merged onto the defaults below.
 
 ### Default config (real-2.1.149 mode)
 
@@ -124,7 +124,7 @@ The parser (`parseAgentsJson`) derives the `shortId` from `sessionId` automatica
 
 ## State layout
 
-Inside `CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME`:
+Inside `CODEX_DELEGATION_MOCK_CLAUDE_HOME`:
 
 ```
 <HOME>/

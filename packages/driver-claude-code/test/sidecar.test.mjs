@@ -296,20 +296,20 @@ describe('resolveSidecarPath — uses opts.jobsDir when supplied', () => {
 });
 
 // ============================================================
-// 11. resolveSidecarPath uses CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME/jobs
+// 11. resolveSidecarPath uses CODEX_DELEGATION_MOCK_CLAUDE_HOME/jobs
 // ============================================================
 
-describe('resolveSidecarPath — uses CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME from opts.env', () => {
+describe('resolveSidecarPath — uses CODEX_DELEGATION_MOCK_CLAUDE_HOME from opts.env', () => {
   it('returns <mockHome>/jobs/<shortId>/state.json when env var is set', () => {
     const result = resolveSidecarPath('abcd1234', {
-      env: { ...process.env, CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: '/tmp/y' },
+      env: { ...process.env, CODEX_DELEGATION_MOCK_CLAUDE_HOME: '/tmp/y' },
     });
     assert.equal(result, '/tmp/y/jobs/abcd1234/state.json');
   });
 
   it('env path wins over the default homedir path', () => {
     const result = resolveSidecarPath('abcd1234', {
-      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: '/tmp/mock-home' },
+      env: { CODEX_DELEGATION_MOCK_CLAUDE_HOME: '/tmp/mock-home' },
     });
     // Must contain mock-home, not ~/.claude/jobs
     assert.ok(

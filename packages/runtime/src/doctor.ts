@@ -1,4 +1,4 @@
-// Doctor probes for the cc-plugin-codex companion.
+// Doctor probes for Codex Delegation.
 //
 // Each probe is a `Promise<DoctorProbeResult>` and is independently testable. `runDoctor()`
 // runs every probe sequentially, aggregates a single `DoctorReport`, and (by default)
@@ -15,7 +15,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { ensureCompanionDirs, getCompanionHome, getDoctorPath } from './paths.js';
+import { ensureDelegationDirs, getDelegationHome, getDoctorPath } from './paths.js';
 
 // ---------- public types ----------
 
@@ -374,7 +374,7 @@ export async function probeClaudeDaemon(opts: DoctorOptions = {}): Promise<Docto
 
 export async function probeTranscriptPath(opts: DoctorOptions = {}): Promise<DoctorProbeResult> {
   const env = getEnv(opts);
-  const mockHome = env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME;
+  const mockHome = env.CODEX_DELEGATION_MOCK_CLAUDE_HOME;
   const root = mockHome ? join(mockHome, 'projects') : join(homedir(), '.claude', 'projects');
   try {
     if (existsSync(root) && statSync(root).isDirectory()) {
@@ -400,7 +400,7 @@ export async function probeCodexPluginTrust(opts: DoctorOptions = {}): Promise<D
   const env = getEnv(opts);
   // Allow tests to point at a sandbox config path. Real path is ~/.codex/config.toml.
   const configPath =
-    env.CC_PLUGIN_CODEX_MOCK_CODEX_TOML ?? join(homedir(), '.codex', 'config.toml');
+    env.CODEX_DELEGATION_MOCK_CODEX_TOML ?? join(homedir(), '.codex', 'config.toml');
   if (!existsSync(configPath)) {
     return {
       name: 'codex-plugin-trust',
@@ -420,9 +420,9 @@ export async function probeCodexPluginTrust(opts: DoctorOptions = {}): Promise<D
     };
   }
   // Informational text search only; no TOML parser dependency in v1.
-  // Matches [plugins."cc"] or [plugins."cc@cc-plugin-codex-local"] — the two
+  // Matches [plugins."delegate"] or [plugins."delegate@codex-delegation-plugin-local"] — the two
   // TOML section header forms Codex uses for an installed plugin.
-  const mentionsPlugin = /plugins\."cc/.test(body);
+  const mentionsPlugin = /plugins\."delegate/.test(body);
   const mentionsTrust = /trust|enabled/i.test(body);
   if (mentionsPlugin && mentionsTrust) {
     return {
@@ -439,43 +439,43 @@ export async function probeCodexPluginTrust(opts: DoctorOptions = {}): Promise<D
   };
 }
 
-export async function probeCompanionDirWritable(
+export async function probeDelegationDirWritable(
   opts: DoctorOptions = {},
 ): Promise<DoctorProbeResult> {
   if (opts.readOnly === true) {
     try {
-      const stat = statSync(getCompanionHome());
+      const stat = statSync(getDelegationHome());
       if (!stat.isDirectory()) {
         return {
-          name: 'companion-dir-writable',
+          name: 'delegation-dir-writable',
           status: 'warn',
-          detail: `${getCompanionHome()} exists but is not a directory. Setup is running read-only and did not modify it; delegate/follow-up need this state directory to be writable.`,
+          detail: `${getDelegationHome()} exists but is not a directory. Setup is running read-only and did not modify it; delegate/follow-up need this state directory to be writable.`,
         };
       }
       return {
-        name: 'companion-dir-writable',
+        name: 'delegation-dir-writable',
         status: 'ok',
-        detail: `${getCompanionHome()} exists. Setup ran read-only and did not write a probe file.`,
+        detail: `${getDelegationHome()} exists. Setup ran read-only and did not write a probe file.`,
       };
     } catch {
       return {
-        name: 'companion-dir-writable',
+        name: 'delegation-dir-writable',
         status: 'warn',
-        detail: `${getCompanionHome()} does not exist or is not readable. Setup ran read-only and did not create it; delegate/follow-up will create it when run with filesystem access.`,
+        detail: `${getDelegationHome()} does not exist or is not readable. Setup ran read-only and did not create it; delegate/follow-up will create it when run with filesystem access.`,
       };
     }
   }
   try {
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
   } catch (err) {
     return {
-      name: 'companion-dir-writable',
+      name: 'delegation-dir-writable',
       status: 'fail',
-      detail: `Cannot create companion dirs under ${getCompanionHome()}: ${err instanceof Error ? err.message : String(err)}`,
+      detail: `Cannot create delegation dirs under ${getDelegationHome()}: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
   const probeName = `.doctor-probe-${process.pid}-${Date.now()}.tmp`;
-  const probePath = join(getCompanionHome(), probeName);
+  const probePath = join(getDelegationHome(), probeName);
   try {
     await writeFile(probePath, 'probe', 'utf8');
     const back = await readFile(probePath, 'utf8');
@@ -484,9 +484,9 @@ export async function probeCompanionDirWritable(
     }
   } catch (err) {
     return {
-      name: 'companion-dir-writable',
+      name: 'delegation-dir-writable',
       status: 'fail',
-      detail: `Cannot round-trip a probe file in ${getCompanionHome()}: ${err instanceof Error ? err.message : String(err)}`,
+      detail: `Cannot round-trip a probe file in ${getDelegationHome()}: ${err instanceof Error ? err.message : String(err)}`,
     };
   } finally {
     try {
@@ -496,9 +496,9 @@ export async function probeCompanionDirWritable(
     }
   }
   return {
-    name: 'companion-dir-writable',
+    name: 'delegation-dir-writable',
     status: 'ok',
-    detail: getCompanionHome(),
+    detail: getDelegationHome(),
   };
 }
 
@@ -523,7 +523,7 @@ export async function probeClaudeAttachHelp(opts: DoctorOptions = {}): Promise<D
 }
 
 // Plan 0002 probe: `claude --bg` is available on this binary (supports no-prompt invocation).
-// Used by $claude-followup to validate that a companion session can be created without
+// Used by $claude-followup to validate that a background session can be created without
 // a startup prompt — the model Plan 0002 depends on for clean follow-up injection.
 //
 // Plan 0012 T5 fix: the previous strategy ran `claude --bg --help` which actually CREATES
@@ -534,7 +534,7 @@ export async function probeClaudeAttachHelp(opts: DoctorOptions = {}): Promise<D
 // `claude --version` (fast, TTY-independent) and compare against that floor.
 const FLOOR_BG_NO_PROMPT = '2.1.149';
 export async function probeClaudeBgNoPrompt(opts: DoctorOptions = {}): Promise<DoctorProbeResult> {
-  // Strategy: version-floor check via `claude --version` (mirrors bgExecProbe in companion).
+  // Strategy: version-floor check via `claude --version` (mirrors bgExecProbe in the driver).
   // Never spawns `claude --bg` — that creates idle sessions and hangs without a TTY.
   const r = await runCommand('claude', ['--version'], runOpts(opts));
   if (r.spawnError || r.timedOut) {
@@ -583,7 +583,7 @@ export async function probeClaudeBgNoPrompt(opts: DoctorOptions = {}): Promise<D
 // follow-up path falls back to `agents --json` + `logs` when the sidecar is absent.
 export async function probeSidecarJobsDir(opts: DoctorOptions = {}): Promise<DoctorProbeResult> {
   const env = getEnv(opts);
-  const mockHome = env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME;
+  const mockHome = env.CODEX_DELEGATION_MOCK_CLAUDE_HOME;
   const root = mockHome ? join(mockHome, 'jobs') : join(homedir(), '.claude', 'jobs');
   try {
     if (existsSync(root) && statSync(root).isDirectory()) {
@@ -622,7 +622,7 @@ interface BuiltinProbeEntry {
 
 const PROBES: BuiltinProbeEntry[] = [
   { run: probeNodeVersion, capabilities: ['delegate', 'followup'] },
-  { run: probeCompanionDirWritable, capabilities: ['delegate', 'followup'] },
+  { run: probeDelegationDirWritable, capabilities: ['delegate', 'followup'] },
   { run: probeCodexVersion, capabilities: ['delegate', 'followup'] },
   { run: probeClaudeBinary, capabilities: ['delegate', 'followup'] },
   { run: probeClaudeVersion, capabilities: ['delegate', 'followup'] },
@@ -684,7 +684,7 @@ export async function runDoctor(options: DoctorOptions = {}): Promise<DoctorRepo
     probes,
   };
   if (options.writeSnapshot !== false) {
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
     const tmp = `${getDoctorPath()}.${process.pid}.tmp`;
     // Intentionally simple: doctor.json is overwritten each run.
     writeFileSync(tmp, JSON.stringify(report, null, 2) + '\n', 'utf8');

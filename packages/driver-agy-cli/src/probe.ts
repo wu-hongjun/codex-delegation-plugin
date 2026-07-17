@@ -4,7 +4,7 @@ import type {
   DoctorProbeResult,
   DoctorProbeStatus,
   DriverCapabilities,
-} from '@cc-plugin-codex/runtime';
+} from '@codex-delegation/runtime';
 
 import { DRIVER_NAME, DRIVER_VERSION } from './types.js';
 import type { AgyCliDriverOptions } from './types.js';

@@ -3,8 +3,8 @@
 // Owns: parseAgentsJson, findSessionStatus, getAgentsJson, statusForSession.
 // Does NOT touch transcripts, logs, reconciler, or lifecycle methods.
 
-import { DriverError } from '@cc-plugin-codex/runtime';
-import type { SessionHandle, SessionStatus, SessionStatusValue } from '@cc-plugin-codex/runtime';
+import { DriverError } from '@codex-delegation/runtime';
+import type { SessionHandle, SessionStatus, SessionStatusValue } from '@codex-delegation/runtime';
 
 import { runCommand } from './process.js';
 import { DRIVER_NAME } from './types.js';

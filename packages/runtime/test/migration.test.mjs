@@ -25,7 +25,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
-  ensureCompanionDirs,
+  ensureDelegationDirs,
   createJob,
   generateJobId,
   getJobLockPath,
@@ -42,18 +42,18 @@ import {
 // ---------------------------------------------------------------------------
 
 let TMP_HOME;
-const PREV_HOME = process.env.CC_PLUGIN_CODEX_HOME;
+const PREV_HOME = process.env.CODEX_DELEGATION_HOME;
 
 beforeEach(() => {
   TMP_HOME = mkdtempSync(join(tmpdir(), 'migration-test-'));
-  process.env.CC_PLUGIN_CODEX_HOME = TMP_HOME;
+  process.env.CODEX_DELEGATION_HOME = TMP_HOME;
 });
 
 afterEach(() => {
   if (PREV_HOME === undefined) {
-    delete process.env.CC_PLUGIN_CODEX_HOME;
+    delete process.env.CODEX_DELEGATION_HOME;
   } else {
-    process.env.CC_PLUGIN_CODEX_HOME = PREV_HOME;
+    process.env.CODEX_DELEGATION_HOME = PREV_HOME;
   }
   rmSync(TMP_HOME, { recursive: true, force: true });
 });
@@ -245,7 +245,7 @@ describe('readJob — lock-blocked write-back', () => {
   it('returns a migrated v2 record in-memory even when the write-back lock is held', async () => {
     const jobId = generateJobId();
     writeV1Record(TMP_HOME, jobId);
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
 
     // Pre-create the lock file to simulate a concurrent holder
     const lockPath = getJobLockPath(jobId);
@@ -317,7 +317,7 @@ describe('listJobs — lock-blocked write-back still returns migrated record', (
   it('includes the migrated record even when write-back lock is held', async () => {
     const jobId = generateJobId();
     writeV1Record(TMP_HOME, jobId);
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
 
     // Pre-create the lock file to simulate a concurrent holder
     const lockPath = getJobLockPath(jobId);
@@ -364,7 +364,7 @@ describe('updateJob — updater always sees v2 record', () => {
 describe('updateJob — compat alias normalization', () => {
   it('re-syncs prompt and result aliases after updater appends a new turn', async () => {
     // Start with a v2 record created properly
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
     const initial = await createJob(makeInput());
 
     // Use the record's auto-generated jobId for the test
@@ -543,7 +543,7 @@ describe('migration idempotency', () => {
 
 describe('listJobs — corrupt records still produce warnings', () => {
   it('skips a record missing prompt/jobId and surfaces a warning', async () => {
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
     const goodId = generateJobId();
     writeV1Record(TMP_HOME, goodId);
 
@@ -572,7 +572,7 @@ describe('listJobs — corrupt records still produce warnings', () => {
   });
 
   it('skips malformed JSON and surfaces a corrupt-record warning', async () => {
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
     const goodId = generateJobId();
     writeV1Record(TMP_HOME, goodId);
 

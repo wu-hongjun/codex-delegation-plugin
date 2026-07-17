@@ -2,7 +2,7 @@
  * Dispatcher spawn wrapper for Plan 0004 benchmark harness.
  *
  * Wraps invocations of the plugin dispatcher:
- *   node <repo-root>/packages/plugin-codex/scripts/claude-companion.mjs <subcommand> [args...]
+ *   node <repo-root>/packages/plugin-delegate/scripts/delegate.mjs <subcommand> [args...]
  *
  * Exports: runDispatcher(opts), getRepoRoot()
  */
@@ -16,7 +16,7 @@ const _thisDir = dirname(fileURLToPath(import.meta.url));
 
 /**
  * Walk up from startDir until we find a package.json whose "name" field
- * equals "cc-plugin-codex" (the workspace root).
+ * equals "codex-delegation-plugin" (the workspace root).
  *
  * @param {string} startDir
  * @returns {string}
@@ -33,7 +33,7 @@ function findRepoRootSync(startDir) {
       } catch {
         // malformed package.json — keep walking up
       }
-      if (pkg?.name === 'cc-plugin-codex') {
+      if (pkg?.name === 'codex-delegation-plugin') {
         return dir;
       }
     }
@@ -44,7 +44,7 @@ function findRepoRootSync(startDir) {
     dir = parent;
   }
   throw new Error(
-    `Could not find repo root (package.json with name "cc-plugin-codex") walking up from: ${startDir}`,
+    `Could not find repo root (package.json with name "codex-delegation-plugin") walking up from: ${startDir}`,
   );
 }
 
@@ -69,7 +69,7 @@ export function getRepoRoot() {
  * @param {string} opts.subcommand                  e.g., 'delegate', 'status', 'result', 'review', 'adversarial-review', 'followup', 'stop'
  * @param {string[]} opts.args                      Positional args + flags (e.g., ['--yes', '--json', '--', 'prompt text'])
  * @param {string} opts.cwd                         Working directory (typically the fixture root)
- * @param {NodeJS.ProcessEnv} opts.env              Environment variables; should include isolated CC_PLUGIN_CODEX_HOME
+ * @param {NodeJS.ProcessEnv} opts.env              Environment variables; should include isolated CODEX_DELEGATION_HOME
  * @param {number} opts.timeoutMs                   Hard timeout for the child process
  * @param {Function=} opts.spawn                    Override for tests (default: node:child_process.spawnSync)
  * @returns {{ status: number, stdout: string, stderr: string, timedOut: boolean }}
@@ -78,9 +78,9 @@ export function runDispatcher({ subcommand, args, cwd, env, timeoutMs, spawn }) 
   const dispatcherPath = resolve(
     getRepoRoot(),
     'packages',
-    'plugin-codex',
+    'plugin-delegate',
     'scripts',
-    'claude-companion.mjs',
+    'delegate.mjs',
   );
 
   const spawnFn = spawn ?? spawnSync;

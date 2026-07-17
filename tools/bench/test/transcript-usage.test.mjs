@@ -213,8 +213,8 @@ describe('aggregateUsage() — ephemeral cache fields', () => {
 describe('sanitizeCwd()', () => {
   it('replaces all slashes with dashes', () => {
     assert.equal(
-      sanitizeCwd('/Users/hongjunwu/Repositories/Git/cc-plugin-codex'),
-      '-Users-hongjunwu-Repositories-Git-cc-plugin-codex',
+      sanitizeCwd('/Users/hongjunwu/Repositories/Git/codex-delegation-plugin'),
+      '-Users-hongjunwu-Repositories-Git-codex-delegation-plugin',
     );
   });
 

@@ -13,7 +13,7 @@ import {
   syncCompatAliases,
   updateJob,
 } from './job-store.js';
-import { ensureCompanionDirs, getJobResultPath, getJobTurnResultPath } from './paths.js';
+import { ensureDelegationDirs, getJobResultPath, getJobTurnResultPath } from './paths.js';
 import type { SessionStatus, SessionStatusValue, TurnStatus } from './driver.js';
 import type { DriverEvent } from './events.js';
 import type { JobRecord, JobStatus, ResultContext } from './types.js';
@@ -195,7 +195,7 @@ function computeTtlElapsed(job: JobRecord, nowMs: number, ttlMs: number): boolea
 export function mapStatus(input: StatusMappingInput): JobStatus {
   const { driverValue, latestTurnStatus, previousJobStatus, ttlElapsed, isOrphan, sidecar } = input;
 
-  // 0. Sticky terminal: a deliberately-stopped job stays stopped. `cc stop`
+  // 0. Sticky terminal: a deliberately-stopped job stays stopped. `delegate stop`
   // writes `stopped`; the next reconcile sees the reaped session and would
   // otherwise flip it to `orphaned` (the isOrphan check below). A stopped job
   // cannot be resumed, so its status must reflect the user's action, not the
@@ -385,7 +385,7 @@ async function writeResultArtifact(
   turnIndex: number | null,
   content: string,
 ): Promise<string> {
-  await ensureCompanionDirs();
+  await ensureDelegationDirs();
   const latestAliasPath = getJobResultPath(jobId);
   const resultPath = turnIndex === null ? latestAliasPath : getJobTurnResultPath(jobId, turnIndex);
 
@@ -418,7 +418,7 @@ async function preserveLegacySharedResultForPreviousTurn(
     }
 
     const snapshotPath = getJobTurnResultPath(jobId, i);
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
     await writeFile(snapshotPath, content, 'utf8');
 
     patched.turns = [...patched.turns];

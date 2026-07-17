@@ -16,7 +16,7 @@ export async function createFixture() {
     throw new Error(`Fixtures directory not found: ${FIXTURES_DIR}`);
   }
 
-  const root = mkdtempSync(join(tmpdir(), 'cc-plugin-codex-plan0004-bench-'));
+  const root = mkdtempSync(join(tmpdir(), 'codex-delegation-plugin-plan0004-bench-'));
 
   await cp(FIXTURES_DIR, root, { recursive: true });
 

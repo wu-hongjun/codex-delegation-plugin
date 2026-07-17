@@ -4,7 +4,7 @@
  * This runner exercises `claude -p` which the plugin explicitly does NOT use.
  * It exists solely as a billing/latency comparison anchor for Plan 0004
  * measurement and lives ONLY in this harness. No production code path
- * in cc-plugin-codex calls claude -p.
+ * in codex-delegation-plugin calls claude -p.
  *
  * Only invoked when `--include-baseline-p` is passed to the harness CLI.
  * The flow registry in the CLI (T2) gates this runner behind that flag.
@@ -27,11 +27,11 @@ const STDOUT_EXCERPT_MAX = 200;
  * This runner exercises `claude -p` which the plugin explicitly does NOT use.
  * It exists solely as a billing/latency comparison anchor for Plan 0004
  * measurement and lives ONLY in this harness. No production code path
- * in cc-plugin-codex calls claude -p.
+ * in codex-delegation-plugin calls claude -p.
  *
  * @param {{ id: string, prompt: string }} task    Task from tasks.mjs registry
  * @param {string} fixtureRoot                     Fixture root from createFixture().root
- * @param {NodeJS.ProcessEnv} env                  Base env; no CC_PLUGIN_CODEX_HOME isolation needed (-p is stateless)
+ * @param {NodeJS.ProcessEnv} env                  Base env; no CODEX_DELEGATION_HOME isolation needed (-p is stateless)
  * @param {object=} opts
  * @param {number=} opts.timeoutMs                 Default 600_000 (10 min)
  * @param {Function=} opts.spawn                   Test seam for spawnSync
@@ -43,7 +43,7 @@ export async function runBaselineP(task, fixtureRoot, env, opts = {}) {
 
   const result = createEmptyRunResult({ flow: 'baseline-p', task: task.id, runIndex: 0 });
 
-  // No CC_PLUGIN_CODEX_HOME isolation needed; `claude -p` is stateless.
+  // No CODEX_DELEGATION_HOME isolation needed; `claude -p` is stateless.
   const runEnv = { ...env };
 
   const wallStart = performance.now();

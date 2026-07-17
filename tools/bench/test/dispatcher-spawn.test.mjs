@@ -69,7 +69,7 @@ describe('runDispatcher() — basic contract', () => {
       capturedEnv = opts.env;
       return { status: 0, stdout: '', stderr: '', signal: null, error: null };
     };
-    const env = { CC_PLUGIN_CODEX_HOME: '/tmp/isolated-home', PATH: '/usr/bin' };
+    const env = { CODEX_DELEGATION_HOME: '/tmp/isolated-home', PATH: '/usr/bin' };
     runDispatcher({
       subcommand: 'status',
       args: [],
@@ -79,10 +79,10 @@ describe('runDispatcher() — basic contract', () => {
       spawn: mockSpawn,
     });
     assert.ok(capturedEnv !== null);
-    assert.equal(capturedEnv.CC_PLUGIN_CODEX_HOME, '/tmp/isolated-home');
+    assert.equal(capturedEnv.CODEX_DELEGATION_HOME, '/tmp/isolated-home');
   });
 
-  it('constructs the dispatcher path pointing at claude-companion.mjs', () => {
+  it('constructs the dispatcher path pointing at delegate.mjs', () => {
     let capturedArgs = null;
     const mockSpawn = (_cmd, args, _opts) => {
       capturedArgs = args;
@@ -99,12 +99,12 @@ describe('runDispatcher() — basic contract', () => {
     assert.ok(capturedArgs !== null);
     const dispatcherPath = capturedArgs[0];
     assert.ok(
-      dispatcherPath.endsWith('claude-companion.mjs'),
-      `expected path ending in claude-companion.mjs, got: ${dispatcherPath}`,
+      dispatcherPath.endsWith('delegate.mjs'),
+      `expected path ending in delegate.mjs, got: ${dispatcherPath}`,
     );
     assert.ok(
-      dispatcherPath.includes('plugin-codex'),
-      `expected path containing plugin-codex, got: ${dispatcherPath}`,
+      dispatcherPath.includes('plugin-delegate'),
+      `expected path containing plugin-delegate, got: ${dispatcherPath}`,
     );
   });
 
@@ -228,10 +228,10 @@ describe('getRepoRoot()', () => {
     assert.ok(root.length > 0);
   });
 
-  it('returned path contains a package.json with name "cc-plugin-codex"', () => {
+  it('returned path contains a package.json with name "codex-delegation-plugin"', () => {
     const root = getRepoRoot();
     const pkgPath = resolve(root, 'package.json');
     const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
-    assert.equal(pkg.name, 'cc-plugin-codex');
+    assert.equal(pkg.name, 'codex-delegation-plugin');
   });
 });

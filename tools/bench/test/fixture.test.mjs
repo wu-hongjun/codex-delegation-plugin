@@ -18,7 +18,7 @@ describe('createFixture()', () => {
   it('root path contains the expected temp prefix', async () => {
     const fixture = await createFixture();
     try {
-      assert.match(fixture.root, /cc-plugin-codex-plan0004-bench-/);
+      assert.match(fixture.root, /codex-delegation-plugin-plan0004-bench-/);
     } finally {
       fixture.cleanup();
     }

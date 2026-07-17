@@ -1,15 +1,15 @@
 node_modules/
 # T9.5: re-include the bundled-dep tree under the marketplace plugin.
 # `codex plugin add` materialises only what is committed under
-# marketplace/plugins/cc/; the dispatcher must resolve
-# @cc-plugin-codex/runtime + driver + node-pty from this committed payload.
-!marketplace/plugins/cc/node_modules/
+# marketplace/plugins/delegate/; the dispatcher must resolve
+# @codex-delegation/runtime + driver + node-pty from this committed payload.
+!marketplace/plugins/delegate/node_modules/
 dist/
 # T9.5: re-include the bundled-dep dist directories (runtime + driver) that
 # live under the marketplace plugin's bundled node_modules. They are the
 # compiled JS the dispatcher imports at cache-execution time.
-!marketplace/plugins/cc/node_modules/**/dist/
-!marketplace/plugins/cc/node_modules/**/dist/**
+!marketplace/plugins/delegate/node_modules/**/dist/
+!marketplace/plugins/delegate/node_modules/**/dist/**
 *.tsbuildinfo
 .tsbuildinfo
 .DS_Store

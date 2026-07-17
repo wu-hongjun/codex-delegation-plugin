@@ -68,7 +68,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { version: '2.2.0-test' });
         const r = runClaude(['--version'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.equal(r.status, 0);
         assert.match(r.stdout, /Claude Code 2\.2\.0-test/);
@@ -89,7 +89,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { authStatus: 'unauthenticated' });
         const r = runClaude(['auth', 'status'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.notEqual(r.status, 0);
         assert.match(r.stdout, /Not logged in/);
@@ -102,7 +102,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = legacyConfig(home);
         const r = runClaude(['--bg', 'hi'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
         const m = r.stdout.match(/Started background session ([0-9a-f]+)/);
@@ -115,7 +115,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = legacyConfig(home);
         const r = runClaude(['--bg', '--name', 'codex:test:job1', 'do a thing'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.equal(r.status, 0);
         const state = JSON.parse(readFileSync(`${home}/state.json`, 'utf8'));
@@ -133,7 +133,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { bgFails: true });
         const r = runClaude(['--bg', 'will fail'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.notEqual(r.status, 0);
         assert.match(r.stderr, /Failed to start/);
@@ -145,7 +145,7 @@ describe('mock-claude', () => {
         const cfg = legacyConfig(home);
         const r = runClaude(
           ['--bg', '--name', 'x', '--model', 'sonnet', '--permission-mode', 'default', 'hello'],
-          { env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg } },
+          { env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg } },
         );
         assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
       });
@@ -163,7 +163,7 @@ describe('mock-claude', () => {
             '--',
             'prompt after add dir',
           ],
-          { env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg } },
+          { env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg } },
         );
         assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
         const state = JSON.parse(readFileSync(`${home}/state.json`, 'utf8'));
@@ -179,7 +179,7 @@ describe('mock-claude', () => {
     it('returns parseable JSON containing a freshly started session', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = legacyConfig(home);
-        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        const cfgEnv = { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg };
         const start = runClaude(['--bg', 'hi'], { env: cfgEnv });
         const shortId = start.stdout.match(/session ([0-9a-f]+)/)[1];
 
@@ -205,7 +205,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { agentsJsonMalformed: true });
         const r = runClaude(['agents', '--json'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.equal(r.status, 0);
         assert.throws(() => JSON.parse(r.stdout));
@@ -216,7 +216,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { agentsJsonFails: true });
         const r = runClaude(['agents', '--json'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.notEqual(r.status, 0);
         assert.match(r.stderr, /agents error/);
@@ -228,7 +228,7 @@ describe('mock-claude', () => {
     it('returns log text for a known session', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = legacyConfig(home);
-        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        const cfgEnv = { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg };
         const start = runClaude(['--bg', 'something'], { env: cfgEnv });
         const shortId = start.stdout.match(/session ([0-9a-f]+)/)[1];
 
@@ -250,12 +250,12 @@ describe('mock-claude', () => {
     it('exits non-zero when logsFail fixture is set', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = legacyConfig(home);
-        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        const cfgEnv = { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg };
         const start = runClaude(['--bg', 'x'], { env: cfgEnv });
         const shortId = start.stdout.match(/session ([0-9a-f]+)/)[1];
         const cfg2 = writeConfig(home, { logsFail: true });
         const r = runClaude(['logs', shortId], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg2 },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg2 },
         });
         assert.notEqual(r.status, 0);
       });
@@ -266,7 +266,7 @@ describe('mock-claude', () => {
     it('marks a session stopped and updates agents --json', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = legacyConfig(home);
-        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        const cfgEnv = { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg };
         const start = runClaude(['--bg', 'x'], { env: cfgEnv });
         const shortId = start.stdout.match(/session ([0-9a-f]+)/)[1];
 
@@ -295,7 +295,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { daemonAvailable: true, daemonStatus: 'running' });
         const r = runClaude(['daemon', 'status'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.equal(r.status, 0);
         assert.match(r.stdout, /Claude daemon: running/);
@@ -306,7 +306,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { daemonAvailable: true, daemonStatus: 'stopped' });
         const r = runClaude(['daemon', 'status'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.notEqual(r.status, 0);
         assert.match(r.stdout, /Claude daemon: stopped/);
@@ -455,7 +455,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { helpListsBg: true });
         const r = runClaude(['--help'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.equal(r.status, 0);
         assert.ok(
@@ -480,7 +480,7 @@ describe('mock-claude', () => {
     it('returns the legacy schema (id, shortId, name, updatedAt, transcriptPath) when agentsJsonSchema=mock', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = legacyConfig(home);
-        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        const cfgEnv = { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg };
         runClaude(['--bg', 'legacy schema check'], { env: cfgEnv });
 
         const r = runClaude(['agents', '--json'], { env: cfgEnv });
@@ -523,7 +523,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { attachHelpAvailable: false });
         const r = runClaude(['attach', '--help'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.equal(r.status, 1);
         assert.match(r.stderr, /not a known command/);
@@ -558,7 +558,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { bgNoPromptAvailable: false });
         const r = runClaude(['--bg', '--help'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.equal(r.status, 1);
         assert.match(r.stderr, /no-prompt invocation rejected/);
@@ -571,7 +571,7 @@ describe('mock-claude', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = legacyConfig(home);
         const r = runClaude(['--bg', 'hi'], {
-          env: { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg },
+          env: { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg },
         });
         assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
         assert.ok(existsSync(`${home}/jobs`), '<HOME>/jobs must exist after --bg');
@@ -602,7 +602,7 @@ describe('mock-claude', () => {
     it('T9-bg-adversarial: sidecar output.result matches adversarial-review.txt byte-for-byte', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { reviewFixture: 'adversarial-review' });
-        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        const cfgEnv = { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg };
         const r = runClaude(['--bg', 'review the output please'], { env: cfgEnv });
         assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
 
@@ -626,7 +626,7 @@ describe('mock-claude', () => {
     it('T9-bg-adversarial-distinctive: sidecar output contains the independent-perspective sentence', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { reviewFixture: 'adversarial-review' });
-        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        const cfgEnv = { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg };
         const r = runClaude(['--bg', 'review content'], { env: cfgEnv });
         assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
 
@@ -647,7 +647,7 @@ describe('mock-claude', () => {
     it('T9-bg-malformed: sidecar output.result matches malformed-review.txt byte-for-byte', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { reviewFixture: 'malformed-review' });
-        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        const cfgEnv = { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg };
         // Use a normal prompt (not starting with '--') so parseBgArgs treats it as positional.
         const r = runClaude(['--bg', 'review this output'], { env: cfgEnv });
         assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
@@ -682,7 +682,7 @@ describe('mock-claude', () => {
         // Send the review marker prompt via attach stdin.
         const prompt = `${ATTACH_REVIEW_MARKER}: please review this output`;
         const r = runAttachWithPrompt(shortId, prompt, {
-          env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: home },
+          env: { CODEX_DELEGATION_MOCK_CLAUDE_HOME: home },
         });
 
         const expectedFixture = readFixture('structured-review');
@@ -718,8 +718,8 @@ describe('mock-claude', () => {
 
         const cfg = writeConfig(home, { reviewFixture: 'malformed-review' });
         const attachEnv = {
-          CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: home,
-          CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+          CODEX_DELEGATION_MOCK_CLAUDE_HOME: home,
+          CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
         };
 
         const prompt = `${ATTACH_REVIEW_MARKER}: please review`;
@@ -778,7 +778,7 @@ describe('mock-claude', () => {
         const shortId = m[1];
 
         runAttachWithPrompt(shortId, 'just a regular prompt', {
-          env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: home },
+          env: { CODEX_DELEGATION_MOCK_CLAUDE_HOME: home },
         });
 
         const sidecar = JSON.parse(readFileSync(join(home, 'jobs', shortId, 'state.json'), 'utf8'));
@@ -805,8 +805,8 @@ describe('mock-claude', () => {
         const customResponse = 'CUSTOM_RESPONSE_UNIQUE_SENTINEL';
         const cfg = writeConfig(home, { attachResponse: customResponse });
         const cfgEnv = {
-          CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: home,
-          CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+          CODEX_DELEGATION_MOCK_CLAUDE_HOME: home,
+          CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
         };
 
         // Start idle session with the config (so attachResponse is set).
@@ -837,7 +837,7 @@ describe('mock-claude', () => {
     it('T9-explicit-override-bg: reviewFixture:structured-review on --bg returns fixture even without bg review marker', () => {
       withIsolatedHome(({ home, env }) => {
         const cfg = writeConfig(home, { reviewFixture: 'structured-review' });
-        const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+        const cfgEnv = { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg };
         // Use a normal prompt that does NOT contain the BG_REVIEW_MARKER.
         const r = runClaude(['--bg', 'list all files in the project'], { env: cfgEnv });
         assert.equal(r.status, 0, `exit=${r.status} stderr=${r.stderr}`);
@@ -869,8 +869,8 @@ describe('mock-claude', () => {
         const cfg = writeConfig(home, { reviewFixture: 'adversarial-review' });
         runAttachWithPrompt(shortId, 'a totally normal prompt', {
           env: {
-            CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: home,
-            CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+            CODEX_DELEGATION_MOCK_CLAUDE_HOME: home,
+            CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
           },
         });
 

@@ -9,7 +9,7 @@
 // waits up to 5 seconds for the spawned process to exit. Success = stdout contains
 // "ok"; everything else is fail.
 
-import type { DoctorExtraProbe, DoctorProbeResult } from '@cc-plugin-codex/runtime';
+import type { DoctorExtraProbe, DoctorProbeResult } from '@codex-delegation/runtime';
 
 const PTY_SMOKE_TIMEOUT_MS = 5_000;
 const PTY_SMOKE_ARGS = ['-c', 'echo ok'] as const;
@@ -95,8 +95,8 @@ async function runPtyBuildProbe(): Promise<DoctorProbeResult> {
  * `extraProbes` option so the unified setup report includes it.
  *
  * @example
- *   import { runDoctor } from '@cc-plugin-codex/runtime';
- *   import { ptyBuildExtraProbe } from '@cc-plugin-codex/driver-claude-code';
+ *   import { runDoctor } from '@codex-delegation/runtime';
+ *   import { ptyBuildExtraProbe } from '@codex-delegation/driver-claude-code';
  *   const report = await runDoctor({ extraProbes: [ptyBuildExtraProbe] });
  */
 export const ptyBuildExtraProbe: DoctorExtraProbe = {

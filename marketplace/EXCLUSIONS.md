@@ -1,9 +1,9 @@
-# cc-plugin-codex marketplace exclusion list
+# codex-delegation-plugin marketplace exclusion list
 
 > The marketplace package is allowlist-based. Files not listed in
 > [`MANIFEST.md`](MANIFEST.md) are not part of the shipped plugin.
 > This document is defense-in-depth: it names categories that must
-> never appear under `marketplace/plugins/cc/`.
+> never appear under `marketplace/plugins/delegate/`.
 
 The allowlist is the primary invariant. The exclusion list is a
 secondary safety net so that even an accidental inclusion in
@@ -28,7 +28,7 @@ tree) fails `tools/package-marketplace.mjs --check`.
 
 ## Bundled-dep exclusions (T9.5)
 
-The bundled `marketplace/plugins/cc/node_modules/` tree
+The bundled `marketplace/plugins/delegate/node_modules/` tree
 is an intentional exception to the global `node_modules/` exclusion.
 Inside that tree, the following categories must NOT appear:
 
@@ -60,7 +60,7 @@ Rationale:
 
 Enforcement: `tools/package-marketplace.mjs --check` runs the
 `isForbiddenBundledPath()` test against every file under
-`marketplace/plugins/cc/node_modules/` and exits non-zero
+`marketplace/plugins/delegate/node_modules/` and exits non-zero
 if any matches. The global `EXCLUDED_SEGMENTS` (which contains
 `node_modules`) is bypassed under the bundled tree only — the bundled
 tree has its own forbidden-path table above.
@@ -70,11 +70,11 @@ tree has its own forbidden-path table above.
 Two enforcement layers exist:
 
 1. **`tools/package-marketplace.mjs --check`** — scans
-   `marketplace/plugins/cc/` and fails with a non-zero
+   `marketplace/plugins/delegate/` and fails with a non-zero
    exit if any file matches an excluded pattern, even if that file
    were listed in `MANIFEST.md`. The exclusion check runs *before*
    the allowlist comparison.
-2. **`packages/plugin-codex/test/marketplace-layout.test.mjs`** —
+2. **`packages/plugin-delegate/test/marketplace-layout.test.mjs`** —
    static tests that walk the committed marketplace tree and assert
    no excluded category is present, and synthetic-temp-root tests
    that inject an excluded file and assert `--check` returns

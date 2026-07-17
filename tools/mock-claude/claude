@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// Mock `claude` binary for testing cc-plugin-codex without touching real Claude Code.
+// Mock `claude` binary for testing codex-delegation-plugin without touching real Claude Code.
 //
 // This script intentionally implements only enough of the real `claude` command surface
 // to support the runtime, driver, and dispatcher tests in plan 0001. It is NOT a faithful
 // reimplementation. See tools/mock-claude/README.md for the contract.
 //
 // Environment:
-//   CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME   — state directory. Defaults to a safe temp path.
+//   CODEX_DELEGATION_MOCK_CLAUDE_HOME   — state directory. Defaults to a safe temp path.
 //                                         Tests MUST set this to an isolated directory.
-//   CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG — path to a JSON config file controlling fixture
+//   CODEX_DELEGATION_MOCK_CLAUDE_CONFIG — path to a JSON config file controlling fixture
 //                                         behavior (version, authStatus, daemonStatus,
 //                                         bgFails, agentsJsonMalformed, logsFail,
 //                                         agentsJsonSchema, bgStdoutStyle,
@@ -25,9 +25,9 @@ import { fileURLToPath } from 'node:url';
 // Directory containing the mock binary — used to locate fixture files.
 const MOCK_DIR = dirname(fileURLToPath(import.meta.url));
 
-const DEFAULT_HOME = join(tmpdir(), 'cc-plugin-codex-mock-claude');
-const HOME = process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME || DEFAULT_HOME;
-const CONFIG_PATH = process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG;
+const DEFAULT_HOME = join(tmpdir(), 'codex-delegation-plugin-mock-claude');
+const HOME = process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME || DEFAULT_HOME;
+const CONFIG_PATH = process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG;
 
 const DEFAULT_CONFIG = Object.freeze({
   version: '2.1.999-mock',

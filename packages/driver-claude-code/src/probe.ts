@@ -18,7 +18,7 @@ import {
   probeClaudeLogs,
   probeClaudeVersion,
   probeTranscriptPath,
-} from '@cc-plugin-codex/runtime';
+} from '@codex-delegation/runtime';
 
 import { DRIVER_NAME, DRIVER_VERSION } from './types.js';
 
@@ -43,7 +43,7 @@ function statusOf(probes: DoctorProbeResult[], name: string): DoctorProbeStatus 
 export async function probeClaudeBackgroundDriver(
   options: DoctorOptions = {},
 ): Promise<DriverCapabilities> {
-  // Run Claude-only probes sequentially. Codex / plugin-trust / companion-dir probes
+  // Run Claude-only probes sequentially. Codex / plugin-trust / delegation-dir probes
   // are explicitly excluded — those belong to the whole-plugin doctor, not the driver.
   const probes: DoctorProbeResult[] = [];
   probes.push(await probeClaudeBinary(options));

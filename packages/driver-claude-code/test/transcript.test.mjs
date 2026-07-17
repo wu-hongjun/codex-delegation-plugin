@@ -30,18 +30,18 @@ const malformed = readFileSync(join(FIXTURES, 'malformed.jsonl'), 'utf8');
 
 // ---------- env save / restore for path-discovery tests ----------
 
-const PREV_MOCK_HOME = process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME;
+const PREV_MOCK_HOME = process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME;
 
 let MOCK_HOME;
 
 beforeEach(() => {
   MOCK_HOME = mkdtempSync(join(tmpdir(), 'transcript-test-'));
-  process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME = MOCK_HOME;
+  process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME = MOCK_HOME;
 });
 
 afterEach(() => {
-  if (PREV_MOCK_HOME === undefined) delete process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME;
-  else process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME = PREV_MOCK_HOME;
+  if (PREV_MOCK_HOME === undefined) delete process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME;
+  else process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME = PREV_MOCK_HOME;
   rmSync(MOCK_HOME, { recursive: true, force: true });
 });
 

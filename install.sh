@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 #
-# cc-plugin-codex bootstrap installer.
+# codex-delegation-plugin bootstrap installer.
 #
 # This is a small wrapper around the documented Codex marketplace commands:
 #
-#   codex plugin marketplace add https://github.com/wu-hongjun/cc-plugin-codex
-#   codex plugin add "cc@cc-plugin-codex"
+#   codex plugin marketplace add https://github.com/wu-hongjun/codex-delegation-plugin
+#   codex plugin add "delegate@codex-delegation-plugin"
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/wu-hongjun/cc-plugin-codex/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/wu-hongjun/codex-delegation-plugin/main/install.sh | bash
 #   ./install.sh
 
 set -euo pipefail
 
-REPO_URL="https://github.com/wu-hongjun/cc-plugin-codex"
-MARKETPLACE_NAME="cc-plugin-codex"
-PLUGIN_REF="cc@cc-plugin-codex"
+REPO_URL="https://github.com/wu-hongjun/codex-delegation-plugin"
+MARKETPLACE_NAME="codex-delegation-plugin"
+PLUGIN_REF="delegate@codex-delegation-plugin"
 
 say() { printf '%s\n' "$*"; }
 warn() { printf 'warning: %s\n' "$*" >&2; }
@@ -33,13 +33,13 @@ command -v claude >/dev/null 2>&1 ||
 command -v node >/dev/null 2>&1 ||
   warn "Node.js was not found on PATH. The plugin requires Node.js 20 or later."
 
-say "==> Adding the cc-plugin-codex Git marketplace"
+say "==> Adding the codex-delegation-plugin Git marketplace"
 say "    codex plugin marketplace add ${REPO_URL}"
 if ! codex plugin marketplace add "${REPO_URL}"; then
   warn "codex plugin marketplace add returned non-zero. If ${MARKETPLACE_NAME} is already registered, continuing is usually safe."
 fi
 
-say "==> Installing the cc plugin"
+say "==> Installing the Codex Delegation plugin"
 say "    codex plugin add \"${PLUGIN_REF}\""
 codex plugin add "${PLUGIN_REF}"
 

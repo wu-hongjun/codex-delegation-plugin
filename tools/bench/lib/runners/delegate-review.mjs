@@ -8,7 +8,7 @@
  *   4. Parse review verdict and findings count
  *   5. Best-effort: parse transcript for token usage
  *   6. Best-effort: count sidecar tempo transitions
- *   7. Cleanup isolated CC_PLUGIN_CODEX_HOME
+ *   7. Cleanup isolated CODEX_DELEGATION_HOME
  */
 
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
@@ -36,7 +36,7 @@ const POLL_INTERVAL_MS = 3_000; // 3 seconds
  *
  * @param {{ id: string, prompt: string }} task    Task from tasks.mjs registry
  * @param {string} fixtureRoot                     Fixture root from createFixture().root
- * @param {NodeJS.ProcessEnv} env                  Base env; runner adds CC_PLUGIN_CODEX_HOME isolation
+ * @param {NodeJS.ProcessEnv} env                  Base env; runner adds CODEX_DELEGATION_HOME isolation
  * @param {object=} opts
  * @param {number=} opts.timeoutMs                 Default 600_000 (10 min)
  * @param {Function=} opts.spawn                   Test seam for runDispatcher
@@ -48,12 +48,12 @@ export async function runDelegateReview(task, fixtureRoot, env, opts = {}) {
   const spawnFn = opts.spawn ?? undefined;
 
   // 1. Isolated home dir.
-  const CC_PLUGIN_CODEX_HOME = mkdtempSync(join(tmpdir(), 'bench-delegate-review-home-'));
+  const CODEX_DELEGATION_HOME = mkdtempSync(join(tmpdir(), 'bench-delegate-review-home-'));
 
   // 2. Create result.
   const result = createEmptyRunResult({ flow: 'delegate-review', task: task.id, runIndex: 0 });
 
-  const runEnv = { ...env, CC_PLUGIN_CODEX_HOME };
+  const runEnv = { ...env, CODEX_DELEGATION_HOME };
 
   const wallStart = performance.now();
   let jobId;
@@ -323,7 +323,7 @@ export async function runDelegateReview(task, fixtureRoot, env, opts = {}) {
 
     // 13. Cleanup isolated home.
     try {
-      rmSync(CC_PLUGIN_CODEX_HOME, { recursive: true, force: true });
+      rmSync(CODEX_DELEGATION_HOME, { recursive: true, force: true });
     } catch {
       // ignore
     }

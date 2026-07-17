@@ -1,6 +1,6 @@
 # mock-codex
 
-A deterministic stand-in for the real `codex` CLI used by `cc-plugin-codex` tests so the doctor's `codex-version` probe doesn't depend on the maintainer's real Codex install.
+A deterministic stand-in for the real `codex` CLI used by `codex-delegation-plugin` tests so the doctor's `codex-version` probe doesn't depend on the maintainer's real Codex install.
 
 ## Contract (v1, T4 scope)
 
@@ -14,7 +14,7 @@ The mock is intentionally minimal. Extend only when a new doctor probe or test s
 
 ## Configuration
 
-- `CC_PLUGIN_CODEX_MOCK_CODEX_CONFIG` — optional path to a JSON file:
+- `CODEX_DELEGATION_MOCK_CODEX_CONFIG` — optional path to a JSON file:
 
 ```jsonc
 {

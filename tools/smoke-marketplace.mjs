@@ -2,7 +2,7 @@
 /**
  * tools/smoke-marketplace.mjs
  *
- * Plan 0006 T9 release-smoke automation for the committed cc-plugin-codex
+ * Plan 0006 T9 release-smoke automation for the committed codex-delegation-plugin
  * marketplace layout. Runs the safe, non-TUI portions of the smoke
  * checklist against a real local Codex CLI installation, using an
  * isolated CODEX_HOME so the real $HOME/.codex is never mutated.
@@ -33,10 +33,10 @@
  *   2. Creates an isolated CODEX_HOME under the OS tempdir.
  *   3. codex --version (logged).
  *   4. codex plugin marketplace add <marketplace-root>
- *   5. codex plugin add "cc@cc-plugin-codex-local"
+ *   5. codex plugin add "delegate@codex-delegation-plugin-local"
  *   6. codex plugin list (parsed for installed,enabled,<plugin-version>).
  *   7. Asserts the plugin appears as installed,enabled at the version
- *      declared in marketplace/plugins/cc/.codex-plugin/plugin.json
+ *      declared in marketplace/plugins/delegate/.codex-plugin/plugin.json
  *      (single source of truth; not hard-coded in this script — see T10).
  *   8. Prints the twenty-four-skill manual TUI checklist.
  *   9. Cleanup: codex plugin remove + codex plugin marketplace remove.
@@ -48,7 +48,7 @@
  *
  * Not for CI: this script requires the real codex CLI on PATH. The CI
  * matrix never invokes this file. The static test
- * packages/plugin-codex/test/marketplace-smoke.test.mjs verifies the
+ * packages/plugin-delegate/test/marketplace-smoke.test.mjs verifies the
  * script's shape (--help text, 24 skill names, isolation invariants,
  * cleanup commands) without spawning codex.
  */
@@ -63,15 +63,15 @@ import { fileURLToPath } from 'node:url';
 // Constants
 // ---------------------------------------------------------------------------
 
-const PLUGIN_REF = 'cc@cc-plugin-codex-local';
-const MARKETPLACE_NAME = 'cc-plugin-codex-local';
+const PLUGIN_REF = 'delegate@codex-delegation-plugin-local';
+const MARKETPLACE_NAME = 'codex-delegation-plugin-local';
 
 // Plan 0006 T10: the expected plugin version is derived from the marketplace
 // plugin.json at startup, not hard-coded. The source-of-truth is the source
-// plugin.json under packages/plugin-codex/.codex-plugin/, copied byte-identically
+// plugin.json under packages/plugin-delegate/.codex-plugin/, copied byte-identically
 // into the marketplace tree by tools/package-marketplace.mjs --write. The
 // derivation lives below `parseArgs` so it can use the resolved marketplaceRoot.
-const PLUGIN_MANIFEST_REL_PATH = 'plugins/cc/.codex-plugin/plugin.json';
+const PLUGIN_MANIFEST_REL_PATH = 'plugins/delegate/.codex-plugin/plugin.json';
 
 function deriveExpectedVersion(marketplaceRoot) {
   const manifestPath = join(marketplaceRoot, PLUGIN_MANIFEST_REL_PATH);
@@ -92,7 +92,7 @@ function deriveExpectedVersion(marketplaceRoot) {
   return version;
 }
 
-// All twenty-four skills shipped by the cc-plugin-codex marketplace plugin. Order
+// All twenty-four skills shipped by the codex-delegation-plugin marketplace plugin. Order
 // follows the natural delegate -> verify lifecycle so the maintainer can
 // walk the list inside Codex in a sensible sequence.
 const SKILL_NAMES = [
@@ -346,7 +346,7 @@ logStep('STEP 5: codex plugin list + assertions');
 
 // Step 5.5: dispatcher execution from cache
 //
-// Spawn `node <PLUGIN_ROOT>/scripts/cc.mjs setup` against the
+// Spawn `node <PLUGIN_ROOT>/scripts/delegate.mjs setup` against the
 // cached install to verify the T9.5 fix: the dispatcher must be resolvable
 // from the committed bundled node_modules/ tree. The T9 defect was
 // ERR_MODULE_NOT_FOUND because the runtime/driver/node-pty packages were
@@ -363,11 +363,11 @@ logStep('STEP 5.5: dispatcher execution from cache');
     codexHome,
     'plugins',
     'cache',
-    'cc-plugin-codex-local',
-    'cc',
+    'codex-delegation-plugin-local',
+    'delegate',
     EXPECTED_VERSION,
   );
-  const dispatcherScript = join(pluginRoot, 'scripts', 'cc.mjs');
+  const dispatcherScript = join(pluginRoot, 'scripts', 'delegate.mjs');
   process.stdout.write(`  Plugin root: ${pluginRoot}\n`);
   process.stdout.write(`  Dispatcher:  ${dispatcherScript}\n`);
 

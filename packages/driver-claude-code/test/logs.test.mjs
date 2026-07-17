@@ -2,7 +2,7 @@
 //
 // All tests run against tools/mock-claude so no real Claude Code binary is needed
 // and no network calls are made. Each test gets an isolated
-// CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME directory so mock state never leaks between tests.
+// CODEX_DELEGATION_MOCK_CLAUDE_HOME directory so mock state never leaks between tests.
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DriverError } from '@cc-plugin-codex/runtime';
+import { DriverError } from '@codex-delegation/runtime';
 import { ClaudeBackgroundDriver } from '../dist/index.js';
 import { readClaudeLogs } from '../dist/logs.js';
 
@@ -32,16 +32,16 @@ function envWithMockClaude(extra = {}) {
 // ---------- env save / restore ----------
 
 const PREV = {
-  CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME,
-  CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG,
+  CODEX_DELEGATION_MOCK_CLAUDE_HOME: process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME,
+  CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG,
 };
 
 let MOCK_HOME;
 
 beforeEach(() => {
   MOCK_HOME = mkdtempSync(join(tmpdir(), 'logs-test-'));
-  process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME = MOCK_HOME;
-  delete process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG;
+  process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME = MOCK_HOME;
+  delete process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG;
 });
 
 afterEach(() => {
@@ -57,7 +57,7 @@ afterEach(() => {
 function writeCfg(body) {
   const p = join(MOCK_HOME, 'cfg.json');
   writeFileSync(p, JSON.stringify(body));
-  process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG = p;
+  process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG = p;
   return p;
 }
 

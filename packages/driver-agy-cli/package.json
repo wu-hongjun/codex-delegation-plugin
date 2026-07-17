@@ -1,5 +1,5 @@
 {
-  "name": "@cc-plugin-codex/driver-agy-cli",
+  "name": "@codex-delegation/driver-agy-cli",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -17,7 +17,7 @@
     "clean": "tsc --build --clean"
   },
   "dependencies": {
-    "@cc-plugin-codex/runtime": "0.0.0"
+    "@codex-delegation/runtime": "0.0.0"
   },
   "engines": {
     "node": ">=20"

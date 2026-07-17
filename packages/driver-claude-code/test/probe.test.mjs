@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DriverNotImplementedError } from '@cc-plugin-codex/runtime';
+import { DriverNotImplementedError } from '@codex-delegation/runtime';
 import { ClaudeBackgroundDriver, probeClaudeBackgroundDriver } from '../dist/index.js';
 
 const here = fileURLToPath(import.meta.url);
@@ -19,9 +19,9 @@ const MOCK_CODEX_DIR = join(REPO_ROOT, 'tools', 'mock-codex');
 let TMP_HOME;
 let MOCK_HOME;
 const PREV = {
-  COMPANION_HOME: process.env.CC_PLUGIN_CODEX_HOME,
-  MOCK_CLAUDE_HOME: process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME,
-  MOCK_CLAUDE_CONFIG: process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG,
+  DELEGATION_HOME: process.env.CODEX_DELEGATION_HOME,
+  MOCK_CLAUDE_HOME: process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME,
+  MOCK_CLAUDE_CONFIG: process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG,
 };
 
 function pathWith(...dirs) {
@@ -53,19 +53,19 @@ function envWithNothing(extra = {}) {
 }
 
 beforeEach(() => {
-  TMP_HOME = mkdtempSync(join(tmpdir(), 'driver-companion-'));
+  TMP_HOME = mkdtempSync(join(tmpdir(), 'driver-delegation-'));
   MOCK_HOME = mkdtempSync(join(tmpdir(), 'driver-mock-claude-'));
-  process.env.CC_PLUGIN_CODEX_HOME = TMP_HOME;
-  process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME = MOCK_HOME;
-  delete process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG;
+  process.env.CODEX_DELEGATION_HOME = TMP_HOME;
+  process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME = MOCK_HOME;
+  delete process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG;
 });
 
 afterEach(() => {
   for (const [k, v] of Object.entries(PREV)) {
     const envKey = {
-      COMPANION_HOME: 'CC_PLUGIN_CODEX_HOME',
-      MOCK_CLAUDE_HOME: 'CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME',
-      MOCK_CLAUDE_CONFIG: 'CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG',
+      DELEGATION_HOME: 'CODEX_DELEGATION_HOME',
+      MOCK_CLAUDE_HOME: 'CODEX_DELEGATION_MOCK_CLAUDE_HOME',
+      MOCK_CLAUDE_CONFIG: 'CODEX_DELEGATION_MOCK_CLAUDE_CONFIG',
     }[k];
     if (v === undefined) delete process.env[envKey];
     else process.env[envKey] = v;
@@ -100,7 +100,7 @@ describe('ClaudeBackgroundDriver.probe — healthy (real-2.1.149 defaults)', () 
     // In real mode: bg-flag=warn, daemon=warn → health is 'warn', not 'ok'.
     assert.equal(caps.health.status, 'warn');
     assert.ok(Array.isArray(caps.health.probes));
-    // Probe count: claude probes only (no codex, no companion-dir, no plugin-trust).
+    // Probe count: claude probes only (no codex, no delegation-dir, no plugin-trust).
     assert.equal(caps.health.probes.length, 8);
     // Confirm bg-flag is warn (not fail) and agents-json is ok.
     const bgFlag = caps.health.probes.find((p) => p.name === 'claude-bg-flag');
@@ -117,7 +117,7 @@ describe('ClaudeBackgroundDriver.probe — healthy (real-2.1.149 defaults)', () 
       daemonStatus: 'running',
     });
     const driver = new ClaudeBackgroundDriver({
-      env: envWithBothMocks({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: envWithBothMocks({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
     });
     const caps = await driver.probe();
     assert.equal(caps.backgroundSessions, true);
@@ -153,7 +153,7 @@ describe('ClaudeBackgroundDriver.probe — degraded', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', { authStatus: 'unauthenticated' });
     const driver = new ClaudeBackgroundDriver({
-      env: envWithBothMocks({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: envWithBothMocks({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
     });
     const caps = await driver.probe();
     assert.equal(caps.permissions, 'none');
@@ -164,7 +164,7 @@ describe('ClaudeBackgroundDriver.probe — degraded', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', { agentsJsonMalformed: true });
     const driver = new ClaudeBackgroundDriver({
-      env: envWithBothMocks({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: envWithBothMocks({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
     });
     const caps = await driver.probe();
     assert.equal(caps.agentsJson, false);
@@ -203,12 +203,12 @@ describe('ClaudeBackgroundDriver.probe — independence from Codex', () => {
       caps.health.probes.every((p) => !p.name.startsWith('codex-')),
       'driver probe must not include codex probes',
     );
-    // Also no companion-dir / plugin-trust.
+    // Also no delegation-dir / plugin-trust.
     assert.ok(
       caps.health.probes.every(
-        (p) => p.name !== 'companion-dir-writable' && p.name !== 'codex-plugin-trust',
+        (p) => p.name !== 'delegation-dir-writable' && p.name !== 'codex-plugin-trust',
       ),
-      'driver probe must not include companion/plugin-trust probes',
+      'driver probe must not include delegation/plugin-trust probes',
     );
   });
 });

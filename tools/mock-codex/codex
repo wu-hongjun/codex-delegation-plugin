@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Mock `codex` binary used by cc-plugin-codex tests. Only implements `codex --version`
+// Mock `codex` binary used by codex-delegation-plugin tests. Only implements `codex --version`
 // today — enough to satisfy the `codex-version` doctor probe without depending on a
 // real Codex install. Extend the surface only as future probes/skills need it.
 
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 
-const CONFIG_PATH = process.env.CC_PLUGIN_CODEX_MOCK_CODEX_CONFIG;
+const CONFIG_PATH = process.env.CODEX_DELEGATION_MOCK_CODEX_CONFIG;
 
 const DEFAULT_CONFIG = Object.freeze({
   version: 'codex-cli 0.0.0-mock',
@@ -107,7 +107,9 @@ function main() {
     }
 
     if (argv[1] === 'list') {
-      process.stdout.write(`cc@cc-plugin-codex  enabled  ${config.pluginListVersion}\n`);
+      process.stdout.write(
+        `delegate@codex-delegation-plugin  enabled  ${config.pluginListVersion}\n`,
+      );
       process.exit(0);
     }
   }

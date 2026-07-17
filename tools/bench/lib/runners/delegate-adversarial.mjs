@@ -63,7 +63,7 @@ function mergeTokenUsage(a, b) {
  *
  * @param {{ id: string, prompt: string }} task    Task from tasks.mjs registry
  * @param {string} fixtureRoot                     Fixture root from createFixture().root
- * @param {NodeJS.ProcessEnv} env                  Base env; runner adds CC_PLUGIN_CODEX_HOME isolation
+ * @param {NodeJS.ProcessEnv} env                  Base env; runner adds CODEX_DELEGATION_HOME isolation
  * @param {object=} opts
  * @param {number=} opts.timeoutMs                 Delegation + polling timeout. Default 600_000 (10 min).
  * @param {number=} opts.reviewTimeoutMs           Adversarial review subprocess timeout. Default 1_800_000 (30 min).
@@ -78,7 +78,7 @@ export async function runDelegateAdversarial(task, fixtureRoot, env, opts = {}) 
   const spawnFn = opts.spawn ?? undefined;
 
   // 1. Isolated home dir.
-  const CC_PLUGIN_CODEX_HOME = mkdtempSync(join(tmpdir(), 'bench-delegate-adversarial-home-'));
+  const CODEX_DELEGATION_HOME = mkdtempSync(join(tmpdir(), 'bench-delegate-adversarial-home-'));
 
   // 2. Create result.
   const result = createEmptyRunResult({
@@ -87,7 +87,7 @@ export async function runDelegateAdversarial(task, fixtureRoot, env, opts = {}) 
     runIndex: 0,
   });
 
-  const runEnv = { ...env, CC_PLUGIN_CODEX_HOME };
+  const runEnv = { ...env, CODEX_DELEGATION_HOME };
 
   const wallStart = performance.now();
   let jobId = null;
@@ -388,7 +388,7 @@ export async function runDelegateAdversarial(task, fixtureRoot, env, opts = {}) 
     }
 
     try {
-      rmSync(CC_PLUGIN_CODEX_HOME, { recursive: true, force: true });
+      rmSync(CODEX_DELEGATION_HOME, { recursive: true, force: true });
     } catch {
       // ignore
     }

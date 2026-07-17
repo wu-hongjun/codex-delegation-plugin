@@ -29,8 +29,8 @@ import { join } from 'node:path';
  * back to the original cwd — better to compute a defensible best-effort
  * path than to throw.
  *
- * @param {string} cwd - absolute path, e.g. '/Users/hongjunwu/Repositories/Git/cc-plugin-codex'
- * @returns {string} e.g. '-Users-hongjunwu-Repositories-Git-cc-plugin-codex'
+ * @param {string} cwd - absolute path, e.g. '/Users/hongjunwu/Repositories/Git/codex-delegation-plugin'
+ * @returns {string} e.g. '-Users-hongjunwu-Repositories-Git-codex-delegation-plugin'
  */
 export function sanitizeCwd(cwd) {
   let resolved = cwd;

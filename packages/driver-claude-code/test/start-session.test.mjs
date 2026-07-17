@@ -2,13 +2,13 @@
 //
 // All tests run against tools/mock-claude so no real Claude Code binary is needed
 // and no network calls are made. Each test gets an isolated
-// CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME directory so mock state never leaks between tests.
+// CODEX_DELEGATION_MOCK_CLAUDE_HOME directory so mock state never leaks between tests.
 //
 // Import strategy:
 //   - ClaudeBackgroundDriver from '../dist/index.js'
 //   - parseShortId from '../dist/background-session.js' (direct import; falls back to
 //     indirect testing via mock fixtures if the export doesn't exist at run time)
-//   - DriverError from '@cc-plugin-codex/runtime'
+//   - DriverError from '@codex-delegation/runtime'
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,7 +18,7 @@ import { basename, delimiter, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { DriverError } from '@cc-plugin-codex/runtime';
+import { DriverError } from '@codex-delegation/runtime';
 import { ClaudeBackgroundDriver } from '../dist/index.js';
 
 // parseShortId is a named export added by Subagent A. We attempt to import it;
@@ -51,17 +51,17 @@ function envWithMockClaude(extra = {}) {
 // ---------- env save / restore ----------
 
 const PREV = {
-  CC_PLUGIN_CODEX_HOME: process.env.CC_PLUGIN_CODEX_HOME,
-  CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME,
-  CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG,
+  CODEX_DELEGATION_HOME: process.env.CODEX_DELEGATION_HOME,
+  CODEX_DELEGATION_MOCK_CLAUDE_HOME: process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME,
+  CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG,
 };
 
 let MOCK_HOME;
 
 beforeEach(() => {
   MOCK_HOME = mkdtempSync(join(tmpdir(), 'start-session-'));
-  process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME = MOCK_HOME;
-  delete process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG;
+  process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME = MOCK_HOME;
+  delete process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG;
 });
 
 afterEach(() => {
@@ -145,7 +145,7 @@ describe('startSession() with explicit name', () => {
         daemonAvailable: true,
       }),
     );
-    const legacyEnv = envWithMockClaude({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg });
+    const legacyEnv = envWithMockClaude({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg });
     const driver = new ClaudeBackgroundDriver({ env: legacyEnv });
     const handle = await driver.startSession({
       cwd: MOCK_HOME,
@@ -333,7 +333,7 @@ describe('startSession() input validation — empty cwd', () => {
 describe('startSession() with bgFails fixture', () => {
   it('rejects with DriverError carrying non-zero exitCode and stderr containing "Failed to start"', async () => {
     const cfg = writeCfg({ bgFails: true });
-    process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG = cfg;
+    process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG = cfg;
     const driver = new ClaudeBackgroundDriver({ env: envWithMockClaude() });
 
     await assert.rejects(
@@ -379,7 +379,7 @@ describe('startSession() when claude is not on PATH', () => {
 describe('startSession() with a slow mock and short timeout', () => {
   it('rejects with a DriverError when the spawn exceeds timeoutMs', async () => {
     const cfg = writeCfg({ sleepMs: 10000 });
-    process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG = cfg;
+    process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG = cfg;
 
     const driver = new ClaudeBackgroundDriver({
       env: envWithMockClaude(),
@@ -467,7 +467,7 @@ describe('parseShortId parser', () => {
     // Plan 0020 F2: an ID-shaped --name echoed by Claude must not be captured as the
     // shortId when a real session id is also present.
     it('prefers the real hex over an ID-shaped session name (excludeName)', () => {
-      const name = 'cc-v031-delegate-todos';
+      const name = 'delegate-v031-delegate-todos';
       // Claude echoes the name after "session", then reports the real bg id.
       const stdout = `Resuming session ${name}\nbackgrounded · 1a9e3671\n`;
       const id = parseShortId(stdout, '', name);
@@ -475,7 +475,7 @@ describe('parseShortId parser', () => {
     });
 
     it('falls back to the name when it is the only candidate (no regression to undefined)', () => {
-      const name = 'cc-v031-delegate-todos';
+      const name = 'delegate-v031-delegate-todos';
       const stdout = `Started background session ${name}\n`;
       const id = parseShortId(stdout, '', name);
       assert.equal(id, name, 'name must still be returned when nothing else matches');

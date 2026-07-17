@@ -1,5 +1,5 @@
 // Tests for the runtime job store. Imports the compiled output from dist/ so we exercise
-// the same code path callers will see. Each test gets its own CC_PLUGIN_CODEX_HOME so
+// the same code path callers will see. Each test gets its own CODEX_DELEGATION_HOME so
 // state never leaks across tests.
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
@@ -15,9 +15,9 @@ import {
   JobNotFoundError,
   appendEvent,
   createJob,
-  ensureCompanionDirs,
+  ensureDelegationDirs,
   generateJobId,
-  getCompanionHome,
+  getDelegationHome,
   getDoctorPath,
   getJobEventsPath,
   getJobLockPath,
@@ -36,18 +36,18 @@ import {
 } from '../dist/index.js';
 
 let TMP_HOME;
-const PREV_HOME = process.env.CC_PLUGIN_CODEX_HOME;
+const PREV_HOME = process.env.CODEX_DELEGATION_HOME;
 
 beforeEach(() => {
   TMP_HOME = mkdtempSync(join(tmpdir(), 'runtime-test-'));
-  process.env.CC_PLUGIN_CODEX_HOME = TMP_HOME;
+  process.env.CODEX_DELEGATION_HOME = TMP_HOME;
 });
 
 afterEach(() => {
   if (PREV_HOME === undefined) {
-    delete process.env.CC_PLUGIN_CODEX_HOME;
+    delete process.env.CODEX_DELEGATION_HOME;
   } else {
-    process.env.CC_PLUGIN_CODEX_HOME = PREV_HOME;
+    process.env.CODEX_DELEGATION_HOME = PREV_HOME;
   }
   rmSync(TMP_HOME, { recursive: true, force: true });
 });
@@ -74,8 +74,8 @@ function makeInput(overrides = {}) {
 }
 
 describe('paths', () => {
-  it('resolve under CC_PLUGIN_CODEX_HOME', () => {
-    assert.equal(getCompanionHome(), TMP_HOME);
+  it('resolve under CODEX_DELEGATION_HOME', () => {
+    assert.equal(getDelegationHome(), TMP_HOME);
     assert.equal(getJobsDir(), join(TMP_HOME, 'jobs'));
     assert.equal(getLogsDir(), join(TMP_HOME, 'logs'));
     assert.equal(getDoctorPath(), join(TMP_HOME, 'doctor.json'));
@@ -91,9 +91,9 @@ describe('paths', () => {
     assert.deepEqual(warnings, []);
   });
 
-  it('ensureCompanionDirs creates jobs and logs dirs', async () => {
+  it('ensureDelegationDirs creates jobs and logs dirs', async () => {
     const { readdirSync } = await import('node:fs');
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
     const entries = readdirSync(TMP_HOME).sort();
     assert.deepEqual(entries, ['jobs', 'logs']);
   });
@@ -175,7 +175,7 @@ describe('readJob / tryReadJob', () => {
   });
 
   it('readJob throws CorruptJobRecordError for malformed JSON', async () => {
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
     const id = 'job_corrupt_00000000';
     writeFileSync(getJobRecordPath(id), '{not json}', 'utf8');
     await assert.rejects(readJob(id), CorruptJobRecordError);
@@ -267,7 +267,7 @@ describe('listJobs', () => {
 
   it('skips corrupt records and surfaces a warning', async () => {
     const good = await createJob(makeInput());
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
     writeFileSync(getJobRecordPath('job_corrupt_00000000'), '{not-json}', 'utf8');
     const { jobs, warnings } = await listJobs();
     assert.equal(jobs.length, 1);
@@ -278,7 +278,7 @@ describe('listJobs', () => {
   });
 
   it('warns on unrecognized json files in the jobs dir', async () => {
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
     writeFileSync(join(getJobsDir(), 'random.json'), '{}', 'utf8');
     const { jobs, warnings } = await listJobs();
     assert.deepEqual(jobs, []);
@@ -288,7 +288,7 @@ describe('listJobs', () => {
 
   it('ignores in-flight .tmp files left by an atomic write', async () => {
     await createJob(makeInput());
-    await ensureCompanionDirs();
+    await ensureDelegationDirs();
     writeFileSync(join(getJobsDir(), 'job_x_12345678.json.99.deadbeef.tmp'), 'partial');
     const { jobs, warnings } = await listJobs();
     assert.equal(jobs.length, 1);

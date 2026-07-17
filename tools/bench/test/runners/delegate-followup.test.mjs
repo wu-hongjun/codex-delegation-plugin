@@ -29,7 +29,7 @@ const FAKE_JOB_ID = 'job-aabbccdd-1122-3344-5566-778899aabbcc';
 const FAKE_SHORT_ID = 'abc123';
 
 /**
- * Build a fake delegate JSON response (what claude-companion delegate --json emits).
+ * Build a fake delegate JSON response (what claude-delegation delegate --json emits).
  */
 function delegateResponse(jobId = FAKE_JOB_ID, shortId = FAKE_SHORT_ID) {
   return JSON.stringify({
@@ -297,13 +297,13 @@ describe('runDelegateFollowup() — failure paths', () => {
 });
 
 describe('runDelegateFollowup() — isolation', () => {
-  it('CC_PLUGIN_CODEX_HOME temp dir is cleaned up after the run', async () => {
+  it('CODEX_DELEGATION_HOME temp dir is cleaned up after the run', async () => {
     const { root, cleanup } = makeFixtureRoot();
     let capturedHome = null;
     let callCount = 0;
     const seqSpawn = (_cmd, _args, opts) => {
-      if (callCount === 0 && opts.env?.CC_PLUGIN_CODEX_HOME) {
-        capturedHome = opts.env.CC_PLUGIN_CODEX_HOME;
+      if (callCount === 0 && opts.env?.CODEX_DELEGATION_HOME) {
+        capturedHome = opts.env.CODEX_DELEGATION_HOME;
       }
       const responses = [
         { status: 0, stdout: delegateResponse() },
@@ -320,10 +320,10 @@ describe('runDelegateFollowup() — isolation', () => {
     };
     try {
       await runDelegateFollowup(TASK, root, {}, { spawn: seqSpawn });
-      assert.ok(capturedHome !== null, 'expected CC_PLUGIN_CODEX_HOME to be set');
+      assert.ok(capturedHome !== null, 'expected CODEX_DELEGATION_HOME to be set');
       assert.ok(
         !existsSync(capturedHome),
-        `expected CC_PLUGIN_CODEX_HOME to be cleaned up, but ${capturedHome} still exists`,
+        `expected CODEX_DELEGATION_HOME to be cleaned up, but ${capturedHome} still exists`,
       );
     } finally {
       cleanup();

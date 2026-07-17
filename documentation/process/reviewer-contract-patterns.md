@@ -5,7 +5,7 @@
 > folded into a plan's § Lessons learned at the maintainer's discretion.
 >
 > **Audience**: future orchestrators running the A/B/C cadence on
-> cc-plugin-codex T-tasks. Concretizes the F-H1 and F-H2 reviewer-
+> codex-delegation-plugin T-tasks. Concretizes the F-H1 and F-H2 reviewer-
 > contract findings from Plan 0002's Stage 5 report.
 
 ## Background

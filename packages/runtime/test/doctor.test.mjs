@@ -1,5 +1,5 @@
 // Tests for the runtime doctor. Imports the compiled output from dist/. Each test gets
-// its own isolated CC_PLUGIN_CODEX_HOME and CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME so probes
+// its own isolated CODEX_DELEGATION_HOME and CODEX_DELEGATION_MOCK_CLAUDE_HOME so probes
 // never touch real state. PATH is shimmed to put tools/mock-codex and tools/mock-claude
 // in front so spawn() resolves to the mocks.
 
@@ -23,7 +23,7 @@ import {
   probeClaudeVersion,
   probeCodexPluginTrust,
   probeCodexVersion,
-  probeCompanionDirWritable,
+  probeDelegationDirWritable,
   probeNodeVersion,
   probeSidecarJobsDir,
   probeTranscriptPath,
@@ -40,11 +40,11 @@ const MOCK_PATH = `${MOCK_CODEX_DIR}${delimiter}${MOCK_CLAUDE_DIR}`;
 let TMP_HOME;
 let MOCK_HOME;
 const PREV = {
-  COMPANION_HOME: process.env.CC_PLUGIN_CODEX_HOME,
-  MOCK_CLAUDE_HOME: process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME,
-  MOCK_CLAUDE_CONFIG: process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG,
-  MOCK_CODEX_CONFIG: process.env.CC_PLUGIN_CODEX_MOCK_CODEX_CONFIG,
-  MOCK_CODEX_TOML: process.env.CC_PLUGIN_CODEX_MOCK_CODEX_TOML,
+  DELEGATION_HOME: process.env.CODEX_DELEGATION_HOME,
+  MOCK_CLAUDE_HOME: process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME,
+  MOCK_CLAUDE_CONFIG: process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG,
+  MOCK_CODEX_CONFIG: process.env.CODEX_DELEGATION_MOCK_CODEX_CONFIG,
+  MOCK_CODEX_TOML: process.env.CODEX_DELEGATION_MOCK_CODEX_TOML,
 };
 
 function withMocksOnPath(extraEnv = {}) {
@@ -56,23 +56,23 @@ function withMocksOnPath(extraEnv = {}) {
 }
 
 beforeEach(() => {
-  TMP_HOME = mkdtempSync(join(tmpdir(), 'doctor-companion-'));
+  TMP_HOME = mkdtempSync(join(tmpdir(), 'doctor-delegation-'));
   MOCK_HOME = mkdtempSync(join(tmpdir(), 'doctor-mock-claude-'));
-  process.env.CC_PLUGIN_CODEX_HOME = TMP_HOME;
-  process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME = MOCK_HOME;
-  delete process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG;
-  delete process.env.CC_PLUGIN_CODEX_MOCK_CODEX_CONFIG;
-  delete process.env.CC_PLUGIN_CODEX_MOCK_CODEX_TOML;
+  process.env.CODEX_DELEGATION_HOME = TMP_HOME;
+  process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME = MOCK_HOME;
+  delete process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG;
+  delete process.env.CODEX_DELEGATION_MOCK_CODEX_CONFIG;
+  delete process.env.CODEX_DELEGATION_MOCK_CODEX_TOML;
 });
 
 afterEach(() => {
   for (const [k, v] of Object.entries(PREV)) {
     const envKey = {
-      COMPANION_HOME: 'CC_PLUGIN_CODEX_HOME',
-      MOCK_CLAUDE_HOME: 'CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME',
-      MOCK_CLAUDE_CONFIG: 'CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG',
-      MOCK_CODEX_CONFIG: 'CC_PLUGIN_CODEX_MOCK_CODEX_CONFIG',
-      MOCK_CODEX_TOML: 'CC_PLUGIN_CODEX_MOCK_CODEX_TOML',
+      DELEGATION_HOME: 'CODEX_DELEGATION_HOME',
+      MOCK_CLAUDE_HOME: 'CODEX_DELEGATION_MOCK_CLAUDE_HOME',
+      MOCK_CLAUDE_CONFIG: 'CODEX_DELEGATION_MOCK_CLAUDE_CONFIG',
+      MOCK_CODEX_CONFIG: 'CODEX_DELEGATION_MOCK_CODEX_CONFIG',
+      MOCK_CODEX_TOML: 'CODEX_DELEGATION_MOCK_CODEX_TOML',
     }[k];
     if (v === undefined) delete process.env[envKey];
     else process.env[envKey] = v;
@@ -107,7 +107,7 @@ describe('probeCodexVersion', () => {
   it('fail when versionFails fixture is set', async () => {
     const cfg = writeJsonTo(TMP_HOME, 'codex-config.json', { versionFails: true });
     const r = await probeCodexVersion({
-      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CODEX_CONFIG: cfg }),
+      env: withMocksOnPath({ CODEX_DELEGATION_MOCK_CODEX_CONFIG: cfg }),
     });
     assert.equal(r.status, 'fail');
   });
@@ -146,7 +146,7 @@ describe('probeClaudeAuth', () => {
   it('fail when authStatus = unauthenticated', async () => {
     const cfg = writeJsonTo(MOCK_HOME, 'claude-config.json', { authStatus: 'unauthenticated' });
     const r = await probeClaudeAuth({
-      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: withMocksOnPath({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
     });
     assert.equal(r.status, 'fail');
   });
@@ -162,7 +162,7 @@ describe('probeClaudeBgFlag', () => {
   it('ok when claude --help mentions --bg (legacy helpListsBg:true)', async () => {
     const cfg = writeJsonTo(MOCK_HOME, 'claude-config.json', { helpListsBg: true });
     const r = await probeClaudeBgFlag({
-      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: withMocksOnPath({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
     });
     assert.equal(r.status, 'ok');
   });
@@ -178,7 +178,7 @@ describe('probeClaudeAgentsJson', () => {
   it('fail when agents JSON is malformed', async () => {
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', { agentsJsonMalformed: true });
     const r = await probeClaudeAgentsJson({
-      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: withMocksOnPath({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
     });
     assert.equal(r.status, 'fail');
     assert.match(r.detail, /malformed/);
@@ -205,7 +205,7 @@ describe('probeClaudeDaemon', () => {
       daemonStatus: 'running',
     });
     const r = await probeClaudeDaemon({
-      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: withMocksOnPath({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
     });
     assert.equal(r.status, 'ok');
   });
@@ -216,7 +216,7 @@ describe('probeClaudeDaemon', () => {
       daemonStatus: 'stopped',
     });
     const r = await probeClaudeDaemon({
-      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: withMocksOnPath({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
     });
     assert.equal(r.status, 'warn');
   });
@@ -239,7 +239,7 @@ describe('probeTranscriptPath', () => {
 describe('probeCodexPluginTrust', () => {
   it('warn when codex config missing', async () => {
     const r = await probeCodexPluginTrust({
-      env: { ...process.env, CC_PLUGIN_CODEX_MOCK_CODEX_TOML: join(TMP_HOME, 'nope.toml') },
+      env: { ...process.env, CODEX_DELEGATION_MOCK_CODEX_TOML: join(TMP_HOME, 'nope.toml') },
     });
     assert.equal(r.status, 'warn');
     assert.match(r.detail, /not found/);
@@ -247,26 +247,26 @@ describe('probeCodexPluginTrust', () => {
 
   it('ok when codex config mentions the plugin and trust', async () => {
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
+    writeFileSync(tomlPath, '[plugins."delegate"]\nenabled = true\ntrusted = true\n', 'utf8');
     const r = await probeCodexPluginTrust({
-      env: { ...process.env, CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath },
+      env: { ...process.env, CODEX_DELEGATION_MOCK_CODEX_TOML: tomlPath },
     });
     assert.equal(r.status, 'ok');
   });
 });
 
-describe('probeCompanionDirWritable', () => {
+describe('probeDelegationDirWritable', () => {
   it('ok in an isolated temp home', async () => {
-    const r = await probeCompanionDirWritable();
+    const r = await probeDelegationDirWritable();
     assert.equal(r.status, 'ok');
     assert.equal(r.detail, TMP_HOME);
   });
 
   it('read-only mode reports missing state without creating it', async () => {
     const missingHome = join(TMP_HOME, 'missing-state');
-    process.env.CC_PLUGIN_CODEX_HOME = missingHome;
+    process.env.CODEX_DELEGATION_HOME = missingHome;
 
-    const r = await probeCompanionDirWritable({ readOnly: true });
+    const r = await probeDelegationDirWritable({ readOnly: true });
 
     assert.equal(r.status, 'warn');
     assert.match(r.detail, /read-only/i);
@@ -286,7 +286,7 @@ describe('probeClaudeAttachHelp (plan 0002)', () => {
   it('fail when the mock rejects `attach --help` (attachHelpAvailable=false)', async () => {
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', { attachHelpAvailable: false });
     const r = await probeClaudeAttachHelp({
-      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: withMocksOnPath({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
     });
     assert.equal(r.status, 'fail');
   });
@@ -312,7 +312,7 @@ describe('probeClaudeBgNoPrompt (plan 0002, version-floor strategy since plan 00
     // config has no effect; probe still returns ok because version >= 2.1.149.
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', { bgNoPromptAvailable: false });
     const r = await probeClaudeBgNoPrompt({
-      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: withMocksOnPath({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
     });
     assert.equal(r.status, 'ok');
   });
@@ -353,7 +353,7 @@ describe('runDoctor', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
+    writeFileSync(tomlPath, '[plugins."delegate"]\nenabled = true\ntrusted = true\n', 'utf8');
     // Use legacy mode so --help lists --bg and daemon subcommand is available.
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
       helpListsBg: true,
@@ -362,8 +362,8 @@ describe('runDoctor', () => {
     });
     const report = await runDoctor({
       env: withMocksOnPath({
-        CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath,
-        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+        CODEX_DELEGATION_MOCK_CODEX_TOML: tomlPath,
+        CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
       }),
     });
     assert.equal(report.status, 'ok', JSON.stringify(report, null, 2));
@@ -377,10 +377,10 @@ describe('runDoctor', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
+    writeFileSync(tomlPath, '[plugins."delegate"]\nenabled = true\ntrusted = true\n', 'utf8');
     // Real mode defaults: helpListsBg=false, daemonAvailable=false → both probes warn.
     const report = await runDoctor({
-      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath }),
+      env: withMocksOnPath({ CODEX_DELEGATION_MOCK_CODEX_TOML: tomlPath }),
     });
     assert.equal(report.status, 'warn', JSON.stringify(report, null, 2));
     assert.ok(
@@ -409,7 +409,7 @@ describe('runDoctor', () => {
   it('aggregates fail when claude-auth fails', async () => {
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', { authStatus: 'unauthenticated' });
     const report = await runDoctor({
-      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: withMocksOnPath({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
     });
     assert.equal(report.status, 'fail');
     assert.ok(report.probes.find((p) => p.name === 'claude-auth' && p.status === 'fail'));
@@ -418,7 +418,7 @@ describe('runDoctor', () => {
   it('aggregates fail when agents JSON is malformed', async () => {
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', { agentsJsonMalformed: true });
     const report = await runDoctor({
-      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: withMocksOnPath({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
     });
     assert.equal(report.status, 'fail');
   });
@@ -437,7 +437,7 @@ describe('runDoctor', () => {
     // whether a real ~/.codex/config.toml happens to exist on this machine.
     const report = await runDoctor({
       env: withMocksOnPath({
-        CC_PLUGIN_CODEX_MOCK_CODEX_TOML: join(TMP_HOME, 'nonexistent.toml'),
+        CODEX_DELEGATION_MOCK_CODEX_TOML: join(TMP_HOME, 'nonexistent.toml'),
       }),
     });
     // No projects dir, missing TOML, real mode defaults (bg-flag warn, daemon warn).
@@ -455,7 +455,7 @@ describe('runDoctor', () => {
   it('timeout maps a slow probe to fail, not a hung test', async () => {
     const cfg = writeJsonTo(MOCK_HOME, 'slow.json', { sleepMs: 5000 });
     const r = await probeClaudeAgentsJson({
-      env: withMocksOnPath({ CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg }),
+      env: withMocksOnPath({ CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg }),
       timeoutMs: 50,
     });
     assert.equal(r.status, 'fail');
@@ -481,7 +481,7 @@ describe('runDoctor', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
+    writeFileSync(tomlPath, '[plugins."delegate"]\nenabled = true\ntrusted = true\n', 'utf8');
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
       helpListsBg: true,
       daemonAvailable: true,
@@ -489,8 +489,8 @@ describe('runDoctor', () => {
     });
     const report = await runDoctor({
       env: withMocksOnPath({
-        CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath,
-        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+        CODEX_DELEGATION_MOCK_CODEX_TOML: tomlPath,
+        CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
       }),
     });
     assert.equal(report.delegateCapability, 'ok');
@@ -508,7 +508,7 @@ describe('runDoctor', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
+    writeFileSync(tomlPath, '[plugins."delegate"]\nenabled = true\ntrusted = true\n', 'utf8');
     // Flip claude-attach-help to fail; leave everything else healthy.
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
       helpListsBg: true,
@@ -518,8 +518,8 @@ describe('runDoctor', () => {
     });
     const report = await runDoctor({
       env: withMocksOnPath({
-        CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath,
-        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+        CODEX_DELEGATION_MOCK_CODEX_TOML: tomlPath,
+        CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
       }),
     });
     assert.equal(report.delegateCapability, 'ok');
@@ -533,7 +533,7 @@ describe('runDoctor', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
+    writeFileSync(tomlPath, '[plugins."delegate"]\nenabled = true\ntrusted = true\n', 'utf8');
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
       helpListsBg: true,
       daemonAvailable: true,
@@ -546,8 +546,8 @@ describe('runDoctor', () => {
     };
     const report = await runDoctor({
       env: withMocksOnPath({
-        CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath,
-        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+        CODEX_DELEGATION_MOCK_CODEX_TOML: tomlPath,
+        CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
       }),
       extraProbes: [fakePtyProbe],
     });
@@ -562,7 +562,7 @@ describe('runDoctor', () => {
     mkdirSync(join(MOCK_HOME, 'projects'), { recursive: true });
     mkdirSync(join(MOCK_HOME, 'jobs'), { recursive: true });
     const tomlPath = join(TMP_HOME, 'config.toml');
-    writeFileSync(tomlPath, '[plugins."cc"]\nenabled = true\ntrusted = true\n', 'utf8');
+    writeFileSync(tomlPath, '[plugins."delegate"]\nenabled = true\ntrusted = true\n', 'utf8');
     const cfg = writeJsonTo(MOCK_HOME, 'cfg.json', {
       helpListsBg: true,
       daemonAvailable: true,
@@ -579,8 +579,8 @@ describe('runDoctor', () => {
     };
     const report = await runDoctor({
       env: withMocksOnPath({
-        CC_PLUGIN_CODEX_MOCK_CODEX_TOML: tomlPath,
-        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+        CODEX_DELEGATION_MOCK_CODEX_TOML: tomlPath,
+        CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
       }),
       extraProbes: [failingPty],
     });

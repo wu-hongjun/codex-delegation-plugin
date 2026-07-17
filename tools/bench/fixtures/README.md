@@ -1,6 +1,6 @@
 # Demo app
 
-A throwaway demo used by the cc-plugin-codex benchmark harness (Plan 0004).
+A throwaway demo used by the codex-delegation-plugin benchmark harness (Plan 0004).
 Do not depend on this repo for anything real.
 
 ## Outstanding work

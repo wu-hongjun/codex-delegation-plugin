@@ -2,7 +2,7 @@
 //
 // Returns raw log text as a human-readable fallback. Does NOT parse into events.
 
-import { DriverError } from '@cc-plugin-codex/runtime';
+import { DriverError } from '@codex-delegation/runtime';
 
 import { DEFAULT_TIMEOUT_MS, runCommand } from './process.js';
 import { DRIVER_NAME } from './types.js';

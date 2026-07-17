@@ -341,13 +341,13 @@ describe('runDelegateReview() — failure paths', () => {
 });
 
 describe('runDelegateReview() — isolation', () => {
-  it('CC_PLUGIN_CODEX_HOME temp dir is cleaned up after the run', async () => {
+  it('CODEX_DELEGATION_HOME temp dir is cleaned up after the run', async () => {
     const { root, cleanup } = makeFixtureRoot();
     let capturedHome = null;
     let callCount = 0;
     const seqSpawn = (_cmd, _args, opts) => {
-      if (callCount === 0 && opts.env?.CC_PLUGIN_CODEX_HOME) {
-        capturedHome = opts.env.CC_PLUGIN_CODEX_HOME;
+      if (callCount === 0 && opts.env?.CODEX_DELEGATION_HOME) {
+        capturedHome = opts.env.CODEX_DELEGATION_HOME;
       }
       const responses = [
         { status: 0, stdout: delegateResponse() },
@@ -362,10 +362,10 @@ describe('runDelegateReview() — isolation', () => {
     };
     try {
       await runDelegateReview(TASK, root, {}, { spawn: seqSpawn });
-      assert.ok(capturedHome !== null, 'expected CC_PLUGIN_CODEX_HOME to be set');
+      assert.ok(capturedHome !== null, 'expected CODEX_DELEGATION_HOME to be set');
       assert.ok(
         !existsSync(capturedHome),
-        `expected CC_PLUGIN_CODEX_HOME to be cleaned up, but ${capturedHome} still exists`,
+        `expected CODEX_DELEGATION_HOME to be cleaned up, but ${capturedHome} still exists`,
       );
     } finally {
       cleanup();

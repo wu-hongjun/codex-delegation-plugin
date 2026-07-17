@@ -1,0 +1,27 @@
+{
+  "name": "@codex-delegation/plugin-delegate",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Codex-facing plugin: skills, manifest, and `delegate.mjs` dispatcher.",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc --build",
+    "clean": "tsc --build --clean"
+  },
+  "dependencies": {
+    "@codex-delegation/driver-agy-cli": "0.0.0",
+    "@codex-delegation/driver-claude-code": "0.0.0",
+    "@codex-delegation/runtime": "0.0.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

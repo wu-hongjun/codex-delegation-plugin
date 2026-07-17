@@ -594,7 +594,7 @@ describe('attach + sidecar (plan 0002 T3)', () => {
         await withIsolatedHome(async ({ home, env }) => {
           // Start no-prompt --bg with permissionStall: true
           const cfg = writeConfig(home, { permissionStall: true });
-          const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+          const cfgEnv = { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg };
 
           const bgResult = runClaude(['--bg'], { env: cfgEnv });
           assert.equal(bgResult.status, 0, `--bg failed: ${bgResult.stderr}`);
@@ -676,7 +676,7 @@ describe('attach + sidecar (plan 0002 T3)', () => {
       async () => {
         await withIsolatedHome(async ({ home, env }) => {
           const cfg = writeConfig(home, { attachResponse: 'ECHOED: ${prompt}!' });
-          const cfgEnv = { ...env, CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg };
+          const cfgEnv = { ...env, CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg };
 
           const bgResult = runClaude(['--bg'], { env: cfgEnv });
           assert.equal(bgResult.status, 0, `--bg failed: ${bgResult.stderr}`);

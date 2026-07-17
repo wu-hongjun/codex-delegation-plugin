@@ -2,7 +2,7 @@
 /**
  * tools/package-marketplace.mjs
  *
- * Packages (syncs) the cc plugin from source into the marketplace tree.
+ * Packages (syncs) the delegate plugin from source into the marketplace tree.
  *
  * Usage:
  *   node tools/package-marketplace.mjs --check   (default; verify marketplace matches source)
@@ -13,7 +13,7 @@
  *   --marketplace-root <path>   Override the default marketplace root directory.
  *                               Useful for pointing the script at a synthetic temp tree
  *                               in tests (e.g. inject an excluded file and verify exit 1).
- *                               Env var equivalent: CC_PLUGIN_CODEX_MARKETPLACE_ROOT
+ *                               Env var equivalent: CODEX_DELEGATION_MARKETPLACE_ROOT
  *
  * EXCLUSIONS
  *   See marketplace/EXCLUSIONS.md for the human-readable categorized exclusion list.
@@ -40,15 +40,15 @@ import { execFileSync } from 'node:child_process';
 // ---------------------------------------------------------------------------
 
 /**
- * DERIVED_FILES: copied byte-for-byte from packages/plugin-codex/ into
- * marketplace/plugins/cc/.
+ * DERIVED_FILES: copied byte-for-byte from packages/plugin-delegate/ into
+ * marketplace/plugins/delegate/.
  *
- * Note: scripts/cc.mjs gets chmod 0755 after copy regardless of
+ * Note: scripts/delegate.mjs gets chmod 0755 after copy regardless of
  * source mode (source is 644, marketplace copy must be executable).
  */
 const DERIVED_FILES = [
   '.codex-plugin/plugin.json',
-  'scripts/cc.mjs',
+  'scripts/delegate.mjs',
   'scripts/lib/ack.mjs',
   'scripts/lib/adapter.mjs',
   'scripts/lib/agy-adapter.mjs',
@@ -87,7 +87,7 @@ const DERIVED_FILES = [
 ];
 
 /**
- * MARKETPLACE_OWNED_FILES: present in marketplace/plugins/cc/ but
+ * MARKETPLACE_OWNED_FILES: present in marketplace/plugins/delegate/ but
  * NOT derived from source. The packaging script never writes or deletes these.
  *
  * README.md — Option A: marketplace-owned placeholder (T2); T12 will replace it.
@@ -100,9 +100,9 @@ const MARKETPLACE_OWNED_FILES = ['README.md'];
 //
 // The marketplace cache copy of the plugin has no node_modules of its own —
 // `codex plugin add` materialises only what is committed under
-// marketplace/plugins/cc/. To make the dispatcher resolvable
+// marketplace/plugins/delegate/. To make the dispatcher resolvable
 // when executed from that cache, we bundle the runtime + driver + node-pty
-// payload directly under marketplace/plugins/cc/node_modules/.
+// payload directly under marketplace/plugins/delegate/node_modules/.
 //
 // Choice: we ship `.js` + `.d.ts` only (no `.js.map`/`.d.ts.map`).
 //   - Maps roughly double the committed size for zero load-time value.
@@ -113,26 +113,26 @@ const MARKETPLACE_OWNED_FILES = ['README.md'];
 
 /**
  * Bundled runtime files — `packages/runtime/dist/*.{js,d.ts}` copied to
- * `marketplace/plugins/cc/node_modules/@cc-plugin-codex/runtime/dist/`.
+ * `marketplace/plugins/delegate/node_modules/@codex-delegation/runtime/dist/`.
  * Discovered dynamically rather than hardcoded so additions to the runtime
  * package show up automatically.
  */
 const RUNTIME_SRC_DIST = 'packages/runtime/dist';
-const RUNTIME_DEST_BASE = 'node_modules/@cc-plugin-codex/runtime';
+const RUNTIME_DEST_BASE = 'node_modules/@codex-delegation/runtime';
 
 /**
  * Bundled Claude driver files — `packages/driver-claude-code/dist/*.{js,d.ts}` copied
- * to `marketplace/plugins/cc/node_modules/@cc-plugin-codex/driver-claude-code/dist/`.
+ * to `marketplace/plugins/delegate/node_modules/@codex-delegation/driver-claude-code/dist/`.
  */
 const CLAUDE_DRIVER_SRC_DIST = 'packages/driver-claude-code/dist';
-const CLAUDE_DRIVER_DEST_BASE = 'node_modules/@cc-plugin-codex/driver-claude-code';
+const CLAUDE_DRIVER_DEST_BASE = 'node_modules/@codex-delegation/driver-claude-code';
 
 /**
  * Bundled Antigravity driver files, including the detached runner used to
  * supervise `agy --print` after the dispatcher exits.
  */
 const AGY_DRIVER_SRC_DIST = 'packages/driver-agy-cli/dist';
-const AGY_DRIVER_DEST_BASE = 'node_modules/@cc-plugin-codex/driver-agy-cli';
+const AGY_DRIVER_DEST_BASE = 'node_modules/@codex-delegation/driver-agy-cli';
 
 /**
  * Bundled node-pty layout. Sourced from the workspace's npm-installed
@@ -155,7 +155,13 @@ const NODEPTY_INCLUDE_FILES = ['LICENSE', 'README.md'];
 
 function readSourcePluginVersion() {
   const repoRoot = findRepoRoot(dirname(fileURLToPath(import.meta.url)));
-  const manifestPath = join(repoRoot, 'packages', 'plugin-codex', '.codex-plugin', 'plugin.json');
+  const manifestPath = join(
+    repoRoot,
+    'packages',
+    'plugin-delegate',
+    '.codex-plugin',
+    'plugin.json',
+  );
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
   if (typeof manifest.version !== 'string' || manifest.version.length === 0) {
     throw new Error(`Invalid plugin version in ${manifestPath}`);
@@ -174,7 +180,7 @@ const BUNDLED_VERSION_MARKER = `${SOURCE_PLUGIN_VERSION}-bundled`;
  * exists only on the marketplace cache copy to make inspection unambiguous.
  */
 const SYNTH_RUNTIME_PKG = {
-  name: '@cc-plugin-codex/runtime',
+  name: '@codex-delegation/runtime',
   version: BUNDLED_VERSION_MARKER,
   type: 'module',
   main: './dist/index.js',
@@ -189,7 +195,7 @@ const SYNTH_RUNTIME_PKG = {
 };
 
 const SYNTH_CLAUDE_DRIVER_PKG = {
-  name: '@cc-plugin-codex/driver-claude-code',
+  name: '@codex-delegation/driver-claude-code',
   version: BUNDLED_VERSION_MARKER,
   type: 'module',
   main: './dist/index.js',
@@ -201,14 +207,14 @@ const SYNTH_CLAUDE_DRIVER_PKG = {
     },
   },
   dependencies: {
-    '@cc-plugin-codex/runtime': BUNDLED_VERSION_MARKER,
+    '@codex-delegation/runtime': BUNDLED_VERSION_MARKER,
     'node-pty': '1.2.0-beta.13',
   },
   engines: { node: '>=20' },
 };
 
 const SYNTH_AGY_DRIVER_PKG = {
-  name: '@cc-plugin-codex/driver-agy-cli',
+  name: '@codex-delegation/driver-agy-cli',
   version: BUNDLED_VERSION_MARKER,
   type: 'module',
   main: './dist/index.js',
@@ -220,7 +226,7 @@ const SYNTH_AGY_DRIVER_PKG = {
     },
   },
   dependencies: {
-    '@cc-plugin-codex/runtime': BUNDLED_VERSION_MARKER,
+    '@codex-delegation/runtime': BUNDLED_VERSION_MARKER,
   },
   engines: { node: '>=20' },
 };
@@ -251,7 +257,7 @@ const NODEPTY_PKG_KEEP_FIELDS = [
  * Compute the bundled-file allowlist (relative to DEST_DIR) by enumerating
  * the source trees. Returns:
  *   {
- *     runtimeDist: string[],         // paths like 'node_modules/@cc-plugin-codex/runtime/dist/index.js'
+ *     runtimeDist: string[],         // paths like 'node_modules/@codex-delegation/runtime/dist/index.js'
  *     driverDist: string[],
  *     nodepty: string[],
  *     packageJsons: string[],        // synthesised package.json paths
@@ -335,7 +341,7 @@ function isForbiddenBundledPath(rel) {
   return null;
 }
 
-// The complete set of expected files under marketplace/plugins/cc/.
+// The complete set of expected files under marketplace/plugins/delegate/.
 // Bundled files are computed lazily because they depend on dist contents which
 // must exist; runCheck/runWrite compute and merge them at call time.
 
@@ -447,7 +453,7 @@ function findRepoRoot(startDir) {
     const candidate = join(dir, 'package.json');
     try {
       const pkg = JSON.parse(readFileSync(candidate, 'utf8'));
-      if (pkg.name === 'cc-plugin-codex') {
+      if (pkg.name === 'codex-delegation-plugin') {
         return dir;
       }
     } catch {
@@ -455,7 +461,9 @@ function findRepoRoot(startDir) {
     }
     const parent = dirname(dir);
     if (parent === dir) {
-      throw new Error('Could not find repo root (package.json with name "cc-plugin-codex")');
+      throw new Error(
+        'Could not find repo root (package.json with name "codex-delegation-plugin")',
+      );
     }
     dir = parent;
   }
@@ -463,7 +471,7 @@ function findRepoRoot(startDir) {
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = findRepoRoot(SCRIPT_DIR);
-const SOURCE_DIR = join(REPO_ROOT, 'packages', 'plugin-codex');
+const SOURCE_DIR = join(REPO_ROOT, 'packages', 'plugin-delegate');
 
 // ---------------------------------------------------------------------------
 // CLI argument parsing (before DEST_DIR so --marketplace-root is available)
@@ -472,7 +480,7 @@ const SOURCE_DIR = join(REPO_ROOT, 'packages', 'plugin-codex');
 const rawArgs = process.argv.slice(2);
 
 // Resolve --marketplace-root or env var override
-let marketplaceRootOverride = process.env.CC_PLUGIN_CODEX_MARKETPLACE_ROOT ?? null;
+let marketplaceRootOverride = process.env.CODEX_DELEGATION_MARKETPLACE_ROOT ?? null;
 const filteredArgs = [];
 for (let i = 0; i < rawArgs.length; i++) {
   if (rawArgs[i] === '--marketplace-root' && i + 1 < rawArgs.length) {
@@ -486,7 +494,7 @@ for (let i = 0; i < rawArgs.length; i++) {
 const MARKETPLACE_ROOT = marketplaceRootOverride
   ? resolve(marketplaceRootOverride)
   : join(REPO_ROOT, 'marketplace');
-const DEST_DIR = join(MARKETPLACE_ROOT, 'plugins', 'cc');
+const DEST_DIR = join(MARKETPLACE_ROOT, 'plugins', 'delegate');
 
 const flag = filteredArgs[0] ?? '--check';
 
@@ -518,7 +526,7 @@ function collectFiles(dir, base = dir, results = []) {
 
 function printHelp() {
   console.log(`
-tools/package-marketplace.mjs — sync cc plugin into marketplace tree
+tools/package-marketplace.mjs — sync delegate plugin into marketplace tree
 
 USAGE
   node tools/package-marketplace.mjs [--check | --write | --help]
@@ -529,8 +537,8 @@ FLAGS
             Runs exclusion enforcement FIRST (see marketplace/EXCLUSIONS.md),
             then the allowlist comparison.
             Exits 0 if clean; exits 1 with ISSUE messages on any problem.
-  --write   Copy derived files from packages/plugin-codex/ into
-            marketplace/plugins/cc/.
+  --write   Copy derived files from packages/plugin-delegate/ into
+            marketplace/plugins/delegate/.
             Marketplace-owned files (README.md) are never touched.
             Prints a summary: "Wrote N derived files, skipped M marketplace-owned files."
   --help    Print this message and exit 0.
@@ -538,7 +546,7 @@ FLAGS
   --marketplace-root <path>
             Override the default marketplace root directory (default: <repo>/marketplace).
             Useful for pointing the script at a synthetic temp tree in tests.
-            Env var equivalent: CC_PLUGIN_CODEX_MARKETPLACE_ROOT
+            Env var equivalent: CODEX_DELEGATION_MARKETPLACE_ROOT
 
 EXAMPLES
   node tools/package-marketplace.mjs --check
@@ -551,10 +559,10 @@ EXCLUSIONS
   The --check mode runs exclusion enforcement before the allowlist comparison.
 
 SOURCE
-  packages/plugin-codex/
+  packages/plugin-delegate/
 
 DESTINATION
-  marketplace/plugins/cc/
+  marketplace/plugins/delegate/
 
 DERIVED FILES (${DERIVED_FILES.length})
 ${DERIVED_FILES.map((f) => '  ' + f).join('\n')}
@@ -662,14 +670,14 @@ function runCheck() {
       const reason = isForbiddenBundledPath(rel);
       if (reason) {
         issues.push(
-          `ISSUE: marketplace/plugins/cc/${rel} is forbidden in bundled tree (${reason})`,
+          `ISSUE: marketplace/plugins/delegate/${rel} is forbidden in bundled tree (${reason})`,
         );
       }
       continue;
     }
     const result = isExcluded(rel);
     if (result.excluded) {
-      issues.push(`ISSUE: marketplace/plugins/cc/${rel} is excluded (${result.reason})`);
+      issues.push(`ISSUE: marketplace/plugins/delegate/${rel} is excluded (${result.reason})`);
     }
   }
 
@@ -682,13 +690,15 @@ function runCheck() {
     try {
       srcBuf = readFileSync(src);
     } catch {
-      issues.push(`ISSUE: derived file missing from source: packages/plugin-codex/${rel}`);
+      issues.push(`ISSUE: derived file missing from source: packages/plugin-delegate/${rel}`);
       continue;
     }
     try {
       dstBuf = readFileSync(dst);
     } catch {
-      issues.push(`ISSUE: derived file missing from marketplace: marketplace/plugins/cc/${rel}`);
+      issues.push(
+        `ISSUE: derived file missing from marketplace: marketplace/plugins/delegate/${rel}`,
+      );
       continue;
     }
     if (!srcBuf.equals(dstBuf)) {
@@ -715,7 +725,9 @@ function runCheck() {
     try {
       dstBuf = readFileSync(dst);
     } catch {
-      issues.push(`ISSUE: bundled-dep missing from marketplace: marketplace/plugins/cc/${rel}`);
+      issues.push(
+        `ISSUE: bundled-dep missing from marketplace: marketplace/plugins/delegate/${rel}`,
+      );
       continue;
     }
     if (!srcBuf.equals(dstBuf)) {
@@ -736,7 +748,7 @@ function runCheck() {
       actual = readFileSync(dst);
     } catch {
       issues.push(
-        `ISSUE: bundled package.json missing from marketplace: marketplace/plugins/cc/${rel}`,
+        `ISSUE: bundled package.json missing from marketplace: marketplace/plugins/delegate/${rel}`,
       );
       continue;
     }
@@ -751,7 +763,7 @@ function runCheck() {
     try {
       statSync(dst);
     } catch {
-      issues.push(`ISSUE: marketplace-owned file missing: marketplace/plugins/cc/${rel}`);
+      issues.push(`ISSUE: marketplace-owned file missing: marketplace/plugins/delegate/${rel}`);
     }
   }
 
@@ -765,17 +777,19 @@ function runCheck() {
   }
   for (const rel of actualFiles) {
     if (!allExpected.has(rel)) {
-      issues.push(`ISSUE: unexpected file in marketplace tree: marketplace/plugins/cc/${rel}`);
+      issues.push(
+        `ISSUE: unexpected file in marketplace tree: marketplace/plugins/delegate/${rel}`,
+      );
     }
   }
 
-  // 4. Verify executable bit on scripts/cc.mjs.
-  const entrypointDst = join(DEST_DIR, 'scripts', 'cc.mjs');
+  // 4. Verify executable bit on scripts/delegate.mjs.
+  const entrypointDst = join(DEST_DIR, 'scripts', 'delegate.mjs');
   try {
     const st = statSync(entrypointDst);
     if (!(st.mode & 0o100)) {
       issues.push(
-        `ISSUE: scripts/cc.mjs in marketplace is missing user-executable bit (mode=${st.mode.toString(8)})`,
+        `ISSUE: scripts/delegate.mjs in marketplace is missing user-executable bit (mode=${st.mode.toString(8)})`,
       );
     }
   } catch {
@@ -788,9 +802,9 @@ function runCheck() {
     const marketplaceJson = join(MARKETPLACE_ROOT, '.agents', 'plugins', 'marketplace.json');
     try {
       const parsed = JSON.parse(readFileSync(marketplaceJson, 'utf8'));
-      if (parsed.name !== 'cc-plugin-codex-local') {
+      if (parsed.name !== 'codex-delegation-plugin-local') {
         issues.push(
-          `ISSUE: marketplace.json has unexpected name: "${parsed.name}" (expected "cc-plugin-codex-local")`,
+          `ISSUE: marketplace.json has unexpected name: "${parsed.name}" (expected "codex-delegation-plugin-local")`,
         );
       }
     } catch (err) {
@@ -823,8 +837,8 @@ function runCheck() {
 
 function runWrite() {
   // Ensure source dists are fresh before copying.
-  // Skipped when CC_PLUGIN_CODEX_SKIP_BUILD=1 (used by tests that already built).
-  if (!process.env.CC_PLUGIN_CODEX_SKIP_BUILD) {
+  // Skipped when CODEX_DELEGATION_SKIP_BUILD=1 (used by tests that already built).
+  if (!process.env.CODEX_DELEGATION_SKIP_BUILD) {
     console.log('Building workspace packages (tsc --build)...');
     try {
       execFileSync('npm', ['run', 'build'], { cwd: REPO_ROOT, stdio: 'inherit' });
@@ -847,7 +861,7 @@ function runWrite() {
     writeFileSync(dst, buf);
     wrote++;
 
-    if (rel === 'scripts/cc.mjs') {
+    if (rel === 'scripts/delegate.mjs') {
       chmodSync(dst, 0o755);
     }
   }
@@ -921,7 +935,7 @@ function runWrite() {
       `\nWARNING: the following unexpected files exist in the marketplace tree and were not removed:`,
     );
     for (const f of extras) {
-      console.warn(`  marketplace/plugins/cc/${f}`);
+      console.warn(`  marketplace/plugins/delegate/${f}`);
     }
     console.warn(`Run --check to see the full issue list. Clean up manually if needed.`);
   }

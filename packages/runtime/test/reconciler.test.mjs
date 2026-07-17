@@ -1,5 +1,5 @@
 // Tests for the runtime reconciler. Uses fake adapters (no real Claude spawning).
-// Each test gets its own CC_PLUGIN_CODEX_HOME so state never leaks across tests.
+// Each test gets its own CODEX_DELEGATION_HOME so state never leaks across tests.
 
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,16 +25,16 @@ import {
 // ---------------------------------------------------------------------------
 
 let TMP_HOME;
-const PREV = process.env.CC_PLUGIN_CODEX_HOME;
+const PREV = process.env.CODEX_DELEGATION_HOME;
 
 beforeEach(() => {
   TMP_HOME = mkdtempSync(join(tmpdir(), 'reconciler-test-'));
-  process.env.CC_PLUGIN_CODEX_HOME = TMP_HOME;
+  process.env.CODEX_DELEGATION_HOME = TMP_HOME;
 });
 
 afterEach(() => {
-  if (PREV === undefined) delete process.env.CC_PLUGIN_CODEX_HOME;
-  else process.env.CC_PLUGIN_CODEX_HOME = PREV;
+  if (PREV === undefined) delete process.env.CODEX_DELEGATION_HOME;
+  else process.env.CODEX_DELEGATION_HOME = PREV;
   rmSync(TMP_HOME, { recursive: true, force: true });
 });
 
@@ -886,8 +886,8 @@ describe('reconcileJobsForWorkspace', () => {
   });
 
   it('surfaces corrupt job warnings in workspace results while still reconciling valid jobs', async () => {
-    const { getJobRecordPath, ensureCompanionDirs } = await import('../dist/index.js');
-    await ensureCompanionDirs();
+    const { getJobRecordPath, ensureDelegationDirs } = await import('../dist/index.js');
+    await ensureDelegationDirs();
 
     const goodJob = await createJob(makeJobInput({ workspace: { root: '/repo-c' } }));
     // Write a corrupt record that listJobsForWorkspace will warn about

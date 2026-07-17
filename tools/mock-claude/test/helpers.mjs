@@ -43,7 +43,7 @@ export function withIsolatedHome(fn) {
   try {
     result = fn({
       home,
-      env: { CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: home },
+      env: { CODEX_DELEGATION_MOCK_CLAUDE_HOME: home },
     });
   } catch (err) {
     cleanup(home);

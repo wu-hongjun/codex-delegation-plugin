@@ -267,7 +267,7 @@ describe('runBaselineP() — architectural invariants', () => {
     }
   });
 
-  it('runner does NOT invoke node <plugin-root>/scripts/claude-companion.mjs', async () => {
+  it('runner does NOT invoke node <plugin-root>/scripts/delegate.mjs', async () => {
     const { root, cleanup } = makeFixtureRoot();
     let capturedCmd = null;
     let capturedArgs = null;
@@ -278,12 +278,12 @@ describe('runBaselineP() — architectural invariants', () => {
     };
     try {
       await runBaselineP(TASK, root, {}, { spawn: spySpawn });
-      // Should never call "node" with claude-companion.mjs
-      const isCompanionSpawn =
+      // Should never call "node" with delegate.mjs
+      const isDelegationSpawn =
         capturedCmd === 'node' &&
         Array.isArray(capturedArgs) &&
-        capturedArgs.some((a) => typeof a === 'string' && a.includes('claude-companion.mjs'));
-      assert.ok(!isCompanionSpawn, 'runner must not invoke claude-companion.mjs');
+        capturedArgs.some((a) => typeof a === 'string' && a.includes('delegate.mjs'));
+      assert.ok(!isDelegationSpawn, 'runner must not invoke delegate.mjs');
     } finally {
       cleanup();
     }
@@ -301,9 +301,9 @@ describe('runBaselineP() — architectural invariants', () => {
     );
   });
 
-  it('runner source does not import from packages/plugin-codex/scripts/', () => {
+  it('runner source does not import from packages/plugin-delegate/scripts/', () => {
     const src = readFileSync(RUNNER_PATH, 'utf8');
-    const hasPackagesImport = /from\s+['"][^'"]*packages\/plugin-codex\/scripts/.test(src);
-    assert.ok(!hasPackagesImport, 'runner must not import from packages/plugin-codex/scripts/');
+    const hasPackagesImport = /from\s+['"][^'"]*packages\/plugin-delegate\/scripts/.test(src);
+    assert.ok(!hasPackagesImport, 'runner must not import from packages/plugin-delegate/scripts/');
   });
 });

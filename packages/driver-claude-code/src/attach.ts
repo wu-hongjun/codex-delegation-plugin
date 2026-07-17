@@ -6,7 +6,7 @@
 // Flow (per contract § T5):
 //   1. Validate session.shortId + input
 //   2. Snapshot pre-send sidecar state
-//   3. Acquire per-shortId file lock under <companionHome>/locks/attach-<shortId>.lock
+//   3. Acquire per-shortId file lock under <delegationHome>/locks/attach-<shortId>.lock
 //   4. Spawn claude attach <shortId> via node-pty (dynamic import)
 //   5. Set up bounded 8 KiB PTY ring buffer (drain only; never parsed for semantics)
 //   6. Record startedAt
@@ -23,8 +23,8 @@ import { rmSync } from 'node:fs';
 import { mkdir, open as fsOpen } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import { DriverError, getCompanionHome } from '@cc-plugin-codex/runtime';
-import type { SendInput, SendOpts, SessionHandle, TurnHandle } from '@cc-plugin-codex/runtime';
+import { DriverError, getDelegationHome } from '@codex-delegation/runtime';
+import type { SendInput, SendOpts, SessionHandle, TurnHandle } from '@codex-delegation/runtime';
 
 import { readSidecar } from './sidecar.js';
 import { statusForSession } from './agents-json.js';
@@ -46,7 +46,7 @@ export interface AttachAndSendOptions extends SendOpts {
    * finish its startup banner + capability handshake and is ready to accept
    * input. Mock-claude in tests responds immediately so tests typically set
    * this to 0. Can also be overridden via the
-   * `CC_PLUGIN_CODEX_ATTACH_WARMUP_MS` env var (test seam; NOT exposed as a
+   * `CODEX_DELEGATION_ATTACH_WARMUP_MS` env var (test seam; NOT exposed as a
    * CLI flag).
    */
   attachWarmupMs?: number;
@@ -70,7 +70,7 @@ function sleep(ms: number): Promise<void> {
 /** Acquire an exclusive lock for the given shortId.
  *  Returns a release function. On EEXIST throws DriverError. */
 async function acquireAttachLock(shortId: string): Promise<() => void> {
-  const locksDir = join(getCompanionHome(), 'locks');
+  const locksDir = join(getDelegationHome(), 'locks');
   await mkdir(locksDir, { recursive: true });
 
   const path = join(locksDir, `attach-${shortId}.lock`);
@@ -211,7 +211,7 @@ export async function attachAndSend(
   // constructs the driver without an `env` option). Tests still inject an
   // explicit `opts.env` to override; that path is unchanged.
   const envSource = opts?.env ?? process.env;
-  const envWarmupRaw = envSource['CC_PLUGIN_CODEX_ATTACH_WARMUP_MS'];
+  const envWarmupRaw = envSource['CODEX_DELEGATION_ATTACH_WARMUP_MS'];
   const envWarmupParsed = envWarmupRaw != null ? Number(envWarmupRaw) : NaN;
   const ATTACH_WARMUP_DEFAULT_MS = 8_000;
   const attachWarmupMs =
@@ -229,7 +229,7 @@ export async function attachAndSend(
   // keep the env-var override and raise the default deadline.
   // Same env-var pattern as the warmup knob (test seam + production fallback
   // via process.env, defensive parse on bad input).
-  const envPromptRegRaw = envSource['CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS'];
+  const envPromptRegRaw = envSource['CODEX_DELEGATION_PROMPT_REGISTER_TIMEOUT_MS'];
   const envPromptRegParsed = envPromptRegRaw != null ? Number(envPromptRegRaw) : NaN;
   const PROMPT_REGISTER_DEFAULT_MS = 20_000;
   const promptRegTimeoutMs =

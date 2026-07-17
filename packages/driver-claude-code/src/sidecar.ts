@@ -11,7 +11,7 @@ import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { DriverError } from '@cc-plugin-codex/runtime';
+import { DriverError } from '@codex-delegation/runtime';
 
 import { DRIVER_NAME } from './types.js';
 
@@ -67,8 +67,8 @@ function validateShortId(shortId: unknown): asserts shortId is string {
  *
  * Resolution order:
  *   1. opts.jobsDir (truthy string)
- *   2. <opts.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME>/jobs (if env var is set)
- *   3. <process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME>/jobs (when opts.env omitted)
+ *   2. <opts.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME>/jobs (if env var is set)
+ *   3. <process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME>/jobs (when opts.env omitted)
  *   4. <os.homedir()>/.claude/jobs
  *
  * Pure computation — does NOT touch the filesystem.
@@ -82,7 +82,7 @@ export function resolveSidecarPath(shortId: string, opts?: ReadSidecarOptions): 
     jobsDir = opts.jobsDir;
   } else {
     const envSource = opts?.env ?? process.env;
-    const mockHome = envSource['CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME'];
+    const mockHome = envSource['CODEX_DELEGATION_MOCK_CLAUDE_HOME'];
     if (mockHome) {
       jobsDir = join(mockHome, 'jobs');
     } else {

@@ -14,8 +14,8 @@ import type {
   StartSessionOpts,
   TurnHandle,
   WatchOpts,
-} from '@cc-plugin-codex/runtime';
-import { DriverError, DriverNotImplementedError } from '@cc-plugin-codex/runtime';
+} from '@codex-delegation/runtime';
+import { DriverError, DriverNotImplementedError } from '@codex-delegation/runtime';
 
 import { startSession as bgStartSession } from './background-session.js';
 import { statusForSession } from './agents-json.js';

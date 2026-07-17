@@ -16,8 +16,8 @@ import type {
   StartSessionOpts,
   TurnHandle,
   WatchOpts,
-} from '@cc-plugin-codex/runtime';
-import { DriverError, ensureProviderSessionsDir } from '@cc-plugin-codex/runtime';
+} from '@codex-delegation/runtime';
+import { DriverError, ensureProviderSessionsDir } from '@codex-delegation/runtime';
 
 import { probeAgyCliDriver } from './probe.js';
 import { readAgyState, writeAgyState } from './state.js';

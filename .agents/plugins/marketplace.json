@@ -1,14 +1,14 @@
 {
-  "name": "cc-plugin-codex",
+  "name": "codex-delegation-plugin",
   "interface": {
-    "displayName": "cc-plugin-codex"
+    "displayName": "Codex Delegation"
   },
   "plugins": [
     {
-      "name": "cc",
+      "name": "delegate",
       "source": {
         "source": "local",
-        "path": "./marketplace/plugins/cc"
+        "path": "./marketplace/plugins/delegate"
       },
       "policy": {
         "installation": "AVAILABLE",

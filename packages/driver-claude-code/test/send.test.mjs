@@ -1,8 +1,8 @@
 // Tests for ClaudeBackgroundDriver.send() and the internal attachAndSend helper — Plan 0002 T5.
 //
 // All tests run against tools/mock-claude; no real Claude Code binary is needed and no
-// network calls are made. Each test gets isolated CC_PLUGIN_CODEX_HOME (companion-home temp)
-// and CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME (mock-home temp) directories so state never leaks
+// network calls are made. Each test gets isolated CODEX_DELEGATION_HOME (delegation-home temp)
+// and CODEX_DELEGATION_MOCK_CLAUDE_HOME (mock-home temp) directories so state never leaks
 // between tests.
 //
 // PTY note: driver.send() internally calls attachAndSend which uses node-pty. Tests never
@@ -45,7 +45,7 @@ import { delimiter, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { DriverError } from '@cc-plugin-codex/runtime';
+import { DriverError } from '@codex-delegation/runtime';
 import { ClaudeBackgroundDriver, readSidecar } from '../dist/index.js';
 
 // ---------- path helpers ----------
@@ -61,16 +61,16 @@ const ATTACH_SRC = join(REPO_ROOT, 'packages', 'driver-claude-code', 'src', 'att
  * Build a minimal env for the driver and mock.
  * Puts tools/mock-claude first on PATH so `claude` resolves to the mock binary.
  */
-function buildEnv(mockHome, companionHome, extra = {}) {
+function buildEnv(mockHome, delegationHome, extra = {}) {
   return {
     ...process.env,
     ...extra,
-    CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: mockHome,
-    CC_PLUGIN_CODEX_HOME: companionHome,
+    CODEX_DELEGATION_MOCK_CLAUDE_HOME: mockHome,
+    CODEX_DELEGATION_HOME: delegationHome,
     // T15a: mock-claude responds immediately so no TUI-warmup wait is needed.
     // Tests pass attachWarmupMs=0 via this env var so each send() in the
     // mock suite runs without the 8-second real-TUI default.
-    CC_PLUGIN_CODEX_ATTACH_WARMUP_MS: '0',
+    CODEX_DELEGATION_ATTACH_WARMUP_MS: '0',
     PATH: `${MOCK_CLAUDE_DIR}${delimiter}${process.env.PATH ?? ''}`,
   };
 }
@@ -88,20 +88,20 @@ function extractShortId(stdout) {
 
 // Saved process.env values restored after each test.
 const PREV_ENV = {
-  CC_PLUGIN_CODEX_HOME: process.env.CC_PLUGIN_CODEX_HOME,
-  CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME: process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME,
-  CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG,
+  CODEX_DELEGATION_HOME: process.env.CODEX_DELEGATION_HOME,
+  CODEX_DELEGATION_MOCK_CLAUDE_HOME: process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME,
+  CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG,
 };
 
-let MOCK_HOME; // per-test isolated mock-home (CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME)
-let COMPANION_HOME; // per-test isolated companion-home (CC_PLUGIN_CODEX_HOME)
+let MOCK_HOME; // per-test isolated mock-home (CODEX_DELEGATION_MOCK_CLAUDE_HOME)
+let DELEGATION_HOME; // per-test isolated delegation-home (CODEX_DELEGATION_HOME)
 
 beforeEach(() => {
   MOCK_HOME = mkdtempSync(join(tmpdir(), 'send-test-mock-'));
-  COMPANION_HOME = mkdtempSync(join(tmpdir(), 'send-test-companion-'));
-  process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME = MOCK_HOME;
-  process.env.CC_PLUGIN_CODEX_HOME = COMPANION_HOME;
-  delete process.env.CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG;
+  DELEGATION_HOME = mkdtempSync(join(tmpdir(), 'send-test-delegation-'));
+  process.env.CODEX_DELEGATION_MOCK_CLAUDE_HOME = MOCK_HOME;
+  process.env.CODEX_DELEGATION_HOME = DELEGATION_HOME;
+  delete process.env.CODEX_DELEGATION_MOCK_CLAUDE_CONFIG;
 });
 
 afterEach(() => {
@@ -110,7 +110,7 @@ afterEach(() => {
     else process.env[key] = val;
   }
   rmSync(MOCK_HOME, { recursive: true, force: true });
-  rmSync(COMPANION_HOME, { recursive: true, force: true });
+  rmSync(DELEGATION_HOME, { recursive: true, force: true });
 });
 
 // ---------- helpers ----------
@@ -139,14 +139,14 @@ function makeHandle(shortId) {
     driverName: 'claude-background',
     shortId,
     sessionName: `bg-${shortId}`,
-    cwd: COMPANION_HOME,
+    cwd: DELEGATION_HOME,
     startedAt: new Date().toISOString(),
   };
 }
 
-/** Return the lock file path for a given shortId under companionHome. */
-function lockPath(companionHome, shortId) {
-  return join(companionHome, 'locks', `attach-${shortId}.lock`);
+/** Return the lock file path for a given shortId under delegationHome. */
+function lockPath(delegationHome, shortId) {
+  return join(delegationHome, 'locks', `attach-${shortId}.lock`);
 }
 
 // =============================================================================
@@ -155,7 +155,7 @@ function lockPath(companionHome, shortId) {
 
 describe('ClaudeBackgroundDriver.send() — interface', () => {
   it('send is a function on a new ClaudeBackgroundDriver instance', () => {
-    const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+    const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
     const drv = new ClaudeBackgroundDriver({ env });
     assert.equal(typeof drv.send, 'function', 'expected drv.send to be a function');
   });
@@ -170,7 +170,7 @@ describe('send() against mock — returns completed TurnHandle', () => {
     'status is "completed", driverName is "claude-background", session matches, startedAt and endedAt are set',
     { timeout: 20000 },
     async () => {
-      const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+      const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
       const shortId = startIdleSession(env);
       const handle = makeHandle(shortId);
       const drv = new ClaudeBackgroundDriver({ env });
@@ -211,7 +211,7 @@ describe('TurnHandle — no jobId, no turnIndex', () => {
     '"jobId" and "turnIndex" are absent from the returned TurnHandle',
     { timeout: 20000 },
     async () => {
-      const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+      const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
       const shortId = startIdleSession(env);
       const handle = makeHandle(shortId);
       const drv = new ClaudeBackgroundDriver({ env });
@@ -248,7 +248,7 @@ describe('send() — finalMessage sourced from sidecar output.result', () => {
     'finalMessage matches mock\'s "[mock] Got: foobar" template and equals sidecar output.result',
     { timeout: 20000 },
     async () => {
-      const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+      const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
       const shortId = startIdleSession(env);
       const handle = makeHandle(shortId);
       const drv = new ClaudeBackgroundDriver({ env });
@@ -293,8 +293,8 @@ describe('send() — finalMessage is sourced from sidecar, not from PTY stdout',
       // Use a custom attachResponse so the PTY output text is different from a
       // hardcoded expected string — the only authoritative answer is the sidecar.
       const cfg = writeMockConfig(MOCK_HOME, { attachResponse: 'CUSTOM_RESPONSE: ${prompt}' });
-      const env = buildEnv(MOCK_HOME, COMPANION_HOME, {
-        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+      const env = buildEnv(MOCK_HOME, DELEGATION_HOME, {
+        CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
       });
       const shortId = startIdleSession(env);
       const handle = makeHandle(shortId);
@@ -336,7 +336,7 @@ describe('send() — missing sidecar falls back gracefully', () => {
     'completes successfully and returns status "completed" with undefined finalMessage when sidecar is absent',
     { timeout: 20000 },
     async () => {
-      const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+      const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
       // Start a session so the mock registers it in state.json
       const shortId = startIdleSession(env);
 
@@ -383,7 +383,7 @@ describe('send() — missing sidecar falls back gracefully', () => {
 
 describe('send() input validation — empty prompt', () => {
   it('empty string prompt rejects with DriverError mentioning empty/non-empty/text', async () => {
-    const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+    const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
     const shortId = startIdleSession(env);
     const handle = makeHandle(shortId);
     const drv = new ClaudeBackgroundDriver({ env });
@@ -403,7 +403,7 @@ describe('send() input validation — empty prompt', () => {
   });
 
   it('whitespace-only prompt rejects with DriverError', async () => {
-    const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+    const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
     const shortId = startIdleSession(env);
     const handle = makeHandle(shortId);
     const drv = new ClaudeBackgroundDriver({ env });
@@ -428,13 +428,13 @@ describe('send() input validation — invalid shortId', () => {
 
   for (const badId of INVALID_IDS) {
     it(`rejects shortId ${JSON.stringify(badId)} with DriverError`, async () => {
-      const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+      const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
       const drv = new ClaudeBackgroundDriver({ env });
       const handle = {
         driverName: 'claude-background',
         shortId: badId,
         sessionName: `bg-bad`,
-        cwd: COMPANION_HOME,
+        cwd: DELEGATION_HOME,
         startedAt: new Date().toISOString(),
       };
 
@@ -462,13 +462,13 @@ describe('send() input validation — invalid shortId', () => {
 
 describe('send() — lock busy', () => {
   it('pre-created lock file causes DriverError mentioning "lock busy" or "attach lock", completes fast', async () => {
-    const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+    const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
     const shortId = startIdleSession(env);
 
     // Pre-create the lock file (wx = exclusive create; fails if exists — we are creating it)
-    const locksDir = join(COMPANION_HOME, 'locks');
+    const locksDir = join(DELEGATION_HOME, 'locks');
     mkdirSync(locksDir, { recursive: true });
-    const lp = lockPath(COMPANION_HOME, shortId);
+    const lp = lockPath(DELEGATION_HOME, shortId);
     const fd = openSync(lp, 'w');
     // Write a plausible lock payload and close
     const { closeSync } = await import('node:fs');
@@ -502,7 +502,7 @@ describe('send() — lock busy', () => {
 
 describe('send() — lock released after success', () => {
   it('lock file does not exist after a successful send()', { timeout: 20000 }, async () => {
-    const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+    const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
     const shortId = startIdleSession(env);
     const handle = makeHandle(shortId);
     const drv = new ClaudeBackgroundDriver({ env });
@@ -516,7 +516,7 @@ describe('send() — lock released after success', () => {
       },
     );
 
-    const lp = lockPath(COMPANION_HOME, shortId);
+    const lp = lockPath(DELEGATION_HOME, shortId);
     assert.equal(
       existsSync(lp),
       false,
@@ -531,7 +531,7 @@ describe('send() — lock released after success', () => {
 
 describe('send() — lock released after failure', () => {
   it('lock file does not exist after empty-prompt rejection (validation before lock acquire)', async () => {
-    const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+    const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
     const shortId = startIdleSession(env);
     const handle = makeHandle(shortId);
     const drv = new ClaudeBackgroundDriver({ env });
@@ -539,7 +539,7 @@ describe('send() — lock released after failure', () => {
     // Empty prompt → validation fails (lock may never be acquired, that is also valid)
     await assert.rejects(() => drv.send(handle, { type: 'text', text: '' }));
 
-    const lp = lockPath(COMPANION_HOME, shortId);
+    const lp = lockPath(DELEGATION_HOME, shortId);
     assert.equal(
       existsSync(lp),
       false,
@@ -551,7 +551,7 @@ describe('send() — lock released after failure', () => {
     // Use a mock that does NOT update the sidecar after attach (sleepMs keeps mock alive
     // briefly, but promptRegisterTimeoutMs fires first). The simplest approach: set
     // timeoutMs to 1 ms so it fires before registration can possibly complete.
-    const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+    const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
     const shortId = startIdleSession(env);
     const handle = makeHandle(shortId);
     const drv = new ClaudeBackgroundDriver({ env });
@@ -572,7 +572,7 @@ describe('send() — lock released after failure', () => {
       },
     );
 
-    const lp = lockPath(COMPANION_HOME, shortId);
+    const lp = lockPath(DELEGATION_HOME, shortId);
     assert.equal(
       existsSync(lp),
       false,
@@ -591,7 +591,7 @@ describe('send() — prompt-register timeout', () => {
     { timeout: 15000 },
     async () => {
       // A 1 ms promptRegisterTimeoutMs fires immediately before any poll can succeed.
-      const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+      const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
       const shortId = startIdleSession(env);
       const handle = makeHandle(shortId);
       const drv = new ClaudeBackgroundDriver({ env });
@@ -634,7 +634,7 @@ describe('send() — turn-completion timeout', () => {
     { timeout: 15000 },
     async () => {
       // A timeoutMs of 1 fires before any turn can complete, regardless of mock speed.
-      const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+      const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
       const shortId = startIdleSession(env);
       const handle = makeHandle(shortId);
       const drv = new ClaudeBackgroundDriver({ env });
@@ -672,8 +672,8 @@ describe('send() — permission waiting with no callback', () => {
     { timeout: 20000 },
     async () => {
       const cfg = writeMockConfig(MOCK_HOME, { permissionStall: true });
-      const env = buildEnv(MOCK_HOME, COMPANION_HOME, {
-        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+      const env = buildEnv(MOCK_HOME, DELEGATION_HOME, {
+        CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
       });
       const shortId = startIdleSession(env);
       const handle = makeHandle(shortId);
@@ -704,7 +704,7 @@ describe('send() — permission waiting with no callback', () => {
       );
 
       // Lock must be released
-      const lp = lockPath(COMPANION_HOME, shortId);
+      const lp = lockPath(DELEGATION_HOME, shortId);
       assert.equal(
         existsSync(lp),
         false,
@@ -724,8 +724,8 @@ describe('send() — permission waiting WITH callback', () => {
     { timeout: 25000 },
     async () => {
       const cfg = writeMockConfig(MOCK_HOME, { permissionStall: true });
-      const env = buildEnv(MOCK_HOME, COMPANION_HOME, {
-        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+      const env = buildEnv(MOCK_HOME, DELEGATION_HOME, {
+        CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
       });
       const shortId = startIdleSession(env);
       const handle = makeHandle(shortId);
@@ -775,7 +775,7 @@ describe('send() — AbortSignal abort', () => {
     'aborting the signal causes send() to reject and releases the lock',
     { timeout: 15000 },
     async () => {
-      const env = buildEnv(MOCK_HOME, COMPANION_HOME);
+      const env = buildEnv(MOCK_HOME, DELEGATION_HOME);
       const shortId = startIdleSession(env);
       const handle = makeHandle(shortId);
       const drv = new ClaudeBackgroundDriver({ env });
@@ -807,7 +807,7 @@ describe('send() — AbortSignal abort', () => {
       );
 
       // Lock must be released after abort
-      const lp = lockPath(COMPANION_HOME, shortId);
+      const lp = lockPath(DELEGATION_HOME, shortId);
       assert.equal(existsSync(lp), false, `lock file must be released after AbortSignal abort`);
     },
   );
@@ -877,8 +877,8 @@ describe('send() — no semantic dependence on PTY TUI text', () => {
       const expectedResult = `\x1b[1;32m[mock]\x1b[0m Got: ansi-test — \x1b[31mignore me\x1b[0m`;
 
       const cfg = writeMockConfig(MOCK_HOME, { attachResponse: noisyResponse });
-      const env = buildEnv(MOCK_HOME, COMPANION_HOME, {
-        CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+      const env = buildEnv(MOCK_HOME, DELEGATION_HOME, {
+        CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
       });
       const shortId = startIdleSession(env);
       const handle = makeHandle(shortId);
@@ -915,9 +915,9 @@ describe('send() — no semantic dependence on PTY TUI text', () => {
 });
 
 // =============================================================================
-// 19. T12a — CC_PLUGIN_CODEX_ATTACH_WARMUP_MS env var reachable via process.env
+// 19. T12a — CODEX_DELEGATION_ATTACH_WARMUP_MS env var reachable via process.env
 //
-// Plan 0002 advertised CC_PLUGIN_CODEX_ATTACH_WARMUP_MS as a tuning knob in the
+// Plan 0002 advertised CODEX_DELEGATION_ATTACH_WARMUP_MS as a tuning knob in the
 // attach.ts comments, but the production dispatcher constructs the driver as
 // `new ClaudeBackgroundDriver({ cwd: workspace })` with no `env` option. Before
 // T12a, attach.ts read the warmup override from `opts?.env?.[…]`, which was
@@ -926,23 +926,23 @@ describe('send() — no semantic dependence on PTY TUI text', () => {
 // guard locks the fallback in place.
 // =============================================================================
 
-describe('send() — CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS env var honored (T12a)', () => {
+describe('send() — CODEX_DELEGATION_PROMPT_REGISTER_TIMEOUT_MS env var honored (T12a)', () => {
   it(
-    'driver constructed without env option honors CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS=1 from process.env (forces fast timeout)',
+    'driver constructed without env option honors CODEX_DELEGATION_PROMPT_REGISTER_TIMEOUT_MS=1 from process.env (forces fast timeout)',
     { timeout: 15000 },
     async () => {
       const prevPath = process.env.PATH;
-      const prevWarmup = process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS;
-      const prevPromptReg = process.env.CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS;
+      const prevWarmup = process.env.CODEX_DELEGATION_ATTACH_WARMUP_MS;
+      const prevPromptReg = process.env.CODEX_DELEGATION_PROMPT_REGISTER_TIMEOUT_MS;
 
       process.env.PATH = `${MOCK_CLAUDE_DIR}${delimiter}${process.env.PATH ?? ''}`;
-      process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS = '0';
+      process.env.CODEX_DELEGATION_ATTACH_WARMUP_MS = '0';
       // Force a near-immediate prompt-register timeout. With mock-claude
       // responding very quickly, this asserts the env-var-read path is wired
       // through to the production dispatcher path. If the env var were
       // unread, the default timeout would let the send complete
       // before this 15s test timeout fires.
-      process.env.CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS = '1';
+      process.env.CODEX_DELEGATION_PROMPT_REGISTER_TIMEOUT_MS = '1';
 
       try {
         // Use a slow-mock so promptRegister has a chance to fire before
@@ -956,15 +956,15 @@ describe('send() — CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS env var honored 
           // usually >>1ms anyway.
           attachResponse: 'slow mock response',
         });
-        const env = buildEnv(MOCK_HOME, COMPANION_HOME, {
-          CC_PLUGIN_CODEX_MOCK_CLAUDE_CONFIG: cfg,
+        const env = buildEnv(MOCK_HOME, DELEGATION_HOME, {
+          CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
         });
         const shortId = startIdleSession(env);
         const handle = makeHandle(shortId);
 
         // Construct driver WITHOUT env (production dispatcher pattern).
         // The env-var read path must reach process.env.
-        const drv = new ClaudeBackgroundDriver({ cwd: COMPANION_HOME });
+        const drv = new ClaudeBackgroundDriver({ cwd: DELEGATION_HOME });
 
         // Expect rejection due to 1ms prompt-register timeout.
         await assert.rejects(
@@ -980,11 +980,11 @@ describe('send() — CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS env var honored 
       } finally {
         if (prevPath === undefined) delete process.env.PATH;
         else process.env.PATH = prevPath;
-        if (prevWarmup === undefined) delete process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS;
-        else process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS = prevWarmup;
+        if (prevWarmup === undefined) delete process.env.CODEX_DELEGATION_ATTACH_WARMUP_MS;
+        else process.env.CODEX_DELEGATION_ATTACH_WARMUP_MS = prevWarmup;
         if (prevPromptReg === undefined)
-          delete process.env.CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS;
-        else process.env.CC_PLUGIN_CODEX_PROMPT_REGISTER_TIMEOUT_MS = prevPromptReg;
+          delete process.env.CODEX_DELEGATION_PROMPT_REGISTER_TIMEOUT_MS;
+        else process.env.CODEX_DELEGATION_PROMPT_REGISTER_TIMEOUT_MS = prevPromptReg;
       }
     },
   );
@@ -1001,20 +1001,20 @@ describe('send() — prompt-register default (Plan 0025)', () => {
   });
 });
 
-describe('send() — CC_PLUGIN_CODEX_ATTACH_WARMUP_MS env var falls back to process.env (T12a)', () => {
+describe('send() — CODEX_DELEGATION_ATTACH_WARMUP_MS env var falls back to process.env (T12a)', () => {
   it(
-    'driver constructed without env option still honors CC_PLUGIN_CODEX_ATTACH_WARMUP_MS from process.env',
+    'driver constructed without env option still honors CODEX_DELEGATION_ATTACH_WARMUP_MS from process.env',
     { timeout: 20000 },
     async () => {
       // Capture prior process.env values so we can restore.
       const prevPath = process.env.PATH;
-      const prevWarmup = process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS;
+      const prevWarmup = process.env.CODEX_DELEGATION_ATTACH_WARMUP_MS;
 
       // Temporarily mutate process.env to (a) put mock-claude first on PATH,
       // (b) point the mock home where beforeEach already put it, and
       // (c) set the warmup env var.
       process.env.PATH = `${MOCK_CLAUDE_DIR}${delimiter}${process.env.PATH ?? ''}`;
-      process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS = '0';
+      process.env.CODEX_DELEGATION_ATTACH_WARMUP_MS = '0';
 
       try {
         // Start an idle mock session using process.env (no buildEnv override).
@@ -1023,7 +1023,7 @@ describe('send() — CC_PLUGIN_CODEX_ATTACH_WARMUP_MS env var falls back to proc
 
         // Construct the driver WITHOUT `env` — mirrors the production
         // dispatcher path (`new ClaudeBackgroundDriver({ cwd })`).
-        const drv = new ClaudeBackgroundDriver({ cwd: COMPANION_HOME });
+        const drv = new ClaudeBackgroundDriver({ cwd: DELEGATION_HOME });
 
         const started = Date.now();
         const turn = await drv.send(
@@ -1047,8 +1047,8 @@ describe('send() — CC_PLUGIN_CODEX_ATTACH_WARMUP_MS env var falls back to proc
       } finally {
         if (prevPath === undefined) delete process.env.PATH;
         else process.env.PATH = prevPath;
-        if (prevWarmup === undefined) delete process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS;
-        else process.env.CC_PLUGIN_CODEX_ATTACH_WARMUP_MS = prevWarmup;
+        if (prevWarmup === undefined) delete process.env.CODEX_DELEGATION_ATTACH_WARMUP_MS;
+        else process.env.CODEX_DELEGATION_ATTACH_WARMUP_MS = prevWarmup;
       }
     },
   );

@@ -7,8 +7,8 @@
 import { basename } from 'node:path';
 import { randomBytes } from 'node:crypto';
 
-import { DriverError } from '@cc-plugin-codex/runtime';
-import type { SessionHandle, StartSessionOpts } from '@cc-plugin-codex/runtime';
+import { DriverError } from '@codex-delegation/runtime';
+import type { SessionHandle, StartSessionOpts } from '@codex-delegation/runtime';
 
 import { runCommand } from './process.js';
 import { DRIVER_NAME } from './types.js';
@@ -93,7 +93,7 @@ function nextContextToken(tokens: string[], from: number): string | undefined {
 }
 
 // excludeName: when the session was started with an ID-shaped --name (e.g.
-// "cc-v031-delegate-todos", all [a-z0-9-]), Claude Code echoes that name after the
+// "delegate-v031-delegate-todos", all [a-z0-9-]), Claude Code echoes that name after the
 // word "session"/"backgrounded", and Strategy 1 would otherwise capture the NAME as the
 // shortId instead of the real session hex (Plan 0020 F2 / deep-test Finding 2b). When
 // excludeName is supplied, a candidate that exactly equals it is held back as a LAST-

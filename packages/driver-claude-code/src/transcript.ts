@@ -7,8 +7,8 @@ import { promises as fs } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 
-import { DriverError } from '@cc-plugin-codex/runtime';
-import type { DriverEvent } from '@cc-plugin-codex/runtime';
+import { DriverError } from '@codex-delegation/runtime';
+import type { DriverEvent } from '@codex-delegation/runtime';
 
 // ---------- public types ----------
 
@@ -408,10 +408,10 @@ export async function discoverTranscriptPath(opts: TranscriptReadOptions): Promi
       roots.push(opts.claudeProjectsDir);
     }
 
-    // Priority b: CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME env var → /projects subdir.
+    // Priority b: CODEX_DELEGATION_MOCK_CLAUDE_HOME env var → /projects subdir.
     const mockHome =
-      opts.env?.['CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME'] ??
-      process.env['CC_PLUGIN_CODEX_MOCK_CLAUDE_HOME'];
+      opts.env?.['CODEX_DELEGATION_MOCK_CLAUDE_HOME'] ??
+      process.env['CODEX_DELEGATION_MOCK_CLAUDE_HOME'];
     if (mockHome) {
       roots.push(join(mockHome, 'projects'));
     }

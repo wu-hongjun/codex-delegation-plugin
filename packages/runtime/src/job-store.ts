@@ -1,4 +1,4 @@
-// Job-store primitives for the cc-plugin-codex companion.
+// Job-store primitives for Codex Delegation runtime state.
 //
 // - Atomic JSON writes (write temp + rename) so a crash mid-write never produces a
 //   half-written record.
@@ -21,7 +21,7 @@ import {
   JobNotFoundError,
 } from './errors.js';
 import {
-  ensureCompanionDirs,
+  ensureDelegationDirs,
   getJobEventsPath,
   getJobLockPath,
   getJobRecordPath,
@@ -403,7 +403,7 @@ async function tryWriteBackMigrated(jobId: string, _record: JobRecord): Promise<
 // ---------- public API ----------
 
 export async function createJob(input: CreateJobInput): Promise<JobRecord> {
-  await ensureCompanionDirs();
+  await ensureDelegationDirs();
   const jobId = input.jobId ?? generateJobId();
   validateJobId(jobId);
   const now = nowISO();
@@ -476,7 +476,7 @@ export type JobUpdater = (record: JobRecord) => JobRecord | Promise<JobRecord>;
 
 export async function updateJob(jobId: string, updater: JobUpdater): Promise<JobRecord> {
   validateJobId(jobId);
-  await ensureCompanionDirs();
+  await ensureDelegationDirs();
   const lock = await acquireLock(jobId, 'updateJob');
   try {
     // Read + migrate in-memory (no write-back here; we're about to write ourselves)
@@ -511,7 +511,7 @@ export async function updateJob(jobId: string, updater: JobUpdater): Promise<Job
 
 export async function appendEvent(jobId: string, event: unknown): Promise<void> {
   validateJobId(jobId);
-  await ensureCompanionDirs();
+  await ensureDelegationDirs();
   const line = JSON.stringify(event) + '\n';
   await appendFile(getJobEventsPath(jobId), line, 'utf8');
 }

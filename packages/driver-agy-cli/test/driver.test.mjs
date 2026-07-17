@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { DriverError } from '@cc-plugin-codex/runtime';
+import { DriverError } from '@codex-delegation/runtime';
 import { AgyCliDriver, buildAgyArgs, readAgyOutput } from '../dist/index.js';
 
 const here = fileURLToPath(import.meta.url);
@@ -18,11 +18,11 @@ let workspace;
 beforeEach(() => {
   testHome = mkdtempSync(join(tmpdir(), 'agy-driver-home-'));
   workspace = realpathSync(mkdtempSync(join(tmpdir(), 'agy-driver-workspace-')));
-  process.env.CC_PLUGIN_CODEX_HOME = testHome;
+  process.env.CODEX_DELEGATION_HOME = testHome;
 });
 
 afterEach(() => {
-  delete process.env.CC_PLUGIN_CODEX_HOME;
+  delete process.env.CODEX_DELEGATION_HOME;
   rmSync(testHome, { recursive: true, force: true });
   rmSync(workspace, { recursive: true, force: true });
 });
@@ -140,7 +140,7 @@ describe('AgyCliDriver lifecycle', () => {
 
   it('binds the supervised agy process to the Codex workspace exactly once', async () => {
     const invocationsPath = join(testHome, 'invocations.jsonl');
-    const env = { ...process.env, CC_PLUGIN_CODEX_MOCK_AGY_INVOCATIONS: invocationsPath };
+    const env = { ...process.env, CODEX_DELEGATION_MOCK_AGY_INVOCATIONS: invocationsPath };
     const driver = new AgyCliDriver({ executable: mockAgy, cwd: workspace, env });
     const handle = await driver.startSession({
       cwd: workspace,
@@ -159,7 +159,7 @@ describe('AgyCliDriver lifecycle', () => {
   it('stops a running supervised process', async () => {
     const configPath = join(testHome, 'config.json');
     writeFileSync(configPath, JSON.stringify({ delayMs: 10_000 }));
-    const env = { ...process.env, CC_PLUGIN_CODEX_MOCK_AGY_CONFIG: configPath };
+    const env = { ...process.env, CODEX_DELEGATION_MOCK_AGY_CONFIG: configPath };
     const driver = new AgyCliDriver({ executable: mockAgy, cwd: workspace, env });
     const handle = await driver.startSession({ cwd: workspace, prompt: 'long task' });
     await waitFor(driver, handle, ['working']);
@@ -173,7 +173,7 @@ describe('AgyCliDriver lifecycle', () => {
   it('reports non-zero agy exits as failed', async () => {
     const configPath = join(testHome, 'config.json');
     writeFileSync(configPath, JSON.stringify({ exitCode: 7, stderr: 'auth failed' }));
-    const env = { ...process.env, CC_PLUGIN_CODEX_MOCK_AGY_CONFIG: configPath };
+    const env = { ...process.env, CODEX_DELEGATION_MOCK_AGY_CONFIG: configPath };
     const driver = new AgyCliDriver({ executable: mockAgy, cwd: workspace, env });
     const handle = await driver.startSession({ cwd: workspace, prompt: 'fail task' });
     const status = await waitFor(driver, handle, ['failed']);
@@ -191,7 +191,7 @@ describe('AgyCliDriver lifecycle', () => {
           'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.',
       }),
     );
-    const env = { ...process.env, CC_PLUGIN_CODEX_MOCK_AGY_CONFIG: configPath };
+    const env = { ...process.env, CODEX_DELEGATION_MOCK_AGY_CONFIG: configPath };
     const driver = new AgyCliDriver({ executable: mockAgy, cwd: workspace, env });
     const handle = await driver.startSession({ cwd: workspace, prompt: 'inspect workspace' });
     const status = await waitFor(driver, handle, ['failed']);

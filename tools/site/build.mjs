@@ -171,6 +171,7 @@ function renderPage(page, fragment, version) {
   const documentationNavigation = page.section === 'docs' ? renderDocsNavigation(page.output) : '';
   const docsContext = page.section === 'docs' ? renderDocsContext(page) : { before: '', after: '' };
   const layoutClass = page.section === 'docs' ? 'site-layout site-layout--docs' : 'site-layout';
+  const mainClass = page.section === 'landing' ? 'site-main landing-page' : 'site-main vvver-prose';
   const robots = page.section === 'error' ? '    <meta name="robots" content="noindex">\n' : '';
   return `<!doctype html>
 <html lang="en">
@@ -185,25 +186,46 @@ ${robots}    <meta name="theme-color" content="#fdfcfb">
   </head>
   <body class="site-page site-page--${escapeHtml(page.section)}">
     <a class="site-skip-link" href="#main-content">Skip to main content</a>
+    <div class="site-announcement">
+      <a href="${site.repositoryUrl}/releases/tag/v${escapeHtml(version)}"><span>Codex Delegation v${escapeHtml(version)} is current</span><span>Release notes&nbsp; →</span></a>
+    </div>
     <header class="site-header">
       <a class="site-wordmark" href="${publicHref('index.html')}"><span aria-hidden="true">CD//</span><span>${escapeHtml(site.name)}</span></a>
       ${renderPrimaryNavigation(page.output)}
     </header>
-    <div class="site-info-bar" aria-label="Release information">
-      <p>Codex-native delegation</p><p>Claude Code + Antigravity</p><p>v${escapeHtml(version)}</p>
-    </div>
     <div class="${layoutClass}">
       ${documentationNavigation}
-      <main class="site-main vvver-prose" id="main-content" tabindex="-1">
+      <main class="${mainClass}" id="main-content" tabindex="-1">
         ${docsContext.before}
         ${replacePlaceholders(fragment, version)}
         ${docsContext.after}
       </main>
     </div>
     <footer class="site-footer">
-      <p class="site-footer-mark" aria-hidden="true">DELEGATE//</p>
-      <div><p>Codex Delegation v${escapeHtml(version)}. Built with vvver-design-system.</p>
-      <p><a class="underlined-link" href="${site.repositoryUrl}">${escapeHtml(site.repositoryName)} on GitHub</a></p></div>
+      <div class="site-footer-top">
+        <div class="site-footer-masthead">
+          <p class="site-footer-brand"><span aria-hidden="true">CD//</span> ${escapeHtml(site.name)}</p>
+          <p>Codex stays available while provider-native work continues with an inspectable lifecycle.</p>
+        </div>
+        <nav class="site-footer-nav" aria-label="Footer">
+          <div><p>Start</p><ul>
+            <li><a class="tap-target" href="${publicHref('docs/getting-started.html')}">Getting started</a></li>
+            <li><a class="tap-target" href="${publicHref('docs/concepts.html')}">Concepts</a></li>
+          </ul></div>
+          <div><p>Operate</p><ul>
+            <li><a class="tap-target" href="${publicHref('docs/skills.html')}">Skills</a></li>
+            <li><a class="tap-target" href="${publicHref('docs/workflows.html')}">Workflows</a></li>
+          </ul></div>
+          <div><p>Project</p><ul>
+            <li><a class="tap-target" href="${site.repositoryUrl}">GitHub</a></li>
+            <li><a class="tap-target" href="${publicHref('docs/contributing.html')}">Contributing</a></li>
+          </ul></div>
+        </nav>
+      </div>
+      <div class="site-footer-bottom">
+        <p>Codex Delegation v${escapeHtml(version)}</p>
+        <p>Built with vvver-design-system</p>
+      </div>
     </footer>
   </body>
 </html>

@@ -1,178 +1,264 @@
 <article>
   <header class="landing-hero">
-    <p class="landing-eyebrow">Codex plugin · Claude Code + Google Antigravity · v{{version}}</p>
-    <h1>Delegate the work. Keep Codex in control.</h1>
     <div class="landing-hero-copy">
+      <p class="landing-eyebrow">Codex-native delegation · v{{version}}</p>
+      <h1>Keep Codex moving while the work runs.</h1>
       <p class="landing-lede">
-        Start, supervise, continue, and review coding jobs through the accounts already available on
-        your machine—without turning Codex into a terminal babysitter.
+        Delegate bounded coding jobs to Claude Code or Google Antigravity, then supervise every job
+        through one durable lifecycle—without giving up the Codex conversation.
       </p>
-      <p class="landing-actions">
-        <a href="{{link:docs/getting-started.html}}">Install the plugin</a>
-        <a href="{{link:docs/index.html}}">Read the docs</a>
-      </p>
+      <div class="landing-actions">
+        <a class="landing-button landing-button--solid" href="{{link:docs/getting-started.html}}"
+          >Install the plugin</a
+        >
+        <a class="landing-button" href="{{link:docs/index.html}}">Read the docs</a>
+      </div>
+    </div>
+
+    <div class="landing-product" aria-label="Example delegated job">
+      <div class="landing-product-bar">
+        <span>job_mrp1r0j5_2409f03a</span>
+        <span class="landing-status"><i aria-hidden="true"></i> Working</span>
+      </div>
+      <div class="landing-product-body">
+        <p class="landing-product-label">Delegated instruction</p>
+        <p class="landing-product-prompt">
+          Audit the release path, make the smallest safe correction, and prove it with the full
+          validation suite.
+        </p>
+        <dl class="landing-product-meta">
+          <div>
+            <dt>Provider</dt>
+            <dd>Claude Code</dd>
+          </div>
+          <div>
+            <dt>Workspace</dt>
+            <dd>codex-delegation-plugin</dd>
+          </div>
+          <div>
+            <dt>Permission</dt>
+            <dd>Workspace write</dd>
+          </div>
+        </dl>
+        <ol class="landing-product-events">
+          <li><span>12:04:18</span><strong>Job started</strong></li>
+          <li><span>12:04:26</span><strong>Repository inspected</strong></li>
+          <li><span>12:05:03</span><strong>Tests running</strong></li>
+        </ol>
+      </div>
+      <div class="landing-product-footer">
+        <span>Codex remains available</span><span>03 events recorded</span>
+      </div>
     </div>
   </header>
 
-  <section class="landing-panel landing-install" aria-labelledby="install-heading">
-    <h2 class="landing-section-heading" id="install-heading">Install</h2>
-    <div class="landing-panel-body">
-      <pre><code>codex plugin marketplace add https://github.com/wu-hongjun/codex-delegation-plugin
-codex plugin add "delegate@codex-delegation-plugin"
-codex plugin list</code></pre>
-      <p>Restart Codex once so the <code>delegate:</code> skill namespace is loaded.</p>
-    </div>
-  </section>
-
-  <section class="landing-panel" aria-labelledby="model-heading">
-    <h2 class="landing-section-heading" id="model-heading">One job model</h2>
-    <div class="landing-panel-body">
+  <section class="landing-section" id="why" aria-labelledby="why-heading">
+    <div class="landing-section-heading">
+      <p>Why delegate</p>
+      <h2 id="why-heading">Long-running work, without the terminal vigil.</h2>
       <p>
-        Codex Delegation gives provider-native work a stable, inspectable lifecycle. Each job keeps
-        its ID, state, logs, result, and available next actions under
-        <code>~/.codex/codex-delegation-plugin/</code>.
+        Provider-native execution stays intact. Codex gets the control plane it needs to start,
+        inspect, continue, review, and stop the work deliberately.
       </p>
-      <ul>
-        <li>Claude Code runs as a first-party background session.</li>
-        <li>Antigravity runs as a supervised <code>agy --print</code> process.</li>
-        <li>Both expose the same status, wait, result, and stop vocabulary to Codex.</li>
-      </ul>
+    </div>
+    <div class="landing-feature-grid">
+      <article>
+        <span aria-hidden="true">01</span>
+        <h3>Codex stays responsive</h3>
+        <p>Lengthy investigation and implementation continue in a supervised background job.</p>
+      </article>
+      <article>
+        <span aria-hidden="true">02</span>
+        <h3>Every job is inspectable</h3>
+        <p>A stable ID ties together state, logs, results, action hints, and provider metadata.</p>
+      </article>
+      <article>
+        <span aria-hidden="true">03</span>
+        <h3>Provider behavior stays honest</h3>
+        <p>
+          Claude sessions and Antigravity print jobs expose only the actions they truly support.
+        </p>
+      </article>
     </div>
   </section>
 
-  <section class="landing-panel" aria-labelledby="loop-heading">
-    <h2 class="landing-section-heading" id="loop-heading">The operator loop</h2>
-    <div class="landing-panel-body landing-wide">
-      <ol class="landing-steps">
-        <li>
-          <div>
-            <strong>Delegate a bounded task</strong
-            ><code>$claude-delegate "Audit the highest-risk area. Do not edit files."</code>
-          </div>
-        </li>
-        <li>
-          <div>
-            <strong>Wait without blocking Codex</strong
-            ><code>$claude-wait &lt;jobId&gt; --json --compact --timeout 5m</code>
-          </div>
-        </li>
-        <li>
-          <div>
-            <strong>Inspect the recorded result</strong><code>$claude-result &lt;jobId&gt;</code>
-          </div>
-        </li>
-        <li>
-          <div>
-            <strong>Continue the same Claude session</strong
-            ><code>$claude-followup &lt;jobId&gt; -- "Propose the smallest safe fix."</code>
-          </div>
-        </li>
-        <li>
-          <div>
-            <strong>Stop when the work is no longer useful</strong
-            ><code>$claude-stop &lt;jobId&gt;</code>
-          </div>
-        </li>
-      </ol>
-      <p>Use the equivalent <code>$agy-*</code> skills for a single-turn Antigravity job.</p>
+  <section class="landing-section landing-feature-row" aria-labelledby="loop-heading">
+    <div class="landing-feature-copy">
+      <p class="landing-eyebrow">The operator loop</p>
+      <h2 id="loop-heading">One command starts it. Five actions keep it accountable.</h2>
+      <p>
+        Start with a bounded instruction. Later Codex turns can wait, inspect partial or final
+        output, continue a live Claude session, or stop work that no longer matters.
+      </p>
+      <a class="underlined-link" href="{{link:docs/skills.html}}">Explore all 24 skills</a>
+    </div>
+    <div class="landing-command-surface">
+      <p><span aria-hidden="true">$</span> delegate / claude</p>
+      <pre><code>$claude-delegate "Audit the highest-risk area. Report first."
+$claude-wait &lt;jobId&gt; --timeout 5m
+$claude-result &lt;jobId&gt;
+$claude-followup &lt;jobId&gt; -- "Apply the agreed fix."
+$claude-stop &lt;jobId&gt;</code></pre>
+      <p><i aria-hidden="true"></i> State and action hints persist across Codex turns</p>
     </div>
   </section>
 
-  <section class="landing-panel" aria-labelledby="providers-heading">
-    <h2 class="landing-section-heading" id="providers-heading">Choose the provider</h2>
-    <div class="landing-panel-body landing-wide">
-      <p>Provider-native capabilities stay explicit; the lifecycle stays consistent.</p>
-      <table>
-        <caption>
-          Claude Code and Google Antigravity capabilities
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">Capability</th>
-            <th scope="col">Claude Code</th>
-            <th scope="col">Google Antigravity</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th scope="row">Transport</th>
-            <td>Native background session</td>
-            <td>Supervised <code>agy --print</code> process</td>
-          </tr>
-          <tr>
-            <th scope="row">Follow-up</th>
-            <td>Yes, while the session remains live</td>
-            <td>No; start a new single-turn job</td>
-          </tr>
-          <tr>
-            <th scope="row">Status, wait, result, stop</th>
-            <td>Yes</td>
-            <td>Yes</td>
-          </tr>
-          <tr>
-            <th scope="row">Advanced workflows and reviews</th>
-            <td>Yes</td>
-            <td>Not exposed by print mode</td>
-          </tr>
-        </tbody>
-      </table>
+  <section class="landing-section" aria-labelledby="providers-heading">
+    <div class="landing-section-heading">
+      <p>Provider choice</p>
+      <h2 id="providers-heading">Use the runtime that fits the task.</h2>
+      <p>The control vocabulary stays familiar while each provider keeps its native strengths.</p>
+    </div>
+    <div class="landing-provider-grid">
+      <article data-tint="sage">
+        <div class="landing-provider-title">
+          <h3>Claude Code</h3>
+          <span>Conversational</span>
+        </div>
+        <p>Best when the work benefits from a durable session, follow-up, forks, or review.</p>
+        <dl>
+          <div>
+            <dt>Transport</dt>
+            <dd>Native background session</dd>
+          </div>
+          <div>
+            <dt>Follow-up</dt>
+            <dd>Same-session continuation</dd>
+          </div>
+          <div>
+            <dt>Advanced work</dt>
+            <dd>Goals, forks, batches, workflows, reviews</dd>
+          </div>
+        </dl>
+      </article>
+      <article data-tint="slate">
+        <div class="landing-provider-title">
+          <h3>Google Antigravity</h3>
+          <span>Single turn</span>
+        </div>
+        <p>Best for a supervised, bounded instruction that should finish as one print-mode job.</p>
+        <dl>
+          <div>
+            <dt>Transport</dt>
+            <dd>Supervised <code>agy --print</code> process</dd>
+          </div>
+          <div>
+            <dt>Follow-up</dt>
+            <dd>Start a new job</dd>
+          </div>
+          <div>
+            <dt>Core actions</dt>
+            <dd>Status, wait, result, stop</dd>
+          </div>
+        </dl>
+      </article>
     </div>
   </section>
 
-  <section class="landing-panel landing-architecture" aria-labelledby="architecture-heading">
-    <h2 class="landing-section-heading" id="architecture-heading">Codex-first architecture</h2>
-    <div class="landing-panel-body landing-wide">
-      <pre><code>Codex
+  <section class="landing-section landing-architecture" aria-labelledby="architecture-heading">
+    <div class="landing-section-heading">
+      <p>Architecture</p>
+      <h2 id="architecture-heading">A control plane, not a terminal scraper.</h2>
+      <p>
+        Runtime state comes from provider-native sessions and plugin-owned records. Session labels
+        never masquerade as durable job identifiers.
+      </p>
+    </div>
+    <pre><code>Codex
   └─ delegate: skill
-      └─ delegate dispatcher
-          ├─ ClaudeBackgroundDriver ── Claude Code background session
+      └─ provider-neutral dispatcher
+          ├─ ClaudeBackgroundDriver ── live Claude session
           └─ AgyCliDriver ─────────── supervised agy process
                  │
-                 └─ job store: status, logs, results, action hints</code></pre>
-      <p>
-        The runtime uses provider-native state and plugin-owned artifacts. It does not scrape a
-        human terminal or confuse a session name with a reusable job ID.
-      </p>
-    </div>
+                 └─ job record · events · logs · results · next actions</code></pre>
   </section>
 
-  <section class="landing-panel" aria-labelledby="proof-heading">
-    <h2 class="landing-section-heading" id="proof-heading">Release proof</h2>
-    <div class="landing-panel-body landing-wide">
-      <p>
-        Version {{version}} shipped after repository, terminal, benchmark, CI, and packaging
-        verification.
-      </p>
-      <div class="landing-facts" aria-label="Release verification results">
-        <p class="landing-fact"><strong>1,393</strong><span>Repository tests</span></p>
-        <p class="landing-fact"><strong>29</strong><span>PTY attachment tests</span></p>
-        <p class="landing-fact"><strong>258</strong><span>Benchmark tests</span></p>
-        <p class="landing-fact"><strong>0</strong><span>Audit vulnerabilities</span></p>
+  <section class="landing-section" aria-labelledby="proof-heading">
+    <div class="landing-section-heading">
+      <p>Release proof</p>
+      <h2 id="proof-heading">Verified through the paths operators actually use.</h2>
+    </div>
+    <dl class="landing-stat-band">
+      <div>
+        <dd>1,393</dd>
+        <dt>Repository tests</dt>
+        <dd>Runtime and plugin</dd>
       </div>
-    </div>
+      <div>
+        <dd>29</dd>
+        <dt>PTY tests</dt>
+        <dd>Real attachment lane</dd>
+      </div>
+      <div>
+        <dd>258</dd>
+        <dt>Benchmarks</dt>
+        <dd>Workflow coverage</dd>
+      </div>
+      <div>
+        <dd>0</dd>
+        <dt>Vulnerabilities</dt>
+        <dd>Published package audit</dd>
+      </div>
+    </dl>
   </section>
 
-  <section class="landing-panel" aria-labelledby="directory-heading">
-    <h2 class="landing-section-heading" id="directory-heading">Documentation</h2>
-    <div class="landing-panel-body landing-wide">
-      <ul class="landing-directory">
-        <li><a href="{{link:docs/getting-started.html}}">Getting started</a></li>
-        <li><a href="{{link:docs/skills.html}}">All 24 skills</a></li>
-        <li><a href="{{link:docs/concepts.html}}">Jobs and providers</a></li>
-        <li><a href="{{link:docs/workflows.html}}">Workflows and review</a></li>
-        <li><a href="{{link:docs/safety.html}}">Safety and permissions</a></li>
-        <li><a href="{{link:docs/troubleshooting.html}}">Troubleshooting</a></li>
-      </ul>
+  <section class="landing-section" aria-labelledby="docs-heading">
+    <div class="landing-section-heading landing-section-heading--action">
+      <div>
+        <p>Documentation</p>
+        <h2 id="docs-heading">Go from install to independent review.</h2>
+      </div>
+      <a class="underlined-link" href="{{link:docs/index.html}}">View every guide</a>
     </div>
+    <ul class="landing-directory">
+      <li>
+        <a href="{{link:docs/getting-started.html}}"
+          ><span>01</span><strong>Getting started</strong><i aria-hidden="true">→</i></a
+        >
+      </li>
+      <li>
+        <a href="{{link:docs/concepts.html}}"
+          ><span>02</span><strong>Jobs and providers</strong><i aria-hidden="true">→</i></a
+        >
+      </li>
+      <li>
+        <a href="{{link:docs/skills.html}}"
+          ><span>03</span><strong>All 24 skills</strong><i aria-hidden="true">→</i></a
+        >
+      </li>
+      <li>
+        <a href="{{link:docs/workflows.html}}"
+          ><span>04</span><strong>Workflows and reviews</strong><i aria-hidden="true">→</i></a
+        >
+      </li>
+      <li>
+        <a href="{{link:docs/safety.html}}"
+          ><span>05</span><strong>Safety and permissions</strong><i aria-hidden="true">→</i></a
+        >
+      </li>
+      <li>
+        <a href="{{link:docs/troubleshooting.html}}"
+          ><span>06</span><strong>Troubleshooting</strong><i aria-hidden="true">→</i></a
+        >
+      </li>
+    </ul>
   </section>
 
-  <section class="landing-final" aria-labelledby="next-heading">
-    <h2 id="next-heading">Give the next task a lifecycle.</h2>
-    <p class="landing-actions">
-      <a href="{{link:docs/getting-started.html}}">Get started</a>
-      <a href="https://github.com/wu-hongjun/codex-delegation-plugin/releases/tag/v{{version}}"
+  <section class="landing-cta" aria-labelledby="next-heading">
+    <p>Get started</p>
+    <h2 id="next-heading">Give the next delegated task a lifecycle.</h2>
+    <p>
+      Install the plugin, restart Codex, and send one bounded job through the full operator loop.
+    </p>
+    <div class="landing-actions">
+      <a class="landing-button landing-button--light" href="{{link:docs/getting-started.html}}"
+        >Install the plugin</a
+      >
+      <a
+        class="landing-button landing-button--dark-ghost"
+        href="https://github.com/wu-hongjun/codex-delegation-plugin/releases/tag/v{{version}}"
         >View v{{version}}</a
       >
-    </p>
+    </div>
   </section>
 </article>

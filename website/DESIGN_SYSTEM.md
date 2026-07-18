@@ -4,63 +4,73 @@ Audit date: 2026-07-18
 
 Source: `wu-hongjun/vvver-design-system`
 
-- Package release: `v0.7.2`
-- Pinned commit: `715158c064deefaffc56276e90d69a52feecdbd2`
+- Package release: `v0.8.1`
+- Pinned commit: `0116bd45184c08453b8fb850292e94c39ef43583`
 - Package shape: source TypeScript, React 19 peer dependency, Tailwind CSS 4 host contract
 - Integration: exact submodule gitlink at `vendor/vvver-design-system`
 - Static-site inputs: `src/tokens.css`, `src/styles.css`, `src/prose.css`, and Switzer WOFF2 files
 
-## Audit outcome
+## v0.8.1 audit outcome
 
-The site now compiles the complete portable design-system CSS stack through Tailwind 4. It no
-longer copies two raw CSS files and recreates most of the visual language in a local stylesheet.
-The host layer is limited to the warm monochrome palette, product-specific composition, and the
-semantic static documentation shell.
+Version 0.8.1 adds 28 components and raises the library from roughly 110 to roughly 140 components.
+The major addition for this repository is a complete page-section tier: `Hero`, `Section`,
+`SectionHeading`, `FeatureGrid`, `FeatureRow`, `BentoGrid`, `StatBand`, `CTASection`, `Footer`,
+`AnnouncementBar`, `FAQ`, `LogoWall`, `PricingTable`, `Testimonial`, `NewsletterSection`, and
+`NewsList`. It also adds dashboard and icon families and publishes a full product-landing reference
+composition.
 
-Version 0.7.2 adds the responsive contract the site needed: fluid display and heading scales,
-fluid gutters, 44-pixel tap targets, dynamic-viewport and safe-area utilities, scroll containment,
-and a broader set of page and navigation recipes. It also exports `prose.css`, `Prose`, `CodeBlock`,
-`InlineCode`, and `markdownComponents`; the missing-export findings from the v0.4.0 audit are closed.
+The optional companion accent contract introduces eight muted, low-chroma host tints. This site
+defines the documented values and uses only sage, slate, and sand for status marks, provider rules,
+and the release strip. Core surfaces remain ink and paper.
 
-## Adopted directly
+The tagged design-system documentation build succeeds across all 32 static routes. The upstream
+documentation toolchain reports two moderate development-only advisories through Next/PostCSS;
+neither package enters this site's static Tailwind artifact. The plugin repository's own audit
+remains separate and must stay at zero.
 
-- the full token, component-class, utility, and prose stylesheets
-- bundled Switzer 400, 500, and 700 WOFF2 fonts with `font-display: swap`
-- `--fluid-display`, heading and lede scales, `--gutter-fluid`, and viewport rhythms
-- `--tap-min` through the real `.tap-target` utility
-- `.link-slide`, `.underlined-link`, `.touch-scroll`, hairlines, dimming, and motion contracts
-- prose, code-block, table, focus, reduced-motion, and monochrome syntax registers
-- documentation layout recipes: 200-pixel rail, 60-pixel gap, constrained reading column, sticky rail
-- component patterns for release information, previous/next navigation, and editorial index rows
+## Adopted in the second pass
 
-The generated Pages artifact contains one minified stylesheet and local font files. The checker
-requires compiled output (no remaining `@import` or `@apply`), verifies design-system contract
-tokens/classes, and byte-compares every copied font against the pinned source.
+- `Hero` split-layout proportions, fluid display type, lede measure, and action spacing
+- `Section` full-bleed/contained rhythm and safe-area gutter contract
+- `SectionHeading` eyebrow, title, lede, and trailing-action hierarchy
+- `FeatureGrid` interior hairline structure without perimeter card boxes
+- `FeatureRow` two-column copy/product-surface composition
+- `BentoGrid`-style provider panels with restrained tint marks
+- `StatBand` source order, figure scale, stacked mobile rules, and desktop separators
+- inverted `CTASection` hierarchy and action treatment
+- responsive `Footer` masthead, link groups, and legal row
+- `AnnouncementBar` micro-register for the current release
+- `PageHeader` proportions for documentation titles and ledes
 
-## Deliberate static adaptations
+The landing page is no longer wrapped in `.vvver-prose`. Prose is intentionally scoped to
+documentation and error content; the product page uses the new section recipes. This removes the
+specificity fight that previously forced editorial article headings, margins, and table rules onto
+the landing composition.
 
-The site remains HTML and CSS only. React is not needed for a content-first landing page and
-documentation renderer, so component markup patterns are translated into semantic static HTML
-while their real CSS/tokens remain upstream-owned. This keeps the content generator small and makes
-GitHub Pages deployment deterministic.
+## Build boundary
 
-The upstream `NavBar` was not adopted in this pass. Its closed mobile overlay stays mounted with
-focusable descendants under an `aria-hidden` container and does not yet provide the full inert/focus
-trap behavior expected of a modal navigation surface. The site therefore uses an always-visible,
-responsive navigation built from normal links and the design system's `tap-target` and `link-slide`
-utilities. Reassess this when the upstream component fixes that accessibility gap.
+The site remains static HTML and CSS. Tailwind 4 compiles the real design-system tokens, component
+classes, utilities, and prose styles with the host composition into one minified stylesheet. The
+build copies the upstream Switzer 400, 500, and 700 WOFF2 files byte-for-byte. There is no client
+JavaScript or React runtime in the deployed Pages artifact.
 
-## Upstream/package boundaries
+React page blocks are translated into semantic static markup because their presentation is
+slot-based and does not require hydration. The implementation follows the upstream product-landing
+example and component recipes rather than recreating an unrelated visual language. Stateful
+components remain upstream-owned and should only be adopted with their real React behavior.
 
-- `styles.css` contains Tailwind `@apply`; consumers must compile it rather than copy it raw.
-- The npm package intentionally excludes the documentation shell and its font files. This site reads
-  both from the pinned source submodule.
-- The design-system documentation toolchain currently has moderate audit findings in Next/PostCSS;
-  they do not enter this site's static Tailwind build or deployed artifact.
+## Navigation finding
+
+The v0.7.2 audit found that the closed mobile `NavBar` overlay kept focusable descendants mounted
+under `aria-hidden`. v0.8.1 fixes this with `inert`, adds safer overflow/wrapping, and improves the
+mobile curtain. That finding is closed. This static site still uses always-visible navigation
+because three links fit without a menu or client runtime; adopt the real `NavBar` if the information
+architecture grows enough to require an overlay.
 
 ## Updating
 
-1. Fetch tags and inspect the newest release notes and package exports.
+1. Fetch tags and inspect the newest release diff, package exports, new page recipes, and audit fixes.
 2. Move the submodule to an exact reviewed tag/commit.
-3. Re-run `npm run site:test`, the viewport/keyboard audit, and the repository validation lanes.
-4. Update this record with the adopted version, commit, and any unresolved component findings.
+3. Build the tagged design-system documentation workspace.
+4. Run `npm run site:test`, the responsive/keyboard contract audit, and all repository lanes.
+5. Update this record with the adopted version, commit, and any unresolved component findings.

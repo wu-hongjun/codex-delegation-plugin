@@ -17,8 +17,10 @@ There is no client JavaScript or React runtime.
 
 `wu-hongjun/vvver-design-system` is pinned as a submodule under `vendor/`. Tailwind CSS 4 compiles
 the design system's real `tokens.css`, `styles.css`, and `prose.css` together with the small
-product-specific host stylesheet. The build also copies the bundled Switzer WOFF2 fonts. See
-[`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) for the exact audited version and adoption decisions.
+product-specific host stylesheet. The landing composition follows the upstream page-section
+recipes, while documentation retains the dedicated prose layer. The build also copies the bundled
+Switzer WOFF2 fonts. See [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) for the exact audited version and
+adoption decisions.
 
 The private cross-repository checkout uses a dedicated read-only deploy key stored as the Actions
 secret `DESIGN_SYSTEM_DEPLOY_KEY`. The public half is registered only on the design-system

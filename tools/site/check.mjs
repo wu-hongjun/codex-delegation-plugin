@@ -108,6 +108,28 @@ for (const page of pages) {
   if (canonical !== canonicalFor(page.output)) {
     fail(expected, `canonical URL does not match site configuration: ${canonical ?? 'missing'}`);
   }
+  if (page.section === 'landing') {
+    if (!/<main class="site-main landing-page"/.test(html)) {
+      fail(expected, 'landing page must use the product-page scope');
+    }
+    if (/<main class="[^"]*vvver-prose/.test(html)) {
+      fail(expected, 'landing page must not inherit the long-form prose scope');
+    }
+    for (const component of [
+      'landing-product',
+      'landing-feature-grid',
+      'landing-provider-grid',
+      'landing-stat-band',
+      'landing-cta',
+    ]) {
+      if (!html.includes(`class="${component}`)) {
+        fail(expected, `missing adopted page-block recipe ${component}`);
+      }
+    }
+  }
+  if (page.section === 'docs' && !/<main class="site-main vvver-prose"/.test(html)) {
+    fail(expected, 'documentation page must retain the long-form prose scope');
+  }
 }
 
 for (const [file, html] of htmlByPath) {
@@ -188,6 +210,7 @@ if (!filePaths.has(stylesheetPath)) {
     '--fluid-display',
     '--gutter-fluid',
     '--tap-min',
+    '--tint-sage',
     '.link-slide',
     '.underlined-link',
     '.tap-target',
@@ -200,10 +223,10 @@ if (!filePaths.has(stylesheetPath)) {
 const designSystemManifest = JSON.parse(
   await readFile(resolve(designSystemRoot, 'package.json'), 'utf8'),
 );
-if (designSystemManifest.version !== '0.7.2') {
+if (designSystemManifest.version !== '0.8.1') {
   fail(
     resolve(designSystemRoot, 'package.json'),
-    `expected design-system v0.7.2, found ${designSystemManifest.version}`,
+    `expected design-system v0.8.1, found ${designSystemManifest.version}`,
   );
 }
 

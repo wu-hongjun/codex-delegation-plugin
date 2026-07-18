@@ -52,7 +52,7 @@ function canonicalUrl(output) {
 
 function renderPrimaryNavigation(output) {
   const homeCurrent = output === 'index.html' ? ' aria-current="page"' : '';
-  const docsCurrent = output === 'docs/index.html' ? ' aria-current="page"' : '';
+  const docsCurrent = output.startsWith('docs/') ? ' aria-current="page"' : '';
   const navLink = (href, label, current = '') =>
     `<a class="site-nav-link tap-target" href="${href}"${current}><span class="link-slide"><span>${label}</span><span aria-hidden="true">${label}</span></span></a>`;
   return `<nav class="site-primary-nav" aria-label="Primary">
@@ -104,7 +104,7 @@ function renderDocsContext(page) {
       ? `<a href="${publicHref(item.output)}"><span>${direction}</span><strong>${escapeHtml(item.title)}</strong></a>`
       : '<span aria-hidden="true"></span>';
   return {
-    before: `<div class="site-breadcrumb" aria-label="Breadcrumb"><a href="${publicHref('docs/index.html')}">Docs</a><span aria-hidden="true">/</span><span>${escapeHtml(page.title)}</span></div>`,
+    before: `<div class="site-breadcrumb" aria-label="Breadcrumb"><a href="${publicHref('docs/index.html')}">Docs</a><span aria-hidden="true">/</span><span>${escapeHtml(page.title)}</span><span class="site-breadcrumb-position" aria-label="Page ${index + 1} of ${docsNavigation.length}">${String(index + 1).padStart(2, '0')} / ${String(docsNavigation.length).padStart(2, '0')}</span></div>`,
     after: `<nav class="site-prev-next" aria-label="Documentation pages">${link(previous, 'Previous')}${link(next, 'Next')}</nav>`,
   };
 }
@@ -187,10 +187,10 @@ ${robots}    <meta name="theme-color" content="#fdfcfb">
   <body class="site-page site-page--${escapeHtml(page.section)}">
     <a class="site-skip-link" href="#main-content">Skip to main content</a>
     <div class="site-announcement">
-      <a href="${site.repositoryUrl}/releases/tag/v${escapeHtml(version)}"><span>Codex Delegation v${escapeHtml(version)} is current</span><span>Release notes&nbsp; →</span></a>
+      <a href="${site.repositoryUrl}/releases/tag/v${escapeHtml(version)}"><span><b>Release</b> v${escapeHtml(version)}</span><span>Notes&nbsp; →</span></a>
     </div>
     <header class="site-header">
-      <a class="site-wordmark" href="${publicHref('index.html')}"><span aria-hidden="true">CD//</span><span>${escapeHtml(site.name)}</span></a>
+      <a class="site-wordmark" href="${publicHref('index.html')}" aria-label="${escapeHtml(site.name)} home"><span class="site-wordmark-mark" aria-hidden="true"><i></i><i></i></span><span class="site-wordmark-label">${escapeHtml(site.name)}</span></a>
       ${renderPrimaryNavigation(page.output)}
     </header>
     <div class="${layoutClass}">
@@ -204,8 +204,8 @@ ${robots}    <meta name="theme-color" content="#fdfcfb">
     <footer class="site-footer">
       <div class="site-footer-top">
         <div class="site-footer-masthead">
-          <p class="site-footer-brand"><span aria-hidden="true">CD//</span> ${escapeHtml(site.name)}</p>
-          <p>Codex stays available while provider-native work continues with an inspectable lifecycle.</p>
+          <p class="site-footer-brand"><span class="site-footer-mark" aria-hidden="true"><i></i><i></i></span>${escapeHtml(site.name)}</p>
+          <p>Provider-native work, with a lifecycle Codex can inspect and control.</p>
         </div>
         <nav class="site-footer-nav" aria-label="Footer">
           <div><p>Start</p><ul>

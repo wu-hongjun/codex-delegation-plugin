@@ -1,27 +1,28 @@
 <article>
   <header class="landing-hero">
     <div class="landing-hero-copy">
-      <p class="landing-eyebrow">Codex-native delegation · v{{version}}</p>
-      <h1>Keep Codex moving while the work runs.</h1>
+      <p class="landing-eyebrow">A control plane for provider-native work · v{{version}}</p>
+      <h1>Give long-running work a durable job ID.</h1>
       <p class="landing-lede">
-        Delegate bounded coding jobs to Claude Code or Google Antigravity, then supervise every job
-        through one durable lifecycle—without giving up the Codex conversation.
+        Codex starts Claude Code or Google Antigravity, records what happens, and stays available
+        when the work needs your judgment again.
       </p>
       <div class="landing-actions">
         <a class="landing-button landing-button--solid" href="{{link:docs/getting-started.html}}"
-          >Install the plugin</a
+          >Install v{{version}}</a
         >
-        <a class="landing-button" href="{{link:docs/index.html}}">Read the docs</a>
+        <a class="landing-button" href="{{link:docs/index.html}}">Read the operating guide</a>
       </div>
+      <p class="landing-hero-note">Open source · macOS and Linux · Node 20+</p>
     </div>
 
     <div class="landing-product" aria-label="Example delegated job">
       <div class="landing-product-bar">
-        <span>job_mrp1r0j5_2409f03a</span>
+        <span>delegate / claude</span>
         <span class="landing-status"><i aria-hidden="true"></i> Working</span>
       </div>
       <div class="landing-product-body">
-        <p class="landing-product-label">Delegated instruction</p>
+        <p class="landing-product-label">job_mrp1r0j5_2409f03a · delegated instruction</p>
         <p class="landing-product-prompt">
           Audit the release path, make the smallest safe correction, and prove it with the full
           validation suite.
@@ -54,26 +55,26 @@
 
   <section class="landing-section" id="why" aria-labelledby="why-heading">
     <div class="landing-section-heading">
-      <p>Why delegate</p>
-      <h2 id="why-heading">Long-running work, without the terminal vigil.</h2>
+      <p>01 / Operating model</p>
+      <h2 id="why-heading">The agent does the work. Codex keeps the controls.</h2>
       <p>
-        Provider-native execution stays intact. Codex gets the control plane it needs to start,
-        inspect, continue, review, and stop the work deliberately.
+        Provider-native execution stays intact. The plugin adds just enough structure to start,
+        inspect, continue, review, and stop work deliberately.
       </p>
     </div>
     <div class="landing-feature-grid">
       <article>
-        <span aria-hidden="true">01</span>
+        <span>Control</span>
         <h3>Codex stays responsive</h3>
         <p>Lengthy investigation and implementation continue in a supervised background job.</p>
       </article>
       <article>
-        <span aria-hidden="true">02</span>
+        <span>Record</span>
         <h3>Every job is inspectable</h3>
         <p>A stable ID ties together state, logs, results, action hints, and provider metadata.</p>
       </article>
       <article>
-        <span aria-hidden="true">03</span>
+        <span>Adapter</span>
         <h3>Provider behavior stays honest</h3>
         <p>
           Claude sessions and Antigravity print jobs expose only the actions they truly support.
@@ -84,8 +85,8 @@
 
   <section class="landing-section landing-feature-row" aria-labelledby="loop-heading">
     <div class="landing-feature-copy">
-      <p class="landing-eyebrow">The operator loop</p>
-      <h2 id="loop-heading">One command starts it. Five actions keep it accountable.</h2>
+      <p class="landing-eyebrow">02 / Lifecycle</p>
+      <h2 id="loop-heading">Start once. Return when judgment is needed.</h2>
       <p>
         Start with a bounded instruction. Later Codex turns can wait, inspect partial or final
         output, continue a live Claude session, or stop work that no longer matters.
@@ -105,15 +106,15 @@ $claude-stop &lt;jobId&gt;</code></pre>
 
   <section class="landing-section" aria-labelledby="providers-heading">
     <div class="landing-section-heading">
-      <p>Provider choice</p>
-      <h2 id="providers-heading">Use the runtime that fits the task.</h2>
-      <p>The control vocabulary stays familiar while each provider keeps its native strengths.</p>
+      <p>03 / Providers</p>
+      <h2 id="providers-heading">One lifecycle; two different working models.</h2>
+      <p>The controls stay familiar while each provider keeps its native strengths and limits.</p>
     </div>
     <div class="landing-provider-grid">
       <article data-tint="sage">
         <div class="landing-provider-title">
           <h3>Claude Code</h3>
-          <span>Conversational</span>
+          <span>Session / follow-up capable</span>
         </div>
         <p>Best when the work benefits from a durable session, follow-up, forks, or review.</p>
         <dl>
@@ -134,7 +135,7 @@ $claude-stop &lt;jobId&gt;</code></pre>
       <article data-tint="slate">
         <div class="landing-provider-title">
           <h3>Google Antigravity</h3>
-          <span>Single turn</span>
+          <span>Process / single turn</span>
         </div>
         <p>Best for a supervised, bounded instruction that should finish as one print-mode job.</p>
         <dl>
@@ -157,7 +158,7 @@ $claude-stop &lt;jobId&gt;</code></pre>
 
   <section class="landing-section landing-architecture" aria-labelledby="architecture-heading">
     <div class="landing-section-heading">
-      <p>Architecture</p>
+      <p>04 / Boundary</p>
       <h2 id="architecture-heading">A control plane, not a terminal scraper.</h2>
       <p>
         Runtime state comes from provider-native sessions and plugin-owned records. Session labels
@@ -175,38 +176,39 @@ $claude-stop &lt;jobId&gt;</code></pre>
 
   <section class="landing-section" aria-labelledby="proof-heading">
     <div class="landing-section-heading">
-      <p>Release proof</p>
-      <h2 id="proof-heading">Verified through the paths operators actually use.</h2>
+      <p>05 / Release evidence</p>
+      <h2 id="proof-heading">Proof belongs in a ledger, not a badge.</h2>
+      <p>
+        Version {{version}} was exercised through the same runtime, attachment, and packaging paths
+        operators use.
+      </p>
     </div>
-    <dl class="landing-stat-band">
+    <dl class="landing-proof-ledger">
       <div>
-        <dd>1,393</dd>
         <dt>Repository tests</dt>
-        <dd>Runtime and plugin</dd>
+        <dd><strong>1,393</strong><span>passed</span></dd>
       </div>
       <div>
-        <dd>29</dd>
-        <dt>PTY tests</dt>
-        <dd>Real attachment lane</dd>
+        <dt>PTY attachment tests</dt>
+        <dd><strong>29</strong><span>passed</span></dd>
       </div>
       <div>
-        <dd>258</dd>
-        <dt>Benchmarks</dt>
-        <dd>Workflow coverage</dd>
+        <dt>Benchmark tests</dt>
+        <dd><strong>258</strong><span>passed</span></dd>
       </div>
       <div>
-        <dd>0</dd>
-        <dt>Vulnerabilities</dt>
-        <dd>Published package audit</dd>
+        <dt>npm audit</dt>
+        <dd><strong>0</strong><span>vulnerabilities</span></dd>
       </div>
     </dl>
+    <p class="landing-proof-note">Ubuntu + macOS · Node 20 + 22 · GitHub marketplace install</p>
   </section>
 
   <section class="landing-section" aria-labelledby="docs-heading">
     <div class="landing-section-heading landing-section-heading--action">
       <div>
-        <p>Documentation</p>
-        <h2 id="docs-heading">Go from install to independent review.</h2>
+        <p>06 / Field guide</p>
+        <h2 id="docs-heading">From first install to independent review.</h2>
       </div>
       <a class="underlined-link" href="{{link:docs/index.html}}">View every guide</a>
     </div>
@@ -245,20 +247,25 @@ $claude-stop &lt;jobId&gt;</code></pre>
   </section>
 
   <section class="landing-cta" aria-labelledby="next-heading">
-    <p>Get started</p>
-    <h2 id="next-heading">Give the next delegated task a lifecycle.</h2>
-    <p>
-      Install the plugin, restart Codex, and send one bounded job through the full operator loop.
-    </p>
-    <div class="landing-actions">
-      <a class="landing-button landing-button--light" href="{{link:docs/getting-started.html}}"
-        >Install the plugin</a
-      >
-      <a
-        class="landing-button landing-button--dark-ghost"
-        href="https://github.com/wu-hongjun/codex-delegation-plugin/releases/tag/v{{version}}"
-        >View v{{version}}</a
-      >
+    <div class="landing-cta-copy">
+      <p>Start here</p>
+      <h2 id="next-heading">Begin with one bounded task.</h2>
+      <p>Install the plugin, restart Codex, and send a job through the complete operator loop.</p>
+      <div class="landing-actions">
+        <a class="landing-button landing-button--light" href="{{link:docs/getting-started.html}}"
+          >Install the plugin</a
+        >
+        <a
+          class="landing-button landing-button--dark-ghost"
+          href="https://github.com/wu-hongjun/codex-delegation-plugin/releases/tag/v{{version}}"
+          >Release notes</a
+        >
+      </div>
     </div>
+    <ol class="landing-cta-sequence" aria-label="First run">
+      <li><span>01</span>Preflight a provider</li>
+      <li><span>02</span>Delegate a bounded instruction</li>
+      <li><span>03</span>Inspect the recorded result</li>
+    </ol>
   </section>
 </article>

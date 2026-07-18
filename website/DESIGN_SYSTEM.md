@@ -4,29 +4,35 @@ Audit date: 2026-07-18
 
 Source: `wu-hongjun/vvver-design-system`
 
-- Package release: `v0.8.1`
-- Pinned commit: `0116bd45184c08453b8fb850292e94c39ef43583`
+- Package release: `v0.10.1`
+- Pinned commit: `a2630009b4e186c99d972b39ab760c5e4a47fbb5`
 - Package shape: source TypeScript, React 19 peer dependency, Tailwind CSS 4 host contract
 - Integration: exact submodule gitlink at `vendor/vvver-design-system`
 - Static-site inputs: `src/tokens.css`, `src/styles.css`, `src/prose.css`, and Switzer WOFF2 files
 
-## v0.8.1 audit outcome
+## v0.10.1 audit outcome
 
-Version 0.8.1 adds 28 components and raises the library from roughly 110 to roughly 140 components.
-The major addition for this repository is a complete page-section tier: `Hero`, `Section`,
-`SectionHeading`, `FeatureGrid`, `FeatureRow`, `BentoGrid`, `StatBand`, `CTASection`, `Footer`,
-`AnnouncementBar`, `FAQ`, `LogoWall`, `PricingTable`, `Testimonial`, `NewsletterSection`, and
-`NewsList`. It also adds dashboard and icon families and publishes a full product-landing reference
-composition.
+Versions 0.9.0 and 0.10.0 raise the library to roughly 150 components. The new account and security
+kit is not needed by this documentation site, but its field, status, and consent patterns informed
+the same quiet interactive-weight treatment used here. Version 0.10.0 exposes `Wordmark` and the
+active-link state in `NavBar`, and reorganizes the component documentation into fourteen
+primitive-based families. The pinned commit also includes the post-release prose fix that prevents
+`Quote` figures from inheriting markdown blockquote spacing.
+
+Version 0.10.1 follows with accessibility corrections: small dimmed labels return to readable ink,
+status labels no longer inherit accent color, nested syntax tokens keep AA-clearing contrast, and
+the `Quote` reset is narrowed so ordinary image figures retain their prose spacing. This site's own
+microcopy audit follows the same contrast rule.
 
 The optional companion accent contract introduces eight muted, low-chroma host tints. This site
 defines the documented values and uses only sage, slate, and sand for status marks, provider rules,
 and the release strip. Core surfaces remain ink and paper.
 
-The tagged design-system documentation build succeeds across all 32 static routes. The upstream
-documentation toolchain reports two moderate development-only advisories through Next/PostCSS;
-neither package enters this site's static Tailwind artifact. The plugin repository's own audit
-remains separate and must stay at zero.
+The site consumes the reviewed v0.10.1 package artifact. Its documentation app builds all 32 routes
+successfully. The upstream workspace's
+audit reports two moderate development-only findings through Next's pinned PostCSS; neither package
+enters this site's static Tailwind artifact. The plugin repository's audit remains separate and
+must stay at zero.
 
 ## Adopted in the second pass
 
@@ -41,6 +47,23 @@ remains separate and must stay at zero.
 - responsive `Footer` masthead, link groups, and legal row
 - `AnnouncementBar` micro-register for the current release
 - `PageHeader` proportions for documentation titles and ledes
+
+## Adopted in the third pass
+
+- the v0.10 `Wordmark` mark/label relationship, translated into a static lockup without adding a
+  React or client-JavaScript boundary
+- `NavBar` active-link semantics across every documentation route, including `aria-current="page"`
+  and a quiet baseline rather than a bold weight jump
+- compact release-strip language and directional affordance from the navigation family
+- primitive-family thinking in the landing page: provider content reads as a comparison field,
+  release checks read as a ledger, and the final action reads as a sequence instead of a collection
+  of interchangeable cards
+- the current prose fix for nested `Quote` figures
+
+This pass deliberately removes common generated-landing-page signals: equal card grids as the
+default answer to every content group, oversized vanity metrics, a centered closing banner, and an
+invented `CD//` wordmark. The remaining details are restrained—an asymmetric hero, running section
+labels, tabular release evidence, hairline active states, and a single low-chroma status register.
 
 The landing page is no longer wrapped in `.vvver-prose`. Prose is intentionally scoped to
 documentation and error content; the product page uses the new section recipes. This removes the
@@ -62,10 +85,10 @@ components remain upstream-owned and should only be adopted with their real Reac
 ## Navigation finding
 
 The v0.7.2 audit found that the closed mobile `NavBar` overlay kept focusable descendants mounted
-under `aria-hidden`. v0.8.1 fixes this with `inert`, adds safer overflow/wrapping, and improves the
-mobile curtain. That finding is closed. This static site still uses always-visible navigation
-because three links fit without a menu or client runtime; adopt the real `NavBar` if the information
-architecture grows enough to require an overlay.
+under `aria-hidden`. v0.8.1 closed that finding with `inert`; v0.10 adds explicit active-link
+state. This static site adopts the active-link contract but still uses always-visible navigation
+because three links fit without a menu or client runtime. Adopt the real `NavBar` if the information
+architecture grows enough to require its ink-curtain overlay.
 
 ## Updating
 

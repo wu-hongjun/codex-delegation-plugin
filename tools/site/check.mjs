@@ -49,6 +49,10 @@ for (const file of htmlFiles) {
   if (!html.includes('class="site-skip-link" href="#main-content"')) {
     fail(file, 'missing shared skip link');
   }
+  if (!html.includes('class="site-wordmark-mark"')) {
+    fail(file, 'missing shared wordmark mark');
+  }
+  if (html.includes('CD//')) fail(file, 'contains the retired placeholder wordmark');
   const firstAnchor = html.match(/<a\s[^>]*>/)?.[0] ?? '';
   if (!firstAnchor.includes('class="site-skip-link"')) {
     fail(file, 'skip link must be the first interactive element');
@@ -119,7 +123,7 @@ for (const page of pages) {
       'landing-product',
       'landing-feature-grid',
       'landing-provider-grid',
-      'landing-stat-band',
+      'landing-proof-ledger',
       'landing-cta',
     ]) {
       if (!html.includes(`class="${component}`)) {
@@ -129,6 +133,9 @@ for (const page of pages) {
   }
   if (page.section === 'docs' && !/<main class="site-main vvver-prose"/.test(html)) {
     fail(expected, 'documentation page must retain the long-form prose scope');
+  }
+  if (page.section === 'docs' && !/href="[^"]*\/docs\/" aria-current="page"/.test(html)) {
+    fail(expected, 'documentation primary navigation must expose its active state');
   }
 }
 
@@ -223,10 +230,10 @@ if (!filePaths.has(stylesheetPath)) {
 const designSystemManifest = JSON.parse(
   await readFile(resolve(designSystemRoot, 'package.json'), 'utf8'),
 );
-if (designSystemManifest.version !== '0.8.1') {
+if (designSystemManifest.version !== '0.10.1') {
   fail(
     resolve(designSystemRoot, 'package.json'),
-    `expected design-system v0.8.1, found ${designSystemManifest.version}`,
+    `expected design-system v0.10.1, found ${designSystemManifest.version}`,
   );
 }
 

@@ -68,7 +68,7 @@ node tools/package-marketplace.mjs --check</code></pre>
 npm run site:check
 npm run site:serve</code></pre>
     <p>
-      Open <code>http://127.0.0.1:4173/</code>. Source fragments live under
+      Open <code>http://127.0.0.1:4173/codex-delegation-plugin/</code>. Source fragments live under
       <code>website/pages/</code>; shared metadata and command catalogs live under
       <code>website/</code>; the generated <code>_site/</code> directory is ignored. GitHub Actions
       deploys the verified artifact to Pages from <code>main</code>.
@@ -78,10 +78,10 @@ npm run site:serve</code></pre>
   <section id="design-system">
     <h2>Design-system integration</h2>
     <p>
-      The static site consumes the real <code>tokens.css</code> and framework-neutral
-      <code>prose.css</code> from the pinned <code>vvver-design-system</code> submodule. A small
-      host stylesheet supplies the palette and documentation shell required by that contract, with
-      no inline styles, client JavaScript, React, or Tailwind dependency.
+      Tailwind CSS 4 compiles the real <code>tokens.css</code>, <code>styles.css</code>, and
+      <code>prose.css</code> from the pinned <code>vvver-design-system</code> submodule. The build
+      also self-hosts its Switzer fonts. A small host layer supplies only the plugin palette and
+      site-specific composition; the deployed pages need no client JavaScript or React runtime.
     </p>
     <p>
       The submodule pins an exact reviewed commit rather than following moving
@@ -91,9 +91,9 @@ npm run site:serve</code></pre>
       remains secret-free; Pages runs the complete site verification before every deployment.
     </p>
     <p>
-      If the site later needs interactive components, choose a React-capable static export. The
-      current semantic header, navigation, article, table, code, and footer structure can be mapped
-      without rewriting the content.
+      If the site later needs stateful design-system components, choose a React-capable static
+      export. Keep the current semantic content fragments and command validation independent of
+      presentation.
     </p>
   </section>
 

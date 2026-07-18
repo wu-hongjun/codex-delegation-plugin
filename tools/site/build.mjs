@@ -1,6 +1,8 @@
+import { execFile } from 'node:child_process';
 import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, posix, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 
 import { codexSkills, dispatcherCommands } from '../../website/command-catalog.mjs';
 import { docsNavigation, pages, site } from '../../website/site.config.mjs';
@@ -9,7 +11,13 @@ const toolDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(toolDirectory, '../..');
 const sourceRoot = join(repositoryRoot, 'website', 'pages');
 const outputRoot = join(repositoryRoot, '_site');
-const designSystemRoot = join(repositoryRoot, 'vendor', 'vvver-design-system', 'src');
+const designSystemPackageRoot = join(repositoryRoot, 'vendor', 'vvver-design-system');
+const designSystemFontRoot = join(designSystemPackageRoot, 'docs', 'public', 'fonts');
+const publicDirectory = join(repositoryRoot, 'website', 'public');
+const stylesheetSource = join(publicDirectory, 'assets', 'site.css');
+const tailwindBinary = join(repositoryRoot, 'node_modules', '.bin', 'tailwindcss');
+const runFile = promisify(execFile);
+const siteBasePath = new URL(site.canonicalOrigin).pathname.replace(/\/$/, '');
 const manifestPath = join(
   repositoryRoot,
   'packages',
@@ -26,9 +34,12 @@ const escapeHtml = (value) =>
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#39;');
 
-function hrefFrom(fromOutput, toOutput) {
-  const href = posix.relative(posix.dirname(fromOutput), toOutput);
-  return href || posix.basename(toOutput);
+function publicHref(toOutput) {
+  if (toOutput === 'index.html') return `${siteBasePath}/`;
+  if (toOutput.endsWith('/index.html')) {
+    return `${siteBasePath}/${toOutput.slice(0, -'index.html'.length)}`;
+  }
+  return `${siteBasePath}/${toOutput}`;
 }
 
 function canonicalUrl(output) {
@@ -41,31 +52,61 @@ function canonicalUrl(output) {
 
 function renderPrimaryNavigation(output) {
   const homeCurrent = output === 'index.html' ? ' aria-current="page"' : '';
-  const docsCurrent = output.startsWith('docs/') ? ' aria-current="page"' : '';
+  const docsCurrent = output === 'docs/index.html' ? ' aria-current="page"' : '';
+  const navLink = (href, label, current = '') =>
+    `<a class="site-nav-link tap-target" href="${href}"${current}><span class="link-slide"><span>${label}</span><span aria-hidden="true">${label}</span></span></a>`;
   return `<nav class="site-primary-nav" aria-label="Primary">
   <ul>
-    <li><a href="${hrefFrom(output, 'index.html')}"${homeCurrent}>Home</a></li>
-    <li><a href="${hrefFrom(output, 'docs/index.html')}"${docsCurrent}>Documentation</a></li>
-    <li><a href="${site.repositoryUrl}">GitHub repository</a></li>
+    <li>${navLink(publicHref('index.html'), 'Home', homeCurrent)}</li>
+    <li>${navLink(publicHref('docs/index.html'), 'Documentation', docsCurrent)}</li>
+    <li>${navLink(site.repositoryUrl, 'GitHub')}</li>
   </ul>
 </nav>`;
 }
 
 function renderDocsNavigation(output) {
-  const items = docsNavigation
-    .map((page) => {
-      const current = output === page.output ? ' aria-current="page"' : '';
-      return `<li><a href="${hrefFrom(output, page.output)}"${current}>${escapeHtml(page.title)}</a></li>`;
+  const groups = [
+    ['Start', ['docs/index.html', 'docs/getting-started.html', 'docs/concepts.html']],
+    ['Operate', ['docs/skills.html', 'docs/workflows.html']],
+    ['Reference', ['docs/dispatcher.html', 'docs/safety.html', 'docs/troubleshooting.html']],
+    ['Project', ['docs/contributing.html']],
+  ];
+  const byOutput = new Map(docsNavigation.map((page) => [page.output, page]));
+  const items = groups
+    .map(([label, outputs]) => {
+      const links = outputs
+        .map((target) => {
+          const page = byOutput.get(target);
+          const current = output === page.output ? ' aria-current="page"' : '';
+          return `<li><a class="tap-target" href="${publicHref(page.output)}"${current}>${escapeHtml(page.title)}</a></li>`;
+        })
+        .join('\n');
+      return `<div class="site-docs-nav-group">
+  <p>${label}</p>
+  <ul>${links}</ul>
+</div>`;
     })
     .join('\n');
   return `<aside class="site-docs-nav">
   <nav aria-label="Documentation">
-    <h2>Documentation</h2>
-    <ul>
-      ${items}
-    </ul>
+    <p class="site-docs-nav-label">Documentation</p>
+    ${items}
   </nav>
 </aside>`;
+}
+
+function renderDocsContext(page) {
+  const index = docsNavigation.findIndex((item) => item.output === page.output);
+  const previous = index > 0 ? docsNavigation[index - 1] : null;
+  const next = index < docsNavigation.length - 1 ? docsNavigation[index + 1] : null;
+  const link = (item, direction) =>
+    item
+      ? `<a href="${publicHref(item.output)}"><span>${direction}</span><strong>${escapeHtml(item.title)}</strong></a>`
+      : '<span aria-hidden="true"></span>';
+  return {
+    before: `<div class="site-breadcrumb" aria-label="Breadcrumb"><a href="${publicHref('docs/index.html')}">Docs</a><span aria-hidden="true">/</span><span>${escapeHtml(page.title)}</span></div>`,
+    after: `<nav class="site-prev-next" aria-label="Documentation pages">${link(previous, 'Previous')}${link(next, 'Next')}</nav>`,
+  };
 }
 
 function renderSkillReference() {
@@ -112,44 +153,57 @@ function renderDispatcherReference() {
 </table>`;
 }
 
-function replacePlaceholders(fragment, output, version) {
+function replacePlaceholders(fragment, version) {
   return fragment
     .replaceAll('{{version}}', escapeHtml(version))
     .replaceAll('{{skillsReference}}', renderSkillReference())
     .replaceAll('{{dispatcherReference}}', renderDispatcherReference())
-    .replace(/{{link:([^}]+)}}/g, (_, target) => hrefFrom(output, target.trim()))
-    .replaceAll('<table>', '<div class="vvver-prose-table-wrap"><table>')
-    .replaceAll('</table>', '</table></div>');
+    .replace(/{{link:([^}]+)}}/g, (_, target) => publicHref(target.trim()))
+    .replaceAll(
+      '<table>',
+      '<div class="vvver-prose-table-wrap touch-scroll" role="region" aria-label="Scrollable table" tabindex="0"><table>',
+    )
+    .replaceAll('</table>', '</table></div>')
+    .replaceAll('<pre>', '<pre tabindex="0">');
 }
 
 function renderPage(page, fragment, version) {
   const documentationNavigation = page.section === 'docs' ? renderDocsNavigation(page.output) : '';
+  const docsContext = page.section === 'docs' ? renderDocsContext(page) : { before: '', after: '' };
   const layoutClass = page.section === 'docs' ? 'site-layout site-layout--docs' : 'site-layout';
+  const robots = page.section === 'error' ? '    <meta name="robots" content="noindex">\n' : '';
   return `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="${escapeHtml(page.description)}">
+${robots}    <meta name="theme-color" content="#fdfcfb">
     <link rel="canonical" href="${canonicalUrl(page.output)}">
-    <link rel="stylesheet" href="${hrefFrom(page.output, 'assets/site.css')}">
+    <link rel="stylesheet" href="${publicHref('assets/site.css')}">
     <title>${escapeHtml(page.title)} | ${escapeHtml(site.name)}</title>
   </head>
   <body class="site-page site-page--${escapeHtml(page.section)}">
     <a class="site-skip-link" href="#main-content">Skip to main content</a>
     <header class="site-header">
-      <p class="site-wordmark"><a href="${hrefFrom(page.output, 'index.html')}">${escapeHtml(site.name)}</a></p>
+      <a class="site-wordmark" href="${publicHref('index.html')}"><span aria-hidden="true">CD//</span><span>${escapeHtml(site.name)}</span></a>
       ${renderPrimaryNavigation(page.output)}
     </header>
+    <div class="site-info-bar" aria-label="Release information">
+      <p>Codex-native delegation</p><p>Claude Code + Antigravity</p><p>v${escapeHtml(version)}</p>
+    </div>
     <div class="${layoutClass}">
       ${documentationNavigation}
       <main class="site-main vvver-prose" id="main-content" tabindex="-1">
-        ${replacePlaceholders(fragment, page.output, version)}
+        ${docsContext.before}
+        ${replacePlaceholders(fragment, version)}
+        ${docsContext.after}
       </main>
     </div>
     <footer class="site-footer">
-      <p>Codex Delegation v${escapeHtml(version)}. Documentation source is maintained with the plugin.</p>
-      <p><a href="${site.repositoryUrl}">${escapeHtml(site.repositoryName)} on GitHub</a></p>
+      <p class="site-footer-mark" aria-hidden="true">DELEGATE//</p>
+      <div><p>Codex Delegation v${escapeHtml(version)}. Built with vvver-design-system.</p>
+      <p><a class="underlined-link" href="${site.repositoryUrl}">${escapeHtml(site.repositoryName)} on GitHub</a></p></div>
     </footer>
   </body>
 </html>
@@ -168,15 +222,26 @@ for (const page of pages) {
   await writeFile(destination, renderPage(page, fragment, manifest.version));
 }
 
-const publicDirectory = join(repositoryRoot, 'website', 'public');
 await cp(publicDirectory, outputRoot, { recursive: true });
 
-const designSystemOutput = join(outputRoot, 'assets', 'vvver');
-await mkdir(designSystemOutput, { recursive: true });
-for (const filename of ['tokens.css', 'prose.css']) {
-  await cp(join(designSystemRoot, filename), join(designSystemOutput, filename));
+const fontOutput = join(outputRoot, 'assets', 'fonts');
+await mkdir(fontOutput, { recursive: true });
+for (const filename of ['Switzer-400.woff2', 'Switzer-500.woff2', 'Switzer-700.woff2']) {
+  await cp(join(designSystemFontRoot, filename), join(fontOutput, filename));
 }
 
+await runFile(tailwindBinary, [
+  '-i',
+  stylesheetSource,
+  '-o',
+  join(outputRoot, 'assets', 'site.css'),
+  '--minify',
+]);
+
+const designSystemManifest = JSON.parse(
+  await readFile(join(designSystemPackageRoot, 'package.json'), 'utf8'),
+);
+
 console.log(
-  `Built ${pages.length} pages for ${site.name} v${manifest.version} with vvver-design-system assets at ${relative(repositoryRoot, outputRoot)}`,
+  `Built ${pages.length} pages for ${site.name} v${manifest.version} with vvver-design-system v${designSystemManifest.version} at ${relative(repositoryRoot, outputRoot)}`,
 );

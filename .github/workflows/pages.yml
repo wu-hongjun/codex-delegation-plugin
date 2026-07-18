@@ -9,8 +9,8 @@ on:
       - 'tools/site/**'
       - '.gitmodules'
       - 'vendor/vvver-design-system'
-      - 'packages/plugin-delegate/.codex-plugin/plugin.json'
-      - 'packages/plugin-delegate/skills/**'
+      - 'packages/plugin-delegate/**'
+      - 'marketplace/plugins/delegate/**'
       - 'package.json'
       - 'package-lock.json'
   workflow_dispatch:
@@ -28,6 +28,7 @@ jobs:
   build-and-deploy:
     name: Build and deploy
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

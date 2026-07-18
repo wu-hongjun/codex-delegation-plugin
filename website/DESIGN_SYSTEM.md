@@ -1,57 +1,66 @@
 # Design-system adoption record
 
-Audit date: 2026-07-17
+Audit date: 2026-07-18
 
 Source: `wu-hongjun/vvver-design-system`
 
-- Package release: `v0.4.0`
-- Audited `main`: `6ff1be157d055a6d7f8a152ed327daeba2abf70a`
+- Package release: `v0.7.2`
+- Pinned commit: `715158c064deefaffc56276e90d69a52feecdbd2`
 - Package shape: source TypeScript, React 19 peer dependency, Tailwind CSS 4 host contract
-- Integration: pinned submodule at `vendor/vvver-design-system`
-- Portable layer used directly: `src/tokens.css` and `src/prose.css`
+- Integration: exact submodule gitlink at `vendor/vvver-design-system`
+- Static-site inputs: `src/tokens.css`, `src/styles.css`, `src/prose.css`, and Switzer WOFF2 files
 
-## Findings
+## Audit outcome
 
-The system has matured substantially since the initial site scaffold. It now contains roughly 80
-components across actions, typography, structure, forms, feedback, overlays, media, motion, and
-hooks. The post-v0.4.0 work also adds a dedicated long-form prose and code layer, focus and disabled
-state polish, dark-mode corrections, hydration guidance, and reduced-motion fallbacks.
+The site now compiles the complete portable design-system CSS stack through Tailwind 4. It no
+longer copies two raw CSS files and recreates most of the visual language in a local stylesheet.
+The host layer is limited to the warm monochrome palette, product-specific composition, and the
+semantic static documentation shell.
 
-The site uses a submodule rather than a package-manager dependency for two reasons:
+Version 0.7.2 adds the responsive contract the site needed: fluid display and heading scales,
+fluid gutters, 44-pixel tap targets, dynamic-viewport and safe-area utilities, scroll containment,
+and a broader set of page and navigation recipes. It also exports `prose.css`, `Prose`, `CodeBlock`,
+`InlineCode`, and `markdownComponents`; the missing-export findings from the v0.4.0 audit are closed.
 
-1. The Pages workflow can authenticate the private cross-repository checkout with a dedicated
-   read-only deploy key while keeping the exact source commit visible in this repository.
-2. Components are source-shipped React/Tailwind, but `prose.css` is deliberately framework-neutral.
-   The build can consume that real asset without introducing React solely for documentation chrome.
+## Adopted directly
 
-## Adopted in this site
+- the full token, component-class, utility, and prose stylesheets
+- bundled Switzer 400, 500, and 700 WOFF2 fonts with `font-display: swap`
+- `--fluid-display`, heading and lede scales, `--gutter-fluid`, and viewport rhythms
+- `--tap-min` through the real `.tap-target` utility
+- `.link-slide`, `.underlined-link`, `.touch-scroll`, hairlines, dimming, and motion contracts
+- prose, code-block, table, focus, reduced-motion, and monochrome syntax registers
+- documentation layout recipes: 200-pixel rail, 60-pixel gap, constrained reading column, sticky rail
+- component patterns for release information, previous/next navigation, and editorial index rows
 
-- warm monochrome ink/paper palette and secondary surface
-- shared easing, dimming, hairline, and viewport-rhythm tokens
-- single-face editorial hierarchy with uppercase display and micro-label roles
-- 68-character reading measure and generous section rhythm
-- squared list markers, code surfaces, and controls
-- hairline table, navigation, and section structure
-- visible keyboard focus and an immediate first-tab skip link
-- horizontal containment for wide tables and code
-- self-dimming hover language and reduced-motion fallback
-- responsive two-column documentation shell with a sticky local index on wide screens
+The generated Pages artifact contains one minified stylesheet and local font files. The checker
+requires compiled output (no remaining `@import` or `@apply`), verifies design-system contract
+tokens/classes, and byte-compares every copied font against the pinned source.
 
-The design-system assets are copied byte-for-byte from the pinned submodule into the generated Pages
-artifact. A small local stylesheet defines the host palette and site-specific header, navigation,
-documentation grid, and footer. It does not duplicate the system's prose, code, table, or token
-implementations.
+## Deliberate static adaptations
 
-## Upstream follow-ups found by the audit
+The site remains HTML and CSS only. React is not needed for a content-first landing page and
+documentation renderer, so component markup patterns are translated into semantic static HTML
+while their real CSS/tokens remain upstream-owned. This keeps the content generator small and makes
+GitHub Pages deployment deterministic.
 
-The post-v0.4.0 prose work is present on `main`, but the package export map does not yet expose
-`./prose.css`, and the public TypeScript index does not export `Prose`, `CodeBlock`, `InlineCode`, or
-`markdownComponents`. This site reads the pinned files from the submodule, so it is not blocked, but
-a future package-manager consumer would be. Add those exports in the next design-system release.
+The upstream `NavBar` was not adopted in this pass. Its closed mobile overlay stays mounted with
+focusable descendants under an `aria-hidden` container and does not yet provide the full inert/focus
+trap behavior expected of a modal navigation surface. The site therefore uses an always-visible,
+responsive navigation built from normal links and the design system's `tap-target` and `link-slide`
+utilities. Reassess this when the upstream component fixes that accessibility gap.
 
-## Revisit when
+## Upstream/package boundaries
 
-Consider a package-manager dependency after the missing prose/component exports ship and the site
-has a concrete need for interactive React components. At that point, map the existing semantic shell
-to `SkipLink`, `Prose`, `CodeBlock`, `Breadcrumbs`, `IndexTable`, and related components; keep the
-HTML content fragments and command validation independent of presentation.
+- `styles.css` contains Tailwind `@apply`; consumers must compile it rather than copy it raw.
+- The npm package intentionally excludes the documentation shell and its font files. This site reads
+  both from the pinned source submodule.
+- The design-system documentation toolchain currently has moderate audit findings in Next/PostCSS;
+  they do not enter this site's static Tailwind build or deployed artifact.
+
+## Updating
+
+1. Fetch tags and inspect the newest release notes and package exports.
+2. Move the submodule to an exact reviewed tag/commit.
+3. Re-run `npm run site:test`, the viewport/keyboard audit, and the repository validation lanes.
+4. Update this record with the adopted version, commit, and any unresolved component findings.

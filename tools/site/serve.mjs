@@ -4,20 +4,27 @@ import { createServer } from 'node:http';
 import { extname, join, normalize, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { site } from '../../website/site.config.mjs';
+
 const repositoryRoot = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 const siteRoot = join(repositoryRoot, '_site');
 const port = Number.parseInt(process.env.CODEX_DELEGATION_SITE_PORT ?? '4173', 10);
+const siteBasePath = new URL(site.canonicalOrigin).pathname.replace(/\/$/, '');
 const contentTypes = new Map([
   ['.css', 'text/css; charset=utf-8'],
   ['.html', 'text/html; charset=utf-8'],
   ['.json', 'application/json; charset=utf-8'],
   ['.txt', 'text/plain; charset=utf-8'],
   ['.xml', 'application/xml; charset=utf-8'],
+  ['.woff2', 'font/woff2'],
 ]);
 
 const server = createServer(async (request, response) => {
   const requestPath = decodeURIComponent(new URL(request.url ?? '/', 'http://localhost').pathname);
-  const relativePath = requestPath === '/' ? 'index.html' : requestPath.replace(/^\/+/, '');
+  const unprefixedPath = requestPath.startsWith(`${siteBasePath}/`)
+    ? requestPath.slice(siteBasePath.length)
+    : requestPath;
+  const relativePath = unprefixedPath === '/' ? 'index.html' : unprefixedPath.replace(/^\/+/, '');
   let filePath = normalize(join(siteRoot, relativePath));
 
   if (!filePath.startsWith(`${siteRoot}${sep}`) && filePath !== siteRoot) {

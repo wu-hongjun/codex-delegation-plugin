@@ -1,13 +1,14 @@
 import { readdir, readFile } from 'node:fs/promises';
-import { dirname, extname, join, posix, relative, resolve } from 'node:path';
+import { dirname, extname, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { pages } from '../../website/site.config.mjs';
+import { pages, site } from '../../website/site.config.mjs';
 
 const toolDirectory = dirname(fileURLToPath(import.meta.url));
 const repositoryRoot = resolve(toolDirectory, '../..');
 const outputRoot = join(repositoryRoot, '_site');
-const designSystemRoot = join(repositoryRoot, 'vendor', 'vvver-design-system', 'src');
+const designSystemRoot = join(repositoryRoot, 'vendor', 'vvver-design-system');
+const siteBasePath = new URL(site.canonicalOrigin).pathname.replace(/\/$/, '');
 const failures = [];
 let checkedLinks = 0;
 
@@ -26,6 +27,14 @@ function fail(file, message) {
   failures.push(`${relative(repositoryRoot, file)}: ${message}`);
 }
 
+function canonicalFor(output) {
+  if (output === 'index.html') return site.canonicalOrigin;
+  if (output.endsWith('/index.html')) {
+    return new URL(output.slice(0, -'index.html'.length), site.canonicalOrigin).href;
+  }
+  return new URL(output, site.canonicalOrigin).href;
+}
+
 const files = await walk(outputRoot);
 const htmlFiles = files.filter((file) => extname(file) === '.html');
 const htmlByPath = new Map();
@@ -40,8 +49,44 @@ for (const file of htmlFiles) {
   if (!html.includes('class="site-skip-link" href="#main-content"')) {
     fail(file, 'missing shared skip link');
   }
+  const firstAnchor = html.match(/<a\s[^>]*>/)?.[0] ?? '';
+  if (!firstAnchor.includes('class="site-skip-link"')) {
+    fail(file, 'skip link must be the first interactive element');
+  }
   const headingCount = (html.match(/<h1(?:\s|>)/g) ?? []).length;
   if (headingCount !== 1) fail(file, `expected one h1, found ${headingCount}`);
+  const mainCount = (html.match(/<main(?:\s|>)/g) ?? []).length;
+  if (mainCount !== 1) fail(file, `expected one main landmark, found ${mainCount}`);
+  const headings = [...html.matchAll(/<h([1-6])(?:\s|>)/g)].map((match) => Number(match[1]));
+  if (headings[0] !== 1) fail(file, 'h1 must be the first heading in document order');
+  for (let index = 1; index < headings.length; index += 1) {
+    if (headings[index] > headings[index - 1] + 1) {
+      fail(file, `heading level jumps from h${headings[index - 1]} to h${headings[index]}`);
+      break;
+    }
+  }
+  const identifiers = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
+  if (new Set(identifiers).size !== identifiers.length) fail(file, 'contains duplicate ids');
+  const tables = [...html.matchAll(/<table(?:\s[^>]*)?>[\s\S]*?<\/table>/g)].map(
+    (match) => match[0],
+  );
+  for (const table of tables) {
+    if (!/<caption(?:\s|>)/.test(table)) fail(file, 'table is missing a caption');
+    for (const header of table.matchAll(/<th(?:\s[^>]*)?>/g)) {
+      if (!/\sscope="(?:col|row)"/.test(header[0])) fail(file, 'table header is missing scope');
+    }
+  }
+  for (const pre of html.matchAll(/<pre(?:\s[^>]*)?>/g)) {
+    if (!/\stabindex="0"/.test(pre[0])) fail(file, 'code block is not keyboard-focusable');
+  }
+  for (const wrapper of html.matchAll(/<div class="vvver-prose-table-wrap[^"]*"[^>]*>/g)) {
+    if (!/\stabindex="0"/.test(wrapper[0]) || !/\saria-label=/.test(wrapper[0])) {
+      fail(file, 'scrollable table wrapper needs a keyboard target and accessible label');
+    }
+  }
+  if (pageSection(file) === 'error' && !/<meta name="robots" content="noindex">/.test(html)) {
+    fail(file, '404 page must be noindex');
+  }
   if (/{{[^}]+}}/.test(html)) fail(file, 'contains an unresolved template placeholder');
   if (/<style(?:\s|>)/i.test(html) || /\sstyle=/i.test(html)) {
     fail(file, 'contains inline styling; presentation belongs in the shared stylesheet');
@@ -58,6 +103,11 @@ for (const file of htmlFiles) {
 for (const page of pages) {
   const expected = resolve(outputRoot, page.output);
   if (!htmlByPath.has(expected)) fail(expected, 'configured page was not built');
+  const html = htmlByPath.get(expected) ?? '';
+  const canonical = html.match(/<link rel="canonical" href="([^"]+)">/)?.[1];
+  if (canonical !== canonicalFor(page.output)) {
+    fail(expected, `canonical URL does not match site configuration: ${canonical ?? 'missing'}`);
+  }
 }
 
 for (const [file, html] of htmlByPath) {
@@ -66,7 +116,14 @@ for (const [file, html] of htmlByPath) {
     if (/^(?:https?:|mailto:|tel:)/.test(href)) continue;
     checkedLinks += 1;
     const [rawPath, fragment] = href.split('#');
-    let target = rawPath ? resolve(dirname(file), decodeURIComponent(rawPath)) : file;
+    const decodedPath = decodeURIComponent(rawPath);
+    let target;
+    if (decodedPath.startsWith(`${siteBasePath}/`) || decodedPath === siteBasePath) {
+      const projectPath = decodedPath.slice(siteBasePath.length).replace(/^\/+/, '');
+      target = resolve(outputRoot, projectPath);
+    } else {
+      target = rawPath ? resolve(dirname(file), decodedPath) : file;
+    }
     if (rawPath.endsWith('/')) target = join(target, 'index.html');
     if (rawPath && extname(target) !== '.html') {
       if (!filePaths.has(target)) fail(file, `broken internal asset link: ${href}`);
@@ -100,31 +157,90 @@ if (!filePaths.has(stylesheetPath)) {
   if (/url\(\s*["']?https?:/i.test(stylesheet)) {
     fail(stylesheetPath, 'must remain self-contained without remote assets');
   }
+  for (const match of stylesheet.matchAll(/url\(\s*["']?([^"')]+)["']?\s*\)/g)) {
+    const asset = match[1];
+    if (/^(?:data:|#)/.test(asset)) continue;
+    const assetPath = resolve(dirname(stylesheetPath), asset);
+    if (!filePaths.has(assetPath)) fail(stylesheetPath, `broken CSS asset URL: ${asset}`);
+  }
+  if (/@(?:import|apply)\b/.test(stylesheet)) {
+    fail(stylesheetPath, 'contains an uncompiled Tailwind directive');
+  }
 
-  let designCss = '';
-  for (const filename of ['tokens.css', 'prose.css']) {
-    const source = resolve(designSystemRoot, filename);
-    const built = resolve(outputRoot, 'assets', 'vvver', filename);
+  const fontSourceRoot = resolve(designSystemRoot, 'docs', 'public', 'fonts');
+  for (const filename of ['Switzer-400.woff2', 'Switzer-500.woff2', 'Switzer-700.woff2']) {
+    const source = resolve(fontSourceRoot, filename);
+    const built = resolve(outputRoot, 'assets', 'fonts', filename);
     if (!filePaths.has(built)) {
-      fail(built, 'design-system asset was not built');
+      fail(built, 'design-system font was not built');
       continue;
     }
-    const [sourceCss, builtCss] = await Promise.all([
-      readFile(source, 'utf8'),
-      readFile(built, 'utf8'),
-    ]);
-    designCss += sourceCss;
-    if (sourceCss !== builtCss) fail(built, 'does not match the pinned design-system source');
+    const [sourceFont, builtFont] = await Promise.all([readFile(source), readFile(built)]);
+    if (!sourceFont.equals(builtFont)) fail(built, 'does not match the pinned design-system font');
   }
 
-  const cssContract = stylesheet + designCss;
-  for (const token of ['--c-black', '--c-white', '--hairline', '--dim-1', '--ease-out-quint']) {
-    if (!cssContract.includes(token)) fail(stylesheetPath, `missing design-system token ${token}`);
+  for (const token of [
+    '--c-black',
+    '--c-white',
+    '--hairline',
+    '--dim-1',
+    '--ease-out-quint',
+    '--fluid-display',
+    '--gutter-fluid',
+    '--tap-min',
+    '.link-slide',
+    '.underlined-link',
+    '.tap-target',
+  ]) {
+    if (!stylesheet.includes(token))
+      fail(stylesheetPath, `missing design-system contract ${token}`);
   }
+}
+
+const designSystemManifest = JSON.parse(
+  await readFile(resolve(designSystemRoot, 'package.json'), 'utf8'),
+);
+if (designSystemManifest.version !== '0.7.2') {
+  fail(
+    resolve(designSystemRoot, 'package.json'),
+    `expected design-system v0.7.2, found ${designSystemManifest.version}`,
+  );
 }
 
 if (!files.some((file) => posix.basename(file) === '.nojekyll')) {
   failures.push('_site/.nojekyll: missing GitHub Pages bypass marker');
+}
+
+const sitemapPath = resolve(outputRoot, 'sitemap.xml');
+if (!filePaths.has(sitemapPath)) {
+  fail(sitemapPath, 'missing sitemap');
+} else {
+  const sitemap = await readFile(sitemapPath, 'utf8');
+  const actualUrls = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((match) => match[1]);
+  const expectedUrls = pages
+    .filter((page) => page.section !== 'error')
+    .map((page) => canonicalFor(page.output));
+  if (JSON.stringify(actualUrls) !== JSON.stringify(expectedUrls)) {
+    fail(sitemapPath, 'URLs or ordering do not match configured public pages');
+  }
+}
+
+const initialPayloadFiles = [
+  resolve(outputRoot, 'index.html'),
+  resolve(outputRoot, 'assets', 'site.css'),
+  resolve(outputRoot, 'assets', 'fonts', 'Switzer-400.woff2'),
+  resolve(outputRoot, 'assets', 'fonts', 'Switzer-500.woff2'),
+  resolve(outputRoot, 'assets', 'fonts', 'Switzer-700.woff2'),
+];
+if (initialPayloadFiles.every((file) => filePaths.has(file))) {
+  const initialPayloadBytes = await Promise.all(
+    initialPayloadFiles.map(async (file) => (await readFile(file)).byteLength),
+  ).then((sizes) => sizes.reduce((total, size) => total + size, 0));
+  if (initialPayloadBytes > 150 * 1024) {
+    failures.push(
+      `_site: landing HTML, CSS, and fonts exceed 150 KiB (${initialPayloadBytes} bytes)`,
+    );
+  }
 }
 
 if (failures.length > 0) {
@@ -134,5 +250,10 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Verified ${htmlFiles.length} static HTML pages, ${checkedLinks} internal links, and the shared stylesheet.`,
+  `Verified ${htmlFiles.length} static HTML pages, ${checkedLinks} internal links, semantic structure, local fonts, and the compiled design-system stylesheet.`,
 );
+
+function pageSection(file) {
+  const output = relative(outputRoot, file).split(sep).join('/');
+  return pages.find((page) => page.output === output)?.section;
+}

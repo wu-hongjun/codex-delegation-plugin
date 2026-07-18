@@ -224,7 +224,7 @@ ${robots}    <meta name="theme-color" content="#fdfcfb">
       </div>
       <div class="site-footer-bottom">
         <p>Codex Delegation v${escapeHtml(version)}</p>
-        <p>Built with vvver-design-system</p>
+        <p><a class="underlined-link" href="https://github.com/wu-hongjun">Built by @wu-hongjun</a></p>
       </div>
     </footer>
   </body>

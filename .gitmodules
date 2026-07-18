@@ -10,3 +10,7 @@
 [submodule "references/codex-skills-examples"]
 	path = references/codex-skills-examples
 	url = https://github.com/openai/skills.git
+[submodule "vendor/vvver-design-system"]
+	path = vendor/vvver-design-system
+	url = https://github.com/wu-hongjun/vvver-design-system.git
+	branch = main

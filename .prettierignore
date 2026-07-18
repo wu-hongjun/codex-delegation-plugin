@@ -1,6 +1,7 @@
 node_modules
 dist
 references
+vendor
 .omc
 .claude
 *.md

@@ -1,0 +1,96 @@
+<article>
+  <header>
+    <p>Documentation</p>
+    <h1>Safety, privacy, and configuration</h1>
+    <p>Delegation crosses a provider boundary. The plugin makes that boundary explicit.</p>
+  </header>
+
+  <section id="privacy">
+    <h2>Workspace and provider disclosure</h2>
+    <p>
+      A delegated task may send repository contents, prompts, command output, and file metadata to
+      Anthropic or Google through the selected local provider account. The first delegation to each
+      provider in each workspace requires acknowledgement.
+    </p>
+    <p>
+      Acknowledgements live in <code>~/.codex/codex-delegation-plugin/acks/</code>. Approval for
+      Claude Code does not approve Antigravity, and approval in one repository does not approve
+      another. Use <code>--yes</code> only for intentional non-interactive acknowledgement.
+    </p>
+  </section>
+
+  <section id="permissions">
+    <h2>Claude Code permissions</h2>
+    <p>
+      Normal jobs use Claude Code’s permission system. For a specifically trusted unattended job,
+      the user can request <code>--bypass-permissions</code>,
+      <code>--permission-mode bypassPermissions</code>, or
+      <code>--dangerously-skip-permissions</code>. The dispatcher forwards Claude Code’s literal
+      bypass flag and pairs it with the required acknowledgement when explicitly requested.
+    </p>
+    <p>
+      Bypass does not select a Chrome profile, complete a passkey, inspect secret browser stores, or
+      replace a local user gesture. Do not infer unattended permission from an ordinary delegation
+      request.
+    </p>
+  </section>
+
+  <section id="antigravity-permissions">
+    <h2>Antigravity permissions and sandbox</h2>
+    <p>
+      Antigravity print mode cannot show an interactive command-permission prompt. Jobs that need
+      terminal commands require either a narrow Antigravity <code>permissions.allow</code> rule or
+      an explicit trusted <code>--dangerously-skip-permissions</code> run.
+    </p>
+    <p>
+      <code>--sandbox</code> enables Antigravity’s terminal sandbox. It restricts execution but does
+      not grant command permission. See the official
+      <a href="https://antigravity.google/docs/cli/permissions">Antigravity permission reference</a
+      >.
+    </p>
+  </section>
+
+  <section id="browser">
+    <h2>Real Chrome handoff</h2>
+    <p>
+      Use <code>--chrome</code> on a fresh Claude job that needs the connected Chrome extension
+      flow. This is separate from Codex’s in-app browser. If Claude needs profile selection, login,
+      passkey, or another user gesture, inspect compact status and follow its
+      <code>waiting.userAction</code> instruction, usually
+      <code>claude attach &lt;shortId&gt;</code>.
+    </p>
+  </section>
+
+  <section id="allow-edit">
+    <h2><code>--allow-edit</code> is not a sandbox</h2>
+    <p>
+      The flag communicates task policy or framing to the wrapper. It does not bypass the privacy
+      acknowledgement, change provider permissions, or enforce filesystem isolation. Review and
+      orchestration commands that do not use this framing reject it.
+    </p>
+  </section>
+
+  <section id="state-root">
+    <h2>State root</h2>
+    <p>
+      Runtime state defaults to <code>~/.codex/codex-delegation-plugin/</code>. The runtime also
+      honors <code>CODEX_DELEGATION_HOME</code> as an alternate root; the repository test suite uses
+      it to isolate fixtures from real jobs. Avoid pointing it at a shared or disposable directory
+      unless that isolation is intentional.
+    </p>
+    <p>
+      Other <code>CODEX_DELEGATION_*</code> variables in the source support tests, timeouts, or
+      packaging internals and are not a stable end-user configuration API unless documented by the
+      command that uses them.
+    </p>
+  </section>
+
+  <section id="scope">
+    <h2>Workspace scope</h2>
+    <p>
+      Status and job actions default to the current workspace. Use <code>--all</code> only when you
+      intentionally want cross-workspace resolution. For a cross-workspace follow-up, privacy is
+      checked against the target job’s workspace, not the caller’s current directory.
+    </p>
+  </section>
+</article>

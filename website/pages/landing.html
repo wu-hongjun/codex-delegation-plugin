@@ -1,0 +1,129 @@
+<article>
+  <header>
+    <p>Codex plugin · Claude Code and Google Antigravity · Version {{version}}</p>
+    <h1>Delegate the work. Keep Codex in control.</h1>
+    <p>
+      Codex Delegation is a Codex-native plugin that starts, supervises, and inspects coding jobs
+      running through your local Claude Code or Google Antigravity account.
+    </p>
+    <p>
+      <a href="{{link:docs/getting-started.html}}">Install and run a first job</a>
+      · <a href="{{link:docs/index.html}}">Read the documentation</a> ·
+      <a href="https://github.com/wu-hongjun/codex-delegation-plugin/releases/tag/v{{version}}"
+        >View release v{{version}}</a
+      >
+    </p>
+  </header>
+
+  <section aria-labelledby="install-heading">
+    <h2 id="install-heading">Install</h2>
+    <pre><code>codex plugin marketplace add https://github.com/wu-hongjun/codex-delegation-plugin
+codex plugin add "delegate@codex-delegation-plugin"
+codex plugin list</code></pre>
+    <p>Restart Codex after installation so the <code>delegate:</code> skill namespace is loaded.</p>
+  </section>
+
+  <section aria-labelledby="does-heading">
+    <h2 id="does-heading">What it does</h2>
+    <ul>
+      <li>
+        Starts Claude Code as a first-party background session or Antigravity as a supervised
+        <code>agy --print</code> process.
+      </li>
+      <li>
+        Records a provider-neutral job ID, state, logs, and results under
+        <code>~/.codex/codex-delegation-plugin/</code>.
+      </li>
+      <li>
+        Lets later Codex turns check status, wait, read partial or final output, stop work, and—when
+        supported—continue or review the same session.
+      </li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="loop-heading">
+    <h2 id="loop-heading">The operator loop</h2>
+    <pre><code>$claude-delegate "Inspect this repository and identify the highest-risk area. Do not edit files."
+$claude-wait &lt;jobId&gt; --json --compact --timeout 5m
+$claude-result &lt;jobId&gt;
+$claude-followup &lt;jobId&gt; -- "Now propose the smallest safe fix."
+$claude-stop &lt;jobId&gt;</code></pre>
+    <p>
+      Swap the prefix for <code>$agy-*</code> when a single-turn Antigravity job is a better fit.
+    </p>
+  </section>
+
+  <section aria-labelledby="providers-heading">
+    <h2 id="providers-heading">Two providers, one job model</h2>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Capability</th>
+          <th scope="col">Claude Code</th>
+          <th scope="col">Google Antigravity</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Transport</th>
+          <td>Native background session</td>
+          <td>Supervised <code>agy --print</code> process</td>
+        </tr>
+        <tr>
+          <th scope="row">Follow-up</th>
+          <td>Yes, while the session remains live</td>
+          <td>No; start a new single-turn job</td>
+        </tr>
+        <tr>
+          <th scope="row">Status, wait, result, stop</th>
+          <td>Yes</td>
+          <td>Yes</td>
+        </tr>
+        <tr>
+          <th scope="row">Advanced workflows and reviews</th>
+          <td>Yes</td>
+          <td>Not exposed by print mode</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section aria-labelledby="architecture-heading">
+    <h2 id="architecture-heading">Codex-first architecture</h2>
+    <pre><code>Codex
+  └─ delegate: skill
+      └─ delegate dispatcher
+          ├─ ClaudeBackgroundDriver ── Claude Code background session
+          └─ AgyCliDriver ─────────── supervised agy process
+                 │
+                 └─ job store: status, logs, results, action hints</code></pre>
+    <p>
+      The runtime uses provider-native state and plugin-owned artifacts. It does not scrape a human
+      terminal interface, and it does not treat a session name as a reusable job ID.
+    </p>
+  </section>
+
+  <section aria-labelledby="why-heading">
+    <h2 id="why-heading">Why use it</h2>
+    <ul>
+      <li>Keep Codex available while longer work continues in the background.</li>
+      <li>Give each delegated task a stable, inspectable lifecycle.</li>
+      <li>
+        Use explicit privacy acknowledgement and permission boundaries per workspace and provider.
+      </li>
+      <li>Choose a provider without changing the status, wait, result, and stop workflow.</li>
+      <li>Run same-session or independent review without losing the original job record.</li>
+    </ul>
+  </section>
+
+  <section aria-labelledby="next-heading">
+    <h2 id="next-heading">Start with the docs</h2>
+    <ul>
+      <li><a href="{{link:docs/getting-started.html}}">Getting started</a></li>
+      <li><a href="{{link:docs/skills.html}}">All 24 Codex skills</a></li>
+      <li><a href="{{link:docs/concepts.html}}">Jobs, sessions, and providers</a></li>
+      <li><a href="{{link:docs/safety.html}}">Safety, privacy, and permissions</a></li>
+      <li><a href="{{link:docs/troubleshooting.html}}">Troubleshooting and recovery</a></li>
+    </ul>
+  </section>
+</article>

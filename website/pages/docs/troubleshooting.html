@@ -1,0 +1,113 @@
+<article>
+  <header>
+    <p>Documentation</p>
+    <h1>Troubleshooting</h1>
+    <p>Start from the plugin’s probes and action hints; avoid editing state records by hand.</p>
+  </header>
+
+  <section id="setup">
+    <h2>Setup reports warn or fail</h2>
+    <pre><code>$claude-setup
+$claude-doctor --claude-access --json
+$agy-setup --json</code></pre>
+    <ul>
+      <li>
+        <strong>warn:</strong> read the named probes. Optional daemon or deferred auth checks can
+        warn without blocking delegation.
+      </li>
+      <li>
+        <strong>fail:</strong> fix the failed binary, auth, model access, workspace, or capability
+        probe before launching a job.
+      </li>
+      <li>Run doctor before long, real-browser, or unattended Claude work.</li>
+    </ul>
+  </section>
+
+  <section id="blocked">
+    <h2>A job needs input</h2>
+    <pre><code>$claude-status --job &lt;jobId&gt; --json --compact</code></pre>
+    <p>
+      Read <code>operatorState</code>, <code>blockedOn</code>, and the exact action hints. For a
+      normal permission or browser selection, use the returned
+      <code>claude attach &lt;shortId&gt;</code> instruction. For a trusted unattended retry,
+      explicitly choose the returned restart-with-bypass action and provide a fresh complete prompt.
+    </p>
+    <pre><code>$claude-stop --all-needs-input
+$claude-stop --all-needs-input --all</code></pre>
+  </section>
+
+  <section id="timeout">
+    <h2>Wait timed out</h2>
+    <p>A timeout does not stop the job and does not mean it is unhealthy.</p>
+    <pre><code>$claude-status --job &lt;jobId&gt; --json --compact
+$claude-result &lt;jobId&gt; --partial
+$claude-wait &lt;jobId&gt; --timeout 10m --json --compact</code></pre>
+    <p>
+      JSON wait output includes <code>timeoutRecovery</code>. Use those exact status,
+      partial-result, stop, or attach commands.
+    </p>
+  </section>
+
+  <section id="result">
+    <h2>Result says the job is incomplete</h2>
+    <p>
+      This protects automation from treating partial text as final. Wait for a result state or ask
+      explicitly for the latest artifact:
+    </p>
+    <pre><code>$claude-result &lt;jobId&gt; --partial
+$agy-result &lt;jobId&gt; --partial</code></pre>
+  </section>
+
+  <section id="logs">
+    <h2>Provider logs disappeared after exit</h2>
+    <p>
+      Use plugin-owned status, wait, result, and partial-result artifacts after a provider process
+      exits. Raw provider logs are diagnostic and may be transient or contain terminal control
+      sequences.
+    </p>
+  </section>
+
+  <section id="upgrade">
+    <h2>Skills or version look stale</h2>
+    <pre><code>$claude-upgrade
+$claude-upgrade --yes</code></pre>
+    <p>Manual public-install equivalent:</p>
+    <pre><code>codex plugin marketplace upgrade "codex-delegation-plugin"
+codex plugin remove "delegate@codex-delegation-plugin"
+codex plugin add "delegate@codex-delegation-plugin"
+codex plugin list</code></pre>
+    <p>
+      Restart Codex after reinstall. For immediate diagnostics, use the version reported by
+      <code>codex plugin list</code> or the exact <code>meta.dispatcherPath</code> from JSON output:
+    </p>
+    <pre><code>node ~/.codex/plugins/cache/codex-delegation-plugin/delegate/{{version}}/scripts/delegate.mjs --version</code></pre>
+    <p>
+      <code>$claude-upgrade --yes</code> creates a stable <code>current</code> symlink as part of
+      its refresh flow; do not assume the symlink exists after a fresh marketplace install.
+    </p>
+  </section>
+
+  <section id="uninstall">
+    <h2>Uninstall</h2>
+    <pre><code>codex plugin remove "delegate@codex-delegation-plugin"
+codex plugin marketplace remove "codex-delegation-plugin"</code></pre>
+    <p>
+      This removes plugin registration and the marketplace pointer. It intentionally does not delete
+      <code>~/.codex/codex-delegation-plugin/</code> job records or provider-owned transcripts.
+    </p>
+  </section>
+
+  <section id="report">
+    <h2>Report a defect</h2>
+    <p>
+      Include plugin version, provider version, the failing command, sanitized setup or status JSON,
+      and a minimal reproduction. Do not attach secrets, private prompts, raw auth data, or
+      repository contents that should not be public.
+    </p>
+    <p>
+      <a href="https://github.com/wu-hongjun/codex-delegation-plugin/issues"
+        >Open an issue on GitHub</a
+      >.
+    </p>
+  </section>
+</article>

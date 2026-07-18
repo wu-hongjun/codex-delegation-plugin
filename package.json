@@ -22,7 +22,12 @@
     "test:driver": "npm run build && node --test --test-concurrency=4 packages/driver-claude-code/test/*.test.mjs packages/driver-agy-cli/test/*.test.mjs",
     "test:plugin": "npm run build && node --test packages/plugin-delegate/test/*.test.mjs",
     "test:attach": "npm run build && node --test packages/driver-claude-code/test/send.test.mjs",
-    "test:bench": "node --test tools/bench/test/*.test.mjs tools/bench/test/runners/*.test.mjs"
+    "test:bench": "node --test tools/bench/test/*.test.mjs tools/bench/test/runners/*.test.mjs",
+    "site:build": "node tools/site/build.mjs",
+    "site:check": "node tools/site/check.mjs",
+    "site:test:commands": "node tools/site/test-command-reference.mjs",
+    "site:test": "npm run build && npm run site:build && npm run site:check && npm run site:test:commands",
+    "site:serve": "node tools/site/serve.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.10.0",

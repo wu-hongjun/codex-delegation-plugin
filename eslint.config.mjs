@@ -12,6 +12,7 @@ export default tseslint.config(
       '**/dist/**',
       '**/*.d.ts',
       'references/**',
+      'vendor/**',
       'tools/**',
       '.omc/**',
       'documentation/**',

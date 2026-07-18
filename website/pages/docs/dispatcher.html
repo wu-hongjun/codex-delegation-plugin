@@ -1,0 +1,87 @@
+<article>
+  <header>
+    <p>Reference</p>
+    <h1>Dispatcher CLI reference</h1>
+    <p>
+      Codex skills are the normal interface. The dispatcher is useful for scripts, diagnostics,
+      contributor testing, and exact action hints returned by JSON output.
+    </p>
+  </header>
+
+  <section id="paths">
+    <h2>Choose the correct path</h2>
+    <h3>Installed public plugin</h3>
+    <pre><code>codex plugin list
+node ~/.codex/plugins/cache/codex-delegation-plugin/delegate/{{version}}/scripts/delegate.mjs --version</code></pre>
+    <h3>Repository checkout</h3>
+    <pre><code>node packages/plugin-delegate/scripts/delegate.mjs --version</code></pre>
+    <p>
+      Use the installed version reported by <code>codex plugin list</code> or the exact
+      <code>meta.dispatcherPath</code> returned by JSON commands. The plugin upgrade flow also
+      creates a stable <code>current</code> symlink, but a fresh <code>codex plugin add</code> does
+      not guarantee that link exists.
+    </p>
+  </section>
+
+  <section id="commands">
+    <h2>Commands</h2>
+    {{dispatcherReference}}
+    <p>
+      The dispatcher has no <code>help</code> subcommand. Use <code>--help</code> globally or after
+      a command.
+    </p>
+  </section>
+
+  <section id="examples">
+    <h2>Examples</h2>
+    <pre><code>node packages/plugin-delegate/scripts/delegate.mjs setup
+node packages/plugin-delegate/scripts/delegate.mjs doctor --claude-access --json
+node packages/plugin-delegate/scripts/delegate.mjs delegate -- "Inspect this repository."
+node packages/plugin-delegate/scripts/delegate.mjs status --job &lt;jobId&gt; --json --compact
+node packages/plugin-delegate/scripts/delegate.mjs wait &lt;jobId&gt; --timeout 5m --json --compact
+node packages/plugin-delegate/scripts/delegate.mjs result &lt;jobId&gt;
+node packages/plugin-delegate/scripts/delegate.mjs followup &lt;jobId&gt; -- "Continue with the tests."
+node packages/plugin-delegate/scripts/delegate.mjs stop &lt;jobId&gt;
+node packages/plugin-delegate/scripts/delegate.mjs delegate --provider agy --mode plan -- "Inspect this repository."
+node packages/plugin-delegate/scripts/delegate.mjs status --provider agy</code></pre>
+  </section>
+
+  <section id="json">
+    <h2>JSON and action hints</h2>
+    <p>
+      Use <code>--json --compact</code> for automation around delegate, status, wait, result, and
+      stop. Compact payloads include normalized state, provider, result state, blocked reason, and
+      exact recovery commands. Follow the returned action hints instead of reconstructing internal
+      paths.
+    </p>
+    <p>
+      A JSON wait timeout can include <code>timeoutRecovery</code> with commands for status, partial
+      result, stop, or Claude attach. A timeout is an expired waiting budget, not proof that the job
+      died.
+    </p>
+  </section>
+
+  <section id="prompt-boundary">
+    <h2>Prompt boundary</h2>
+    <p>
+      Put dispatcher flags before <code>--</code> and prompt text after it. This prevents prompt
+      words beginning with dashes from being parsed as flags.
+    </p>
+    <pre><code>delegate delegate --model claude-opus-4-8 -- "Review --fix references as plain prompt text."</code></pre>
+  </section>
+
+  <section id="exit-codes">
+    <h2>Exit behavior</h2>
+    <ul>
+      <li>Invalid command or flag syntax exits non-zero and prints usage or a targeted error.</li>
+      <li>A wait timeout exits non-zero but can still return the latest JSON status payload.</li>
+      <li>
+        Review gates can exit 1 after printing findings when <code>--blocking</code> or
+        <code>--fail-on</code> trips.
+      </li>
+      <li>
+        Provider launch and supervision failures remain represented in the job store for inspection.
+      </li>
+    </ul>
+  </section>
+</article>

@@ -19,6 +19,7 @@ dist/
 .npm/
 .eslintcache
 coverage/
+_site/
 .omc/
 
 # Codex CLI writes this local install marker into marketplace Git clones.

@@ -1,0 +1,52 @@
+<article>
+  <header>
+    <p>Documentation</p>
+    <h1>Codex Delegation documentation</h1>
+    <p>
+      Install the plugin, choose a provider, operate jobs, and understand the safety boundaries.
+      These pages describe the shipped v{{version}} command surface.
+    </p>
+  </header>
+
+  <section>
+    <h2>New users</h2>
+    <ol>
+      <li><a href="{{link:docs/getting-started.html}}">Install and verify the plugin.</a></li>
+      <li><a href="{{link:docs/concepts.html}}">Learn the job and provider model.</a></li>
+      <li><a href="{{link:docs/skills.html}}">Find the right Codex skill.</a></li>
+      <li><a href="{{link:docs/safety.html}}">Review privacy and permission behavior.</a></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Reference</h2>
+    <dl>
+      <dt><a href="{{link:docs/skills.html}}">Codex skills</a></dt>
+      <dd>All 18 Claude Code skills and six Antigravity skills exposed in Codex.</dd>
+      <dt><a href="{{link:docs/dispatcher.html}}">Dispatcher CLI</a></dt>
+      <dd>Direct scripting surface, flags, JSON output, and stable installed path.</dd>
+      <dt><a href="{{link:docs/workflows.html}}">Workflows and reviews</a></dt>
+      <dd>Follow-ups, goals, forks, batch work, deep research, and two review modes.</dd>
+      <dt><a href="{{link:docs/troubleshooting.html}}">Troubleshooting</a></dt>
+      <dd>Setup warnings, blocked jobs, timeouts, stale caches, upgrades, and uninstall.</dd>
+    </dl>
+  </section>
+
+  <section>
+    <h2>Contributors</h2>
+    <p>
+      The <a href="{{link:docs/contributing.html}}">contributor guide</a> covers the local
+      marketplace, test lanes, packaging, release flow, Pages build, and the deferred design-system
+      integration.
+    </p>
+  </section>
+
+  <section>
+    <h2>Command accuracy</h2>
+    <p>
+      The documentation catalog is checked against the 24 shipped skill directories. Every one of
+      the 21 dispatcher subcommands is invoked with <code>--help</code> during site verification,
+      and the repository’s full test suite exercises provider behavior with controlled fixtures.
+    </p>
+  </section>
+</article>

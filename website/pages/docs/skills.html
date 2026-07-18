@@ -1,0 +1,55 @@
+<article>
+  <header>
+    <p>Reference</p>
+    <h1>Codex skills reference</h1>
+    <p>
+      The plugin ships 24 skills in the <code>delegate:</code> namespace: 18 for Claude Code and six
+      for Google Antigravity. Flags belong before <code>--</code>; text after it is passed as the
+      prompt.
+    </p>
+  </header>
+
+  <nav aria-label="Skills on this page">
+    <ul>
+      <li><a href="#claude-code">Claude Code skills</a></li>
+      <li><a href="#antigravity">Google Antigravity skills</a></li>
+      <li><a href="#common-flags">Common flags</a></li>
+    </ul>
+  </nav>
+
+  {{skillsReference}}
+
+  <section id="common-flags">
+    <h2>Common flags</h2>
+    <dl>
+      <dt><code>--json</code></dt>
+      <dd>Return machine-readable output where the selected command supports it.</dd>
+      <dt><code>--compact</code></dt>
+      <dd>Use the smaller redacted JSON shape for job-oriented commands.</dd>
+      <dt><code>--all</code></dt>
+      <dd>Resolve jobs across all workspaces instead of only the current workspace.</dd>
+      <dt><code>--yes</code></dt>
+      <dd>Record the provider privacy acknowledgement non-interactively when supported.</dd>
+      <dt><code>--name &lt;name&gt;</code></dt>
+      <dd>Give a fresh provider session a readable label. It is not a resume key.</dd>
+      <dt><code>--model</code>, <code>--effort</code>, <code>--agent</code></dt>
+      <dd>Select provider launch behavior for fresh sessions.</dd>
+      <dt><code>--add-dir &lt;path&gt;</code></dt>
+      <dd>Add another allowed workspace root to a fresh job. Repeat when needed.</dd>
+      <dt><code>--chrome</code></dt>
+      <dd>
+        Ask a fresh Claude session to use real Chrome. There is no delegate
+        <code>--real</code> launch flag.
+      </dd>
+      <dt><code>--bypass-permissions</code></dt>
+      <dd>Explicit trusted unattended mode. See <a href="{{link:docs/safety.html}}">Safety</a>.</dd>
+      <dt><code>--allow-edit</code></dt>
+      <dd>A policy/framing signal only. It is not a filesystem sandbox or permission bypass.</dd>
+    </dl>
+    <p>
+      Individual skills intentionally accept different subsets. Use the syntax shown above or the
+      <a href="{{link:docs/dispatcher.html}}">dispatcher help</a>; invalid startup-only flags are
+      rejected with a targeted error.
+    </p>
+  </section>
+</article>

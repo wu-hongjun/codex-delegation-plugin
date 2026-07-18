@@ -1,0 +1,79 @@
+name: Deploy documentation to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/pages.yml'
+      - 'website/**'
+      - 'tools/site/**'
+      - '.gitmodules'
+      - 'vendor/vvver-design-system'
+      - 'packages/plugin-delegate/.codex-plugin/plugin.json'
+      - 'packages/plugin-delegate/skills/**'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Checkout design system
+        shell: bash
+        env:
+          DESIGN_SYSTEM_DEPLOY_KEY: ${{ secrets.DESIGN_SYSTEM_DEPLOY_KEY }}
+        run: |
+          if [[ -z "$DESIGN_SYSTEM_DEPLOY_KEY" ]]; then
+            echo "Missing DESIGN_SYSTEM_DEPLOY_KEY repository secret" >&2
+            exit 1
+          fi
+          install -d -m 700 "$RUNNER_TEMP/codex-delegation-ssh"
+          install -m 600 /dev/null "$RUNNER_TEMP/codex-delegation-ssh/design-system"
+          printf '%s\n' "$DESIGN_SYSTEM_DEPLOY_KEY" > "$RUNNER_TEMP/codex-delegation-ssh/design-system"
+          export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/codex-delegation-ssh/design-system -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+          git -c submodule.vendor/vvver-design-system.url=git@github.com:wu-hongjun/vvver-design-system.git \
+            submodule update --init --depth 1 vendor/vvver-design-system
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and verify site
+        run: npm run site:test
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+      - name: Deploy to Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

@@ -1,0 +1,370 @@
+@import './vvver/tokens.css';
+@import './vvver/prose.css';
+
+/* Host contract + documentation shell for vvver-design-system.
+   Typography, prose, code, tables, and core tokens come from the pinned
+   submodule imports above. This file owns only the host palette and layout. */
+
+:root {
+  --c-black: #040404;
+  --c-white: #fdfcfb;
+  --c-grey: #cacaca;
+  --secondary: #f4f2ef;
+  --accent: #ece9e4;
+  --muted-foreground: #5d5d5d;
+  --background: var(--c-white);
+  --foreground: var(--c-black);
+  --border: color-mix(in srgb, var(--c-black) 14%, transparent);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-quart: cubic-bezier(0.76, 0, 0.24, 1);
+  --site-gutter: clamp(1rem, 0.45rem + 2.35vw, 2.75rem);
+  --site-width: 90rem;
+  color-scheme: light;
+  font-family:
+    'Helvetica Neue',
+    Helvetica,
+    Arial,
+    system-ui,
+    -apple-system,
+    sans-serif;
+  font-synthesis: none;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--c-white);
+  color: var(--c-black);
+  scroll-behavior: smooth;
+}
+
+body {
+  min-width: 20rem;
+  min-height: 100vh;
+  margin: 0;
+  background: var(--c-white);
+  color: var(--c-black);
+  font-size: 1rem;
+  font-weight: 500;
+  line-height: 1.2;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background: var(--c-black);
+  color: var(--c-white);
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: var(--hairline) solid currentColor;
+  outline-offset: 0.2rem;
+}
+
+.site-skip-link {
+  position: fixed;
+  z-index: 200;
+  top: 0.9rem;
+  left: var(--site-gutter);
+  display: inline-flex;
+  min-height: 2.5rem;
+  align-items: center;
+  padding: 0.7rem 0.9rem;
+  border: var(--hairline) solid var(--c-black);
+  background: var(--c-black);
+  color: var(--c-white);
+  font-size: 0.72rem;
+  letter-spacing: 0.075em;
+  line-height: 1;
+  text-decoration: none;
+  text-transform: uppercase;
+  transform: translateY(calc(-100% - 1.5rem));
+}
+
+.site-skip-link:focus-visible {
+  outline-color: var(--c-black);
+  outline-offset: 0.2rem;
+  transform: translateY(0);
+}
+
+.site-header,
+.site-footer,
+.site-layout {
+  width: min(calc(100% - 2 * var(--site-gutter)), var(--site-width));
+  margin-inline: auto;
+}
+
+.site-header {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: start;
+  padding-block: 1.1rem;
+  border-bottom: var(--hairline) solid var(--border);
+}
+
+.site-wordmark {
+  margin: 0;
+  font-size: 0.78rem;
+  letter-spacing: 0.075em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.site-wordmark a,
+.site-primary-nav a,
+.site-docs-nav a,
+.site-footer a {
+  text-decoration: none;
+  transition: opacity 250ms var(--ease-out-quint);
+}
+
+.site-wordmark a:hover,
+.site-primary-nav a:hover,
+.site-docs-nav a:hover,
+.site-footer a:hover {
+  opacity: var(--dim-1);
+}
+
+.site-primary-nav ul,
+.site-docs-nav ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-primary-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.65rem 1.25rem;
+}
+
+.site-primary-nav a,
+.site-docs-nav a,
+.site-docs-nav h2 {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.site-primary-nav a[aria-current='page'] {
+  border-bottom: var(--hairline) solid currentColor;
+}
+
+.site-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  padding-block: var(--rhythm-sm);
+}
+
+.site-main {
+  min-width: 0;
+  width: 100%;
+}
+
+.site-main:focus {
+  outline: 0;
+}
+
+.site-docs-nav {
+  min-width: 0;
+  margin-bottom: var(--rhythm-sm);
+  padding-bottom: 1.25rem;
+  border-bottom: var(--hairline) solid var(--border);
+}
+
+.site-docs-nav h2 {
+  margin: 0 0 0.9rem;
+  font-weight: 600;
+}
+
+.site-docs-nav ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0;
+  border-top: var(--hairline) solid var(--border);
+}
+
+.site-docs-nav li {
+  min-width: 0;
+  border-bottom: var(--hairline) solid var(--border);
+}
+
+.site-docs-nav a {
+  display: block;
+  padding: 0.65rem 0;
+}
+
+.site-docs-nav a[aria-current='page'] {
+  font-weight: 700;
+}
+
+.site-docs-nav a[aria-current='page']::before {
+  content: '[';
+}
+
+.site-docs-nav a[aria-current='page']::after {
+  content: ']';
+}
+
+.vvver-prose article > header {
+  margin-bottom: var(--rhythm-sm);
+}
+
+.vvver-prose article > header > p:first-child {
+  margin-bottom: 1rem;
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  line-height: 1.3;
+  text-transform: uppercase;
+}
+
+.vvver-prose dl {
+  margin: 0 0 1.5rem;
+}
+
+.vvver-prose dt {
+  padding-top: 0.8rem;
+  border-top: var(--hairline) solid var(--border);
+  font-weight: 650;
+}
+
+.vvver-prose dd {
+  margin: 0;
+  padding: 0.35rem 0 0.9rem;
+  color: color-mix(in srgb, var(--c-black) 75%, transparent);
+}
+
+.site-page--landing .site-main {
+  max-width: var(--site-width);
+}
+
+.site-page--landing .vvver-prose article > header {
+  max-width: 75rem;
+  margin-bottom: var(--rhythm-md);
+}
+
+.site-page--landing .vvver-prose h1 {
+  max-width: 12ch;
+  font-size: clamp(3rem, 1.25rem + 7.5vw, 8.25rem);
+  letter-spacing: -0.035em;
+  line-height: var(--leading-display-3);
+}
+
+.site-page--landing .vvver-prose article > header > p:not(:first-child) {
+  max-width: 58ch;
+}
+
+.site-page--landing .vvver-prose article > section {
+  max-width: 68ch;
+}
+
+.site-page--landing .vvver-prose article > section:has(table) {
+  max-width: 78rem;
+}
+
+.site-page--error .site-layout {
+  min-height: 65vh;
+}
+
+.site-footer {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem 2rem;
+  padding-block: 1.2rem 2rem;
+  border-top: var(--hairline) solid var(--border);
+  color: var(--muted-foreground);
+  font-size: 0.68rem;
+  letter-spacing: 0.035em;
+  line-height: 1.45;
+  text-transform: uppercase;
+}
+
+.site-footer p {
+  margin: 0;
+}
+
+@media (min-width: 52rem) {
+  .site-header {
+    grid-template-columns: minmax(12rem, 1fr) auto;
+  }
+
+  .site-primary-nav ul {
+    justify-content: flex-end;
+  }
+
+  .site-layout--docs {
+    grid-template-columns: minmax(10rem, 13rem) minmax(0, 1fr);
+    gap: clamp(2rem, 6vw, 7rem);
+    align-items: start;
+  }
+
+  .site-docs-nav {
+    position: sticky;
+    top: 1rem;
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+
+  .site-docs-nav ul {
+    display: block;
+  }
+
+  .site-docs-nav a {
+    padding-block: 0.58rem;
+  }
+
+  .site-footer {
+    grid-template-columns: 1fr auto;
+  }
+
+  .site-footer p:last-child {
+    text-align: right;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .site-wordmark a,
+  .site-primary-nav a,
+  .site-docs-nav a,
+  .site-footer a {
+    transition: none;
+  }
+}
+
+@media print {
+  .site-skip-link,
+  .site-primary-nav,
+  .site-docs-nav,
+  .site-footer {
+    display: none;
+  }
+
+  .site-header,
+  .site-layout {
+    width: 100%;
+  }
+
+  .site-header {
+    border-bottom-color: var(--c-black);
+  }
+
+  .site-layout {
+    display: block;
+    padding-block: 2rem;
+  }
+}

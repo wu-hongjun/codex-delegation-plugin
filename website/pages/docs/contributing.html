@@ -1,0 +1,117 @@
+<article>
+  <header>
+    <p>Contributors</p>
+    <h1>Contributing and releasing</h1>
+    <p>
+      Develop against the local marketplace, keep the packaged payload synchronized, and test every
+      lane.
+    </p>
+  </header>
+
+  <section id="checkout">
+    <h2>Local checkout</h2>
+    <pre><code>git clone https://github.com/wu-hongjun/codex-delegation-plugin.git
+cd codex-delegation-plugin
+npm ci
+npm run build
+npm test</code></pre>
+    <p>Install the contributor marketplace from the checkout:</p>
+    <pre><code>codex plugin marketplace add "$(pwd)/marketplace"
+codex plugin add "delegate@codex-delegation-plugin-local"
+codex plugin list</code></pre>
+  </section>
+
+  <section id="refresh">
+    <h2>Refresh a local install</h2>
+    <pre><code>codex plugin remove "delegate@codex-delegation-plugin-local"
+codex plugin add "delegate@codex-delegation-plugin-local"
+codex plugin list</code></pre>
+    <p>
+      If the checkout moved, also remove and re-add the local marketplace pointer before
+      reinstalling. Restart Codex after changing skills or plugin tools.
+    </p>
+  </section>
+
+  <section id="validation">
+    <h2>Repository validation</h2>
+    <pre><code>npm run lint
+npm run typecheck
+npm run format
+npm test
+npm run test:attach
+npm run test:bench
+node tools/package-marketplace.mjs --check
+npm run site:test</code></pre>
+    <p>
+      The site test builds all pages, checks semantic landmarks, internal links, and the shared
+      design-system stylesheet, rejects inline style and client JavaScript, verifies the 24-skill
+      catalog against source, and syntax-smokes all 21 dispatcher commands.
+    </p>
+  </section>
+
+  <section id="packaging">
+    <h2>Package the plugin payload</h2>
+    <p>
+      Source changes live under <code>packages/</code>. Regenerate the committed marketplace copy:
+    </p>
+    <pre><code>node tools/package-marketplace.mjs --write
+node tools/package-marketplace.mjs --check</code></pre>
+    <p>
+      Normal npm installation is for contributor dependencies only. The deployed product is the
+      committed <code>marketplace/plugins/delegate/</code> tree installed through Codex.
+    </p>
+  </section>
+
+  <section id="site">
+    <h2>Documentation site</h2>
+    <pre><code>npm run site:build
+npm run site:check
+npm run site:serve</code></pre>
+    <p>
+      Open <code>http://127.0.0.1:4173/</code>. Source fragments live under
+      <code>website/pages/</code>; shared metadata and command catalogs live under
+      <code>website/</code>; the generated <code>_site/</code> directory is ignored. GitHub Actions
+      deploys the verified artifact to Pages from <code>main</code>.
+    </p>
+  </section>
+
+  <section id="design-system">
+    <h2>Design-system integration</h2>
+    <p>
+      The static site consumes the real <code>tokens.css</code> and framework-neutral
+      <code>prose.css</code> from the pinned <code>vvver-design-system</code> submodule. A small
+      host stylesheet supplies the palette and documentation shell required by that contract, with
+      no inline styles, client JavaScript, React, or Tailwind dependency.
+    </p>
+    <p>
+      The submodule pins an exact reviewed commit rather than following moving
+      <code>main</code>. The Pages workflow uses the dedicated read-only
+      <code>DESIGN_SYSTEM_DEPLOY_KEY</code> Actions secret to check out the private repository.
+      Update the gitlink deliberately when adopting a newer design-system revision. Pull-request CI
+      remains secret-free; Pages runs the complete site verification before every deployment.
+    </p>
+    <p>
+      If the site later needs interactive components, choose a React-capable static export. The
+      current semantic header, navigation, article, table, code, and footer structure can be mapped
+      without rewriting the content.
+    </p>
+  </section>
+
+  <section id="release">
+    <h2>Release outline</h2>
+    <ol>
+      <li>Make and test source changes.</li>
+      <li>Regenerate and check the marketplace payload.</li>
+      <li>Bump the plugin manifest version.</li>
+      <li>Run repository, attachment, benchmark, site, and marketplace validation.</li>
+      <li>Commit, tag, publish the GitHub release, and verify the public install.</li>
+    </ol>
+    <p>
+      Follow the repository’s
+      <a
+        href="https://github.com/wu-hongjun/codex-delegation-plugin/blob/main/documentation/RELEASING.md"
+        >complete release checklist</a
+      >.
+    </p>
+  </section>
+</article>

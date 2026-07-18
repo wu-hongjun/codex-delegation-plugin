@@ -1,0 +1,113 @@
+<article>
+  <header>
+    <p>Documentation</p>
+    <h1>Concepts and architecture</h1>
+    <p>Codex remains the operator while provider-native processes do delegated work.</p>
+  </header>
+
+  <section id="direction">
+    <h2>One direction</h2>
+    <p>
+      This plugin lets Codex delegate to Claude Code or Google Antigravity. It does not let those
+      tools drive Codex, and it is not a compatibility alias for the former <code>cc</code> plugin.
+    </p>
+  </section>
+
+  <section id="layers">
+    <h2>Four layers</h2>
+    <ol>
+      <li>
+        <strong>Codex skill:</strong> a <code>delegate:</code> skill interprets the user request.
+      </li>
+      <li>
+        <strong>Dispatcher:</strong> one Node entry point validates flags and routes the command.
+      </li>
+      <li><strong>Driver:</strong> a provider adapter starts and observes provider-native work.</li>
+      <li>
+        <strong>Job store:</strong> provider-neutral records persist status, paths, and results.
+      </li>
+    </ol>
+    <pre><code>Driver
+├── probe()                 → capabilities
+├── startSession(options)   → provider handle
+├── watch(target)           → lifecycle events
+├── status(session)         → normalized status
+├── stop(session)           → termination
+└── dispose()               → cleanup</code></pre>
+  </section>
+
+  <section id="jobs-and-sessions">
+    <h2>Jobs are not session names</h2>
+    <p>
+      Every delegation creates a new plugin job ID. The job record can include a provider session or
+      process identifier, but callers should use the plugin job ID for status, wait, result, stop,
+      follow-up, and review. A repeated <code>--name</code> labels separate sessions; it does not
+      resume an earlier job.
+    </p>
+  </section>
+
+  <section id="providers">
+    <h2>Provider transports</h2>
+    <h3>Claude Code</h3>
+    <p>
+      <code>ClaudeBackgroundDriver</code> starts a first-party <code>claude --bg</code> session,
+      reads machine-readable agent state and transcripts, and uses PTY attach for follow-up or human
+      permission handoff. It does not parse the interactive TUI and does not fall back to
+      <code>claude -p</code>.
+    </p>
+    <h3>Google Antigravity</h3>
+    <p>
+      <code>AgyCliDriver</code> owns a detached supervisor around <code>agy --print</code>. The
+      supervisor captures stdout, stderr, exit status, and stop state. Print mode does not expose a
+      stable conversation ID, so the plugin treats every Antigravity job as single-turn.
+    </p>
+  </section>
+
+  <section id="states">
+    <h2>Lifecycle states</h2>
+    <dl>
+      <dt><code>queued</code> / <code>starting</code></dt>
+      <dd>The plugin has accepted the job and is establishing the provider process.</dd>
+      <dt><code>running</code></dt>
+      <dd>The provider is actively working.</dd>
+      <dt><code>needs_input</code></dt>
+      <dd>A permission or operator decision blocks progress.</dd>
+      <dt><code>awaiting_followup</code></dt>
+      <dd>
+        A Claude turn finished and its live session remains available for another instruction.
+      </dd>
+      <dt><code>completed</code></dt>
+      <dd>The job has a final result and is no longer presented as follow-up-ready.</dd>
+      <dt><code>failed</code></dt>
+      <dd>The provider or supervisor exited unsuccessfully.</dd>
+      <dt><code>stopped</code></dt>
+      <dd>An operator terminated the job.</dd>
+      <dt><code>orphaned</code></dt>
+      <dd>The stored record exists but its provider process can no longer be reconciled.</dd>
+    </dl>
+  </section>
+
+  <section id="artifacts">
+    <h2>State and artifacts</h2>
+    <p>The default root is <code>~/.codex/codex-delegation-plugin/</code>:</p>
+    <ul>
+      <li><code>jobs/</code> stores normalized job records.</li>
+      <li><code>logs/</code> and result artifacts preserve provider output.</li>
+      <li><code>acks/</code> records privacy acknowledgement per workspace and provider.</li>
+    </ul>
+    <p>
+      Claude-owned transcripts and sidecars remain under Claude Code’s own directories. Plugin
+      uninstall removes registration and marketplace pointers, not these job records or provider
+      transcripts.
+    </p>
+  </section>
+
+  <section id="followup-window">
+    <h2>The follow-up window</h2>
+    <p>
+      A completed Claude turn is normally shown as <code>awaiting_followup</code> for 30 minutes
+      after the last completed activity. The window is a status and UX policy, not a hard capability
+      cutoff: an explicit follow-up may still attach if the Claude session remains live.
+    </p>
+  </section>
+</article>

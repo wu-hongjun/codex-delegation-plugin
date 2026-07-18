@@ -1,0 +1,100 @@
+<article>
+  <header>
+    <p>Guides</p>
+    <h1>Workflows and reviews</h1>
+    <p>
+      Use Claude Code’s live sessions for iterative work, orchestration, and structured evaluation.
+    </p>
+  </header>
+
+  <section id="followups">
+    <h2>Continue a completed turn</h2>
+    <pre><code>$claude-delegate "Inspect the authorization layer. Report only."
+$claude-wait &lt;jobId&gt; --json --compact --timeout 5m
+$claude-followup &lt;jobId&gt; -- "Now trace the highest-risk path to its tests."
+$claude-result &lt;jobId&gt;</code></pre>
+    <p>
+      Follow-up attaches to the original live Claude session. It cannot change startup-only model,
+      workspace, or MCP configuration. If permission handoff cannot happen non-interactively, the
+      command fails closed and returns a manual
+      <code>claude attach &lt;shortId&gt;</code> instruction.
+    </p>
+  </section>
+
+  <section id="workflow">
+    <h2>Dynamic workflow</h2>
+    <pre><code>$claude-workflow -- "Audit every fetch call and migrate the unsafe call sites in verified stages."
+$claude-workflows
+$claude-workflows &lt;jobId&gt; --json</code></pre>
+    <p>
+      Workflow injects the <code>ultracode:</code> planning trigger. The read-only workflows command
+      lists plugin-owned workflow and deep-research records; it is separate from the Claude TUI’s
+      session-local <code>/workflows</code> panel.
+    </p>
+  </section>
+
+  <section id="goal-fork-batch">
+    <h2>Goal, fork, and batch</h2>
+    <h3>Goal condition</h3>
+    <pre><code>$claude-goal -- "All unit tests pass and no source file contains the deprecated API name."</code></pre>
+    <h3>Focused fork</h3>
+    <pre><code>$claude-fork -- "Build a proof of concept for the new rate limiter and report tradeoffs."</code></pre>
+    <h3>Parallel batch</h3>
+    <pre><code>$claude-batch -- "Migrate all independent packages from the old API to the new API, then run their tests."</code></pre>
+    <p>
+      These commands create fresh sessions. Batch can cause several parallel tool calls or
+      subagents, so its cost grows with the number of tasks and affected files.
+    </p>
+  </section>
+
+  <section id="deep-research">
+    <h2>Deep research</h2>
+    <pre><code>$claude-deep-research -- "What are the current tradeoffs between B-trees and LSM-trees for write-heavy workloads?"</code></pre>
+    <p>
+      Deep research starts a Claude workflow with multi-agent web search and citation
+      cross-checking. Use it for research questions, not ordinary repository inspection.
+    </p>
+  </section>
+
+  <section id="reviews">
+    <h2>Choose a review mode</h2>
+    <table>
+      <thead>
+        <tr>
+          <th scope="col">Mode</th>
+          <th scope="col">Session</th>
+          <th scope="col">Best for</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row"><code>$claude-review</code></th>
+          <td>Reuses the live original session</td>
+          <td>Fast, context-rich checks while the session is available</td>
+        </tr>
+        <tr>
+          <th scope="row"><code>$claude-adversarial-review</code></th>
+          <td>Starts a fresh independent session</td>
+          <td>Thorough second opinions and terminal jobs with a stored result</td>
+        </tr>
+      </tbody>
+    </table>
+    <pre><code>$claude-review &lt;jobId&gt; --json
+$claude-adversarial-review &lt;jobId&gt; --blocking</code></pre>
+    <p>
+      Both return a verdict and severity-rated findings. Use <code>--blocking</code> as the
+      shorthand high/blocker/fail gate, or
+      <code>--fail-on fail|any|nit|low|medium|high|blocker</code> for an exact automation threshold.
+    </p>
+  </section>
+
+  <section id="restart">
+    <h2>Restart a blocked job</h2>
+    <p>
+      Compact status can return <code>actionHints.restartWithBypass</code> for an explicitly trusted
+      unattended retry. Restart needs a fresh prompt because job records keep prompt metadata, not
+      the full original prompt text.
+    </p>
+    <pre><code>node packages/plugin-delegate/scripts/delegate.mjs restart &lt;jobId&gt; --bypass-permissions --yes -- "Fresh complete prompt"</code></pre>
+  </section>
+</article>

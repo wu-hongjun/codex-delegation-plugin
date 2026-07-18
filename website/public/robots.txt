@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://wu-hongjun.github.io/codex-delegation-plugin/sitemap.xml

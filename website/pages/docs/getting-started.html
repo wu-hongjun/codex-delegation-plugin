@@ -1,0 +1,94 @@
+<article>
+  <header>
+    <p>Documentation</p>
+    <h1>Getting started</h1>
+    <p>Install v{{version}}, verify one provider, and run a complete job lifecycle.</p>
+  </header>
+
+  <section id="requirements">
+    <h2>Requirements</h2>
+    <ul>
+      <li>Codex CLI with plugin marketplace support.</li>
+      <li>Node.js 20 or later on <code>PATH</code>.</li>
+      <li>
+        At least one local provider CLI: authenticated Claude Code (<code>claude</code>) or Google
+        Antigravity (<code>agy</code>).
+      </li>
+    </ul>
+    <p>Normal plugin installation does not require an npm install or a repository clone.</p>
+  </section>
+
+  <section id="install">
+    <h2>Install from the public marketplace</h2>
+    <pre><code>codex plugin marketplace add https://github.com/wu-hongjun/codex-delegation-plugin
+codex plugin add "delegate@codex-delegation-plugin"
+codex plugin list</code></pre>
+    <p>
+      Confirm that the list shows <code>delegate@codex-delegation-plugin</code> as installed and
+      enabled at version {{version}}. Restart Codex to load the new skill namespace.
+    </p>
+  </section>
+
+  <section id="preflight">
+    <h2>Preflight a provider</h2>
+    <h3>Claude Code</h3>
+    <pre><code>$claude-setup
+$claude-doctor --claude-access</code></pre>
+    <p>
+      Setup checks the common environment. Doctor is the deeper preflight for auth, model access,
+      workspace, browser, and permission mode. An aggregate <code>warn</code> can still be ready
+      when only an informational daemon probe warns; follow any explicit failed probe.
+    </p>
+
+    <h3>Google Antigravity</h3>
+    <pre><code>$agy-setup</code></pre>
+    <p>
+      The preflight checks the binary and print-mode surface without making a model call.
+      Authentication is checked during the first real delegation.
+    </p>
+  </section>
+
+  <section id="first-claude-job">
+    <h2>Run a first Claude Code job</h2>
+    <pre><code>$claude-delegate "Read the repository README and summarize the architecture. Do not edit files."</code></pre>
+    <p>
+      On the first delegation for this workspace and provider, review the privacy disclosure. The
+      command returns a plugin job ID and a shorter provider session ID. Use the plugin job ID for
+      the remaining commands.
+    </p>
+    <pre><code>$claude-status --job &lt;jobId&gt; --json --compact
+$claude-wait &lt;jobId&gt; --json --compact --timeout 5m
+$claude-result &lt;jobId&gt;</code></pre>
+    <p>
+      If the job reaches <code>awaiting_followup</code>, the Claude session is still live. Continue
+      it or stop it:
+    </p>
+    <pre><code>$claude-followup &lt;jobId&gt; -- "List the three most important files for a new contributor."
+$claude-result &lt;jobId&gt;
+$claude-stop &lt;jobId&gt;</code></pre>
+  </section>
+
+  <section id="first-agy-job">
+    <h2>Run a first Antigravity job</h2>
+    <pre><code>$agy-delegate --mode plan -- "Read the repository README and summarize the architecture. Do not edit files."
+$agy-wait &lt;jobId&gt; --json --compact --timeout 5m
+$agy-result &lt;jobId&gt;</code></pre>
+    <p>
+      Antigravity print-mode jobs are single-turn. Start another
+      <code>$agy-delegate</code> invocation for another instruction; do not use workspace-global
+      <code>agy --continue</code> as a follow-up.
+    </p>
+  </section>
+
+  <section id="next">
+    <h2>Next steps</h2>
+    <ul>
+      <li>
+        <a href="{{link:docs/concepts.html}}">Understand states, IDs, and stored artifacts.</a>
+      </li>
+      <li><a href="{{link:docs/skills.html}}">Browse all 24 skills.</a></li>
+      <li><a href="{{link:docs/workflows.html}}">Use workflows, follow-ups, and reviews.</a></li>
+      <li><a href="{{link:docs/safety.html}}">Choose permission and browser options safely.</a></li>
+    </ul>
+  </section>
+</article>

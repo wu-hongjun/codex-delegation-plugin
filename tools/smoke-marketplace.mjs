@@ -9,7 +9,7 @@
  *
  * Codex 0.136.0 exposes no documented non-interactive skill-invocation
  * interface, so this helper covers automated install/list/version
- * assertions only and prints the twenty-four-skill manual checklist for the
+ * assertions only and prints the thirty-six-skill manual checklist for the
  * maintainer to run inside Codex. The smoke artifact under the
  * documentation/plan/0006-...-marketplace-packaging-distribution
  * artifacts/ folder records what the helper covered and what was
@@ -38,7 +38,7 @@
  *   7. Asserts the plugin appears as installed,enabled at the version
  *      declared in marketplace/plugins/delegate/.codex-plugin/plugin.json
  *      (single source of truth; not hard-coded in this script — see T10).
- *   8. Prints the twenty-four-skill manual TUI checklist.
+ *   8. Prints the thirty-six-skill manual TUI checklist.
  *   9. Cleanup: codex plugin remove + codex plugin marketplace remove.
  *  10. rm -rf CODEX_HOME unless --keep-home.
  *
@@ -49,7 +49,7 @@
  * Not for CI: this script requires the real codex CLI on PATH. The CI
  * matrix never invokes this file. The static test
  * packages/plugin-delegate/test/marketplace-smoke.test.mjs verifies the
- * script's shape (--help text, 24 skill names, isolation invariants,
+ * script's shape (--help text, 36 skill names, isolation invariants,
  * cleanup commands) without spawning codex.
  */
 
@@ -92,7 +92,7 @@ function deriveExpectedVersion(marketplaceRoot) {
   return version;
 }
 
-// All twenty-four skills shipped by the codex-delegation-plugin marketplace plugin. Order
+// All thirty-six skills shipped by the codex-delegation-plugin marketplace plugin. Order
 // follows the natural delegate -> verify lifecycle so the maintainer can
 // walk the list inside Codex in a sensible sequence.
 const SKILL_NAMES = [
@@ -115,11 +115,23 @@ const SKILL_NAMES = [
   'claude-skills',
   'claude-upgrade',
   'agy-setup',
+  'agy-doctor',
   'agy-delegate',
   'agy-status',
   'agy-wait',
   'agy-result',
   'agy-stop',
+  'agy-followup',
+  'agy-review',
+  'agy-adversarial-review',
+  'agy-workflow',
+  'agy-goal',
+  'agy-fork',
+  'agy-batch',
+  'agy-deep-research',
+  'agy-workflows',
+  'agy-skills',
+  'agy-upgrade',
 ];
 
 // ---------------------------------------------------------------------------
@@ -169,11 +181,11 @@ function printHelp() {
       'The helper runs against the real codex CLI on PATH. It creates an',
       'isolated CODEX_HOME under the OS tempdir so the real $HOME/.codex',
       'is never mutated. Codex 0.136.0 has no documented non-interactive',
-      'skill-invocation interface, so the twenty-four-skill discovery check must',
+      'skill-invocation interface, so the thirty-six-skill discovery check must',
       'be run manually inside Codex. The helper prints the skill checklist',
       'after the automated install/list/version assertions pass.',
       '',
-      'Twenty-four skills covered by the manual TUI checklist:',
+      'Thirty-six skills covered by the manual TUI checklist:',
       ...SKILL_NAMES.map((s) => `  - $${s}`),
       '',
     ].join('\n'),
@@ -407,7 +419,7 @@ logStep('STEP 6: manual Codex TUI skill checklist (operator-driven)');
 process.stdout.write(
   [
     'The helper cannot drive the Codex TUI. Open Codex with this isolated',
-    `CODEX_HOME and verify each of the 24 skills below is recognized.`,
+    `CODEX_HOME and verify each of the 36 skills below is recognized.`,
     '',
     `  CODEX_HOME=${codexHome} codex`,
     '',

@@ -71,6 +71,8 @@ $agy-delegate "Inspect this repo and summarize the main risks."
 $agy-wait <jobId> --json --compact --timeout 5m
 $agy-status
 $agy-result <jobId>
+$agy-followup <jobId> -- "Now verify the same area."
+$agy-review <jobId>
 ```
 
 Useful discovery and maintenance commands:
@@ -80,15 +82,18 @@ $claude-setup
 $claude-doctor
 $claude-skills
 $claude-upgrade
+$agy-doctor
+$agy-skills
 ```
 
-The plugin ships 24 skills: 18 `$claude-*` skills plus `$agy-setup`, `$agy-delegate`, `$agy-status`, `$agy-wait`, `$agy-result`, and `$agy-stop`.
+The plugin ships 36 skills: 18 `$claude-*` skills and an equivalent 18-skill `$agy-*` surface for setup, doctor, delegation, lifecycle, exact follow-up, reviews, orchestration, discovery, and upgrade.
 
 Antigravity jobs run through `agy --print` under a detached supervisor owned by the plugin. The
 supervisor captures stdout/stderr and lifecycle state so separate Codex invocations can wait,
-read results, or stop the process. `agy` does not expose stable conversation IDs from print mode,
-so Antigravity jobs are single-turn and the plugin does not use the workspace-global
-`--continue` flag. Supported launch flags include `--model`, `--agent`, repeatable `--add-dir`,
+read results, stop the process, or continue the exact conversation. Each job gets a private
+diagnostic log; the driver captures its conversation UUID and resumes with
+`agy --conversation <uuid>`. It never uses workspace-global `--continue`, so concurrent jobs
+cannot steal one another's recent conversation. Supported launch flags include `--model`, `--agent`, repeatable `--add-dir`,
 `--mode accept-edits|plan`, `--sandbox`, `--print-timeout`, `--project`, `--new-project`, and
 `--log-file`. The current Codex workspace is always forwarded with `--add-dir`. Antigravity print
 mode auto-denies command permissions that would require an interactive prompt; those jobs are
@@ -96,6 +101,12 @@ reported as failed. Configure a narrow Antigravity `permissions.allow` rule or e
 `--dangerously-skip-permissions` for a trusted unattended job. `--sandbox` restricts terminal
 execution but does not approve commands. Permission bypass is forwarded only when explicitly
 requested.
+
+The Antigravity surface matches Claude wherever the current headless CLI exposes a safe primitive.
+Native gaps remain explicit: there is no plugin-mediated live TUI attach, mid-turn input or
+permission approval, native TUI `/fork` picker, or nested-subagent detail API. Fork, batch,
+workflow, goal, and deep-research commands use Antigravity's subagent framework through carefully
+scoped orchestration prompts while the recorded parent conversation remains the job boundary.
 
 See the official Antigravity documentation for the [`agy` CLI](https://antigravity.google/docs/cli/using)
 and its [permission rules](https://antigravity.google/docs/cli/permissions).
@@ -249,9 +260,9 @@ node tools/package-marketplace.mjs --write
 - **One direction**: Codex to delegated provider.
 - **Two transports**: native Claude Code background sessions and supervised Antigravity `agy --print` processes.
 - **One host plugin**: Codex skills + manifest under `packages/plugin-delegate/`.
-- **Session-per-job with follow-ups**: every `$claude-delegate` invocation creates a fresh background job. Continue an existing job with `$claude-followup <jobId>`; do not reuse `--name` as a session key.
-- **Single-turn Antigravity jobs**: `$agy-delegate` creates a supervised print-mode process with status, wait, result, and stop support.
-- **Twenty-four skills**: 18 Claude skills and 6 Antigravity skills.
+- **Job-scoped conversations with follow-ups**: every delegation creates a fresh job. Continue with the provider-specific follow-up skill; do not reuse `--name` as a session key.
+- **Deterministic Antigravity resume**: `$agy-delegate` captures a conversation UUID and `$agy-followup` targets it without global recent-state selection.
+- **Thirty-six skills**: matched 18-skill Claude and Antigravity surfaces.
 
 The full v1 plan, including every deliberately-deferred feature, lives at [`documentation/plan/0001-20260530-initial-plan/1-plan.md`](documentation/plan/0001-20260530-initial-plan/1-plan.md). It supersedes any conflicting framing in this README.
 

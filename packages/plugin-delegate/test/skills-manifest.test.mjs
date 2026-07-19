@@ -37,11 +37,23 @@ const SKILL_NAMES = [
   'claude-skills',
   'claude-upgrade',
   'agy-setup',
+  'agy-doctor',
   'agy-delegate',
   'agy-status',
   'agy-wait',
   'agy-result',
   'agy-stop',
+  'agy-followup',
+  'agy-review',
+  'agy-adversarial-review',
+  'agy-workflow',
+  'agy-goal',
+  'agy-fork',
+  'agy-batch',
+  'agy-deep-research',
+  'agy-workflows',
+  'agy-skills',
+  'agy-upgrade',
 ];
 
 /** Subcommand each skill must reference in its body. */
@@ -65,11 +77,23 @@ const SKILL_SUBCOMMANDS = {
   'claude-skills': 'skills',
   'claude-upgrade': 'upgrade',
   'agy-setup': 'agy-setup',
+  'agy-doctor': 'agy-doctor',
   'agy-delegate': 'delegate',
   'agy-status': 'status',
   'agy-wait': 'wait',
   'agy-result': 'result',
   'agy-stop': 'stop',
+  'agy-followup': 'followup',
+  'agy-review': 'review',
+  'agy-adversarial-review': 'adversarial-review',
+  'agy-workflow': 'workflow',
+  'agy-goal': 'goal',
+  'agy-fork': 'fork',
+  'agy-batch': 'batch',
+  'agy-deep-research': 'deep-research',
+  'agy-workflows': 'workflows',
+  'agy-skills': 'skills',
+  'agy-upgrade': 'upgrade',
 };
 
 function skillPath(name) {
@@ -160,7 +184,7 @@ describe('plugin.json.version', () => {
     const manifest = readManifest();
     assert.match(
       manifest.version,
-      /^0\.5\.0(?:\+codex\.[0-9]+)?$/,
+      /^0\.5\.0(?:\+codex\.(?:[0-9]+|local-[0-9]{14}))?$/,
       `expected 0.5.0 release base, got "${manifest.version}"`,
     );
   });
@@ -748,14 +772,14 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
 });
 
 describe('plugin.json.interface.defaultPrompt length includes all provider skills', () => {
-  it('array length equals 24', () => {
+  it('array length equals 36', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      24,
-      `interface.defaultPrompt must have exactly 24 entries; got ${dp.length}`,
+      36,
+      `interface.defaultPrompt must have exactly 36 entries; got ${dp.length}`,
     );
   });
 });
@@ -840,8 +864,14 @@ describe('no unexpected review-adjacent skill directories exist', () => {
     if (!existsSync(skillsDir)) return;
     const entries = readdirSync(skillsDir);
     const unexpected = entries.filter((e) => {
-      // Allow the two sanctioned review skills
-      if (e === 'claude-review' || e === 'claude-adversarial-review') return false;
+      // Allow the sanctioned same-session and adversarial review skills.
+      if (
+        e === 'claude-review' ||
+        e === 'claude-adversarial-review' ||
+        e === 'agy-review' ||
+        e === 'agy-adversarial-review'
+      )
+        return false;
       // Flag anything else that looks review-adjacent
       return /review|critic/i.test(e);
     });
@@ -856,14 +886,14 @@ describe('no unexpected review-adjacent skill directories exist', () => {
 // ---------- T6: OQ-C defaultPrompt rewrites (entries #6-#9) ----------
 
 describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)', () => {
-  it('array length is exactly 24', () => {
+  it('array length is exactly 36', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      24,
-      `interface.defaultPrompt must have exactly 24 entries; got ${dp.length}`,
+      36,
+      `interface.defaultPrompt must have exactly 36 entries; got ${dp.length}`,
     );
   });
 

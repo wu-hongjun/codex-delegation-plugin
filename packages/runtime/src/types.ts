@@ -122,6 +122,8 @@ export interface JobRecord {
   codex: CodexContext;
   workspace: WorkspaceContext;
   driver: DriverContext;
+  /** Provider-neutral operation that created the job (delegate, workflow, goal, etc.). */
+  kind?: string;
   session: AgentSessionContext;
   /** Compatibility alias retained on Claude jobs. */
   claude?: ClaudeSessionContext;
@@ -147,6 +149,7 @@ export interface CreateJobInput {
   codex: CodexContext;
   workspace: WorkspaceContext;
   driver: DriverContext;
+  kind?: string;
   session?: AgentSessionContext;
   /** Legacy create shape accepted for compatibility. */
   claude?: ClaudeSessionContext;

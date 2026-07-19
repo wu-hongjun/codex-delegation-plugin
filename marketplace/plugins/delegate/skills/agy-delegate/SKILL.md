@@ -34,15 +34,15 @@ Behavior rules:
   requests a trusted unattended run. Include `--yes` when forwarding an explicit bypass request.
 - For ordinary jobs, do not inject `--yes`. Surface the dispatcher's workspace privacy
   acknowledgement instead.
-- Every invocation is a new supervised `agy --print` process. Antigravity print mode does not
-  return a stable conversation ID, so there is no `$agy-followup`; start a new `$agy-delegate` job
-  for another instruction.
-- Do not use `agy --continue` for follow-up. It selects global recent workspace state and cannot be
-  safely tied to a stored delegate job.
+- The driver captures the conversation UUID from a private per-job diagnostic log and stores it
+  with the job. Use `$agy-followup` for another turn in that exact conversation.
+- Do not use global `agy --continue` for follow-up. The dispatcher resumes with
+  `agy --conversation <uuid>` so concurrent jobs cannot steal one another's recent state.
 
 ### Next steps
 
 - `$agy-wait <jobId> --json --compact --timeout 5m` - wait for completion
 - `$agy-status` - inspect Antigravity jobs
 - `$agy-result <jobId>` - read completed output
+- `$agy-followup <jobId> -- "next instruction"` - continue the exact conversation
 - `$agy-stop <jobId>` - terminate a running job

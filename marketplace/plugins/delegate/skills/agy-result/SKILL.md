@@ -25,6 +25,6 @@ Behavior rules:
 
 ### Next steps
 
-- For another instruction, start a new `$agy-delegate` job. The dispatcher does not use global
-  Antigravity continuation state.
+- For another instruction, use `$agy-followup <jobId> -- "next instruction"`. The dispatcher
+  resumes the stored conversation UUID and never relies on global Antigravity continuation state.
 - Use `$agy-status` to inspect other Antigravity jobs in this workspace.

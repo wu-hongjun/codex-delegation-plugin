@@ -16,6 +16,8 @@ describe('mock agy', () => {
     const help = spawnSync(executable, ['--help'], { encoding: 'utf8' });
     assert.equal(help.status, 0);
     assert.match(help.stdout, /--print/);
+    assert.match(help.stdout, /--conversation/);
+    assert.match(help.stdout, /--log-file/);
   });
 
   it('returns a deterministic print response', () => {

@@ -306,6 +306,22 @@ function providerForJob(job) {
   return job.session?.provider === 'agy' || job.driver?.name === 'agy-cli' ? 'agy' : 'claude';
 }
 
+function assertRequestedProviderMatchesJob(flags, provider, commandName, json) {
+  if (flags['provider'] === undefined) return;
+  const requested = requestedProvider(flags, commandName, json, provider);
+  if (requested === 'auto' || requested === provider) return;
+  process.stderr.write(
+    formatError(
+      new Error(
+        `Job provider is ${provider}; --provider ${requested} cannot target this job. Omit --provider to infer it from the job record.`,
+      ),
+      commandName,
+      json,
+    ) + '\n',
+  );
+  process.exit(2);
+}
+
 function sessionForJob(job) {
   return job.session ?? { ...job.claude, provider: 'claude' };
 }
@@ -1046,6 +1062,85 @@ function discoverClaudeSkills({ cwd = process.cwd(), env = process.env } = {}) {
   };
 }
 
+function discoverAgySkills({ cwd = process.cwd(), env = process.env } = {}) {
+  const agyHome = env.CODEX_DELEGATION_MOCK_AGY_HOME || join(homedir(), '.gemini');
+  const errors = [];
+  const roots = [];
+  const skills = [];
+  const addRoot = (root, source) => {
+    roots.push({
+      sourceType: source.type,
+      root,
+      ...(source.plugin ? { plugin: source.plugin } : {}),
+    });
+    skills.push(...collectClaudeSkillDir(root, source, errors));
+  };
+
+  addRoot(join(cwd, '.agents', 'skills'), {
+    type: 'project',
+    label: 'project .agents/skills',
+  });
+  addRoot(join(cwd, '.agent', 'skills'), {
+    type: 'project',
+    label: 'legacy project .agent/skills',
+  });
+  addRoot(join(agyHome, 'config', 'skills'), {
+    type: 'user',
+    label: '~/.gemini/config/skills',
+  });
+  addRoot(join(agyHome, 'antigravity-cli', 'skills'), {
+    type: 'user',
+    label: '~/.gemini/antigravity-cli/skills',
+  });
+
+  for (const pluginsRoot of [
+    join(cwd, '.agents', 'plugins'),
+    join(cwd, '_agents', 'plugins'),
+    join(agyHome, 'config', 'plugins'),
+    join(agyHome, 'antigravity-cli', 'plugins'),
+  ]) {
+    if (!existsSync(pluginsRoot)) continue;
+    let entries = [];
+    try {
+      entries = readdirSync(pluginsRoot, { withFileTypes: true });
+    } catch (err) {
+      errors.push({ root: pluginsRoot, error: err instanceof Error ? err.message : String(err) });
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      addRoot(join(pluginsRoot, entry.name, 'skills'), {
+        type: 'plugin',
+        label: entry.name,
+        plugin: entry.name,
+      });
+    }
+  }
+
+  skills.sort((a, b) => {
+    const byName = a.name.localeCompare(b.name);
+    return byName !== 0 ? byName : String(a.source.label).localeCompare(String(b.source.label));
+  });
+  const bySource = { project: 0, user: 0, plugin: 0 };
+  for (const skill of skills) {
+    if (skill.source.type in bySource) bySource[skill.source.type]++;
+  }
+  const duplicates = annotateClaudeSkillDuplicates(skills);
+  return {
+    agyHome,
+    roots,
+    counts: {
+      total: skills.length,
+      uniqueNames: new Set(skills.map((skill) => skill.name)).size,
+      duplicateNames: duplicates.length,
+      ...bySource,
+    },
+    duplicates,
+    skills,
+    warnings: errors,
+  };
+}
+
 function formatClaudeSkills(catalog, json) {
   if (json) return JSON.stringify({ ok: true, ...catalog }, null, 2);
 
@@ -1091,6 +1186,33 @@ function formatClaudeSkills(catalog, json) {
   return lines.join('\n');
 }
 
+function formatAgySkills(catalog, json) {
+  if (json) return JSON.stringify({ ok: true, provider: 'agy', ...catalog }, null, 2);
+  const { counts } = catalog;
+  const lines = [
+    `Google Antigravity skills — ${counts.total} installed (${counts.uniqueNames} unique name${counts.uniqueNames === 1 ? '' : 's'})`,
+    `  project: ${counts.project}  user: ${counts.user}  plugin: ${counts.plugin}  duplicate names: ${counts.duplicateNames}`,
+    '',
+    'Use these in delegated Antigravity prompts as /skill-name.',
+  ];
+  if (catalog.skills.length === 0) {
+    lines.push('', 'No Antigravity skills found in project, user, or plugin skill roots.');
+  } else {
+    lines.push('');
+    for (const skill of catalog.skills) {
+      const source = skill.source.type === 'plugin' ? skill.source.plugin : skill.source.label;
+      const desc = skill.description ? ` — ${truncateOneLine(skill.description, 140)}` : '';
+      const duplicate = skill.duplicateAmbiguous ? ' (duplicate name: ambiguous)' : '';
+      lines.push(`  ${skill.invocation.padEnd(28)} [${source}]${duplicate}${desc}`);
+    }
+  }
+  if (catalog.warnings.length > 0) {
+    lines.push('', 'Warnings:');
+    for (const warning of catalog.warnings) lines.push(`  ${warning.root}: ${warning.error}`);
+  }
+  return lines.join('\n');
+}
+
 // ---------- main ----------
 
 const argv = process.argv.slice(2);
@@ -1109,6 +1231,7 @@ if (versionRequested) {
 const KNOWN_COMMANDS = new Set([
   'setup',
   'agy-setup',
+  'agy-doctor',
   'doctor',
   'delegate',
   'workflow',
@@ -1175,6 +1298,9 @@ try {
       break;
     case 'agy-setup':
       await cmdAgySetup(flags, useJson);
+      break;
+    case 'agy-doctor':
+      await cmdAgyDoctor(flags, positional, useJson);
       break;
     case 'doctor':
       await cmdDoctor(flags, positional, useJson);
@@ -1595,6 +1721,70 @@ async function cmdAgySetup(_flags, json) {
   if (!report.ok) process.exit(1);
 }
 
+async function cmdAgyDoctor(flags, positional, json) {
+  if (positional.length > 0) {
+    process.stderr.write(
+      formatError(new Error('agy-doctor does not take positional arguments'), 'agy-doctor', json) +
+        '\n',
+    );
+    process.exit(2);
+  }
+  const driver = new AgyCliDriver({ cwd: process.cwd() });
+  const capabilities = await driver.probe();
+  const permissionMode = normalizePermissionMode(flags, 'agy-doctor', json) ?? 'default';
+  const bypass = permissionMode === 'bypassPermissions';
+  const checks = [
+    buildWorkspaceCheck(process.cwd()),
+    ...capabilities.health.probes.map((probe) => ({
+      name: probe.name,
+      category: probe.name.includes('auth') ? 'cli_auth' : 'provider',
+      status: probe.status,
+      detail: probe.detail,
+    })),
+    {
+      name: 'headless-permissions',
+      category: 'permissions',
+      status: bypass ? 'ok' : 'warn',
+      detail: bypass
+        ? 'trusted unattended permission bypass requested for future Antigravity jobs'
+        : 'headless Antigravity turns auto-deny permission prompts unless permissions.allow covers the operation',
+      remediation: bypass
+        ? undefined
+        : 'Configure narrow permissions.allow rules, or explicitly request bypass only for trusted unattended work.',
+    },
+  ];
+  const status = aggregateDoctorChecks(checks);
+  const report = {
+    ok: status !== 'fail',
+    provider: 'agy',
+    status,
+    generatedAt: new Date().toISOString(),
+    version: capabilities.cliVersion,
+    execution: capabilities.execution,
+    features: capabilities.features,
+    checks,
+    blockers: checks.filter((check) => check.status === 'fail').map((check) => check.name),
+    warnings: checks.filter((check) => check.status === 'warn').map((check) => check.name),
+  };
+  if (json) {
+    process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+  } else {
+    const lines = [
+      `Google Antigravity doctor — ${status.toUpperCase()}`,
+      `  version: ${capabilities.cliVersion ?? 'unavailable'}`,
+      `  exact follow-up: ${capabilities.features.followup ? 'available' : 'unavailable'}`,
+      '',
+      'Checks:',
+    ];
+    for (const check of checks) {
+      lines.push(`  ${check.status.padEnd(4)}  ${check.name.padEnd(24)} ${check.detail}`);
+      if (check.remediation) lines.push(`        next: ${check.remediation}`);
+    }
+    process.stdout.write(lines.join('\n') + '\n');
+  }
+  if (!report.ok) process.exit(1);
+}
+
 function findProbe(report, name) {
   return report.probes.find((probe) => probe.name === name) ?? null;
 }
@@ -1893,20 +2083,29 @@ async function cmdWorkflow(flags, positional, json) {
 
   await _runDelegateCore(flags, positional, json, {
     commandName: 'workflow',
-    promptTransformer: (p) => `ultracode: ${p}`,
+    promptTransformer: (p, provider) =>
+      provider === 'agy'
+        ? `Orchestrate this as a deliberate multi-agent workflow. Decompose the work into explicit phases, use independent Antigravity subagents in parallel where safe, verify their outputs, and synthesize one final result. Task: ${p}`
+        : `ultracode: ${p}`,
     extraOutput: (job) =>
-      [
-        '',
-        'This is a Claude Code dynamic workflow request.',
-        'Approval is required before workflow subagents start.',
-        '',
-        `  claude attach ${job.claude.shortId}`,
-        '',
-        'Then choose Yes, View raw script, or No in Claude Code.',
-        'Note: --yes only acknowledges the plugin privacy prompt; it does not approve this workflow gate.',
-        'Workflows can spawn up to 16 concurrent agents and 1000 total per run. Token',
-        "usage scales with the workflow's complexity.",
-      ].join('\n'),
+      providerForJob(job) === 'agy'
+        ? [
+            '',
+            'This is a supervised Google Antigravity workflow conversation.',
+            'Use $agy-status, $agy-result, $agy-followup, or $agy-stop to drive it.',
+          ].join('\n')
+        : [
+            '',
+            'This is a Claude Code dynamic workflow request.',
+            'Approval is required before workflow subagents start.',
+            '',
+            `  claude attach ${job.claude.shortId}`,
+            '',
+            'Then choose Yes, View raw script, or No in Claude Code.',
+            'Note: --yes only acknowledges the plugin privacy prompt; it does not approve this workflow gate.',
+            'Workflows can spawn up to 16 concurrent agents and 1000 total per run. Token',
+            "usage scales with the workflow's complexity.",
+          ].join('\n'),
   });
 }
 
@@ -1924,15 +2123,24 @@ async function cmdGoal(flags, positional, json) {
 
   await _runDelegateCore(flags, positional, json, {
     commandName: 'goal',
-    promptTransformer: (p) => `/goal ${p}`,
+    promptTransformer: (p, provider) =>
+      provider === 'agy'
+        ? `Treat the following as a concrete completion condition. Continue autonomously within this turn until the condition is satisfied or a genuine blocker is proven. Verify the condition before reporting completion. Goal: ${p}`
+        : `/goal ${p}`,
     extraOutput: (job) =>
-      [
-        '',
-        'This is a Claude Code goal-condition request.',
-        'The runtime tracks goal-completion automatically; attach via',
-        `claude attach ${job.claude.shortId}`,
-        'to watch progress.',
-      ].join('\n'),
+      providerForJob(job) === 'agy'
+        ? [
+            '',
+            'This is a supervised Google Antigravity goal conversation.',
+            'Use $agy-followup to continue the same goal context when another turn is needed.',
+          ].join('\n')
+        : [
+            '',
+            'This is a Claude Code goal-condition request.',
+            'The runtime tracks goal-completion automatically; attach via',
+            `claude attach ${job.claude.shortId}`,
+            'to watch progress.',
+          ].join('\n'),
   });
 }
 
@@ -1950,15 +2158,24 @@ async function cmdFork(flags, positional, json) {
 
   await _runDelegateCore(flags, positional, json, {
     commandName: 'fork',
-    promptTransformer: (p) => `/fork ${p}`,
+    promptTransformer: (p, provider) =>
+      provider === 'agy'
+        ? `Spawn a fresh independent Antigravity subagent for this directive. Keep its analysis independent, inspect and verify its returned work, then report the result and unresolved risks. Directive: ${p}`
+        : `/fork ${p}`,
     extraOutput: (job) =>
-      [
-        '',
-        'This is a Claude Code fork request.',
-        'The runtime spawns a real subagent process to execute the directive.',
-        'Note: /fork directives consume 20-30k tokens even for trivial directives.',
-        `Attach via \`claude attach ${job.claude.shortId}\` to watch progress.`,
-      ].join('\n'),
+      providerForJob(job) === 'agy'
+        ? [
+            '',
+            'This is an Antigravity subagent-fork request inside a supervised conversation.',
+            'It does not create a separate git worktree; use normal git isolation when needed.',
+          ].join('\n')
+        : [
+            '',
+            'This is a Claude Code fork request.',
+            'The runtime spawns a real subagent process to execute the directive.',
+            'Note: /fork directives consume 20-30k tokens even for trivial directives.',
+            `Attach via \`claude attach ${job.claude.shortId}\` to watch progress.`,
+          ].join('\n'),
   });
 }
 
@@ -1976,15 +2193,24 @@ async function cmdBatch(flags, positional, json) {
 
   await _runDelegateCore(flags, positional, json, {
     commandName: 'batch',
-    promptTransformer: (p) => `/batch ${p}`,
+    promptTransformer: (p, provider) =>
+      provider === 'agy'
+        ? `Run this as batch-parallel work orchestration. Identify independent items, assign them to Antigravity subagents concurrently, preserve item ordering in the report, retry isolated failures when safe, and synthesize all results. Batch instruction: ${p}`
+        : `/batch ${p}`,
     extraOutput: (job) =>
-      [
-        '',
-        'This is a Claude Code batch request.',
-        'The runtime injects a "# Batch: Parallel Work Orchestration" system prompt.',
-        'Batch sessions can spawn multiple parallel tool-calls and subagents.',
-        `Attach via \`claude attach ${job.claude.shortId}\` to watch progress.`,
-      ].join('\n'),
+      providerForJob(job) === 'agy'
+        ? [
+            '',
+            'This is an Antigravity batch request using its native subagent framework.',
+            'The parent conversation remains the recorded job boundary.',
+          ].join('\n')
+        : [
+            '',
+            'This is a Claude Code batch request.',
+            'The runtime injects a "# Batch: Parallel Work Orchestration" system prompt.',
+            'Batch sessions can spawn multiple parallel tool-calls and subagents.',
+            `Attach via \`claude attach ${job.claude.shortId}\` to watch progress.`,
+          ].join('\n'),
   });
 }
 
@@ -2005,20 +2231,29 @@ async function cmdDeepResearch(flags, positional, json) {
 
   await _runDelegateCore(flags, positional, json, {
     commandName: 'deep-research',
-    promptTransformer: (p) => `/deep-research ${p}`,
+    promptTransformer: (p, provider) =>
+      provider === 'agy'
+        ? `Run rigorous multi-agent deep research on this question. Fan out independent searches, prefer primary sources, cross-check important claims, distinguish evidence from inference, include direct source links, and synthesize a concise cited report. Question: ${p}`
+        : `/deep-research ${p}`,
     extraOutput: (job) =>
-      [
-        '',
-        'This is a Claude Code deep-research request.',
-        'The /deep-research runtime fans out parallel web searches, fetches sources,',
-        'adversarially verifies claims, and synthesizes a cited report.',
-        'WebSearch is auto-available in standard bg sessions.',
-        'Current Claude Code versions may present a dynamic workflow approval gate.',
-        '',
-        `  claude attach ${job.claude.shortId}`,
-        '',
-        'Note: --yes only acknowledges the plugin privacy prompt; it does not approve Claude Code workflow gates.',
-      ].join('\n'),
+      providerForJob(job) === 'agy'
+        ? [
+            '',
+            'This is an Antigravity deep-research request.',
+            'Headless web access follows Antigravity permissions.allow rules; denied URL permissions fail closed.',
+          ].join('\n')
+        : [
+            '',
+            'This is a Claude Code deep-research request.',
+            'The /deep-research runtime fans out parallel web searches, fetches sources,',
+            'adversarially verifies claims, and synthesizes a cited report.',
+            'WebSearch is auto-available in standard bg sessions.',
+            'Current Claude Code versions may present a dynamic workflow approval gate.',
+            '',
+            `  claude attach ${job.claude.shortId}`,
+            '',
+            'Note: --yes only acknowledges the plugin privacy prompt; it does not approve Claude Code workflow gates.',
+          ].join('\n'),
   });
 }
 
@@ -2032,7 +2267,7 @@ async function cmdDeepResearch(flags, positional, json) {
  * @param {boolean} json
  * @param {{
  *   commandName: string;
- *   promptTransformer: (raw: string) => string;
+ *   promptTransformer: (raw: string, provider: 'claude' | 'agy') => string;
  *   extraOutput: string | ((job: object) => string) | null;
  *   workspaceRoot?: string;
  * }} opts
@@ -2043,19 +2278,7 @@ async function _runDelegateCore(
   json,
   { commandName, promptTransformer, extraOutput, workspaceRoot },
 ) {
-  const requested = requestedProvider(flags, commandName, json);
-  if (!['delegate', 'restart'].includes(commandName) && requested !== 'claude') {
-    process.stderr.write(
-      formatError(
-        new Error(
-          `delegate ${commandName} is a Claude Code workflow and requires --provider claude.`,
-        ),
-        commandName,
-        json,
-      ) + '\n',
-    );
-    process.exit(2);
-  }
+  requestedProvider(flags, commandName, json);
   // 1. Collect prompt from positionals (after -- or all remaining).
   rejectLateDispatcherFlagInPrompt(positional, 0, commandName, json);
   const rawPrompt = positional.join(' ').trim();
@@ -2070,8 +2293,6 @@ async function _runDelegateCore(
     process.exit(2);
   }
 
-  const prompt = promptTransformer(rawPrompt);
-
   const workspace = workspaceRoot ?? process.cwd();
   const startSessionOptions = buildStartSessionOptions(flags, commandName, json, {
     name: typeof flags['name'] === 'string' ? flags['name'] : undefined,
@@ -2081,6 +2302,7 @@ async function _runDelegateCore(
   // Resolve auto before disclosure so the user sees the actual external provider.
   const runtime = await resolveStartRuntime(flags, commandName, json, workspace);
   const { provider, driver } = runtime;
+  const prompt = promptTransformer(rawPrompt, provider);
   const providerLabel = provider === 'agy' ? 'Google Antigravity' : 'Claude Code';
   validateProviderStartOptions(provider, flags, startSessionOptions, commandName, json);
 
@@ -2157,6 +2379,7 @@ async function _runDelegateCore(
       version: runtime.driverVersion,
       capabilitiesSnapshot: caps,
     },
+    kind: commandName,
     session,
     ...(provider === 'claude' ? { claude: session } : {}),
     prompt: { summary, sha256, bytesLen },
@@ -2953,7 +3176,7 @@ async function cmdStop(flags, positional, json) {
  * @param {{
  *   jobId: string;
  *   prompt: string;
- *   driver: import('@codex-delegation/driver-claude-code').ClaudeBackgroundDriver;
+ *   driver: import('@codex-delegation/runtime').Driver;
  *   adapter: object;
  *   json: boolean;
  *   sessionHandle: object;
@@ -3103,7 +3326,11 @@ async function sendFollowupTurn({
       if (failedTurn) {
         turns[newTurnIndex] = { ...failedTurn, status: 'failed', endedAt };
       }
-      return { ...current, turns };
+      return {
+        ...current,
+        ...(providerForJob(current) === 'agy' ? { status: 'failed' } : {}),
+        turns,
+      };
     });
     await appendEvent(jobId, {
       type: 'turn.failed',
@@ -3201,6 +3428,9 @@ async function cmdFollowup(flags, positional, json) {
   // module-scope const referenced from inside an early-dispatch path would hit
   // the temporal-dead-zone (TDZ) and throw `Cannot access ... before initialization`.
   const FOLLOWUP_REJECTED_FLAGS = new Set(STARTUP_ONLY_FLAGS);
+  // A follow-up does not use --provider as a startup option. It is accepted as
+  // an assertion against the provider already recorded on the target job.
+  FOLLOWUP_REJECTED_FLAGS.delete('provider');
   // 1. Check for rejected startup-only flags.
   for (const flag of FOLLOWUP_REJECTED_FLAGS) {
     if (flags[flag] !== undefined) {
@@ -3267,20 +3497,10 @@ async function cmdFollowup(flags, positional, json) {
 
   // 5. Reconcile to get fresh status.
   const storedJob = await readJob(jobId);
-  if (providerForJob(storedJob) !== 'claude') {
-    process.stderr.write(
-      formatError(
-        new Error(
-          `Job ${jobId} uses agy CLI. Antigravity print mode does not expose a stable conversation ID, so follow-up is unavailable; start a new $agy-delegate job instead.`,
-        ),
-        'followup',
-        json,
-      ) + '\n',
-    );
-    process.exit(1);
-  }
-  const driver = new ClaudeBackgroundDriver({ cwd: storedJob.workspace.root });
-  const adapter = makeClaudeAdapter(driver);
+  const provider = providerForJob(storedJob);
+  assertRequestedProviderMatchesJob(flags, provider, 'followup', json);
+  const providerLabel = provider === 'agy' ? 'Google Antigravity' : 'Claude Code';
+  const { driver, adapter } = runtimeForJob(storedJob);
 
   let job;
   try {
@@ -3297,7 +3517,9 @@ async function cmdFollowup(flags, positional, json) {
     process.stderr.write(
       formatError(
         new Error(
-          `Job ${jobId} is running; wait for $claude-status to show awaiting_followup before sending a follow-up.`,
+          provider === 'agy'
+            ? `Job ${jobId} is running; wait for the current ${providerLabel} turn to finish before sending a follow-up.`
+            : `Job ${jobId} is running; wait for $claude-status to show awaiting_followup before sending a follow-up.`,
         ),
         'followup',
         json,
@@ -3315,7 +3537,9 @@ async function cmdFollowup(flags, positional, json) {
   ) {
     process.stderr.write(
       formatError(
-        new Error(`Job ${jobId} is ${status}; start a new $claude-delegate job instead.`),
+        new Error(
+          `Job ${jobId} is ${status}; start a new ${provider === 'agy' ? '$agy-delegate' : '$claude-delegate'} job instead.`,
+        ),
         'followup',
         json,
       ) + '\n',
@@ -3323,7 +3547,7 @@ async function cmdFollowup(flags, positional, json) {
     process.exit(1);
   }
 
-  if (status === 'completed') {
+  if (status === 'completed' && provider === 'claude') {
     // Require a live idle Claude session.
     const sessionHandle = sessionHandleFromJob(job);
     let driverStatus;
@@ -3359,7 +3583,7 @@ async function cmdFollowup(flags, positional, json) {
     header: 'Privacy acknowledgement required for target workspace.',
     actionLines: [
       `This command will inject a follow-up prompt into job ${jobId}.`,
-      "Claude Code's existing session has access to files in:",
+      `${providerLabel}'s existing conversation has access to files in:`,
     ],
     workspaceLabel: 'Target workspace',
   });
@@ -3405,6 +3629,9 @@ async function cmdReview(flags, positional, json) {
 
   // Startup-only flags rejected with the pinned review-specific message.
   const REVIEW_REJECTED_STARTUP_FLAGS = new Set(STARTUP_ONLY_FLAGS);
+  // Same-conversation review also infers its runtime from the job. An explicit
+  // provider is useful as a target assertion and must not start a new runtime.
+  REVIEW_REJECTED_STARTUP_FLAGS.delete('provider');
   for (const flag of REVIEW_REJECTED_STARTUP_FLAGS) {
     if (flags[flag] !== undefined) {
       process.stderr.write(
@@ -3475,20 +3702,10 @@ async function cmdReview(flags, positional, json) {
 
   // 4. Reconcile to get fresh status.
   const storedJob = await readJob(jobId);
-  if (providerForJob(storedJob) !== 'claude') {
-    process.stderr.write(
-      formatError(
-        new Error(
-          `$claude-review reuses a live Claude session and cannot target agy job ${jobId}; use $claude-adversarial-review for an independent review.`,
-        ),
-        'review',
-        json,
-      ) + '\n',
-    );
-    process.exit(1);
-  }
-  const driver = new ClaudeBackgroundDriver({ cwd: storedJob.workspace.root });
-  const adapter = makeClaudeAdapter(driver);
+  const provider = providerForJob(storedJob);
+  assertRequestedProviderMatchesJob(flags, provider, 'review', json);
+  const providerLabel = provider === 'agy' ? 'Google Antigravity' : 'Claude Code';
+  const { driver, adapter } = runtimeForJob(storedJob);
 
   let job;
   try {
@@ -3502,10 +3719,11 @@ async function cmdReview(flags, positional, json) {
   const { status } = job;
 
   if (status === 'needs_input') {
+    const reviewSkill = provider === 'agy' ? '$agy-review' : '$claude-review';
     process.stderr.write(
       formatError(
         new Error(
-          `Job ${jobId} needs input. Resolve the permission request first, then run $claude-review.`,
+          `Job ${jobId} needs input. Resolve the permission request first, then run ${reviewSkill}.`,
         ),
         'review',
         json,
@@ -3518,7 +3736,9 @@ async function cmdReview(flags, positional, json) {
     process.stderr.write(
       formatError(
         new Error(
-          `Job ${jobId} is running; wait for $claude-status to show awaiting_followup before running $claude-review.`,
+          provider === 'agy'
+            ? `Job ${jobId} is running; wait for the current ${providerLabel} turn to finish before reviewing it.`
+            : `Job ${jobId} is running; wait for $claude-status to show awaiting_followup before running $claude-review.`,
         ),
         'review',
         json,
@@ -3528,10 +3748,11 @@ async function cmdReview(flags, positional, json) {
   }
 
   if (status === 'queued' || status === 'starting') {
+    const reviewSkill = provider === 'agy' ? '$agy-review' : '$claude-review';
     process.stderr.write(
       formatError(
         new Error(
-          `Job ${jobId} is ${status}; wait for the job to reach awaiting_followup before running $claude-review.`,
+          `Job ${jobId} is ${status}; wait for the current turn to finish before running ${reviewSkill}.`,
         ),
         'review',
         json,
@@ -3541,10 +3762,13 @@ async function cmdReview(flags, positional, json) {
   }
 
   if (status === 'failed' || status === 'stopped' || status === 'orphaned') {
+    const reviewSkill = provider === 'agy' ? '$agy-review' : '$claude-review';
+    const adversarialSkill =
+      provider === 'agy' ? '$agy-adversarial-review' : '$claude-adversarial-review';
     process.stderr.write(
       formatError(
         new Error(
-          `$claude-review is not applicable to ${status} jobs; use $claude-adversarial-review for a fresh-session review of the prior output.`,
+          `${reviewSkill} is not applicable to ${status} jobs; use ${adversarialSkill} for a fresh-session review of the prior output.`,
         ),
         'review',
         json,
@@ -3553,7 +3777,7 @@ async function cmdReview(flags, positional, json) {
     process.exit(1);
   }
 
-  if (status === 'completed') {
+  if (status === 'completed' && provider === 'claude') {
     // Require a live idle Claude session.
     const sessionHandleForStatus = sessionHandleFromJob(job);
     let driverStatus;
@@ -3615,7 +3839,7 @@ async function cmdReview(flags, positional, json) {
     header: 'Privacy acknowledgement required for target workspace.',
     actionLines: [
       `This command will inject a review prompt into job ${jobId}.`,
-      "Claude Code's existing session has access to files in:",
+      `${providerLabel}'s existing conversation has access to files in:`,
     ],
     workspaceLabel: 'Target workspace',
   });
@@ -3669,7 +3893,9 @@ async function cmdReview(flags, positional, json) {
   const reviewWaitParsed = reviewWaitRaw != null ? Number(reviewWaitRaw) : NaN;
   const REVIEW_RECONCILE_DELAY_MS = Number.isFinite(reviewWaitParsed)
     ? Math.max(0, reviewWaitParsed)
-    : 8_000;
+    : provider === 'agy'
+      ? 0
+      : 8_000;
   if (REVIEW_RECONCILE_DELAY_MS > 0) {
     await new Promise((res) => setTimeout(() => res(undefined), REVIEW_RECONCILE_DELAY_MS));
   }
@@ -3712,16 +3938,9 @@ async function cmdAdversarialReview(flags, positional, json) {
   // 1. Parse args: reject inapplicable flags at parse time.
   const reviewGate = parseReviewGate(flags, 'adversarial-review', json);
   const permissionMode = normalizePermissionMode(flags, 'adversarial-review', json);
-  if (requestedProvider(flags, 'adversarial-review', json) !== 'claude') {
-    process.stderr.write(
-      formatError(
-        new Error('$claude-adversarial-review always starts an independent Claude session.'),
-        'adversarial-review',
-        json,
-      ) + '\n',
-    );
-    process.exit(2);
-  }
+  const requestedReviewProvider = requestedProvider(flags, 'adversarial-review', json);
+  const adversarialReviewSkill =
+    requestedReviewProvider === 'agy' ? '$agy-adversarial-review' : '$claude-adversarial-review';
 
   // --allow-edit is categorically rejected for all review skills.
   if (flags['allow-edit'] !== undefined) {
@@ -3754,7 +3973,7 @@ async function cmdAdversarialReview(flags, positional, json) {
     process.stderr.write(
       formatError(
         new Error(
-          "--add-dir is not accepted by $claude-adversarial-review; the review session runs in the target job's workspace.",
+          `--add-dir is not accepted by ${adversarialReviewSkill}; the review session runs in the target job's workspace.`,
         ),
         'adversarial-review',
         json,
@@ -3767,7 +3986,7 @@ async function cmdAdversarialReview(flags, positional, json) {
   if (flags['mcp-config'] !== undefined) {
     process.stderr.write(
       formatError(
-        new Error('--mcp-config is not accepted by $claude-adversarial-review.'),
+        new Error(`--mcp-config is not accepted by ${adversarialReviewSkill}.`),
         'adversarial-review',
         json,
       ) + '\n',
@@ -4015,8 +4234,20 @@ async function cmdAdversarialReview(flags, positional, json) {
     mcpConfig: undefined,
     permissionMode,
   });
-
-  const driver = new ClaudeBackgroundDriver({ cwd: targetJob.workspace.root });
+  const reviewRuntime = await resolveStartRuntime(
+    flags,
+    'adversarial-review',
+    json,
+    targetJob.workspace.root,
+  );
+  const { provider: reviewProvider, driver } = reviewRuntime;
+  validateProviderStartOptions(
+    reviewProvider,
+    flags,
+    reviewStartSessionOptions,
+    'adversarial-review',
+    json,
+  );
   const reviewHandle = await driver.startSession({
     cwd: targetJob.workspace.root,
     prompt: adversarialPrompt,
@@ -4030,13 +4261,21 @@ async function cmdAdversarialReview(flags, positional, json) {
   const caps = await driver.probe();
 
   const reviewSession = {
-    provider: 'claude',
+    provider: reviewProvider,
     version: caps.cliVersion ?? caps.claudeVersion ?? 'unknown',
     shortId: reviewHandle.shortId,
+    ...(reviewHandle.sessionId ? { sessionId: reviewHandle.sessionId } : {}),
     sessionName: reviewHandle.sessionName,
+    ...(reviewHandle.pid ? { pid: reviewHandle.pid } : {}),
     cwd: reviewHandle.cwd,
     startedAt: reviewHandle.startedAt,
-    logsCommand: `claude logs ${reviewHandle.shortId}`,
+    ...(reviewHandle.statePath ? { statePath: reviewHandle.statePath } : {}),
+    ...(reviewHandle.resultPath ? { resultPath: reviewHandle.resultPath } : {}),
+    ...(reviewHandle.errorPath ? { errorPath: reviewHandle.errorPath } : {}),
+    logsCommand:
+      reviewProvider === 'agy'
+        ? `cat ${shellQuote(reviewHandle.errorPath ?? '')}`
+        : `claude logs ${reviewHandle.shortId}`,
     launchPolicy: launchPolicyFromStartSessionOptions(reviewStartSessionOptions),
   };
 
@@ -4049,12 +4288,13 @@ async function cmdAdversarialReview(flags, positional, json) {
       root: targetJob.workspace.root,
     },
     driver: {
-      name: 'claude-background',
-      version: DRIVER_VERSION,
+      name: caps.driverName,
+      version: reviewRuntime.driverVersion,
       capabilitiesSnapshot: caps,
     },
+    kind: 'adversarial-review',
     session: reviewSession,
-    claude: reviewSession,
+    ...(reviewProvider === 'claude' ? { claude: reviewSession } : {}),
     prompt: { summary: prefixedSummary, sha256: promptMeta.sha256, bytesLen: promptMeta.bytesLen },
     reviewOf: { jobId: targetJobId, turnIndex: selectedTurnIndex },
   });
@@ -4067,6 +4307,9 @@ async function cmdAdversarialReview(flags, positional, json) {
     sessionName: reviewHandle.sessionName,
     cwd: reviewHandle.cwd,
     startedAt: reviewHandle.startedAt,
+    statePath: reviewHandle.statePath,
+    resultPath: reviewHandle.resultPath,
+    errorPath: reviewHandle.errorPath,
   };
 
   // 13. Reconcile loop with DD-1 timeout.
@@ -4093,9 +4336,10 @@ async function cmdAdversarialReview(flags, positional, json) {
       ? parsedPollEnv
       : ADVERSARIAL_REVIEW_POLL_DEFAULT_MS;
 
-  const reviewAdapter = makeClaudeAdapter(driver, {
-    startedAt: reviewHandle.startedAt,
-  });
+  const reviewAdapter =
+    reviewProvider === 'agy'
+      ? makeAgyAdapter(driver)
+      : makeClaudeAdapter(driver, { startedAt: reviewHandle.startedAt });
 
   const startTime = Date.now();
   let currentReviewJob = reviewJob;
@@ -4212,6 +4456,96 @@ async function cmdAdversarialReview(flags, positional, json) {
 
 // ---------- workflows ----------
 
+async function cmdAgyWorkflows(flags, positional, json) {
+  const agyWorkflowKinds = new Set(['workflow', 'batch', 'deep-research', 'goal', 'fork']);
+  const listed = flags['all'] ? await listJobs() : await listJobsForWorkspace(process.cwd());
+  const jobs = sortNewestFirst(
+    listed.jobs.filter(
+      (job) => providerForJob(job) === 'agy' && agyWorkflowKinds.has(job.kind ?? ''),
+    ),
+  );
+  const prefix = positional[0];
+  if (positional.length > 1) {
+    process.stderr.write(
+      formatError(new Error('workflows accepts at most one job ID or prefix.'), 'workflows', json) +
+        '\n',
+    );
+    process.exit(2);
+  }
+  if (prefix) {
+    const resolved = resolveJobIdPrefix(
+      jobs.map((job) => job.jobId),
+      prefix,
+    );
+    if ('error' in resolved) {
+      const message =
+        resolved.error === 'ambiguous'
+          ? formatAmbiguousJobPrefix(prefix, resolved.candidates)
+          : `No Antigravity workflow job found matching "${prefix}"`;
+      process.stderr.write(formatError(new Error(message), 'workflows', json) + '\n');
+      process.exit(1);
+    }
+    const job = jobs.find((candidate) => candidate.jobId === resolved.match);
+    const detail = {
+      jobId: job.jobId,
+      provider: 'agy',
+      kind: job.kind,
+      status: job.status,
+      conversationId: job.session.sessionId ?? null,
+      shortId: job.session.shortId,
+      sessionName: job.session.sessionName,
+      cwd: job.workspace.root,
+      turnCount: job.turns.length,
+      createdAt: job.createdAt,
+      updatedAt: job.updatedAt,
+      resultPreview: job.result?.finalMessagePreview ?? null,
+      nativeSubagentInspection: false,
+    };
+    if (json) {
+      process.stdout.write(JSON.stringify({ ok: true, workflow: detail }, null, 2) + '\n');
+    } else {
+      process.stdout.write(
+        [
+          `Antigravity workflow job: ${detail.jobId}`,
+          `  Kind:         ${detail.kind}`,
+          `  Status:       ${detail.status}`,
+          `  Conversation: ${detail.conversationId ?? 'unavailable'}`,
+          `  Turns:        ${detail.turnCount}`,
+          `  Workspace:    ${detail.cwd}`,
+          '',
+          'Antigravity exposes its nested subagent panel only in the interactive TUI; the plugin records the parent workflow conversation and its results.',
+        ].join('\n') + '\n',
+      );
+    }
+    return;
+  }
+
+  const summaries = jobs.map((job) => ({
+    jobId: job.jobId,
+    kind: job.kind,
+    status: job.status,
+    conversationId: job.session.sessionId ?? null,
+    turnCount: job.turns.length,
+    updatedAt: job.updatedAt,
+    resultPreview: job.result?.finalMessagePreview ?? null,
+  }));
+  if (json) {
+    process.stdout.write(
+      JSON.stringify({ ok: true, provider: 'agy', workflows: summaries }, null, 2) + '\n',
+    );
+  } else if (summaries.length === 0) {
+    process.stdout.write('No Antigravity workflow jobs found.\n');
+  } else {
+    const lines = [`Antigravity workflow jobs (${summaries.length}):`];
+    for (const item of summaries) {
+      lines.push(
+        `  ${item.jobId}  ${String(item.status).padEnd(12)}  ${String(item.kind).padEnd(14)}  turns=${item.turnCount}`,
+      );
+    }
+    process.stdout.write(lines.join('\n') + '\n');
+  }
+}
+
 async function cmdWorkflows(flags, positional, json) {
   // --allow-edit is not applicable; this command is read-only.
   if (flags['allow-edit'] !== undefined) {
@@ -4225,6 +4559,12 @@ async function cmdWorkflows(flags, positional, json) {
       ) + '\n',
     );
     process.exit(2);
+  }
+
+  const provider = requestedProvider(flags, 'workflows', json);
+  if (provider === 'agy') {
+    await cmdAgyWorkflows(flags, positional, json);
+    return;
   }
 
   const jobId = positional[0];
@@ -4319,6 +4659,12 @@ async function cmdSkills(flags, positional, json) {
     process.exit(2);
   }
 
+  const provider = requestedProvider(flags, 'skills', json);
+  if (provider === 'agy') {
+    const catalog = discoverAgySkills({ cwd: process.cwd(), env: process.env });
+    process.stdout.write(formatAgySkills(catalog, json) + '\n');
+    return;
+  }
   const catalog = discoverClaudeSkills({ cwd: process.cwd(), env: process.env });
   process.stdout.write(formatClaudeSkills(catalog, json) + '\n');
 }
@@ -4641,6 +4987,13 @@ function printUsage(commandName = '') {
       '',
       'Options: --json',
     ],
+    'agy-doctor': [
+      'Usage: delegate agy-doctor [permission flags] [--json]',
+      '',
+      'Runs a read-only Antigravity preflight for CLI availability, targeted conversation resume, workspace access, and headless permission intent.',
+      '',
+      'Options: --json --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions',
+    ],
     doctor: [
       'Usage: delegate doctor [--claude-access] [--real|--chrome|--no-chrome] [permission flags] [--json]',
       '',
@@ -4674,25 +5027,46 @@ function printUsage(commandName = '') {
     workflow: [
       'Usage: delegate workflow [options] -- "<prompt>"',
       '',
-      'Starts a Claude Code dynamic workflow background session.',
-      'After startup, attach to the printed Claude session short ID:',
-      '  claude attach <shortId>',
-      'Then choose Yes, View raw script, or No in Claude Code.',
-      'Put all dispatcher flags before --; anything after -- is the Claude prompt.',
+      'Starts a workflow through Claude Code or Google Antigravity.',
+      'Claude uses its dynamic workflow runtime. Antigravity receives a phased, multi-agent orchestration contract in a recorded conversation.',
+      'For a Claude workflow approval gate, run: claude attach <shortId>.',
+      'Put all dispatcher flags before --; anything after -- is the provider prompt.',
       '',
-      'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions',
+      'Options: --provider <claude|agy|auto> --yes --json --compact --model <model> --agent <agent> --effort <effort> --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions',
       'Note: --yes only acknowledges plugin privacy; it does not approve the Claude Code workflow gate.',
+    ],
+    goal: [
+      'Usage: delegate goal [options] -- "<completion condition>"',
+      '',
+      'Starts a provider job centered on a concrete, verified completion condition.',
+      'Claude uses /goal. Antigravity receives an autonomous completion-and-verification contract and can be continued with followup.',
+      '',
+      'Options: --provider <claude|agy|auto> --yes --json --compact and provider startup flags',
+    ],
+    fork: [
+      'Usage: delegate fork [options] -- "<directive>"',
+      '',
+      'Requests an independent provider subagent and records the parent job.',
+      'Antigravity nested-subagent inspection remains available only in its interactive TUI.',
+      '',
+      'Options: --provider <claude|agy|auto> --yes --json --compact and provider startup flags',
+    ],
+    batch: [
+      'Usage: delegate batch [options] -- "<instruction>"',
+      '',
+      'Runs independent work items in parallel through the selected provider and synthesizes the results.',
+      '',
+      'Options: --provider <claude|agy|auto> --yes --json --compact and provider startup flags',
     ],
     'deep-research': [
       'Usage: delegate deep-research [options] -- "<question>"',
       '',
-      'Starts a Claude Code /deep-research background session with WebSearch-backed fanout.',
-      'Current Claude Code versions may show a dynamic workflow approval gate.',
-      'If prompted, attach to the printed Claude session short ID:',
-      '  claude attach <shortId>',
-      'Put all dispatcher flags before --; anything after -- is the Claude prompt.',
+      'Starts provider-native multi-agent research with source-linking and cross-checking.',
+      'Claude uses /deep-research with WebSearch. Antigravity receives an equivalent evidence and synthesis contract.',
+      'Claude may show a workflow approval gate; run: claude attach <shortId>.',
+      'Put all dispatcher flags before --; anything after -- is the provider prompt.',
       '',
-      'Options: --yes --json --compact --model <model> --effort <effort> --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions',
+      'Options: --provider <claude|agy|auto> --yes --json --compact --model <model> --agent <agent> --effort <effort> --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions',
       'Note: --yes only acknowledges plugin privacy; it does not approve Claude Code workflow gates.',
     ],
     status: [
@@ -4734,27 +5108,29 @@ function printUsage(commandName = '') {
     followup: [
       'Usage: delegate followup <jobId-or-prefix> [options] -- "<prompt>"',
       '',
-      'Sends a follow-up prompt to an awaiting Claude job in the existing session.',
-      'If JSON output reports resultPending:true, run $claude-result <jobId> after status settles.',
+      'Sends a follow-up prompt to the exact recorded Claude or Antigravity conversation.',
+      'The target job selects the provider; Antigravity resumes by captured conversation UUID.',
+      'If JSON output reports resultPending:true, run the provider result skill after status settles.',
       '',
       'Options: --all --yes --json --allow-edit',
     ],
     workflows: [
-      'Usage: delegate workflows [<jobId-or-sessionId>] [--all] [--json]',
+      'Usage: delegate workflows [<jobId-or-sessionId>] [--provider <claude|agy>] [--all] [--json]',
       '',
       'Read-only inspector for workflow-like background jobs.',
-      'Includes sessions started by $claude-workflow and $claude-deep-research.',
+      'Includes Claude workflow sessions or recorded Antigravity workflow, goal, fork, batch, and research jobs.',
+      'Claude mode includes sessions started by $claude-workflow and $claude-deep-research.',
       '',
-      'Options: --all --json',
+      'Options: --provider <claude|agy> --all --json',
     ],
     skills: [
-      'Usage: delegate skills [--json]',
+      'Usage: delegate skills [--provider <claude|agy>] [--json]',
       '',
-      'Read-only catalog of Claude Code skills visible to delegated Claude sessions.',
-      'Includes project .claude/skills, user ~/.claude/skills, and skills from installed Claude Code plugin cache paths.',
+      'Read-only catalog of skills visible to delegated Claude Code or Antigravity sessions.',
+      "Scans each provider's project, user, and installed-plugin skill roots.",
       'Use listed skills in delegated prompts as /skill-name when user-invocable.',
       '',
-      'Options: --json',
+      'Options: --provider <claude|agy> --json',
     ],
     upgrade: [
       'Usage: delegate upgrade [--dry-run] [--yes] [--json] [--public|--local]',
@@ -4779,14 +5155,15 @@ function printUsage(commandName = '') {
       'Commands:',
       '  setup                                     Run doctor probes and report status',
       '  agy-setup                                 Check Antigravity CLI print-mode readiness',
+      '  agy-doctor                                Preflight Antigravity resume, workspace, and permission readiness',
       '  doctor [--claude-access] [--real] [--json]  Preflight auth, model access, browser, workspace, and permission mode',
       '  delegate [flags] -- <prompt>              Start a Claude or Antigravity job',
       '  restart <jobId-or-prefix> [flags] -- <prompt>  Stop a job and start a fresh one in the same workspace',
-      '  workflow [flags] -- <prompt>              Start a Claude Code dynamic workflow (triggers ultracode planning)',
-      '  goal [flags] -- <condition>               Start a Claude Code background session with a /goal condition',
-      '  fork [flags] -- <directive>               Fork a Claude Code subagent for a directive',
-      '  batch [flags] -- <instruction>            Run a batch of parallel Claude Code instructions',
-      '  deep-research [flags] -- <question>       Run a Claude Code /deep-research workflow (multi-agent fan-out with WebSearch)',
+      '  workflow [flags] -- <prompt>              Start a provider workflow',
+      '  goal [flags] -- <condition>               Pursue a verified provider completion condition',
+      '  fork [flags] -- <directive>               Request an independent provider subagent',
+      '  batch [flags] -- <instruction>            Run parallel provider work',
+      '  deep-research [flags] -- <question>       Run multi-agent provider research with source verification',
       '  status [--all] [--json] [--compact] [--limit <n>] [--stored-status <state>]',
       '                                            List jobs for current workspace',
       '  status --job <jobId-or-prefix> [--all] [--json]  Show one job status',
@@ -4800,8 +5177,9 @@ function printUsage(commandName = '') {
       '                                            Same-session structured review of the latest non-review turn',
       '  adversarial-review <jobId-or-prefix> [--all] [--json] [--yes] [--model <model>] [--effort <effort>] [--permission-mode <mode>] [--blocking|--fail-on <gate>]',
       '                                            Fresh-session independent review of the latest non-review turn',
-      '  workflows [<jobId>] [--all] [--json]      List workflow/deep-research sessions or drill into one (read-only; no subprocess spawned)',
-      '  skills [--json]                          List Claude Code skills visible to delegated Claude sessions',
+      '  workflows [<jobId>] [--all] [--json]      List workflow-like sessions or jobs',
+      '      Optional: --provider <claude|agy>',
+      '  skills [--provider <provider>] [--json]  List provider skills visible to delegated sessions',
       '  upgrade [--dry-run] [--yes] [--json] [--public|--local]  Refresh or repair the installed Codex Delegation plugin',
       '  version | --version                       Print the installed plugin version',
       '',

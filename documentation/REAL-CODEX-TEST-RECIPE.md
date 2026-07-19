@@ -1,7 +1,7 @@
 # Real Codex acceptance test
 
 Use this recipe to validate a packaged `delegate` plugin in a real Codex process. It covers installation,
-all 24 skill names, one live Claude Code job, and one live Antigravity job. Historical test findings
+all 36 skill names, one live Claude Code job, and one live Antigravity job. Historical test findings
 under `documentation/testing/` are evidence from earlier releases, not current instructions.
 
 ## 1. Record the environment
@@ -72,7 +72,7 @@ so its generated skill catalog does not retain versioned paths from an older cac
 
 ## 4. Verify skill discovery
 
-Open Codex, type `$`, and confirm these 24 skills appear:
+Open Codex, type `$`, and confirm these 36 skills appear:
 
 ```text
 $claude-setup
@@ -94,11 +94,23 @@ $claude-workflows
 $claude-skills
 $claude-upgrade
 $agy-setup
+$agy-doctor
 $agy-delegate
 $agy-status
 $agy-wait
 $agy-result
 $agy-stop
+$agy-followup
+$agy-review
+$agy-adversarial-review
+$agy-workflow
+$agy-goal
+$agy-fork
+$agy-batch
+$agy-deep-research
+$agy-workflows
+$agy-skills
+$agy-upgrade
 ```
 
 Fresh-process setup invocation can also be checked from a shell:
@@ -178,14 +190,17 @@ $agy-delegate --mode plan -- "Inspect this repository's README files and report 
 $agy-wait <jobId> --json --compact --timeout 5m
 $agy-status --job <jobId> --json --compact
 $agy-result <jobId>
+$agy-followup <jobId> -- "Now verify the finding in the same conversation."
+$agy-result <jobId>
 ```
 
 The job should retain `provider: "agy"`, settle as `completed`, and return captured stdout. Use
 `$agy-result <jobId> --partial` after a failed, stopped, orphaned, or still-running job when partial
 output matters.
 
-Antigravity print mode is single-turn: there is no `$agy-followup`, and the plugin does not use the
-workspace-global `agy --continue` state. Start another `$agy-delegate` for another instruction.
+The stored job must include an Antigravity conversation UUID. `$agy-followup` resumes that exact
+UUID and appends an immutable second turn. The plugin does not use workspace-global
+`agy --continue` state.
 
 To test cancellation, start a deliberately long job, stop it promptly, and inspect the stored state:
 

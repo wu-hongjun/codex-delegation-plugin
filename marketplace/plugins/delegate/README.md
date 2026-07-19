@@ -1,8 +1,9 @@
 # Codex Delegation - Delegate Tasks to Claude Code or Antigravity
 
 A Codex plugin that lets Codex delegate tasks to Claude Code background sessions or Google
-Antigravity `agy --print` processes. Claude supports structured review and follow-up flows;
-Antigravity supports supervised delegate, status, wait, result, and stop operations.
+Antigravity `agy --print` conversations. Both providers support supervised lifecycle, exact
+follow-up, structured reviews, orchestration, discovery, and upgrade flows where their CLIs expose
+safe primitives.
 
 This is the codex-delegation-plugin marketplace distribution copy. The development
 source of truth lives at `packages/plugin-delegate/` in the codex-delegation-plugin
@@ -67,6 +68,7 @@ Then open Codex inside any repository and run:
 $claude-setup
 $claude-doctor
 $agy-setup
+$agy-doctor
 ```
 
 `$claude-setup` checks Claude Code authentication, Codex version,
@@ -83,11 +85,12 @@ long-running, browser-backed, unattended, or high-stakes delegated jobs, run
 readiness, workspace path, and permission-mode intent.
 
 `$agy-setup` checks the installed agy version and print-mode options without making a model call.
-Use it when Antigravity will handle delegated jobs.
+`$agy-doctor` also checks exact conversation resume, workspace access, and headless permission
+intent. Use them when Antigravity will handle delegated jobs.
 
 ## Skills
 
-After install, the plugin makes 24 skills available inside the Codex
+After install, the plugin makes 36 skills available inside the Codex
 TUI. Type the `$<name>` form at the Codex chat prompt.
 
 - `$claude-setup` — probes the local environment (Claude Code auth,
@@ -133,11 +136,23 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
 - `$claude-upgrade` — refreshes or repairs the installed Codex Delegation plugin through
   Codex plugin commands.
 - `$agy-setup` — probes agy version and print-mode support without invoking a model.
+- `$agy-doctor` — preflights targeted conversation resume, workspace, and permissions.
 - `$agy-delegate` — starts a detached, supervised Antigravity print-mode job.
 - `$agy-status` — lists or inspects stored Antigravity jobs.
 - `$agy-wait` — waits for an Antigravity job to settle or time out.
 - `$agy-result` — prints captured stdout from an Antigravity job.
 - `$agy-stop` — terminates the supervisor and its agy child process.
+- `$agy-followup` — resumes the exact stored Antigravity conversation UUID.
+- `$agy-review` — runs a structured review in the same conversation.
+- `$agy-adversarial-review` — reviews in a fresh independent conversation.
+- `$agy-workflow` — runs a phased and verified multi-agent workflow.
+- `$agy-goal` — pursues a concrete completion condition and verifies it.
+- `$agy-fork` — requests and verifies an independent Antigravity subagent.
+- `$agy-batch` — orchestrates independent items in parallel and synthesizes them.
+- `$agy-deep-research` — fans out, cross-checks, and cites primary sources.
+- `$agy-workflows` — lists or inspects workflow-like parent jobs.
+- `$agy-skills` — catalogs project, user, and plugin Antigravity skills.
+- `$agy-upgrade` — refreshes or repairs the installed plugin.
 
 On macOS, do not run a bare `delegate` shell command for this plugin; `/usr/bin/delegate`
 is Apple clang. Use the `$claude-*` or `$agy-*` skills, or use the exact dispatcher path
@@ -146,10 +161,10 @@ from JSON `meta.dispatcherPath` / `exactActionHints`.
 ## Antigravity Jobs
 
 `$agy-delegate` launches `agy --print` under a detached supervisor owned by the plugin. The
-supervisor records atomic state plus separate stdout and stderr artifacts, allowing later Codex
-sessions to inspect, wait for, read, or stop the job. Print mode does not expose a stable
-conversation ID, so agy jobs are single-turn and the plugin does not use global `agy --continue`
-state.
+supervisor records atomic state plus separate stdout, stderr, and diagnostic-log artifacts. The
+driver captures the conversation UUID from that private log, stores it with the job, and resumes
+later turns using `agy --conversation <uuid>`. It never uses global `agy --continue` state, so
+concurrent jobs cannot select one another's recent conversation.
 
 Supported launch options include `--model`, `--agent`, repeatable `--add-dir`, `--mode
 accept-edits|plan`, `--sandbox`, `--print-timeout`, `--project`, `--new-project`, and `--log-file`.
@@ -162,6 +177,11 @@ marks the job failed. Configure a narrow `permissions.allow` rule in
 `~/.gemini/antigravity-cli/settings.json`, or explicitly request
 `--dangerously-skip-permissions` for a trusted unattended job. `--sandbox` restricts terminal
 execution but does not approve commands by itself.
+
+Current native gaps are explicit: the headless CLI has no plugin-mediated live TUI attach,
+mid-turn input or permission approval, native `/fork` picker, or nested-subagent inspection API.
+Workflow, goal, fork, batch, and research skills keep the recorded parent conversation as their job
+boundary while directing Antigravity's own subagent framework.
 
 See the official Antigravity documentation for the [`agy` CLI](https://antigravity.google/docs/cli/using)
 and [permission rules](https://antigravity.google/docs/cli/permissions).
@@ -406,7 +426,7 @@ reinstall.
 
 Before release, run the smoke checklist in
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md).
-It verifies the local marketplace install and all 24 skill names
+It verifies the local marketplace install and all 36 skill names
 (`$claude-setup`, `$claude-doctor`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`,
 `$claude-stop`, `$claude-followup`, `$claude-review`,
 `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`,

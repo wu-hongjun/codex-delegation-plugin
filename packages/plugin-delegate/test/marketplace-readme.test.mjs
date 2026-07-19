@@ -321,7 +321,9 @@ const SOURCE_PLUGIN_JSON_PATH = resolve(
   '.codex-plugin',
   'plugin.json',
 );
-const UPGRADE_VERSION_STRING = JSON.parse(readFileSync(SOURCE_PLUGIN_JSON_PATH, 'utf8')).version;
+const UPGRADE_VERSION_STRING = JSON.parse(
+  readFileSync(SOURCE_PLUGIN_JSON_PATH, 'utf8'),
+).version.split('+', 1)[0];
 describe('marketplace upgrade procedure docs (Plan 0006 T7)', () => {
   // ========================================================================
   // T7-1: README contains an "## Upgrade" section
@@ -436,14 +438,14 @@ describe('marketplace upgrade procedure docs (Plan 0006 T7)', () => {
   });
 
   // ========================================================================
-  // T7-9: README mentions the current plugin version in upgrade verification
+  // T7-9: README mentions the current public release version in upgrade verification
   // ========================================================================
 
-  it('README mentions the current plugin version in upgrade verification', () => {
+  it('README mentions the current public release version in upgrade verification', () => {
     const content = readFileSync(MARKETPLACE_README, 'utf8');
     assert.ok(
       content.includes(UPGRADE_VERSION_STRING),
-      `README.md must mention current plugin version ${UPGRADE_VERSION_STRING} in upgrade verification`,
+      `README.md must mention current public release version ${UPGRADE_VERSION_STRING} in upgrade verification`,
     );
   });
 

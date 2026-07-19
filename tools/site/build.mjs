@@ -236,12 +236,16 @@ await rm(outputRoot, { recursive: true, force: true });
 await mkdir(outputRoot, { recursive: true });
 
 const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+// Local Codex installs use SemVer build metadata as a cachebuster. GitHub Pages
+// should continue to link and label the public release version, because build
+// metadata is not part of the release tag.
+const releaseVersion = manifest.version.split('+', 1)[0];
 
 for (const page of pages) {
   const fragment = await readFile(join(sourceRoot, page.source), 'utf8');
   const destination = join(outputRoot, page.output);
   await mkdir(dirname(destination), { recursive: true });
-  await writeFile(destination, renderPage(page, fragment, manifest.version));
+  await writeFile(destination, renderPage(page, fragment, releaseVersion));
 }
 
 await cp(publicDirectory, outputRoot, { recursive: true });
@@ -265,5 +269,5 @@ const designSystemManifest = JSON.parse(
 );
 
 console.log(
-  `Built ${pages.length} pages for ${site.name} v${manifest.version} with vvver-design-system v${designSystemManifest.version} at ${relative(repositoryRoot, outputRoot)}`,
+  `Built ${pages.length} pages for ${site.name} v${releaseVersion} from plugin build ${manifest.version} with vvver-design-system v${designSystemManifest.version} at ${relative(repositoryRoot, outputRoot)}`,
 );

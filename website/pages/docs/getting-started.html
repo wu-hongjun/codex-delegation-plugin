@@ -41,10 +41,12 @@ $claude-doctor --claude-access</code></pre>
     </p>
 
     <h3>Google Antigravity</h3>
-    <pre><code>$agy-setup</code></pre>
+    <pre><code>$agy-setup
+$agy-doctor</code></pre>
     <p>
-      The preflight checks the binary and print-mode surface without making a model call.
-      Authentication is checked during the first real delegation.
+      Setup checks the binary and print-mode surface. Doctor adds targeted conversation-resume,
+      workspace, and headless-permission checks. Neither runs a model task; authentication is
+      checked during the first real delegation.
     </p>
   </section>
 
@@ -72,11 +74,12 @@ $claude-stop &lt;jobId&gt;</code></pre>
     <h2>Run a first Antigravity job</h2>
     <pre><code>$agy-delegate --mode plan -- "Read the repository README and summarize the architecture. Do not edit files."
 $agy-wait &lt;jobId&gt; --json --compact --timeout 5m
+$agy-result &lt;jobId&gt;
+$agy-followup &lt;jobId&gt; -- "List the three most important files for a new contributor."
 $agy-result &lt;jobId&gt;</code></pre>
     <p>
-      Antigravity print-mode jobs are single-turn. Start another
-      <code>$agy-delegate</code> invocation for another instruction; do not use workspace-global
-      <code>agy --continue</code> as a follow-up.
+      The driver records this job's conversation UUID and the follow-up resumes that exact UUID. It
+      does not use workspace-global <code>agy --continue</code>, so concurrent jobs remain isolated.
     </p>
   </section>
 
@@ -86,7 +89,7 @@ $agy-result &lt;jobId&gt;</code></pre>
       <li>
         <a href="{{link:docs/concepts.html}}">Understand states, IDs, and stored artifacts.</a>
       </li>
-      <li><a href="{{link:docs/skills.html}}">Browse all 24 skills.</a></li>
+      <li><a href="{{link:docs/skills.html}}">Browse all 36 skills.</a></li>
       <li><a href="{{link:docs/workflows.html}}">Use workflows, follow-ups, and reviews.</a></li>
       <li><a href="{{link:docs/safety.html}}">Choose permission and browser options safely.</a></li>
     </ul>

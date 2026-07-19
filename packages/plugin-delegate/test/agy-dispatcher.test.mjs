@@ -91,6 +91,58 @@ describe('agy dispatcher integration', () => {
     assert.equal(existsSync(join(delegationHome, 'jobs')), false);
   });
 
+  it('reports exact-resume and headless-permission readiness through agy-doctor', () => {
+    const report = json(run(['agy-doctor', '--json']));
+    assert.equal(report.provider, 'agy');
+    assert.equal(report.features.followup, true);
+    assert.equal(report.status, 'warn');
+    assert.ok(report.warnings.includes('headless-permissions'));
+
+    const trusted = json(run(['agy-doctor', '--bypass-permissions', '--json']));
+    assert.equal(
+      trusted.checks.find((check) => check.name === 'headless-permissions').status,
+      'ok',
+    );
+    assert.deepEqual(trusted.blockers, []);
+  });
+
+  it('catalogs Antigravity project, user, and plugin skills without invoking a model', () => {
+    const agyHome = join(delegationHome, 'mock-agy-home');
+    const projectSkill = join(workspace, '.agents', 'skills', 'project-check');
+    const userSkill = join(agyHome, 'config', 'skills', 'user-check');
+    const pluginSkill = join(
+      workspace,
+      '.agents',
+      'plugins',
+      'audit-kit',
+      'skills',
+      'plugin-check',
+    );
+    for (const [dir, name] of [
+      [projectSkill, 'project-check'],
+      [userSkill, 'user-check'],
+      [pluginSkill, 'plugin-check'],
+    ]) {
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: ${name} skill\n---\n`);
+    }
+
+    const catalog = json(
+      run(['skills', '--provider', 'agy', '--json'], {
+        CODEX_DELEGATION_MOCK_AGY_HOME: agyHome,
+      }),
+    );
+    assert.equal(catalog.provider, 'agy');
+    assert.equal(catalog.counts.project, 1);
+    assert.equal(catalog.counts.user, 1);
+    assert.equal(catalog.counts.plugin, 1);
+    assert.deepEqual(
+      catalog.skills.map((skill) => skill.invocation),
+      ['/plugin-check', '/project-check', '/user-check'],
+    );
+    assert.equal(existsSync(join(delegationHome, 'jobs')), false);
+  });
+
   it('rejects Claude-only and conflicting startup flags before launching agy', () => {
     const unsupported = run([
       'delegate',
@@ -128,7 +180,7 @@ describe('agy dispatcher integration', () => {
       run(['delegate', '--provider', 'agy', '--yes', '--json', '--compact', '--', 'inspect repo']),
     );
     assert.equal(delegated.job.provider, 'agy');
-    assert.equal(delegated.job.status === 'starting' || delegated.job.status === 'running', true);
+    assert.equal(['starting', 'running', 'completed'].includes(delegated.job.status), true);
 
     const jobId = delegated.job.jobId;
     const waited = json(
@@ -153,7 +205,178 @@ describe('agy dispatcher integration', () => {
     const stored = JSON.parse(readFileSync(join(delegationHome, 'jobs', `${jobId}.json`), 'utf8'));
     assert.equal(stored.driver.name, 'agy-cli');
     assert.equal(stored.session.provider, 'agy');
+    assert.equal(stored.session.sessionId, '11111111-2222-4333-8444-555555555555');
     assert.equal('claude' in stored, false);
+  });
+
+  it('continues the exact agy conversation and records an immutable second turn', () => {
+    const invocationsPath = join(delegationHome, 'agy-invocations.jsonl');
+    const env = { CODEX_DELEGATION_MOCK_AGY_INVOCATIONS: invocationsPath };
+    const delegated = json(
+      run(
+        ['delegate', '--provider', 'agy', '--yes', '--json', '--compact', '--', 'first turn'],
+        env,
+      ),
+    );
+    const jobId = delegated.job.jobId;
+    json(run(['wait', jobId, '--json', '--compact', '--timeout', '5s', '--interval', '25ms'], env));
+
+    const followup = json(
+      run(['followup', jobId, '--provider', 'agy', '--yes', '--json', '--', 'second turn'], env),
+    );
+    assert.equal(followup.job.provider, 'agy');
+    assert.equal(followup.job.turnCount, 2);
+    assert.match(followup.job.resultPreview, /Antigravity completed: second turn/);
+
+    const stored = JSON.parse(readFileSync(join(delegationHome, 'jobs', `${jobId}.json`), 'utf8'));
+    assert.equal(stored.turns.length, 2);
+    assert.match(readFileSync(stored.turns[0].result.finalMessagePath, 'utf8'), /first turn/);
+    assert.match(readFileSync(stored.turns[1].result.finalMessagePath, 'utf8'), /second turn/);
+
+    const invocations = readFileSync(invocationsPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+      .filter((invocation) => invocation.args.includes('--print'));
+    assert.equal(invocations.length, 2);
+    assert.deepEqual(
+      invocations[1].args.slice(
+        invocations[1].args.indexOf('--conversation'),
+        invocations[1].args.indexOf('--conversation') + 2,
+      ),
+      ['--conversation', stored.session.sessionId],
+    );
+
+    const mismatchedProvider = run(
+      ['followup', jobId, '--provider', 'claude', '--yes', '--json', '--', 'wrong runtime'],
+      env,
+    );
+    assert.equal(mismatchedProvider.status, 2);
+    assert.match(mismatchedProvider.stderr, /Job provider is agy/);
+  });
+
+  it('runs same-conversation structured review against the exact Antigravity conversation', () => {
+    const configPath = join(delegationHome, 'agy-review-config.json');
+    const invocationsPath = join(delegationHome, 'agy-review-invocations.jsonl');
+    const env = {
+      CODEX_DELEGATION_MOCK_AGY_CONFIG: configPath,
+      CODEX_DELEGATION_MOCK_AGY_INVOCATIONS: invocationsPath,
+    };
+    writeFileSync(configPath, JSON.stringify({ response: 'implementation complete' }));
+    const delegated = json(
+      run(['delegate', '--provider', 'agy', '--yes', '--json', '--compact', '--', 'build it'], env),
+    );
+    const jobId = delegated.job.jobId;
+    json(run(['wait', jobId, '--json', '--timeout', '5s', '--interval', '25ms'], env));
+
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        response: '```json\n{"verdict":"pass","findings":[]}\n```\nReviewed the completed work.',
+      }),
+    );
+    const review = json(run(['review', jobId, '--provider', 'agy', '--yes', '--json'], env));
+    assert.equal(review.review.verdict, 'pass');
+    assert.equal(review.review.findingsCount, 0);
+    assert.equal(review.turn.index, 1);
+
+    const stored = JSON.parse(readFileSync(join(delegationHome, 'jobs', `${jobId}.json`), 'utf8'));
+    assert.equal(stored.turns.length, 2);
+    assert.match(stored.turns[1].prompt.summary, /^\[review\] /);
+    const modelInvocations = readFileSync(invocationsPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+      .filter((invocation) => invocation.args.includes('--print'));
+    assert.equal(modelInvocations.length, 2);
+    assert.deepEqual(
+      modelInvocations[1].args.slice(
+        modelInvocations[1].args.indexOf('--conversation'),
+        modelInvocations[1].args.indexOf('--conversation') + 2,
+      ),
+      ['--conversation', stored.session.sessionId],
+    );
+  });
+
+  it('runs an independent Antigravity adversarial review in a fresh recorded conversation', () => {
+    const configPath = join(delegationHome, 'agy-adversarial-config.json');
+    const env = {
+      CODEX_DELEGATION_MOCK_AGY_CONFIG: configPath,
+      CODEX_DELEGATION_ADVERSARIAL_REVIEW_POLL_MS: '25',
+    };
+    writeFileSync(configPath, JSON.stringify({ response: 'implementation complete' }));
+    const delegated = json(
+      run(['delegate', '--provider', 'agy', '--yes', '--json', '--compact', '--', 'build it'], env),
+    );
+    const targetJobId = delegated.job.jobId;
+    json(run(['wait', targetJobId, '--json', '--timeout', '5s', '--interval', '25ms'], env));
+
+    const reviewConversationId = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    writeFileSync(
+      configPath,
+      JSON.stringify({
+        conversationId: reviewConversationId,
+        response: '```json\n{"verdict":"pass","findings":[]}\n```',
+      }),
+    );
+    const review = json(
+      run(['adversarial-review', '--provider', 'agy', targetJobId, '--yes', '--json'], env),
+    );
+    assert.equal(review.review.verdict, 'pass');
+    assert.equal(review.targetJob.jobId, targetJobId);
+    assert.notEqual(review.job.jobId, targetJobId);
+
+    const reviewJob = JSON.parse(
+      readFileSync(join(delegationHome, 'jobs', `${review.job.jobId}.json`), 'utf8'),
+    );
+    assert.equal(reviewJob.provider, undefined);
+    assert.equal(reviewJob.session.provider, 'agy');
+    assert.equal(reviewJob.session.sessionId, reviewConversationId);
+    assert.equal(reviewJob.kind, 'adversarial-review');
+    assert.equal(reviewJob.reviewOf.jobId, targetJobId);
+  });
+
+  it('records every Antigravity orchestration surface and lists workflow-like jobs', () => {
+    const invocationsPath = join(delegationHome, 'agy-workflow-invocations.jsonl');
+    const env = { CODEX_DELEGATION_MOCK_AGY_INVOCATIONS: invocationsPath };
+    const cases = [
+      ['workflow', /deliberate multi-agent workflow/i],
+      ['goal', /concrete completion condition/i],
+      ['fork', /fresh independent Antigravity subagent/i],
+      ['batch', /batch-parallel work orchestration/i],
+      ['deep-research', /rigorous multi-agent deep research/i],
+    ];
+    const jobIds = [];
+    for (const [command] of cases) {
+      const started = json(
+        run(
+          [command, '--provider', 'agy', '--yes', '--json', '--compact', '--', `${command} task`],
+          env,
+        ),
+      );
+      jobIds.push(started.job.jobId);
+    }
+
+    const modelInvocations = readFileSync(invocationsPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
+      .filter((invocation) => invocation.args.includes('--print'));
+    assert.equal(modelInvocations.length, cases.length);
+    for (let index = 0; index < cases.length; index++) {
+      const prompt = modelInvocations[index].args.at(-1);
+      assert.match(prompt, cases[index][1]);
+    }
+
+    const workflows = json(run(['workflows', '--provider', 'agy', '--json'], env));
+    assert.deepEqual(new Set(workflows.workflows.map((job) => job.jobId)), new Set(jobIds));
+    assert.deepEqual(
+      new Set(workflows.workflows.map((job) => job.kind)),
+      new Set(cases.map(([command]) => command)),
+    );
+    const detail = json(run(['workflows', '--provider', 'agy', jobIds[0], '--json'], env));
+    assert.equal(detail.workflow.nativeSubagentInspection, false);
+    assert.equal(detail.workflow.kind, 'workflow');
   });
 
   it('persists a failed job when agy auto-denies a headless permission request', () => {
@@ -209,7 +432,7 @@ describe('agy dispatcher integration', () => {
     json(run(['stop', delegated.job.jobId, '--json', '--compact']));
   });
 
-  it('stops a running agy job and rejects conversation follow-up', () => {
+  it('stops a running agy job and rejects follow-up after stop', () => {
     const configPath = join(delegationHome, 'agy-config.json');
     writeFileSync(configPath, JSON.stringify({ delayMs: 10_000 }));
     const env = { CODEX_DELEGATION_MOCK_AGY_CONFIG: configPath };
@@ -228,6 +451,6 @@ describe('agy dispatcher integration', () => {
     const followup = run(['followup', jobId, '--yes', '--json', '--', 'continue'], env);
     assert.equal(followup.status, 1);
     const error = JSON.parse(followup.stdout || followup.stderr);
-    assert.match(error.error.message, /stable conversation ID/);
+    assert.match(error.error.message, /is stopped/);
   });
 });

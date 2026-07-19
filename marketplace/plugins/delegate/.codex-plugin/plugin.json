@@ -1,6 +1,6 @@
 {
   "name": "delegate",
-  "version": "0.5.0",
+  "version": "0.5.0+codex.20260719035519",
   "description": "Delegate tasks from Codex to Claude Code or Google Antigravity.",
   "author": {
     "name": "Hongjun Wu",
@@ -10,7 +10,7 @@
   "interface": {
     "displayName": "Codex Delegation",
     "shortDescription": "Delegate Codex tasks to Claude Code or Google Antigravity.",
-    "longDescription": "Run and supervise delegated coding jobs through Claude Code background sessions or Google Antigravity's agy CLI, with shared status, wait, result, restart, and stop workflows.",
+    "longDescription": "Run and supervise delegated coding jobs through Claude Code background sessions or exact Google Antigravity conversations, with follow-up, reviews, orchestration, discovery, and shared lifecycle controls.",
     "developerName": "Hongjun Wu",
     "category": "Coding",
     "capabilities": ["Interactive"],
@@ -38,7 +38,19 @@
       "Check my Antigravity jobs.",
       "Wait for an Antigravity job to finish.",
       "Show the result of an Antigravity job.",
-      "Stop an Antigravity job."
+      "Stop an Antigravity job.",
+      "Preflight Antigravity conversation resume, workspace, and permission readiness.",
+      "Continue an exact Antigravity conversation.",
+      "Review the output of an Antigravity job in the same conversation.",
+      "Get an independent Antigravity review in a fresh conversation.",
+      "Run a phased multi-agent Antigravity workflow.",
+      "Set a verified completion goal for Antigravity.",
+      "Ask Antigravity to spawn an independent subagent.",
+      "Run a batch of parallel Antigravity work.",
+      "Run multi-agent deep research with Antigravity.",
+      "List my Antigravity workflow-like jobs.",
+      "List installed Antigravity skills.",
+      "Refresh Codex Delegation's Antigravity skills."
     ],
     "brandColor": "#D97706"
   }

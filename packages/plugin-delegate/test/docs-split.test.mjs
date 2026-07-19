@@ -70,6 +70,24 @@ const SKILL_NAMES = [
   'claude-workflows',
   'claude-skills',
   'claude-upgrade',
+  'agy-setup',
+  'agy-doctor',
+  'agy-delegate',
+  'agy-status',
+  'agy-wait',
+  'agy-result',
+  'agy-stop',
+  'agy-followup',
+  'agy-review',
+  'agy-adversarial-review',
+  'agy-workflow',
+  'agy-goal',
+  'agy-fork',
+  'agy-batch',
+  'agy-deep-research',
+  'agy-workflows',
+  'agy-skills',
+  'agy-upgrade',
 ];
 
 // ---------- forbidden tokens for END-USER surfaces ----------
@@ -158,8 +176,8 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
       }
     });
 
-    // T12-3: Skills section lists all 24 skills with $-prefix
-    it('Skills section enumerates all 24 skill names with $-prefix and a one-line description', () => {
+    // T12-3: Skills section lists every shipped skill with $-prefix.
+    it('Skills section enumerates all 36 skill names with $-prefix and a one-line description', () => {
       const content = readFileSync(MARKETPLACE_README, 'utf8');
       // Extract the Skills section body.
       const match = content.match(/^## Skills\b[\s\S]*?(?=^## )/m);
@@ -538,13 +556,13 @@ describe('$claude-workflow documentation — plugin README (Plan 0008 T5)', () =
     );
   });
 
-  it('plugin README Current v1 scope section says "Twenty-four skills"', () => {
+  it('plugin README Current v1 scope section says "Thirty-six skills"', () => {
     const content = readFileSync(PLUGIN_README, 'utf8');
     const match = content.match(/^## Current v1 scope\b[\s\S]*?(?=^## )/m);
     assert.ok(match, 'plugin README must have a "## Current v1 scope" section');
     assert.ok(
-      match[0].includes('Twenty-four skills'),
-      'plugin README ## Current v1 scope must say "Twenty-four skills"',
+      match[0].includes('Thirty-six skills'),
+      'plugin README ## Current v1 scope must say "Thirty-six skills"',
     );
   });
 

@@ -6,7 +6,7 @@
 
 ## Plugin-tree files (sourced from `packages/plugin-delegate/`)
 
-The following 37 files are copied byte-for-byte from `packages/plugin-delegate/` into `marketplace/plugins/delegate/`:
+The following 49 files are copied byte-for-byte from `packages/plugin-delegate/` into `marketplace/plugins/delegate/`:
 
 - `.codex-plugin/plugin.json`
 - `scripts/delegate.mjs`
@@ -40,11 +40,23 @@ The following 37 files are copied byte-for-byte from `packages/plugin-delegate/`
 - `skills/claude-skills/SKILL.md`
 - `skills/claude-upgrade/SKILL.md`
 - `skills/agy-setup/SKILL.md`
+- `skills/agy-doctor/SKILL.md`
 - `skills/agy-delegate/SKILL.md`
 - `skills/agy-status/SKILL.md`
 - `skills/agy-wait/SKILL.md`
 - `skills/agy-result/SKILL.md`
 - `skills/agy-stop/SKILL.md`
+- `skills/agy-followup/SKILL.md`
+- `skills/agy-review/SKILL.md`
+- `skills/agy-adversarial-review/SKILL.md`
+- `skills/agy-workflow/SKILL.md`
+- `skills/agy-goal/SKILL.md`
+- `skills/agy-fork/SKILL.md`
+- `skills/agy-batch/SKILL.md`
+- `skills/agy-deep-research/SKILL.md`
+- `skills/agy-workflows/SKILL.md`
+- `skills/agy-skills/SKILL.md`
+- `skills/agy-upgrade/SKILL.md`
 
 Note: `scripts/delegate.mjs` is copied from source and the packaging script sets the user-executable bit (chmod 0755) on the marketplace copy unconditionally, since the source file has mode 644 but the marketplace copy must be executable.
 

@@ -75,7 +75,7 @@
         <span>Adapter</span>
         <h3>Provider behavior stays honest</h3>
         <p>
-          Claude sessions and Antigravity print jobs expose only the actions they truly support.
+          Claude sessions and Antigravity conversations expose only the actions they truly support.
         </p>
       </article>
     </div>
@@ -87,9 +87,9 @@
       <h2 id="loop-heading">Start once. Return when judgment is needed.</h2>
       <p>
         Start with a bounded instruction. Later Codex turns can wait, inspect partial or final
-        output, continue a live Claude session, or stop work that no longer matters.
+        output, continue an exact provider conversation, or stop work that no longer matters.
       </p>
-      <a class="underlined-link" href="{{link:docs/skills.html}}">Explore all 24 skills</a>
+      <a class="underlined-link" href="{{link:docs/skills.html}}">Explore all 36 skills</a>
     </div>
     <div class="landing-command-surface">
       <p><span aria-hidden="true">$</span> delegate / claude</p>
@@ -133,21 +133,23 @@ $claude-stop &lt;jobId&gt;</code></pre>
       <article data-tint="slate">
         <div class="landing-provider-title">
           <h3>Google Antigravity</h3>
-          <span>Process / single turn</span>
+          <span>Conversation / exact resume</span>
         </div>
-        <p>Best for a supervised, bounded instruction that should finish as one print-mode job.</p>
+        <p>
+          Best for supervised work that benefits from Antigravity subagents and targeted follow-up.
+        </p>
         <dl>
           <div>
             <dt>Transport</dt>
-            <dd>Supervised <code>agy --print</code> process</dd>
+            <dd>Supervised <code>agy --print</code> conversation</dd>
           </div>
           <div>
             <dt>Follow-up</dt>
-            <dd>Start a new job</dd>
+            <dd>Stored UUID continuation</dd>
           </div>
           <div>
-            <dt>Core actions</dt>
-            <dd>Status, wait, result, stop</dd>
+            <dt>Advanced work</dt>
+            <dd>Goals, forks, batches, workflows, reviews</dd>
           </div>
         </dl>
       </article>
@@ -223,7 +225,7 @@ $claude-stop &lt;jobId&gt;</code></pre>
       </li>
       <li>
         <a href="{{link:docs/skills.html}}"
-          ><span>03</span><strong>All 24 skills</strong><i aria-hidden="true">→</i></a
+          ><span>03</span><strong>All 36 skills</strong><i aria-hidden="true">→</i></a
         >
       </li>
       <li>

@@ -47,7 +47,7 @@ describe('AgyCliDriver probe and arguments', () => {
     assert.equal(caps.cliVersion, '1.1.3');
     assert.equal(caps.execution, 'supervised-process');
     assert.equal(caps.features.start, true);
-    assert.equal(caps.features.followup, false);
+    assert.equal(caps.features.followup, true);
   });
 
   it('maps supported Antigravity flags and keeps the prompt as one argv item', () => {
@@ -199,13 +199,44 @@ describe('AgyCliDriver lifecycle', () => {
     assert.match(status.raw.error, /auto-denied a headless permission request/i);
   });
 
-  it('rejects unsafe global follow-up semantics explicitly', async () => {
+  it('resumes the exact captured conversation for a follow-up turn', async () => {
+    const invocationsPath = join(testHome, 'followup-invocations.jsonl');
+    const env = { ...process.env, CODEX_DELEGATION_MOCK_AGY_INVOCATIONS: invocationsPath };
+    const driver = new AgyCliDriver({ executable: mockAgy, cwd: workspace, env });
+    const handle = await driver.startSession({ cwd: workspace, prompt: 'one turn' });
+    await waitFor(driver, handle, ['completed']);
+    assert.equal(handle.sessionId, '11111111-2222-4333-8444-555555555555');
+
+    const turn = await driver.send(handle, { type: 'text', text: 'continue exactly' });
+    assert.equal(turn.status, 'completed');
+    assert.match(turn.finalMessage, /continue exactly/);
+
+    const invocations = readFileSync(invocationsPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    assert.equal(invocations.length, 2);
+    const followupArgs = invocations[1].args;
+    assert.deepEqual(
+      followupArgs.slice(
+        followupArgs.indexOf('--conversation'),
+        followupArgs.indexOf('--conversation') + 2,
+      ),
+      ['--conversation', handle.sessionId],
+    );
+    assert.equal(followupArgs[followupArgs.indexOf('--print') + 1], 'continue exactly');
+  });
+
+  it('rejects follow-up when a legacy job has no captured conversation ID', async () => {
     const driver = new AgyCliDriver({ executable: mockAgy, cwd: workspace });
     const handle = await driver.startSession({ cwd: workspace, prompt: 'one turn' });
+    const legacyHandle = { ...handle, sessionId: undefined };
+    const state = JSON.parse(readFileSync(handle.statePath, 'utf8'));
+    delete state.conversationId;
+    writeFileSync(handle.statePath, JSON.stringify(state));
     await assert.rejects(
-      driver.send(handle, { type: 'text', text: 'continue' }),
+      driver.send(legacyHandle, { type: 'text', text: 'continue' }),
       (error) => error instanceof DriverError && error.operation === 'send',
     );
-    await driver.stop(handle);
   });
 });

@@ -48,6 +48,21 @@
       <a href="https://antigravity.google/docs/cli/permissions">Antigravity permission reference</a
       >.
     </p>
+    <p>
+      Exact follow-up is turn-scoped, not interactive. The plugin cannot answer a permission prompt
+      while an Antigravity print turn is running. A denied operation fails the turn and is recorded
+      as a failed job instead of a successful empty response.
+    </p>
+  </section>
+
+  <section id="antigravity-control-plane">
+    <h2>Antigravity native control-plane limits</h2>
+    <p>
+      The headless CLI supports targeted conversation resume but does not expose live TUI attach,
+      mid-turn input injection, the native <code>/fork</code> picker, or nested-subagent detail
+      panels. The plugin does not scrape or automate those interfaces. Use the interactive
+      Antigravity TUI when those controls matter.
+    </p>
   </section>
 
   <section id="browser">

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 
 const args = process.argv.slice(2);
 const config = (() => {
@@ -26,7 +26,9 @@ if (args.includes('--version')) {
 }
 
 if (args.includes('--help')) {
-  process.stdout.write(`Usage: agy [flags]\n\n  -p, --print string\n  --print-timeout duration\n`);
+  process.stdout.write(
+    `Usage: agy [flags]\n\n  -p, --print string\n  --conversation string\n  --log-file string\n  --print-timeout duration\n`,
+  );
   process.exit(config.helpExitCode ?? 0);
 }
 
@@ -34,6 +36,22 @@ const printIndex = args.indexOf('--print');
 if (printIndex === -1 || args[printIndex + 1] === undefined) {
   process.stderr.write('mock agy: --print requires a prompt\n');
   process.exit(2);
+}
+
+const conversationIndex = args.indexOf('--conversation');
+const conversationId =
+  conversationIndex >= 0 && args[conversationIndex + 1]
+    ? args[conversationIndex + 1]
+    : (config.conversationId ??
+      process.env.CODEX_DELEGATION_MOCK_AGY_CONVERSATION_ID ??
+      '11111111-2222-4333-8444-555555555555');
+const logIndex = args.indexOf('--log-file');
+if (logIndex >= 0 && args[logIndex + 1]) {
+  const action = conversationIndex >= 0 ? 'resuming' : 'Created';
+  writeFileSync(
+    args[logIndex + 1],
+    `${action} conversation ${conversationId}\nPrint mode: conversation=${conversationId}, sending message\n`,
+  );
 }
 
 const delayMs = Number(config.delayMs ?? process.env.CODEX_DELEGATION_MOCK_AGY_DELAY_MS ?? 0);

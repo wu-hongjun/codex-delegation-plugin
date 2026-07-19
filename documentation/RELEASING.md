@@ -151,7 +151,7 @@ node tools/package-marketplace.mjs --write
    (`packages/{runtime,driver-claude-code,driver-agy-cli}/dist/`). Skip the build via
    `CODEX_DELEGATION_SKIP_BUILD=1` only when the dist outputs are known
    to be current.
-2. Copy 37 source-derived files (T2-T5 allowlist) into the
+2. Copy 49 source-derived files (T2-T5 allowlist) into the
    marketplace tree byte-identically.
 3. Copy 74 bundled-dep files (T9.5 allowlist:
    `@codex-delegation/runtime/dist/`,
@@ -176,7 +176,7 @@ node tools/package-marketplace.mjs --check
 
 `--check` enforces:
 
-- Source ↔ marketplace byte-identity for all 37 derived files
+- Source ↔ marketplace byte-identity for all 49 derived files
   (`marketplace/MANIFEST.md` allowlist).
 - No excluded categories appear under
   `marketplace/plugins/delegate/` (`marketplace/EXCLUSIONS.md`
@@ -187,7 +187,7 @@ node tools/package-marketplace.mjs --check
   `marketplace/.agents/plugins/marketplace.json` parses and has the
   expected `name`.
 
-Expected output: `check: OK — 37 derived files match source, 74
+Expected output: `check: OK — 49 derived files match source, 74
 bundled-dep files match source, 4 synthesized package.json files
 match canonical shape, 1 marketplace-owned files present, no
 unexpected files.`
@@ -277,7 +277,7 @@ codex exec --ephemeral '$claude-setup'
 codex exec --ephemeral '$agy-setup'
 ```
 
-Also open Codex and type `$` to verify that all twenty-four skills appear in
+Also open Codex and type `$` to verify that all thirty-six skills appear in
 autocomplete. If the smoke helper used `--keep-home`, launch Codex with that
 preserved `CODEX_HOME`; otherwise validate in the profile where the plugin is
 installed:
@@ -301,11 +301,23 @@ installed:
 - `$claude-skills`
 - `$claude-upgrade`
 - `$agy-setup`
+- `$agy-doctor`
 - `$agy-delegate`
 - `$agy-status`
 - `$agy-wait`
 - `$agy-result`
 - `$agy-stop`
+- `$agy-followup`
+- `$agy-review`
+- `$agy-adversarial-review`
+- `$agy-workflow`
+- `$agy-goal`
+- `$agy-fork`
+- `$agy-batch`
+- `$agy-deep-research`
+- `$agy-workflows`
+- `$agy-skills`
+- `$agy-upgrade`
 
 Pass criteria:
 
@@ -313,7 +325,7 @@ Pass criteria:
   aggregate status, not an unknown-skill error.
 - `$agy-setup` must be recognized. It should report ready when `agy` is installed and a clear
   unavailable result when it is not.
-- The other twenty-two skills must not return `unknown skill` or
+- The other thirty-four skills must not return `unknown skill` or
   `unrecognized skill` when invoked or shown in Codex skill discovery.
 - A skill that requires a job-id may stop at its expected
   usage-or-error message. That still counts as recognized for smoke

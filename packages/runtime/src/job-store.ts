@@ -427,6 +427,7 @@ export async function createJob(input: CreateJobInput): Promise<JobRecord> {
     codex: input.codex,
     workspace: input.workspace,
     driver: input.driver,
+    ...(input.kind !== undefined ? { kind: input.kind } : {}),
     session,
     ...(session.provider === 'claude' ? { claude: normalizeClaudeSession(session) } : {}),
     prompt: input.prompt, // compat alias = turns[0].prompt

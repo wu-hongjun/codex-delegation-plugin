@@ -76,12 +76,26 @@ export async function probeAgyCliDriver(
         status: 'fail',
         detail: binaryOk ? 'agy --help does not advertise --print' : 'agy binary unavailable',
       };
+  const targetedResumeOk =
+    helpResult.code === 0 && help.includes('--conversation') && help.includes('--log-file');
+  const resumeProbe: DoctorProbeResult = targetedResumeOk
+    ? {
+        name: 'agy-targeted-resume',
+        status: 'ok',
+        detail: 'agy supports job-scoped --conversation resumes with per-job diagnostic logs',
+      }
+    : {
+        name: 'agy-targeted-resume',
+        status: 'warn',
+        detail:
+          'agy --help does not advertise both --conversation and --log-file; delegation works but exact follow-up is unavailable',
+      };
   const authProbe: DoctorProbeResult = {
     name: 'agy-auth',
     status: 'warn',
     detail: 'Authentication is checked on first delegation to avoid a token-spending probe.',
   };
-  const probes = [binaryProbe, printProbe, authProbe];
+  const probes = [binaryProbe, printProbe, resumeProbe, authProbe];
 
   return {
     driverName: DRIVER_NAME,
@@ -92,7 +106,7 @@ export async function probeAgyCliDriver(
       start: printOk,
       status: true,
       stop: true,
-      followup: false,
+      followup: printOk && targetedResumeOk,
       logs: true,
     },
     backgroundSessions: printOk,

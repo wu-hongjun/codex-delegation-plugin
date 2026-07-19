@@ -9,7 +9,8 @@
     <h2>Setup reports warn or fail</h2>
     <pre><code>$claude-setup
 $claude-doctor --claude-access --json
-$agy-setup --json</code></pre>
+$agy-setup --json
+$agy-doctor --json</code></pre>
     <ul>
       <li>
         <strong>warn:</strong> read the named probes. Optional daemon or deferred auth checks can
@@ -21,6 +22,19 @@ $agy-setup --json</code></pre>
       </li>
       <li>Run doctor before long, real-browser, or unattended Claude work.</li>
     </ul>
+  </section>
+
+  <section id="agy-followup">
+    <h2>Antigravity follow-up says the conversation identity is missing</h2>
+    <p>
+      Jobs created by older plugin versions may not contain a captured conversation UUID. Their
+      existing result remains readable, but deterministic follow-up cannot be reconstructed from
+      workspace-global recent state. Start a new <code>$agy-delegate</code> job after upgrading; new
+      jobs record the UUID automatically.
+    </p>
+    <pre><code>$agy-upgrade --yes
+$agy-doctor --json
+$agy-delegate -- "Restate the task with the prior result as context."</code></pre>
   </section>
 
   <section id="blocked">
@@ -70,7 +84,8 @@ $agy-result &lt;jobId&gt; --partial</code></pre>
   <section id="upgrade">
     <h2>Skills or version look stale</h2>
     <pre><code>$claude-upgrade
-$claude-upgrade --yes</code></pre>
+$claude-upgrade --yes
+$agy-upgrade --yes</code></pre>
     <p>Manual public-install equivalent:</p>
     <pre><code>codex plugin marketplace upgrade "codex-delegation-plugin"
 codex plugin remove "delegate@codex-delegation-plugin"

@@ -31,9 +31,25 @@ const stdoutFd = openSync(state.resultPath, 'a', 0o600);
 const stderrFd = openSync(state.errorPath, 'a', 0o600);
 let stopping = false;
 let finished = false;
+let stoppingSignal: NodeJS.Signals | null = null;
 
 const HEADLESS_PERMISSION_DENIED =
   /no output produced[\s\S]*headless mode cannot prompt[\s\S]*auto-denied/i;
+const CONVERSATION_ID =
+  /(?:Created conversation\s+|Print mode:\s+conversation=)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
+
+async function captureConversationId(): Promise<void> {
+  if (state.conversationId || !state.diagnosticLogPath) return;
+  const log = await readFile(state.diagnosticLogPath, 'utf8').catch(() => '');
+  const match = log.match(CONVERSATION_ID);
+  if (!match?.[1]) return;
+  state = {
+    ...state,
+    conversationId: match[1].toLowerCase(),
+    updatedAt: new Date().toISOString(),
+  };
+  await writeAgyState(statePath, state);
+}
 
 async function classifyExit(code: number | null): Promise<{
   status: AgyRunnerState['status'];
@@ -69,6 +85,7 @@ async function finish(
 ): Promise<void> {
   if (finished) return;
   finished = true;
+  await captureConversationId().catch(() => undefined);
   const now = new Date().toISOString();
   state = {
     ...state,
@@ -92,6 +109,15 @@ child.once('spawn', async () => {
     updatedAt: new Date().toISOString(),
   };
   await writeAgyState(statePath, state);
+  if (!state.conversationId && state.diagnosticLogPath) {
+    const deadline = Date.now() + 5000;
+    void (async () => {
+      while (!finished && !state.conversationId && Date.now() < deadline) {
+        await captureConversationId().catch(() => undefined);
+        if (!state.conversationId) await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+    })();
+  }
 });
 
 child.once('error', async (error) => {
@@ -100,7 +126,7 @@ child.once('error', async (error) => {
 
 child.once('close', async (code, signal) => {
   if (stopping) {
-    await finish('stopped', code, signal);
+    await finish('stopped', code, signal ?? stoppingSignal);
     return;
   }
   const outcome = await classifyExit(code);
@@ -110,6 +136,7 @@ child.once('close', async (code, signal) => {
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     stopping = true;
+    stoppingSignal = signal;
     if (child.exitCode === null && child.signalCode === null) child.kill(signal);
   });
 }

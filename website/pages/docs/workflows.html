@@ -3,7 +3,7 @@
     <p>Guides</p>
     <h1>Workflows and reviews</h1>
     <p>
-      Use Claude Code’s live sessions for iterative work, orchestration, and structured evaluation.
+      Use exact provider conversations for iterative work, orchestration, and structured evaluation.
     </p>
   </header>
 
@@ -19,6 +19,15 @@ $claude-result &lt;jobId&gt;</code></pre>
       command fails closed and returns a manual
       <code>claude attach &lt;shortId&gt;</code> instruction.
     </p>
+    <pre><code>$agy-delegate "Inspect the authorization layer. Report only."
+$agy-wait &lt;jobId&gt; --timeout 5m
+$agy-followup &lt;jobId&gt; -- "Now trace the highest-risk path to its tests."
+$agy-result &lt;jobId&gt;</code></pre>
+    <p>
+      Antigravity follow-up starts a supervised print turn against the job's stored conversation
+      UUID. It is deterministic across concurrent jobs and never uses global
+      <code>agy --continue</code> state.
+    </p>
   </section>
 
   <section id="workflow">
@@ -30,6 +39,14 @@ $claude-workflows &lt;jobId&gt; --json</code></pre>
       Workflow injects the <code>ultracode:</code> planning trigger. The read-only workflows command
       lists plugin-owned workflow and deep-research records; it is separate from the Claude TUI’s
       session-local <code>/workflows</code> panel.
+    </p>
+    <pre><code>$agy-workflow -- "Audit every fetch call and migrate unsafe sites in verified stages."
+$agy-workflows
+$agy-workflows &lt;jobId&gt; --json</code></pre>
+    <p>
+      Antigravity receives a multi-agent orchestration contract: phase the work, fan out safe
+      independent tasks, verify returned work, and synthesize the result. The plugin records the
+      parent conversation; nested-subagent panels remain TUI-only.
     </p>
   </section>
 
@@ -45,6 +62,13 @@ $claude-workflows &lt;jobId&gt; --json</code></pre>
       These commands create fresh sessions. Batch can cause several parallel tool calls or
       subagents, so its cost grows with the number of tasks and affected files.
     </p>
+    <pre><code>$agy-goal -- "All unit tests pass and no source file contains the deprecated API name."
+$agy-fork -- "Independently audit the new rate limiter and report tradeoffs."
+$agy-batch -- "Audit every independent package, then synthesize an ordered report."</code></pre>
+    <p>
+      The Antigravity variants use its subagent framework through explicit orchestration prompts.
+      They do not drive native TUI slash-command pickers or create git worktrees implicitly.
+    </p>
   </section>
 
   <section id="deep-research">
@@ -54,6 +78,7 @@ $claude-workflows &lt;jobId&gt; --json</code></pre>
       Deep research starts a Claude workflow with multi-agent web search and citation
       cross-checking. Use it for research questions, not ordinary repository inspection.
     </p>
+    <pre><code>$agy-deep-research -- "What do current primary sources say about the same tradeoffs?"</code></pre>
   </section>
 
   <section id="reviews">
@@ -80,10 +105,22 @@ $claude-workflows &lt;jobId&gt; --json</code></pre>
           <td>Starts a fresh independent session</td>
           <td>Thorough second opinions and terminal jobs with a stored result</td>
         </tr>
+        <tr>
+          <th scope="row"><code>$agy-review</code></th>
+          <td>Resumes the exact original Antigravity conversation</td>
+          <td>Context-rich checks after any completed Antigravity turn</td>
+        </tr>
+        <tr>
+          <th scope="row"><code>$agy-adversarial-review</code></th>
+          <td>Starts a fresh independent Antigravity conversation</td>
+          <td>Independent second opinions from a stored result</td>
+        </tr>
       </tbody>
     </table>
     <pre><code>$claude-review &lt;jobId&gt; --json
-$claude-adversarial-review &lt;jobId&gt; --blocking</code></pre>
+$claude-adversarial-review &lt;jobId&gt; --blocking
+$agy-review &lt;jobId&gt; --json
+$agy-adversarial-review &lt;jobId&gt; --blocking</code></pre>
     <p>
       Both return a verdict and severity-rated findings. Use <code>--blocking</code> as the
       shorthand high/blocker/fail gate, or

@@ -79,11 +79,23 @@ const DERIVED_FILES = [
   'skills/claude-skills/SKILL.md',
   'skills/claude-upgrade/SKILL.md',
   'skills/agy-setup/SKILL.md',
+  'skills/agy-doctor/SKILL.md',
   'skills/agy-delegate/SKILL.md',
   'skills/agy-status/SKILL.md',
   'skills/agy-wait/SKILL.md',
   'skills/agy-result/SKILL.md',
   'skills/agy-stop/SKILL.md',
+  'skills/agy-followup/SKILL.md',
+  'skills/agy-review/SKILL.md',
+  'skills/agy-adversarial-review/SKILL.md',
+  'skills/agy-workflow/SKILL.md',
+  'skills/agy-goal/SKILL.md',
+  'skills/agy-fork/SKILL.md',
+  'skills/agy-batch/SKILL.md',
+  'skills/agy-deep-research/SKILL.md',
+  'skills/agy-workflows/SKILL.md',
+  'skills/agy-skills/SKILL.md',
+  'skills/agy-upgrade/SKILL.md',
 ];
 
 /**

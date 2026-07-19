@@ -83,9 +83,9 @@ function providerUi(job) {
     return {
       provider,
       name: 'Antigravity',
-      sessionLabel: 'Agy process',
+      sessionLabel: 'Agy conversation',
       skillPrefix: 'agy',
-      supportsFollowup: false,
+      supportsFollowup: typeof session.sessionId === 'string' && session.sessionId.length > 0,
       attachCommand: null,
       logsCommand: session.logsCommand ?? null,
     };
@@ -114,6 +114,9 @@ function recommendedNextAction(job, hasResult, resultState) {
   if (job.status === 'needs_input')
     return ui.attachCommand ? 'attach | stop | restart' : 'stop | restart';
   if (job.status === 'awaiting_followup') return ui.supportsFollowup ? 'followup' : 'result';
+  if (job.status === 'completed' && ui.provider === 'agy' && ui.supportsFollowup) {
+    return hasResult ? 'result | followup' : 'followup';
+  }
   if (job.status === 'completed') return hasResult ? 'result' : 'logs';
   if (hasResult && resultState === 'partial_result_available') return 'result --partial';
   if (job.status === 'orphaned') return ui.logsCommand ? 'logs' : 'stop';
@@ -333,7 +336,9 @@ function summarizeJob(job, opts = {}) {
                 ),
               }
             : {}),
-          ...(job.status === 'awaiting_followup' && ui.supportsFollowup
+          ...((job.status === 'awaiting_followup' ||
+            (job.status === 'completed' && ui.provider === 'agy')) &&
+          ui.supportsFollowup
             ? {
                 followup: exactDispatcherCommand(
                   opts.dispatcherPath,
@@ -390,12 +395,14 @@ function summarizeJob(job, opts = {}) {
           ),
         }
       : {}),
-    ...(job.status === 'awaiting_followup' && ui.supportsFollowup
+    ...((job.status === 'awaiting_followup' ||
+      (job.status === 'completed' && ui.provider === 'agy')) &&
+    ui.supportsFollowup
       ? {
           followup: displayDispatcherCommand(
             opts.dispatcherPath,
             `followup ${job.jobId} -- "<prompt>"`,
-            `$claude-followup ${job.jobId} -- "<prompt>"`,
+            `$${ui.skillPrefix}-followup ${job.jobId} -- "<prompt>"`,
           ),
         }
       : {}),
@@ -406,6 +413,7 @@ function summarizeJob(job, opts = {}) {
   return {
     jobId: job.jobId,
     provider: ui.provider,
+    kind: job.kind ?? 'delegate',
     status: job.status,
     operatorState,
     ...(job.status === 'needs_input'
@@ -441,6 +449,7 @@ function summarizeJob(job, opts = {}) {
     resultState,
     recommendedNextAction: recommended,
     shortId,
+    sessionId: session.sessionId ?? null,
     sessionName: session.sessionName ?? null,
     waitingFor,
     waiting,
@@ -605,7 +614,7 @@ export function formatDelegate(job, json, opts = {}) {
     `${ui.name} job started`,
     `Job ID:         ${job.jobId}`,
     `Status:         ${job.status}`,
-    `${`${ui.sessionLabel}:`.padEnd(16)}${session.shortId}`,
+    `${`${ui.sessionLabel}:`.padEnd(16)}${ui.provider === 'agy' ? (session.sessionId ?? session.shortId) : session.shortId}`,
     `Name:           ${session.sessionName}`,
     ...(ui.logsCommand ? [`Raw logs:       ${ui.logsCommand}`] : []),
     'Run:',
@@ -670,7 +679,7 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
       `Job ID:         ${j.jobId}`,
       `Status:         ${j.status}`,
       `Process:        ${j.status}`,
-      `${`${ui.sessionLabel}:`.padEnd(16)}${session.shortId}`,
+      `${`${ui.sessionLabel}:`.padEnd(16)}${ui.provider === 'agy' ? (session.sessionId ?? session.shortId) : session.shortId}`,
       `Name:           ${session.sessionName}${annotation}`,
     ];
     const compact = summarizeJob(j, opts);
@@ -737,12 +746,16 @@ export function formatStatus(jobs, json, workspaceRoot, opts = {}) {
 
   // Footer hint when any job is awaiting a follow-up (human output only).
   const awaitingJob = jobs.find(
-    (j) => j.status === 'awaiting_followup' && providerUi(j).supportsFollowup,
+    (j) =>
+      (j.status === 'awaiting_followup' ||
+        (j.status === 'completed' && providerUi(j).provider === 'agy')) &&
+      providerUi(j).supportsFollowup,
   );
   if (awaitingJob) {
+    const ui = providerUi(awaitingJob);
     lines.push(
       '',
-      `Follow-up available: run $claude-followup ${awaitingJob.jobId} -- "next instruction"`,
+      `Follow-up available: run $${ui.skillPrefix}-followup ${awaitingJob.jobId} -- "next instruction"`,
     );
   }
 
@@ -805,6 +818,8 @@ export function formatFollowup(job, turnHandle, turnIndex, json, opts = {}) {
         ? 'turn'
         : 'sendResult';
   const resultPending = finalMessagePreview == null && turnPreviewIsPrevious;
+  const session = jobSession(job);
+  const ui = providerUi(job);
 
   if (json) {
     return JSON.stringify(
@@ -813,8 +828,11 @@ export function formatFollowup(job, turnHandle, turnIndex, json, opts = {}) {
         job: {
           jobId: job.jobId,
           status: job.status,
-          shortId: job.claude.shortId,
-          sessionName: job.claude.sessionName,
+          provider: ui.provider,
+          shortId: session.shortId,
+          sessionId: session.sessionId ?? null,
+          sessionName: session.sessionName,
+          turnCount: job.turns.length,
           resultPreview: finalMessagePreview ?? null,
         },
         turn: {
@@ -827,7 +845,7 @@ export function formatFollowup(job, turnHandle, turnIndex, json, opts = {}) {
                 stalePreview: true,
                 resultPending: true,
                 previousTurnPreview,
-                resultHint: `$claude-result ${job.jobId}`,
+                resultHint: `$${ui.skillPrefix}-result ${job.jobId}`,
               }
             : {}),
         },
@@ -838,17 +856,20 @@ export function formatFollowup(job, turnHandle, turnIndex, json, opts = {}) {
   }
 
   const lines = [
-    'Claude follow-up sent',
+    `${ui.name} follow-up sent`,
     `Job ID:         ${job.jobId}`,
     `Turn:           ${turnIndex} (${turnStatus})`,
-    `Claude session: ${job.claude.shortId}`,
+    `${ui.sessionLabel}: ${session.sessionId ?? session.shortId}`,
     `Status:         ${job.status}`,
   ];
 
   if (finalMessagePreview) {
     lines.push('', finalMessagePreview);
   } else if (resultPending) {
-    lines.push('', `Result preview pending; run $claude-result ${job.jobId} after status settles.`);
+    lines.push(
+      '',
+      `Result preview pending; run $${ui.skillPrefix}-result ${job.jobId} after status settles.`,
+    );
   }
 
   return lines.join('\n');

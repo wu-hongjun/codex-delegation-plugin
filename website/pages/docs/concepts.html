@@ -30,6 +30,7 @@
     <pre><code>Driver
 ├── probe()                 → capabilities
 ├── startSession(options)   → provider handle
+├── send(session, input)    → another exact-conversation turn
 ├── watch(target)           → lifecycle events
 ├── status(session)         → normalized status
 ├── stop(session)           → termination
@@ -58,8 +59,10 @@
     <h3>Google Antigravity</h3>
     <p>
       <code>AgyCliDriver</code> owns a detached supervisor around <code>agy --print</code>. The
-      supervisor captures stdout, stderr, exit status, and stop state. Print mode does not expose a
-      stable conversation ID, so the plugin treats every Antigravity job as single-turn.
+      supervisor captures stdout, stderr, exit status, stop state, and a private diagnostic log. The
+      driver extracts the conversation UUID from that log and resumes follow-up turns with
+      <code>agy --conversation &lt;uuid&gt;</code>. Global <code>agy --continue</code> state is
+      never used.
     </p>
   </section>
 
@@ -77,7 +80,10 @@
         A Claude turn finished and its live session remains available for another instruction.
       </dd>
       <dt><code>completed</code></dt>
-      <dd>The job has a final result and is no longer presented as follow-up-ready.</dd>
+      <dd>
+        The job has a final result. An Antigravity job with a stored conversation UUID can still
+        accept a targeted follow-up from this state.
+      </dd>
       <dt><code>failed</code></dt>
       <dd>The provider or supervisor exited unsuccessfully.</dd>
       <dt><code>stopped</code></dt>
@@ -103,11 +109,17 @@
   </section>
 
   <section id="followup-window">
-    <h2>The follow-up window</h2>
+    <h2>Provider follow-up models</h2>
     <p>
       A completed Claude turn is normally shown as <code>awaiting_followup</code> for 30 minutes
       after the last completed activity. The window is a status and UX policy, not a hard capability
       cutoff: an explicit follow-up may still attach if the Claude session remains live.
+    </p>
+    <p>
+      Antigravity does not keep a plugin-attached live TUI. Each completed turn ends its supervised
+      print process; a later follow-up starts another print process against the exact stored UUID.
+      This supports deterministic multi-turn work without claiming live attach, mid-turn input, or
+      nested-subagent inspection.
     </p>
   </section>
 </article>

@@ -100,11 +100,6 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-::selection {
-  background: color-mix(in srgb, var(--tint-sand) 58%, var(--c-white));
-  color: var(--c-black);
-}
-
 a {
   color: inherit;
 }
@@ -365,16 +360,21 @@ a {
   display: flex;
   align-items: center;
   padding: 0.65rem 0;
-  color: var(--muted-foreground);
+  color: var(--c-black);
   font-size: 0.78rem;
   line-height: 1.25;
+  opacity: 1;
   text-decoration: none;
+  transition: opacity 200ms var(--ease-in-quad);
 }
 
 .site-docs-nav a:hover,
-.site-docs-nav a:focus-visible,
+.site-docs-nav a:focus-visible {
+  opacity: var(--dim-1);
+}
+
 .site-docs-nav a[aria-current='page'] {
-  color: var(--c-black);
+  opacity: 1;
 }
 
 .site-docs-nav a[aria-current='page']::before {
@@ -534,7 +534,7 @@ a {
   color: var(--muted-foreground);
 }
 
-/* Product landing, audited against vvver v0.10.1 page blocks. */
+/* Product landing, audited against the post-v0.10.1 vvver page blocks. */
 .site-page--landing .site-layout {
   width: 100%;
   max-width: none;
@@ -629,7 +629,7 @@ a {
   margin: 1rem 0 0;
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   letter-spacing: 0.045em;
   line-height: 1.5;
   text-transform: uppercase;
@@ -649,26 +649,17 @@ a {
   line-height: 1;
   text-decoration: none;
   text-transform: uppercase;
-  transition:
-    background-color 250ms var(--ease-out-quint),
-    border-color 250ms var(--ease-out-quint),
-    color 250ms var(--ease-out-quint),
-    transform 250ms var(--ease-out-quint);
+  transition: opacity 200ms var(--ease-in-quad);
 }
 
-.landing-button:hover {
-  transform: translateY(-1px);
+.landing-button:hover,
+.landing-button:focus-visible {
+  opacity: var(--dim-1);
 }
 
 .landing-button--solid {
   background: var(--c-black);
   color: var(--c-white);
-}
-
-.landing-button--solid:hover,
-.landing-button--solid:focus-visible {
-  background: var(--c-white);
-  color: var(--c-black);
 }
 
 .landing-product {
@@ -696,7 +687,7 @@ a {
   gap: 1rem;
   padding: 0.75rem 1rem;
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   letter-spacing: 0.05em;
   line-height: 1.3;
   text-transform: uppercase;
@@ -718,6 +709,7 @@ a {
 .landing-command-surface > p:last-child i {
   width: 0.45rem;
   height: 0.45rem;
+  border-radius: 50%;
   background: var(--tint-sage);
 }
 
@@ -729,7 +721,7 @@ a {
   margin: 0 0 0.65rem;
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -744,11 +736,32 @@ a {
   text-wrap: balance;
 }
 
-.landing-product-meta {
-  margin: 2rem 0 0;
+.landing-product-prompt code {
+  font-family: var(--vvver-code-font);
+  font-size: 0.82em;
+  font-weight: 500;
+  letter-spacing: -0.025em;
+  overflow-wrap: anywhere;
 }
 
-.landing-product-meta > div,
+.landing-product-meta {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  margin: 2rem 0 0;
+  border-top: var(--hairline) solid var(--border);
+  border-bottom: var(--hairline) solid var(--border);
+}
+
+.landing-product-meta > div {
+  min-width: 0;
+  padding-block: 0.75rem;
+  border-top: var(--hairline) solid var(--border);
+}
+
+.landing-product-meta > div:first-child {
+  border-top: 0;
+}
+
 .landing-provider-grid dl > div {
   display: grid;
   grid-template-columns: minmax(6rem, 0.4fr) minmax(0, 1fr);
@@ -761,7 +774,7 @@ a {
 .landing-provider-grid dt {
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -774,6 +787,15 @@ a {
   overflow-wrap: anywhere;
 }
 
+.landing-product-meta dd {
+  margin-top: 0.35rem;
+}
+
+.landing-product-meta code {
+  font-family: var(--vvver-code-font);
+  font-size: 0.94em;
+}
+
 .landing-product-events {
   margin: 1.5rem 0 0;
   padding: 0;
@@ -783,7 +805,7 @@ a {
 .landing-product-events li {
   position: relative;
   display: grid;
-  grid-template-columns: 4.75rem minmax(0, 1fr);
+  grid-template-columns: 2.5rem minmax(0, 1fr);
   gap: 0.75rem;
   margin-left: 0.15rem;
   padding-left: 1.1rem;
@@ -815,7 +837,7 @@ a {
 .landing-product-events span {
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.62rem;
 }
 
 .landing-product-events strong {
@@ -924,7 +946,7 @@ a {
   margin: 0;
   padding: 0.75rem 1rem;
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   letter-spacing: 0.05em;
   line-height: 1.4;
   text-transform: uppercase;
@@ -1019,7 +1041,7 @@ a {
 .landing-provider-title span {
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   letter-spacing: 0.08em;
   text-transform: uppercase;
 }
@@ -1111,7 +1133,7 @@ a {
 .landing-proof-note {
   color: var(--muted-foreground);
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   letter-spacing: 0.07em;
   line-height: 1.3;
   text-transform: uppercase;
@@ -1236,7 +1258,7 @@ a {
 .landing-cta-sequence span {
   color: color-mix(in srgb, var(--c-white) 58%, transparent);
   font-family: var(--font-mono);
-  font-size: 0.6rem;
+  font-size: 0.62rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -1249,23 +1271,11 @@ a {
   color: var(--c-white);
 }
 
-.landing-button--light:hover,
-.landing-button--light:focus-visible {
-  background: var(--c-black);
-  color: var(--c-white);
-}
-
-.landing-button--dark-ghost:hover,
-.landing-button--dark-ghost:focus-visible {
-  background: var(--c-white);
-  color: var(--c-black);
-}
-
 .site-page--error .site-layout {
   min-height: 60svh;
 }
 
-/* Footer, adapted from vvver v0.10.1 Footer. */
+/* Footer, adapted from the post-v0.10.1 vvver Footer. */
 .site-footer {
   border-top: var(--hairline) solid var(--border);
 }
@@ -1332,16 +1342,16 @@ a {
   max-width: 100%;
   align-items: center;
   padding-block: 0.25rem;
-  color: var(--muted-foreground);
+  color: var(--c-black);
   font-size: 0.85rem;
   line-height: 1.3;
   text-decoration: none;
-  transition: color 250ms var(--ease-out-quint);
+  transition: opacity 200ms var(--ease-in-quad);
 }
 
 .site-footer-nav a:hover,
 .site-footer-nav a:focus-visible {
-  color: var(--c-black);
+  opacity: var(--dim-1);
 }
 
 .site-footer-bottom {
@@ -1377,6 +1387,16 @@ a {
 
   .landing-feature-grid {
     grid-template-columns: 1.15fr 1fr 1fr;
+  }
+
+  .landing-product-meta {
+    grid-template-columns: 1.35fr 1fr 0.65fr;
+    gap: 1.5rem;
+  }
+
+  .landing-product-meta > div {
+    padding-block: 1rem;
+    border-top: 0;
   }
 
   .landing-feature-grid article {
@@ -1516,10 +1536,6 @@ a {
   .landing-directory a,
   .site-footer-nav a {
     transition: none;
-  }
-
-  .landing-button:hover {
-    transform: none;
   }
 }
 

@@ -130,6 +130,21 @@ for (const page of pages) {
         fail(expected, `missing adopted page-block recipe ${component}`);
       }
     }
+    for (const evidence of [
+      'CODEX_DELEGATION_V050_AGY_OK',
+      'job_mrp1r0j5_2409f03a',
+      'Google Antigravity',
+      '<time datetime="2026-07-18">',
+    ]) {
+      if (!html.includes(evidence)) {
+        fail(expected, `missing factual release evidence: ${evidence}`);
+      }
+    }
+    for (const retiredExample of ['Example delegated job', '12:04:18', 'Workspace write']) {
+      if (html.includes(retiredExample)) {
+        fail(expected, `contains retired fictional job metadata: ${retiredExample}`);
+      }
+    }
   }
   if (page.section === 'docs' && !/<main class="site-main vvver-prose"/.test(html)) {
     fail(expected, 'documentation page must retain the long-form prose scope');
@@ -217,8 +232,10 @@ if (!filePaths.has(stylesheetPath)) {
     '--fluid-display',
     '--gutter-fluid',
     '--tap-min',
+    '--texture-grain-opacity',
     '--tint-sage',
     '.link-slide',
+    '.typewriter-register',
     '.underlined-link',
     '.tap-target',
   ]) {

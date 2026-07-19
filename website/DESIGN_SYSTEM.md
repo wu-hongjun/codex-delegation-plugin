@@ -5,12 +5,12 @@ Audit date: 2026-07-18
 Source: `wu-hongjun/vvver-design-system`
 
 - Package release: `v0.10.1`
-- Pinned commit: `a2630009b4e186c99d972b39ab760c5e4a47fbb5`
+- Pinned commit: `53ee8b66a243efdbeb61bd6ffb5a94bb2d1d3db5` (`origin/main`, post-release)
 - Package shape: source TypeScript, React 19 peer dependency, Tailwind CSS 4 host contract
 - Integration: exact submodule gitlink at `vendor/vvver-design-system`
 - Static-site inputs: `src/tokens.css`, `src/styles.css`, `src/prose.css`, and Switzer WOFF2 files
 
-## v0.10.1 audit outcome
+## v0.10.1 and post-release audit outcome
 
 Versions 0.9.0 and 0.10.0 raise the library to roughly 150 components. The new account and security
 kit is not needed by this documentation site, but its field, status, and consent patterns informed
@@ -24,15 +24,19 @@ status labels no longer inherit accent color, nested syntax tokens keep AA-clear
 the `Quote` reset is narrowed so ordinary image figures retain their prose spacing. This site's own
 microcopy audit follows the same contrast rule.
 
+The reviewed post-release mainline adds `ProjectLedger`, `WorkIndex`, `MediaSequence`, `ProofFrame`,
+`MaterialTexture`, and a documentary `typewriter-register`. More importantly, it consolidates the
+system's anti-synthetic doctrine: factual metadata and authored evidence create human character;
+uniform cards, fake terminal records, invented provenance, and global texture do not.
+
 The optional companion accent contract introduces eight muted, low-chroma host tints. This site
 defines the documented values and uses only sage, slate, and sand for status marks, provider rules,
 and the release strip. Core surfaces remain ink and paper.
 
-The site consumes the reviewed v0.10.1 package artifact. Its documentation app builds all 32 routes
-successfully. The upstream workspace's
-audit reports two moderate development-only findings through Next's pinned PostCSS; neither package
-enters this site's static Tailwind artifact. The plugin repository's audit remains separate and
-must stay at zero.
+The site consumes the reviewed post-v0.10.1 mainline artifact. Its documentation app builds all 32
+routes successfully. The upstream workspace's audit reports two moderate development-only findings
+through Next's pinned PostCSS; neither package enters this site's static Tailwind artifact. The
+plugin repository's audit remains separate and must stay at zero.
 
 ## Adopted in the second pass
 
@@ -65,6 +69,21 @@ default answer to every content group, oversized vanity metrics, a centered clos
 invented `CD//` wordmark. The remaining details are restrained—an asymmetric hero, running section
 labels, tabular release evidence, hairline active states, and a single low-chroma status register.
 
+## Adopted in the fourth pass
+
+- `ProjectLedger`'s open, fixed-track treatment for the hero's factual job provenance
+- the documentary `typewriter-register` for the recorded verification source and date
+- v0.10.1's 0.62rem readable micro-label floor across product, provider, proof, and sequence labels
+- the canonical circular geometry for semantic status dots while brand surfaces remain square
+- the self-dimming interaction rule for buttons, documentation navigation, and footer links
+- ink-on-paper selection inherited directly from the upstream base layer
+
+The hero record now uses the real post-release Antigravity job ID, provider, completion state, and
+exact `CODEX_DELEGATION_V050_AGY_OK` result. Invented timestamps, Claude metadata, and permission
+claims were removed. `MaterialTexture` and `ProofFrame` were intentionally not applied: this site
+has no authored physical media or production scan whose provenance would justify them, and a global
+paper effect would reproduce the synthetic look this pass is meant to remove.
+
 The landing page is no longer wrapped in `.vvver-prose`. Prose is intentionally scoped to
 documentation and error content; the product page uses the new section recipes. This removes the
 specificity fight that previously forced editorial article headings, margins, and table rules onto
@@ -94,6 +113,6 @@ architecture grows enough to require its ink-curtain overlay.
 
 1. Fetch tags and inspect the newest release diff, package exports, new page recipes, and audit fixes.
 2. Move the submodule to an exact reviewed tag/commit.
-3. Build the tagged design-system documentation workspace.
+3. Build the pinned design-system documentation workspace.
 4. Run `npm run site:test`, the responsive/keyboard contract audit, and all repository lanes.
 5. Update this record with the adopted version, commit, and any unresolved component findings.

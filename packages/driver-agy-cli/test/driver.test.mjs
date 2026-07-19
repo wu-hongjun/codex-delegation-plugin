@@ -193,12 +193,8 @@ describe('AgyCliDriver lifecycle', () => {
     assert.ok(handle.statePath);
     assert.ok(handle.resultPath);
 
-    const status = await waitFor(
-      driver,
-      handle,
-      ['idle'],
-      4000,
-      (observed) => Boolean(observed.transcriptPath),
+    const status = await waitFor(driver, handle, ['idle'], 4000, (observed) =>
+      Boolean(observed.transcriptPath),
     );
     assert.equal(status.value, 'idle');
     assert.ok(status.transcriptPath);

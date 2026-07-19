@@ -116,7 +116,7 @@ failure, dispatcher lifecycle, and cleanup of detached test processes.
   environment issue rather than a packaging defect.
 - `npm audit` reported zero vulnerabilities.
 - Final local install: `delegate@codex-delegation-plugin-local`
-  `0.5.0+codex.20260719164846`; installed cache bytes were checked for the corrected default-parent
+  `0.5.0+codex.20260719170324`; installed cache bytes were checked for the corrected default-parent
   orchestration and sanitized-wait contracts.
 
 CI and Pages results are recorded after the commit reaches GitHub.

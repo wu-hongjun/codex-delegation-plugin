@@ -54,7 +54,8 @@ Configured via two env vars:
 
   // Plan 0002 T3: PTY-attach emulation.
   "attachResponse": "[mock] Got: ${prompt}",  // response template; ${prompt} is substituted
-  "permissionStall": false             // when true, first attach submit triggers waiting state
+  "permissionStall": false,            // when true, first attach submit triggers waiting state
+  "attachSubmitDelayMs": 0             // delay attach submit processing for race tests
 }
 ```
 

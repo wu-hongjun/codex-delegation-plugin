@@ -671,7 +671,10 @@ describe('send() — permission waiting with no callback', () => {
     'DriverError matching /permission required/i thrown when permissionStall is true and no callback supplied; lock is released',
     { timeout: 20000 },
     async () => {
-      const cfg = writeMockConfig(MOCK_HOME, { permissionStall: true });
+      const cfg = writeMockConfig(MOCK_HOME, {
+        permissionStall: true,
+        attachSubmitDelayMs: 200,
+      });
       const env = buildEnv(MOCK_HOME, DELEGATION_HOME, {
         CODEX_DELEGATION_MOCK_CLAUDE_CONFIG: cfg,
       });

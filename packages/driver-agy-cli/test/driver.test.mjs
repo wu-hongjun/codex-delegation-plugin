@@ -60,6 +60,16 @@ async function waitFor(driver, handle, expected, timeoutMs = 4000, predicate = (
   }
 }
 
+async function waitForOutput(path, pattern, timeoutMs = 4000) {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const output = await readAgyOutput(path);
+    if (pattern.test(output)) return output;
+    if (Date.now() >= deadline) assert.fail(`timed out waiting for output matching ${pattern}`);
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 25));
+  }
+}
+
 describe('AgyCliDriver probe and arguments', () => {
   it('detects supervised interactive support without invoking a model', async () => {
     const driver = new AgyCliDriver({ executable: mockAgy, cwd: workspace });
@@ -376,7 +386,7 @@ describe('AgyCliDriver lifecycle', () => {
       JSON.stringify({
         delayMs: 100,
         subagentPause: true,
-        subagentDelayMs: 150,
+        subagentDelayMs: 750,
         intermediateResponse: 'Waiting for child.',
         response: 'Native child final result.',
       }),
@@ -385,7 +395,13 @@ describe('AgyCliDriver lifecycle', () => {
     const driver = new AgyCliDriver({ executable: mockAgy, cwd: workspace, env });
     const handle = await startTracked(driver, { cwd: workspace, prompt: 'delegate to child' });
 
-    await new Promise((resolveDelay) => setTimeout(resolveDelay, 180));
+    const intermediateOutput = await waitForOutput(handle.resultPath, /Waiting for child/);
+    const outstanding = await waitFor(driver, handle, ['working'], 4000, (observed) =>
+      Boolean(observed.raw.hookObserved && observed.raw.hookFullyIdle === false),
+    );
+    assert.match(intermediateOutput, /Waiting for child/);
+    await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+    assert.equal(outstanding.value, 'working');
     assert.equal((await driver.status(handle)).value, 'working');
     const settled = await waitFor(driver, handle, ['idle']);
     assert.equal(settled.value, 'idle');

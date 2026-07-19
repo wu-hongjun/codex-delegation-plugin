@@ -158,9 +158,9 @@ function hasPromptRegistered(
   // state changed to waiting (permission stall — already counts as registered)
   if (current.state === 'waiting') return true;
 
-  // agents-json fallback
-  if (agentsStatus !== undefined && agentsStatus !== 'idle') return true;
-
+  // When a sidecar exists, it is the authoritative per-turn signal. Falling
+  // through to agents-json here can mistake the session's pre-existing status
+  // for registration of the new prompt, then accept the old completed turn.
   return false;
 }
 

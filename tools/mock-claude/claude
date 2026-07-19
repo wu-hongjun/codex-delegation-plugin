@@ -795,7 +795,12 @@ function cmdAttach(config, args) {
         const cleaned = stripBracketedPaste(buf);
         buf = '';
         if (cleaned.length === 0) continue;
-        processSubmit(cleaned);
+        const submitDelayMs = Number(config.attachSubmitDelayMs ?? 0);
+        if (Number.isFinite(submitDelayMs) && submitDelayMs > 0) {
+          setTimeout(() => processSubmit(cleaned), submitDelayMs);
+        } else {
+          processSubmit(cleaned);
+        }
       } else {
         buf += String.fromCharCode(byte);
       }

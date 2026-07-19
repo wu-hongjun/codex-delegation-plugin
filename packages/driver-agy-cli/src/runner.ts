@@ -66,7 +66,7 @@ let stopping = false;
 let finished = false;
 let terminal: import('node-pty').IPty | null = null;
 let requestPolling = false;
-let hookPolling = false;
+let hookRefresh: Promise<void> | null = null;
 let logPolling = false;
 let terminalTextTail = '';
 
@@ -127,6 +127,10 @@ async function observeTerminal(chunk: string): Promise<void> {
   const marker = lastMarker(terminalTextTail);
   if (!marker) return;
   if (marker.status === 'idle') {
+    // Terminal output and hook delivery are independent streams. Refresh the
+    // hook sidecar before trusting the visible prompt so a queued PreInvocation
+    // or non-idle Stop event can veto the terminal's apparent idle state.
+    await refreshHookState();
     // The native prompt is visible while a child agent is still working. Once
     // lifecycle hooks are active, only the owned parent's fullyIdle Stop event
     // may settle the turn.
@@ -213,6 +217,21 @@ async function consumeHookState(): Promise<void> {
   await publish(patch);
 }
 
+function refreshHookState(): Promise<void> {
+  if (hookRefresh) return hookRefresh;
+  const pending = consumeHookState()
+    .catch((error) => {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        terminalStream.write(`\n[codex-delegation hook warning] ${String(error)}\n`);
+      }
+    })
+    .finally(() => {
+      if (hookRefresh === pending) hookRefresh = null;
+    });
+  hookRefresh = pending;
+  return pending;
+}
+
 async function writeAck(ack: AgyControlAck): Promise<void> {
   const target = join(acksDir, `${ack.id}.json`);
   const temporary = `${target}.${process.pid}.tmp`;
@@ -284,17 +303,8 @@ const requestTimer = setInterval(() => {
 }, 25);
 
 const hookTimer = setInterval(() => {
-  if (hookPolling || finished) return;
-  hookPolling = true;
-  void consumeHookState()
-    .catch((error) => {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        terminalStream.write(`\n[codex-delegation hook warning] ${String(error)}\n`);
-      }
-    })
-    .finally(() => {
-      hookPolling = false;
-    });
+  if (finished) return;
+  void refreshHookState();
 }, 50);
 
 const logTimer = setInterval(() => {

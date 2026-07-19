@@ -58,11 +58,11 @@
     </p>
     <h3>Google Antigravity</h3>
     <p>
-      <code>AgyCliDriver</code> owns a detached supervisor around <code>agy --print</code>. The
-      supervisor captures stdout, stderr, exit status, stop state, and a private diagnostic log. The
-      driver extracts the conversation UUID from that log and resumes follow-up turns with
-      <code>agy --conversation &lt;uuid&gt;</code>. Global <code>agy --continue</code> state is
-      never used.
+      <code>AgyCliDriver</code> owns a detached PTY supervisor around
+      <code>agy --prompt-interactive</code>. A bundled Antigravity plugin publishes lifecycle and
+      transcript metadata; the driver normalizes those records while retaining a raw ANSI log for
+      native attachment. The exact UUID is job-scoped and global <code>agy --continue</code> state
+      is never used.
     </p>
   </section>
 
@@ -77,12 +77,11 @@
       <dd>A permission or operator decision blocks progress.</dd>
       <dt><code>awaiting_followup</code></dt>
       <dd>
-        A Claude turn finished and its live session remains available for another instruction.
+        A provider turn finished and its live session remains available for another instruction.
       </dd>
       <dt><code>completed</code></dt>
       <dd>
-        The job has a final result. An Antigravity job with a stored conversation UUID can still
-        accept a targeted follow-up from this state.
+        The job has a final result. A still-live provider session can accept a targeted follow-up.
       </dd>
       <dt><code>failed</code></dt>
       <dd>The provider or supervisor exited unsuccessfully.</dd>
@@ -116,10 +115,10 @@
       cutoff: an explicit follow-up may still attach if the Claude session remains live.
     </p>
     <p>
-      Antigravity does not keep a plugin-attached live TUI. Each completed turn ends its supervised
-      print process; a later follow-up starts another print process against the exact stored UUID.
-      This supports deterministic multi-turn work without claiming live attach, mid-turn input, or
-      nested-subagent inspection.
+      Antigravity keeps one persistent supervised TUI per job. A later follow-up is pasted into that
+      same process, while <code>$agy-attach</code> proxies a user-owned terminal to native
+      permission, task, conversation-fork, and subagent controls. <code>Ctrl+]</code> detaches
+      without stopping it.
     </p>
   </section>
 </article>

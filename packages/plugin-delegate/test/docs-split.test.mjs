@@ -74,6 +74,7 @@ const SKILL_NAMES = [
   'agy-doctor',
   'agy-delegate',
   'agy-status',
+  'agy-attach',
   'agy-wait',
   'agy-result',
   'agy-stop',
@@ -177,7 +178,7 @@ describe('docs split — three distinct surfaces (Plan 0006 T12)', () => {
     });
 
     // T12-3: Skills section lists every shipped skill with $-prefix.
-    it('Skills section enumerates all 36 skill names with $-prefix and a one-line description', () => {
+    it('Skills section enumerates all 37 skill names with $-prefix and a one-line description', () => {
       const content = readFileSync(MARKETPLACE_README, 'utf8');
       // Extract the Skills section body.
       const match = content.match(/^## Skills\b[\s\S]*?(?=^## )/m);
@@ -502,9 +503,9 @@ describe('docs polish — Stage 4 audit findings (Plan 0006 Stage 4)', () => {
   describe('F-2: root README status must describe the maintained release surface', () => {
     it('root README must state the current skill and provider surface', () => {
       const content = readFileSync(ROOT_README, 'utf8');
-      assert.match(content, /currently ships 24 Codex skills/i);
+      assert.match(content, /ships 37 skills/i);
       assert.match(content, /Claude Code background-session delegation/i);
-      assert.match(content, /Antigravity print-mode delegation/i);
+      assert.match(content, /persistent Antigravity TUI/i);
     });
 
     it('root README must point to the manifest, release checklist, and historical plan records', () => {
@@ -556,13 +557,13 @@ describe('$claude-workflow documentation — plugin README (Plan 0008 T5)', () =
     );
   });
 
-  it('plugin README Current v1 scope section says "Thirty-six skills"', () => {
+  it('plugin README Current v1 scope section says "Thirty-seven skills"', () => {
     const content = readFileSync(PLUGIN_README, 'utf8');
     const match = content.match(/^## Current v1 scope\b[\s\S]*?(?=^## )/m);
     assert.ok(match, 'plugin README must have a "## Current v1 scope" section');
     assert.ok(
-      match[0].includes('Thirty-six skills'),
-      'plugin README ## Current v1 scope must say "Thirty-six skills"',
+      match[0].includes('Thirty-seven skills'),
+      'plugin README ## Current v1 scope must say "Thirty-seven skills"',
     );
   });
 

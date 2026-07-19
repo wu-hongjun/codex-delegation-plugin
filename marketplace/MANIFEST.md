@@ -6,7 +6,7 @@
 
 ## Plugin-tree files (sourced from `packages/plugin-delegate/`)
 
-The following 49 files are copied byte-for-byte from `packages/plugin-delegate/` into `marketplace/plugins/delegate/`:
+The following 58 files are copied byte-for-byte from `packages/plugin-delegate/` into `marketplace/plugins/delegate/`:
 
 - `.codex-plugin/plugin.json`
 - `scripts/delegate.mjs`
@@ -21,6 +21,14 @@ The following 49 files are copied byte-for-byte from `packages/plugin-delegate/`
 - `scripts/lib/review-prompts.mjs`
 - `scripts/lib/review-result-source.mjs`
 - `scripts/lib/workflows-inspector.mjs`
+- `antigravity-plugin/plugin.json`
+- `antigravity-plugin/hooks.json`
+- `antigravity-plugin/hook.mjs`
+- `antigravity-plugin/agents/codex-delegation-workflow/agent.md`
+- `antigravity-plugin/agents/codex-delegation-goal/agent.md`
+- `antigravity-plugin/agents/codex-delegation-fork/agent.md`
+- `antigravity-plugin/agents/codex-delegation-batch/agent.md`
+- `antigravity-plugin/agents/codex-delegation-deep-research/agent.md`
 - `skills/claude-setup/SKILL.md`
 - `skills/claude-doctor/SKILL.md`
 - `skills/claude-delegate/SKILL.md`
@@ -43,6 +51,7 @@ The following 49 files are copied byte-for-byte from `packages/plugin-delegate/`
 - `skills/agy-doctor/SKILL.md`
 - `skills/agy-delegate/SKILL.md`
 - `skills/agy-status/SKILL.md`
+- `skills/agy-attach/SKILL.md`
 - `skills/agy-wait/SKILL.md`
 - `skills/agy-result/SKILL.md`
 - `skills/agy-stop/SKILL.md`
@@ -84,10 +93,10 @@ All paths are relative to `marketplace/plugins/delegate/`.
   `packages/driver-claude-code/dist/` after `npm run build`.
 
 ### `node_modules/@codex-delegation/driver-agy-cli/`
-- `package.json` — synthesized minimal shape with the bundled runtime dependency.
+- `package.json` — synthesized minimal shape with the bundled runtime and `node-pty` dependencies.
 - `dist/*.js` and `dist/*.d.ts` — copied byte-for-byte from
   `packages/driver-agy-cli/dist/` after `npm run build`, including the detached
-  print-mode supervisor runner.
+  persistent-interactive supervisor, attach bridge, control protocol, and transcript normalizer.
 
 ### `node_modules/node-pty/`
 Bundled from the workspace's npm-installed `node-pty@1.2.0-beta.13`:
@@ -115,10 +124,10 @@ files match their canonical shape.
 
 ## Marketplace-owned files (not derived from source)
 
-- `README.md` — owned in-place; Plan 0006 T2 created this as a placeholder (11 lines). Plan 0006 T12 will replace it with the final marketplace-facing README. The packaging script does NOT copy or overwrite this file.
+- `README.md` — the concise install, usage, safety, and troubleshooting guide shipped with the marketplace plugin. The packaging script does NOT copy or overwrite this file.
 - `.agents/plugins/marketplace.json` — the Codex marketplace root manifest, owned by the marketplace, not derived from the plugin source. The packaging script leaves it in place.
 
-**Option A** is in effect: `README.md` is treated as marketplace-owned, not derived from `packages/plugin-delegate/README.md` (which is the full 551-line plugin documentation). This prevents the packaging script from clobbering the marketplace placeholder with the source README.
+**Option A** is in effect: `README.md` is treated as marketplace-owned, not derived from the longer engineering reference at `packages/plugin-delegate/README.md`. This keeps the marketplace guide focused while preventing packaging from clobbering it.
 
 ## Marketplace-root files (lives directly under `marketplace/`)
 

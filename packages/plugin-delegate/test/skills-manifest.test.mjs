@@ -40,6 +40,7 @@ const SKILL_NAMES = [
   'agy-doctor',
   'agy-delegate',
   'agy-status',
+  'agy-attach',
   'agy-wait',
   'agy-result',
   'agy-stop',
@@ -80,6 +81,7 @@ const SKILL_SUBCOMMANDS = {
   'agy-doctor': 'agy-doctor',
   'agy-delegate': 'delegate',
   'agy-status': 'status',
+  'agy-attach': 'attach',
   'agy-wait': 'wait',
   'agy-result': 'result',
   'agy-stop': 'stop',
@@ -107,6 +109,22 @@ function manifestPath() {
 function readManifest() {
   return JSON.parse(readFileSync(manifestPath(), 'utf8'));
 }
+
+describe('provider skill-surface parity', () => {
+  it('matches every Claude skill suffix and keeps only the Antigravity attach bridge as an extra', () => {
+    const claude = SKILL_NAMES.filter((name) => name.startsWith('claude-'))
+      .map((name) => name.slice('claude-'.length))
+      .sort();
+    const agy = SKILL_NAMES.filter((name) => name.startsWith('agy-'))
+      .map((name) => name.slice('agy-'.length))
+      .sort();
+    assert.deepEqual(
+      agy.filter((suffix) => suffix !== 'attach'),
+      claude,
+    );
+    assert.equal(agy.includes('attach'), true);
+  });
+});
 
 /**
  * Tiny inline frontmatter parser — no yaml dependency.
@@ -772,14 +790,14 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
 });
 
 describe('plugin.json.interface.defaultPrompt length includes all provider skills', () => {
-  it('array length equals 36', () => {
+  it('array length equals 37', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      36,
-      `interface.defaultPrompt must have exactly 36 entries; got ${dp.length}`,
+      37,
+      `interface.defaultPrompt must have exactly 37 entries; got ${dp.length}`,
     );
   });
 });
@@ -886,14 +904,14 @@ describe('no unexpected review-adjacent skill directories exist', () => {
 // ---------- T6: OQ-C defaultPrompt rewrites (entries #6-#9) ----------
 
 describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)', () => {
-  it('array length is exactly 36', () => {
+  it('array length is exactly 37', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      36,
-      `interface.defaultPrompt must have exactly 36 entries; got ${dp.length}`,
+      37,
+      `interface.defaultPrompt must have exactly 37 entries; got ${dp.length}`,
     );
   });
 

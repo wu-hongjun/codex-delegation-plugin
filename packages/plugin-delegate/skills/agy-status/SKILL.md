@@ -24,5 +24,6 @@ Behavior rules:
 ### Next steps
 
 - `$agy-wait <jobId>` - wait for a known job
+- `$agy-attach <jobId>` - answer native input or inspect `/agents` and `/tasks`
 - `$agy-result <jobId>` - read final or recorded partial output
 - `$agy-stop <jobId>` - stop a running job

@@ -74,6 +74,9 @@ export async function probeClaudeBackgroundDriver(
       stop: isOk(probes, 'claude-agents-json'),
       followup: isOk(probes, 'claude-agents-json'),
       logs: isOk(probes, 'claude-logs'),
+      liveInput: isOk(probes, 'claude-agents-json'),
+      permissionHandoff: isOk(probes, 'claude-agents-json'),
+      childControl: isOk(probes, 'claude-agents-json'),
     },
     claudeVersion,
     backgroundSessions:
@@ -82,7 +85,7 @@ export async function probeClaudeBackgroundDriver(
     agentsJson: isOk(probes, 'claude-agents-json'),
     logsCommand: isOk(probes, 'claude-logs'),
     transcriptPath: transcriptOk,
-    attach: false,
+    attach: isOk(probes, 'claude-agents-json'),
     structuredStream: transcriptOk ? 'transcript' : 'none',
     toolEvents: transcriptOk ? 'transcript' : 'none',
     permissions: authOk ? 'human-attach' : 'none',

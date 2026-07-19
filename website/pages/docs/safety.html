@@ -38,30 +38,30 @@
   <section id="antigravity-permissions">
     <h2>Antigravity permissions and sandbox</h2>
     <p>
-      Antigravity print mode cannot show an interactive command-permission prompt. Jobs that need
-      terminal commands require either a narrow Antigravity <code>permissions.allow</code> rule or
-      an explicit trusted <code>--dangerously-skip-permissions</code> run.
+      Antigravity's native permission cards are preserved in the persistent TUI. The job becomes
+      <code>needs_input</code>, and <code>$agy-attach &lt;jobId&gt;</code> lets the user review and
+      answer the actual provider card. Narrow <code>permissions.allow</code> rules remain useful for
+      known-safe work.
     </p>
     <p>
       <code>--sandbox</code> enables Antigravity’s terminal sandbox. It restricts execution but does
       not grant command permission. See the official
-      <a href="https://antigravity.google/docs/cli/permissions">Antigravity permission reference</a
+      <a href="https://antigravity.google/docs/cli-permissions">Antigravity permission reference</a
       >.
     </p>
     <p>
-      Exact follow-up is turn-scoped, not interactive. The plugin cannot answer a permission prompt
-      while an Antigravity print turn is running. A denied operation fails the turn and is recorded
-      as a failed job instead of a successful empty response.
+      The plugin never chooses an answer for the user. An explicit trusted bypass can suppress many
+      prompts, but if Antigravity still needs input the dispatcher fails closed instead of guessing.
     </p>
   </section>
 
   <section id="antigravity-control-plane">
-    <h2>Antigravity native control-plane limits</h2>
+    <h2>Antigravity native control plane</h2>
     <p>
-      The headless CLI supports targeted conversation resume but does not expose live TUI attach,
-      mid-turn input injection, the native <code>/fork</code> picker, or nested-subagent detail
-      panels. The plugin does not scrape or automate those interfaces. Use the interactive
-      Antigravity TUI when those controls matter.
+      Attachment exposes <code>/agents</code>, <code>/tasks</code>, <code>/fork</code>, and normal
+      prompt input through the original TUI. Antigravity does not document a machine-readable child
+      lifecycle or cancel API, so child inspection, approval, and kill remain user-driven in
+      <code>/agents</code> rather than being imitated with an unstable parser.
     </p>
   </section>
 

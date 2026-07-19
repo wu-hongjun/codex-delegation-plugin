@@ -1,4 +1,8 @@
-import { readAgyOutput } from '@codex-delegation/driver-agy-cli';
+import {
+  readAgyOutput,
+  readAgyState,
+  readAgyTranscriptEvents,
+} from '@codex-delegation/driver-agy-cli';
 
 /**
  * @param {import('@codex-delegation/driver-agy-cli').AgyCliDriver} driver
@@ -21,27 +25,41 @@ export function makeAgyAdapter(driver) {
     },
 
     async readTranscriptEvents(ref) {
-      const content = await readAgyOutput(ref.resultPath);
-      return {
-        transcriptPath: null,
-        events:
-          content.trim().length > 0
-            ? [
-                {
-                  type: 'message.completed',
-                  role: 'assistant',
-                  content,
-                  at: new Date().toISOString(),
-                },
-              ]
-            : [],
-        warnings: [],
-      };
+      return readAgyTranscriptEvents({
+        statePath: ref.statePath,
+        conversationId: ref.sessionId,
+        transcriptPath: ref.transcriptPath,
+      });
     },
 
     async readLogs(ref) {
-      const text = await readAgyOutput(ref.errorPath);
-      return { text, stderr: text };
+      const [terminal, stderr] = await Promise.all([
+        readAgyOutput(ref.resultPath),
+        readAgyOutput(ref.errorPath),
+      ]);
+      return { text: terminal || stderr, stdout: terminal, stderr };
+    },
+
+    async readSidecar(ref) {
+      if (!ref.statePath) return null;
+      const state = await readAgyState(ref.statePath);
+      if (!state) return null;
+      return {
+        state:
+          state.status === 'idle'
+            ? 'done'
+            : state.status === 'needs_input'
+              ? 'waiting'
+              : state.status,
+        tempo:
+          state.status === 'idle' ? 'idle' : state.status === 'needs_input' ? 'blocked' : 'active',
+        inFlight: {
+          tasks: state.status === 'running' ? 1 : 0,
+          queued: 0,
+          kinds: state.status === 'needs_input' ? [state.waitingFor ?? 'input'] : [],
+        },
+        intent: state.waitingMessage ?? state.waitingFor,
+      };
     },
   };
 }

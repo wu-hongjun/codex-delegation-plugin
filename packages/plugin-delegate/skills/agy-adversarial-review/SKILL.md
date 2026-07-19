@@ -8,7 +8,7 @@ Resolve `<plugin-root>` as the parent of the `skills/` directory containing this
     node "<plugin-root>/scripts/delegate.mjs" adversarial-review --provider agy <jobId-or-prefix> [flags]
 
 Forward only explicitly requested `--all`, `--json`, `--yes`, `--model`, `--agent`, `--mode`,
-`--sandbox`, `--print-timeout`, `--project`, `--new-project`, `--log-file`, `--permission-mode`,
+`--sandbox`, `--project`, `--new-project`, `--log-file`, `--permission-mode`,
 `--bypass-permissions`, `--dangerously-skip-permissions`, `--blocking`, and `--fail-on`. Do not append
 a prompt; the dispatcher injects the selected result into a fresh review conversation. Return output
 verbatim and surface failures.

@@ -60,6 +60,7 @@ const FORBIDDEN_COST_TOKENS = [
 
 const EXPECTED_SKILL_NAMES = [
   'agy-adversarial-review',
+  'agy-attach',
   'agy-batch',
   'agy-deep-research',
   'agy-delegate',
@@ -480,6 +481,14 @@ const PACKAGE_SCRIPT = resolve(REPO_ROOT, 'tools', 'package-marketplace.mjs');
 // Authoritative allowlist of the derived files (relative to marketplace plugin root).
 const DERIVED_FILES_ALLOWLIST = [
   '.codex-plugin/plugin.json',
+  'antigravity-plugin/plugin.json',
+  'antigravity-plugin/hooks.json',
+  'antigravity-plugin/hook.mjs',
+  'antigravity-plugin/agents/codex-delegation-workflow/agent.md',
+  'antigravity-plugin/agents/codex-delegation-goal/agent.md',
+  'antigravity-plugin/agents/codex-delegation-fork/agent.md',
+  'antigravity-plugin/agents/codex-delegation-batch/agent.md',
+  'antigravity-plugin/agents/codex-delegation-deep-research/agent.md',
   'scripts/delegate.mjs',
   'scripts/lib/ack.mjs',
   'scripts/lib/adapter.mjs',
@@ -514,6 +523,7 @@ const DERIVED_FILES_ALLOWLIST = [
   'skills/agy-doctor/SKILL.md',
   'skills/agy-delegate/SKILL.md',
   'skills/agy-status/SKILL.md',
+  'skills/agy-attach/SKILL.md',
   'skills/agy-wait/SKILL.md',
   'skills/agy-result/SKILL.md',
   'skills/agy-stop/SKILL.md',
@@ -1355,8 +1365,8 @@ describe('marketplace bundled-dependency tree (Plan 0006 T9.5)', () => {
     );
     assert.equal(
       pkg?.dependencies?.['node-pty'],
-      undefined,
-      'agy driver must not depend on node-pty',
+      '1.2.0-beta.13',
+      'agy driver must pin node-pty for the persistent interactive TUI',
     );
   });
 

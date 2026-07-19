@@ -24,9 +24,8 @@ $agy-wait &lt;jobId&gt; --timeout 5m
 $agy-followup &lt;jobId&gt; -- "Now trace the highest-risk path to its tests."
 $agy-result &lt;jobId&gt;</code></pre>
     <p>
-      Antigravity follow-up starts a supervised print turn against the job's stored conversation
-      UUID. It is deterministic across concurrent jobs and never uses global
-      <code>agy --continue</code> state.
+      Antigravity follow-up uses the job's existing persistent TUI and exact UUID. It is
+      deterministic across concurrent jobs and never uses global <code>agy --continue</code> state.
     </p>
   </section>
 
@@ -44,9 +43,10 @@ $claude-workflows &lt;jobId&gt; --json</code></pre>
 $agy-workflows
 $agy-workflows &lt;jobId&gt; --json</code></pre>
     <p>
-      Antigravity receives a multi-agent orchestration contract: phase the work, fan out safe
-      independent tasks, verify returned work, and synthesize the result. The plugin records the
-      parent conversation; nested-subagent panels remain TUI-only.
+      Antigravity's default parent phases the work and keeps the native collaboration tools. It fans
+      out safe independent phases through the companion plugin's child profile, verifies returned
+      work, and synthesizes the result. Attach and open
+      <code>/agents</code> for native child inspection, approval, or kill.
     </p>
   </section>
 
@@ -66,8 +66,10 @@ $agy-workflows &lt;jobId&gt; --json</code></pre>
 $agy-fork -- "Independently audit the new rate limiter and report tradeoffs."
 $agy-batch -- "Audit every independent package, then synthesize an ordered report."</code></pre>
     <p>
-      The Antigravity variants use its subagent framework through explicit orchestration prompts.
-      They do not drive native TUI slash-command pickers or create git worktrees implicitly.
+      The Antigravity variants keep the default parent and invoke bundled native subagent profiles.
+      Its TUI
+      <code>/fork</code> instead branches a conversation, so <code>$agy-fork</code> deliberately
+      uses subagent semantics to match Claude. Neither provider creates a git worktree implicitly.
     </p>
   </section>
 

@@ -1,6 +1,6 @@
 {
   "name": "delegate",
-  "version": "0.5.0+codex.20260719042310",
+  "version": "0.5.0+codex.20260719164846",
   "description": "Delegate tasks from Codex to Claude Code or Google Antigravity.",
   "author": {
     "name": "Hongjun Wu",
@@ -36,6 +36,7 @@
       "Check Google Antigravity CLI readiness.",
       "Delegate a task to Google Antigravity.",
       "Check my Antigravity jobs.",
+      "Attach to an Antigravity job's persistent native TUI.",
       "Wait for an Antigravity job to finish.",
       "Show the result of an Antigravity job.",
       "Stop an Antigravity job.",

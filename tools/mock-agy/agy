@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const args = process.argv.slice(2);
-const config = (() => {
+function readMockConfig() {
   const path = process.env.CODEX_DELEGATION_MOCK_AGY_CONFIG;
   if (!path) return {};
   try {
@@ -11,7 +12,9 @@ const config = (() => {
   } catch {
     return {};
   }
-})();
+}
+
+const config = readMockConfig();
 
 if (process.env.CODEX_DELEGATION_MOCK_AGY_INVOCATIONS) {
   appendFileSync(
@@ -21,15 +24,256 @@ if (process.env.CODEX_DELEGATION_MOCK_AGY_INVOCATIONS) {
 }
 
 if (args.includes('--version')) {
-  process.stdout.write(`${config.version ?? '1.1.3'}\n`);
+  process.stdout.write(`${config.version ?? '1.1.4'}\n`);
   process.exit(config.versionExitCode ?? 0);
 }
 
 if (args.includes('--help')) {
   process.stdout.write(
-    `Usage: agy [flags]\n\n  -p, --print string\n  --conversation string\n  --log-file string\n  --print-timeout duration\n`,
+    `Usage: agy [flags]\n\n  -p, --print string\n  --prompt-interactive string\n  --conversation string\n  --log-file string\n  --print-timeout duration\n`,
   );
   process.exit(config.helpExitCode ?? 0);
+}
+
+if (args[0] === 'models') {
+  process.stdout.write('gemini-3.5-flash-low\ngemini-3.5-flash-medium\n');
+  process.exit(0);
+}
+
+if ((args[0] === 'plugin' || args[0] === 'plugins') && args[1] === 'list') {
+  process.stdout.write(
+    JSON.stringify({
+      imports:
+        config.pluginInstalled === false
+          ? []
+          : [
+              {
+                name: 'codex-delegation-control',
+                source: 'antigravity',
+                components: ['hooks', 'agents'],
+              },
+            ],
+    }) + '\n',
+  );
+  process.exit(0);
+}
+
+if (
+  (args[0] === 'plugin' || args[0] === 'plugins') &&
+  ['validate', 'install', 'enable', 'disable', 'uninstall'].includes(args[1])
+) {
+  process.stdout.write('[ok] codex-delegation-control\n');
+  process.exit(0);
+}
+
+if (args[0] === 'agentapi') {
+  process.stderr.write(
+    'Usage: agy agentapi <get-conversation-metadata|new-conversation|send-message>\n',
+  );
+  process.exit(1);
+}
+
+const interactiveIndex = args.indexOf('--prompt-interactive');
+if (interactiveIndex >= 0 && args[interactiveIndex + 1] !== undefined) {
+  const conversationIndex = args.indexOf('--conversation');
+  const conversationId =
+    conversationIndex >= 0 && args[conversationIndex + 1]
+      ? args[conversationIndex + 1]
+      : (config.conversationId ??
+        process.env.CODEX_DELEGATION_MOCK_AGY_CONVERSATION_ID ??
+        '11111111-2222-4333-8444-555555555555');
+  const logIndex = args.indexOf('--log-file');
+  if (logIndex >= 0 && args[logIndex + 1]) {
+    writeFileSync(
+      args[logIndex + 1],
+      `Created conversation ${conversationId}\nInteractive mode: --conversation=${conversationId}\n`,
+    );
+  }
+
+  const controlDir = process.env.CODEX_DELEGATION_AGY_CONTROL_DIR;
+  const transcriptPath = controlDir ? join(controlDir, 'mock-transcript.jsonl') : undefined;
+  if (controlDir) {
+    mkdirSync(controlDir, { recursive: true, mode: 0o700 });
+    writeFileSync(transcriptPath, '', { mode: 0o600 });
+  }
+
+  let turnIndex = 0;
+  let inputBuffer = '';
+  let pendingPermissionPrompt = null;
+  let stopped = false;
+  const pausedSubagentTurns = new Set();
+
+  function writeHookState(event, status, extra = {}) {
+    if (!controlDir) return;
+    writeFileSync(
+      join(controlDir, 'hook-state.json'),
+      JSON.stringify({
+        schemaVersion: 1,
+        event,
+        at: new Date().toISOString(),
+        eventId: `${Date.now().toString(36)}-${turnIndex}-${event}`,
+        status,
+        conversationId,
+        transcriptPath,
+        artifactDirectoryPath: controlDir,
+        ...extra,
+      }) + '\n',
+      { mode: 0o600 },
+    );
+  }
+
+  function appendTranscript(row) {
+    if (!transcriptPath) return;
+    appendFileSync(transcriptPath, JSON.stringify(row) + '\n', { mode: 0o600 });
+  }
+
+  function responseFor(prompt) {
+    const liveConfig = readMockConfig();
+    const configured =
+      liveConfig.response ??
+      process.env.CODEX_DELEGATION_MOCK_AGY_RESPONSE ??
+      `Antigravity completed: ${prompt}`;
+    return configured.replace?.('${prompt}', prompt) ?? configured;
+  }
+
+  function finishTurn(prompt) {
+    const liveConfig = readMockConfig();
+    if (liveConfig.subagentPause === true && !pausedSubagentTurns.has(turnIndex)) {
+      pausedSubagentTurns.add(turnIndex);
+      const waiting = liveConfig.intermediateResponse ?? 'Waiting for native subagent response.';
+      appendTranscript({
+        step_index: turnIndex * 4 + 1,
+        source: 'MODEL',
+        type: 'PLANNER_RESPONSE',
+        status: 'DONE',
+        created_at: new Date().toISOString(),
+        content: waiting,
+      });
+      process.stdout.write(`\r\n  ${waiting}\r\n? for shortcuts\r\n`);
+      writeHookState('Stop', 'working', {
+        executionNum: 0,
+        fullyIdle: false,
+        terminationReason: 'NO_TOOL_CALL',
+      });
+      setTimeout(
+        () => {
+          if (stopped) return;
+          appendTranscript({
+            step_index: turnIndex * 4 + 2,
+            source: 'SYSTEM',
+            type: 'SYSTEM_MESSAGE',
+            status: 'DONE',
+            created_at: new Date().toISOString(),
+            content: 'Native subagent completed.',
+          });
+          // Provider invocation counters are execution-loop counters, not user
+          // turn indexes. Deliberately jump the counter to enforce that contract.
+          writeHookState('PreInvocation', 'working', { invocationNum: 7 });
+          finishTurn(prompt);
+        },
+        Number(liveConfig.subagentDelayMs ?? 100),
+      );
+      return;
+    }
+    const response = responseFor(prompt);
+    appendTranscript({
+      step_index: turnIndex * 2 + 1,
+      source: 'MODEL',
+      type: 'PLANNER_RESPONSE',
+      status: 'DONE',
+      created_at: new Date().toISOString(),
+      content: response,
+    });
+    if (response) process.stdout.write(`\r\n  ${response}\r\n? for shortcuts\r\n`);
+    writeHookState('Stop', 'idle', {
+      executionNum: turnIndex,
+      fullyIdle: true,
+      terminationReason: 'NO_TOOL_CALL',
+    });
+    turnIndex += 1;
+  }
+
+  function runTurn(prompt) {
+    const liveConfig = readMockConfig();
+    if (process.env.CODEX_DELEGATION_MOCK_AGY_INVOCATIONS) {
+      appendFileSync(
+        process.env.CODEX_DELEGATION_MOCK_AGY_INVOCATIONS,
+        JSON.stringify({ kind: 'prompt', prompt, conversationId, cwd: process.cwd() }) + '\n',
+      );
+    }
+    appendTranscript({
+      step_index: turnIndex * 2,
+      source: 'USER_EXPLICIT',
+      type: 'USER_INPUT',
+      status: 'DONE',
+      created_at: new Date().toISOString(),
+      content: `<USER_REQUEST>\n${prompt}\n</USER_REQUEST>`,
+    });
+    writeHookState('PreInvocation', 'working', { invocationNum: turnIndex });
+    process.stdout.write('esc to cancel\r\n');
+
+    const delayMs = Number(
+      liveConfig.delayMs ?? process.env.CODEX_DELEGATION_MOCK_AGY_DELAY_MS ?? 0,
+    );
+    setTimeout(
+      () => {
+        if (stopped) return;
+        const turnConfig = readMockConfig();
+        const stderr = turnConfig.stderr ?? process.env.CODEX_DELEGATION_MOCK_AGY_STDERR ?? '';
+        const exitCode = Number(
+          turnConfig.exitCode ?? process.env.CODEX_DELEGATION_MOCK_AGY_EXIT_CODE ?? 0,
+        );
+        if (stderr) process.stdout.write(stderr);
+        if (exitCode !== 0) process.exit(exitCode);
+        if (turnConfig.permissionStall === true) {
+          pendingPermissionPrompt = prompt;
+          process.stdout.write(
+            `\r\nRequesting permission for:\r\n   mock command\r\n${turnConfig.permissionPromptText ?? 'Do you want to proceed?'}\r\n> 1. Yes\r\n  4. No\r\n`,
+          );
+          return;
+        }
+        finishTurn(prompt);
+      },
+      Math.max(0, delayMs),
+    );
+  }
+
+  process.stdin.setRawMode?.(true);
+  process.stdin.on('data', (chunk) => {
+    inputBuffer += chunk.toString('utf8');
+    if (pendingPermissionPrompt !== null) {
+      const match = inputBuffer.match(/([1-4])\r/);
+      if (match) {
+        inputBuffer = inputBuffer.slice((match.index ?? 0) + match[0].length);
+        const prompt = pendingPermissionPrompt;
+        pendingPermissionPrompt = null;
+        if (match[1] === '4') {
+          finishTurn('Permission denied');
+        } else {
+          finishTurn(prompt);
+        }
+      }
+      return;
+    }
+    for (;;) {
+      const match = inputBuffer.match(/\u001b\[200~([\s\S]*?)\u001b\[201~\r/);
+      if (!match) break;
+      inputBuffer = inputBuffer.slice((match.index ?? 0) + match[0].length);
+      runTurn(match[1]);
+    }
+  });
+  process.stdin.resume();
+
+  for (const signal of ['SIGINT', 'SIGTERM']) {
+    process.on(signal, () => {
+      stopped = true;
+      process.stdout.write(`mock agy stopped by ${signal}\r\n`);
+      process.exit(143);
+    });
+  }
+
+  runTurn(args[interactiveIndex + 1]);
+  await new Promise(() => {});
 }
 
 const printIndex = args.indexOf('--print');

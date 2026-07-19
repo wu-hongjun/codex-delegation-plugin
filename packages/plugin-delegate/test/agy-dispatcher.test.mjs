@@ -6,6 +6,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
   writeFileSync,
@@ -29,6 +30,22 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  const jobsDir = join(delegationHome, 'jobs');
+  if (existsSync(jobsDir)) {
+    for (const file of readdirSync(jobsDir)) {
+      if (!file.endsWith('.json')) continue;
+      try {
+        const job = JSON.parse(readFileSync(join(jobsDir, file), 'utf8'));
+        if (
+          ['queued', 'starting', 'running', 'needs_input', 'awaiting_followup'].includes(job.status)
+        ) {
+          run(['stop', job.jobId, '--json', '--compact']);
+        }
+      } catch {
+        // Best-effort cleanup; the temp directory removal below handles incomplete fixtures.
+      }
+    }
+  }
   rmSync(delegationHome, { recursive: true, force: true });
   rmSync(workspace, { recursive: true, force: true });
 });
@@ -86,21 +103,29 @@ describe('agy dispatcher integration', () => {
   it('reports agy readiness without creating job state', () => {
     const result = json(run(['agy-setup', '--json']));
     assert.equal(result.provider, 'agy');
-    assert.equal(result.version, '1.1.3');
+    assert.equal(result.version, '1.1.4');
     assert.equal(result.features.start, true);
+    assert.equal(result.execution, 'supervised-interactive');
+    assert.equal(result.features.permissionHandoff, true);
+    assert.equal(result.features.childControl, true);
+    assert.equal(result.controlPlugin.ok, true);
     assert.equal(existsSync(join(delegationHome, 'jobs')), false);
   });
 
-  it('reports exact-resume and headless-permission readiness through agy-doctor', () => {
+  it('reports exact-resume and native permission handoff through agy-doctor', () => {
     const report = json(run(['agy-doctor', '--json']));
     assert.equal(report.provider, 'agy');
     assert.equal(report.features.followup, true);
-    assert.equal(report.status, 'warn');
-    assert.ok(report.warnings.includes('headless-permissions'));
+    assert.equal(report.status, 'ok');
+    assert.deepEqual(report.warnings, []);
+    assert.equal(
+      report.checks.find((check) => check.name === 'native-permission-handoff').status,
+      'ok',
+    );
 
     const trusted = json(run(['agy-doctor', '--bypass-permissions', '--json']));
     assert.equal(
-      trusted.checks.find((check) => check.name === 'headless-permissions').status,
+      trusted.checks.find((check) => check.name === 'native-permission-handoff').status,
       'ok',
     );
     assert.deepEqual(trusted.blockers, []);
@@ -172,6 +197,20 @@ describe('agy dispatcher integration', () => {
     ]);
     assert.equal(conflicting.status, 2);
     assert.match(`${conflicting.stdout}\n${conflicting.stderr}`, /conflicting agy modes/i);
+
+    const printOnly = run([
+      'delegate',
+      '--provider',
+      'agy',
+      '--print-timeout',
+      '2m',
+      '--yes',
+      '--json',
+      '--',
+      'inspect repo',
+    ]);
+    assert.equal(printOnly.status, 2);
+    assert.match(`${printOnly.stdout}\n${printOnly.stderr}`, /does not support.*--print-timeout/i);
     assert.equal(existsSync(join(delegationHome, 'jobs')), false);
   });
 
@@ -180,14 +219,17 @@ describe('agy dispatcher integration', () => {
       run(['delegate', '--provider', 'agy', '--yes', '--json', '--compact', '--', 'inspect repo']),
     );
     assert.equal(delegated.job.provider, 'agy');
-    assert.equal(['starting', 'running', 'completed'].includes(delegated.job.status), true);
+    assert.equal(
+      ['starting', 'running', 'awaiting_followup', 'completed'].includes(delegated.job.status),
+      true,
+    );
 
     const jobId = delegated.job.jobId;
     const waited = json(
       run(['wait', jobId, '--json', '--compact', '--timeout', '5s', '--interval', '25ms']),
     );
     assert.equal(waited.job.provider, 'agy');
-    assert.equal(waited.job.status, 'completed');
+    assert.equal(waited.job.status, 'awaiting_followup');
     assert.match(waited.resultText, /Antigravity completed: inspect repo/);
 
     const result = json(run(['result', jobId, '--json', '--compact']));
@@ -206,6 +248,7 @@ describe('agy dispatcher integration', () => {
     assert.equal(stored.driver.name, 'agy-cli');
     assert.equal(stored.session.provider, 'agy');
     assert.equal(stored.session.sessionId, '11111111-2222-4333-8444-555555555555');
+    assert.match(stored.session.logsCommand, /\.terminal\.log/);
     assert.equal('claude' in stored, false);
   });
 
@@ -236,16 +279,19 @@ describe('agy dispatcher integration', () => {
     const invocations = readFileSync(invocationsPath, 'utf8')
       .trim()
       .split('\n')
-      .map((line) => JSON.parse(line))
-      .filter((invocation) => invocation.args.includes('--print'));
-    assert.equal(invocations.length, 2);
-    assert.deepEqual(
-      invocations[1].args.slice(
-        invocations[1].args.indexOf('--conversation'),
-        invocations[1].args.indexOf('--conversation') + 2,
-      ),
-      ['--conversation', stored.session.sessionId],
+      .map((line) => JSON.parse(line));
+    const cliInvocations = invocations.filter(
+      (invocation) =>
+        Array.isArray(invocation.args) && invocation.args.includes('--prompt-interactive'),
     );
+    const promptInvocations = invocations.filter((invocation) => invocation.kind === 'prompt');
+    assert.equal(cliInvocations.length, 1);
+    assert.equal(promptInvocations.length, 2);
+    assert.deepEqual(
+      promptInvocations.map((invocation) => invocation.conversationId),
+      [stored.session.sessionId, stored.session.sessionId],
+    );
+    assert.equal(promptInvocations[1].prompt, 'second turn');
 
     const mismatchedProvider = run(
       ['followup', jobId, '--provider', 'claude', '--yes', '--json', '--', 'wrong runtime'],
@@ -287,14 +333,11 @@ describe('agy dispatcher integration', () => {
       .trim()
       .split('\n')
       .map((line) => JSON.parse(line))
-      .filter((invocation) => invocation.args.includes('--print'));
+      .filter((invocation) => invocation.kind === 'prompt');
     assert.equal(modelInvocations.length, 2);
     assert.deepEqual(
-      modelInvocations[1].args.slice(
-        modelInvocations[1].args.indexOf('--conversation'),
-        modelInvocations[1].args.indexOf('--conversation') + 2,
-      ),
-      ['--conversation', stored.session.sessionId],
+      modelInvocations.map((invocation) => invocation.conversationId),
+      [stored.session.sessionId, stored.session.sessionId],
     );
   });
 
@@ -336,15 +379,15 @@ describe('agy dispatcher integration', () => {
     assert.equal(reviewJob.reviewOf.jobId, targetJobId);
   });
 
-  it('records every Antigravity orchestration surface and lists workflow-like jobs', () => {
+  it('keeps every Antigravity orchestration surface on the native default parent', () => {
     const invocationsPath = join(delegationHome, 'agy-workflow-invocations.jsonl');
     const env = { CODEX_DELEGATION_MOCK_AGY_INVOCATIONS: invocationsPath };
     const cases = [
-      ['workflow', /deliberate multi-agent workflow/i],
-      ['goal', /concrete completion condition/i],
-      ['fork', /fresh independent Antigravity subagent/i],
-      ['batch', /batch-parallel work orchestration/i],
-      ['deep-research', /rigorous multi-agent deep research/i],
+      ['workflow', 'codex-delegation-workflow'],
+      ['goal', 'codex-delegation-goal'],
+      ['fork', 'codex-delegation-fork'],
+      ['batch', 'codex-delegation-batch'],
+      ['deep-research', 'codex-delegation-deep-research'],
     ];
     const jobIds = [];
     for (const [command] of cases) {
@@ -357,15 +400,23 @@ describe('agy dispatcher integration', () => {
       jobIds.push(started.job.jobId);
     }
 
-    const modelInvocations = readFileSync(invocationsPath, 'utf8')
+    const invocations = readFileSync(invocationsPath, 'utf8')
       .trim()
       .split('\n')
-      .map((line) => JSON.parse(line))
-      .filter((invocation) => invocation.args.includes('--print'));
+      .map((line) => JSON.parse(line));
+    const modelInvocations = invocations.filter(
+      (invocation) =>
+        Array.isArray(invocation.args) && invocation.args.includes('--prompt-interactive'),
+    );
+    const promptInvocations = invocations.filter((invocation) => invocation.kind === 'prompt');
     assert.equal(modelInvocations.length, cases.length);
+    assert.equal(promptInvocations.length, cases.length);
     for (let index = 0; index < cases.length; index++) {
-      const prompt = modelInvocations[index].args.at(-1);
-      assert.match(prompt, cases[index][1]);
+      const [command, expectedAgent] = cases[index];
+      assert.match(promptInvocations[index].prompt, new RegExp(`${command} task`, 'i'));
+      assert.match(promptInvocations[index].prompt, new RegExp(expectedAgent, 'i'));
+      const args = modelInvocations[index].args;
+      assert.equal(args.includes('--agent'), false);
     }
 
     const workflows = json(run(['workflows', '--provider', 'agy', '--json'], env));
@@ -375,20 +426,42 @@ describe('agy dispatcher integration', () => {
       new Set(cases.map(([command]) => command)),
     );
     const detail = json(run(['workflows', '--provider', 'agy', jobIds[0], '--json'], env));
-    assert.equal(detail.workflow.nativeSubagentInspection, false);
+    assert.equal(detail.workflow.nativeSubagentInspection, true);
+    assert.equal(detail.workflow.childControl, 'native-tui');
+    assert.match(detail.workflow.attachCommand, /attach job_/);
     assert.equal(detail.workflow.kind, 'workflow');
   });
 
-  it('persists a failed job when agy auto-denies a headless permission request', () => {
-    const configPath = join(delegationHome, 'agy-config.json');
-    writeFileSync(
-      configPath,
-      JSON.stringify({
-        response: '',
-        stderr:
-          'jetski: no output produced — a tool required the "command" permission that headless mode cannot prompt for, so it was auto-denied.',
-      }),
+  it('retains the explicit native orchestration contract when the companion profile is absent', () => {
+    const configPath = join(delegationHome, 'agy-no-plugin.json');
+    const invocationsPath = join(delegationHome, 'agy-no-plugin-invocations.jsonl');
+    writeFileSync(configPath, JSON.stringify({ pluginInstalled: false }));
+    const env = {
+      CODEX_DELEGATION_MOCK_AGY_CONFIG: configPath,
+      CODEX_DELEGATION_MOCK_AGY_INVOCATIONS: invocationsPath,
+    };
+    const started = json(
+      run(
+        ['workflow', '--provider', 'agy', '--yes', '--json', '--compact', '--', 'fallback task'],
+        env,
+      ),
     );
+    const invocations = readFileSync(invocationsPath, 'utf8')
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line));
+    const launch = invocations.find(
+      (entry) => Array.isArray(entry.args) && entry.args.includes('--prompt-interactive'),
+    );
+    const prompt = invocations.find((entry) => entry.kind === 'prompt');
+    assert.equal(launch.args.includes('--agent'), false);
+    assert.match(prompt.prompt, /deliberate multi-agent workflow/i);
+    assert.equal(started.job.launchPolicy.agent, undefined);
+  });
+
+  it('preserves a native Antigravity permission request for human handoff', () => {
+    const configPath = join(delegationHome, 'agy-config.json');
+    writeFileSync(configPath, JSON.stringify({ permissionStall: true }));
     const env = { CODEX_DELEGATION_MOCK_AGY_CONFIG: configPath };
     const delegated = json(
       run(
@@ -412,19 +485,83 @@ describe('agy dispatcher integration', () => {
         env,
       ),
     );
-    assert.equal(waited.job.status, 'failed');
+    assert.equal(waited.job.status, 'needs_input');
+    assert.match(waited.job.waitingFor, /permission/i);
+    assert.match(waited.job.exactActionHints.attach, /attach job_/);
 
     const stored = JSON.parse(
       readFileSync(join(delegationHome, 'jobs', `${delegated.job.jobId}.json`), 'utf8'),
     );
-    assert.equal(stored.status, 'failed');
-    assert.equal(stored.turns.at(-1).status, 'failed');
+    assert.equal(stored.status, 'needs_input');
+    assert.equal(stored.turns.at(-1).status, 'needs_input');
     const runnerState = JSON.parse(readFileSync(stored.session.statePath, 'utf8'));
-    assert.equal(runnerState.exitCode, 0);
-    assert.match(runnerState.error, /auto-denied a headless permission request/i);
+    assert.equal(runnerState.status, 'needs_input');
+    assert.equal(runnerState.waitingFor, 'permission');
   });
 
-  it('auto selects agy when its print mode is available', () => {
+  it('keeps a permission-blocked follow-up resumable and prevents duplicate prompts', () => {
+    const configPath = join(delegationHome, 'agy-followup-permission.json');
+    writeFileSync(configPath, JSON.stringify({ response: 'first turn complete' }));
+    const env = { CODEX_DELEGATION_MOCK_AGY_CONFIG: configPath };
+    const delegated = json(
+      run(['delegate', '--provider', 'agy', '--yes', '--json', '--compact', '--', 'first'], env),
+    );
+    const jobId = delegated.job.jobId;
+    json(run(['wait', jobId, '--json', '--timeout', '5s', '--interval', '25ms'], env));
+
+    writeFileSync(configPath, JSON.stringify({ permissionStall: true }));
+    const blocked = run(
+      ['followup', jobId, '--provider', 'agy', '--yes', '--json', '--', 'protected turn'],
+      env,
+    );
+    assert.equal(blocked.status, 1);
+    assert.match(`${blocked.stdout}\n${blocked.stderr}`, /attach.*do not send it again/is);
+    const stored = JSON.parse(readFileSync(join(delegationHome, 'jobs', `${jobId}.json`), 'utf8'));
+    assert.equal(stored.status, 'needs_input');
+    assert.equal(stored.turns.length, 2);
+    assert.equal(stored.turns.at(-1).status, 'needs_input');
+
+    const duplicate = run(
+      ['followup', jobId, '--provider', 'agy', '--yes', '--json', '--', 'protected turn'],
+      env,
+    );
+    assert.equal(duplicate.status, 1);
+    assert.match(`${duplicate.stdout}\n${duplicate.stderr}`, /instead of duplicating the prompt/i);
+    const unchanged = JSON.parse(
+      readFileSync(join(delegationHome, 'jobs', `${jobId}.json`), 'utf8'),
+    );
+    assert.equal(unchanged.turns.length, 2);
+  });
+
+  it('fails closed without Claude-specific assumptions if bypass still needs Antigravity input', () => {
+    const configPath = join(delegationHome, 'agy-bypass-config.json');
+    writeFileSync(configPath, JSON.stringify({ permissionStall: true }));
+    const env = { CODEX_DELEGATION_MOCK_AGY_CONFIG: configPath };
+    const result = run(
+      [
+        'delegate',
+        '--provider',
+        'agy',
+        '--bypass-permissions',
+        '--yes',
+        '--json',
+        '--compact',
+        '--',
+        'inspect repo',
+      ],
+      env,
+    );
+    assert.equal(result.status, 1);
+    assert.match(`${result.stdout}\n${result.stderr}`, /Google Antigravity.*interactive input/i);
+    const jobFile = readdirSync(join(delegationHome, 'jobs')).find((file) =>
+      file.endsWith('.json'),
+    );
+    const stored = JSON.parse(readFileSync(join(delegationHome, 'jobs', jobFile), 'utf8'));
+    assert.equal(stored.status, 'failed');
+    assert.equal(stored.turns.at(-1).status, 'failed');
+  });
+
+  it('auto selects agy when its supervised interactive mode is available', () => {
     const delegated = json(
       run(['delegate', '--provider', 'auto', '--yes', '--json', '--compact', '--', 'auto task']),
     );

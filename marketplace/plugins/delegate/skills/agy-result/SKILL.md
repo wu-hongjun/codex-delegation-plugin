@@ -20,8 +20,8 @@ Behavior rules:
 - Forward `--partial` when the user asks for output from an incomplete, stopped, failed, or
   orphaned job.
 - Forward `--all` only when the user explicitly asks to resolve across every workspace.
-- The clean result comes from the supervised stdout artifact. Diagnostic stderr remains available
-  through the job's `logs` action hint.
+- The clean result comes from the normalized Antigravity transcript when available. Raw ANSI TUI
+  capture and diagnostic stderr remain available through the job's action hints.
 
 ### Next steps
 

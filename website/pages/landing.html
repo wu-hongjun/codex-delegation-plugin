@@ -89,7 +89,7 @@
         Start with a bounded instruction. Later Codex turns can wait, inspect partial or final
         output, continue an exact provider conversation, or stop work that no longer matters.
       </p>
-      <a class="underlined-link" href="{{link:docs/skills.html}}">Explore all 36 skills</a>
+      <a class="underlined-link" href="{{link:docs/skills.html}}">Explore all 37 skills</a>
     </div>
     <div class="landing-command-surface">
       <p><span aria-hidden="true">$</span> delegate / claude</p>
@@ -141,11 +141,11 @@ $claude-stop &lt;jobId&gt;</code></pre>
         <dl>
           <div>
             <dt>Transport</dt>
-            <dd>Supervised <code>agy --print</code> conversation</dd>
+            <dd>Persistent supervised native TUI</dd>
           </div>
           <div>
             <dt>Follow-up</dt>
-            <dd>Stored UUID continuation</dd>
+            <dd>Same-TUI exact continuation</dd>
           </div>
           <div>
             <dt>Advanced work</dt>
@@ -159,10 +159,10 @@ $claude-stop &lt;jobId&gt;</code></pre>
   <section class="landing-section landing-architecture" aria-labelledby="architecture-heading">
     <div class="landing-section-heading">
       <p>04 / Boundary</p>
-      <h2 id="architecture-heading">A control plane, not a terminal scraper.</h2>
+      <h2 id="architecture-heading">A control plane with a native escape hatch.</h2>
       <p>
-        Runtime state comes from provider-native sessions and plugin-owned records. Session labels
-        never masquerade as durable job identifiers.
+        Structured state comes from provider sessions, hooks, transcripts, and plugin-owned records.
+        The raw Antigravity TUI remains available when a human needs its native controls.
       </p>
     </div>
     <pre><code>Codex
@@ -225,7 +225,7 @@ $claude-stop &lt;jobId&gt;</code></pre>
       </li>
       <li>
         <a href="{{link:docs/skills.html}}"
-          ><span>03</span><strong>All 36 skills</strong><i aria-hidden="true">→</i></a
+          ><span>03</span><strong>All 37 skills</strong><i aria-hidden="true">→</i></a
         >
       </li>
       <li>

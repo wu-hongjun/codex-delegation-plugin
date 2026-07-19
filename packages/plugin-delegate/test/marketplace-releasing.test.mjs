@@ -56,6 +56,7 @@ const SKILL_NAMES = [
   'agy-doctor',
   'agy-delegate',
   'agy-status',
+  'agy-attach',
   'agy-wait',
   'agy-result',
   'agy-stop',
@@ -231,10 +232,10 @@ describe('consolidated release checklist (Plan 0006 T11)', () => {
   });
 
   // ========================================================================
-  // T11-6: Smoke Test section enumerates all 36 skills + gate criterion
+  // T11-6: Smoke Test section enumerates all 37 skills + gate criterion
   // ========================================================================
 
-  it('Smoke Test section enumerates all 36 skills with $claude-setup as gate (ok/warn)', () => {
+  it('Smoke Test section enumerates all 37 skills with $claude-setup as gate (ok/warn)', () => {
     const content = readFileSync(RELEASING_MD, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(content.includes(`$${name}`), `Smoke Test section must enumerate skill $${name}`);

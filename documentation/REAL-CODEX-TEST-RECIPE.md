@@ -1,7 +1,7 @@
 # Real Codex acceptance test
 
 Use this recipe to validate a packaged `delegate` plugin in a real Codex process. It covers installation,
-all 36 skill names, one live Claude Code job, and one live Antigravity job. Historical test findings
+all 37 skill names, one live Claude Code job, and one live Antigravity job. Historical test findings
 under `documentation/testing/` are evidence from earlier releases, not current instructions.
 
 ## 1. Record the environment
@@ -19,8 +19,8 @@ git status --short
 ```
 
 Supported release environments use macOS or Linux, Node.js 20 or 22, and Codex CLI 0.136.0 or
-later. The most recent live smoke used Codex 0.144.5, Claude Code 2.1.211, and `agy` 1.1.3. Treat
-those as recorded test versions rather than hard minimums for either provider. At least one provider
+later. The most recent Antigravity parity smoke uses `agy` 1.1.4. Treat recorded CLI versions as
+test evidence rather than hard minimums for either provider. At least one provider
 CLI must be installed and authenticated; a full release acceptance pass tests both.
 
 ## 2. Run deterministic gates
@@ -72,7 +72,7 @@ so its generated skill catalog does not retain versioned paths from an older cac
 
 ## 4. Verify skill discovery
 
-Open Codex, type `$`, and confirm these 36 skills appear:
+Open Codex, type `$`, and confirm these 37 skills appear:
 
 ```text
 $claude-setup
@@ -97,6 +97,7 @@ $agy-setup
 $agy-doctor
 $agy-delegate
 $agy-status
+$agy-attach
 $agy-wait
 $agy-result
 $agy-stop
@@ -177,7 +178,7 @@ their dispatcher and manifest contracts remain covered by the deterministic suit
 
 ## 7. Antigravity golden path
 
-First verify the binary and print-mode surface without a model call:
+First validate/install the companion plugin and verify the persistent-TUI surface without starting a delegated model turn:
 
 ```text
 $agy-setup
@@ -194,13 +195,19 @@ $agy-followup <jobId> -- "Now verify the finding in the same conversation."
 $agy-result <jobId>
 ```
 
-The job should retain `provider: "agy"`, settle as `completed`, and return captured stdout. Use
+The job should retain `provider: "agy"`, settle as `awaiting_followup`, and return its normalized
+transcript result. Use
 `$agy-result <jobId> --partial` after a failed, stopped, orphaned, or still-running job when partial
 output matters.
 
-The stored job must include an Antigravity conversation UUID. `$agy-followup` resumes that exact
-UUID and appends an immutable second turn. The plugin does not use workspace-global
-`agy --continue` state.
+The stored job must include an Antigravity conversation UUID. `$agy-followup` sends another prompt
+through the same persistent TUI and appends an immutable second turn. The plugin does not use
+workspace-global `agy --continue` state.
+
+From a user-owned terminal, run `$agy-attach <jobId>`, confirm the live TUI is replayed, open
+`/agents`, then press `Ctrl+]` to detach without stopping the job. When validating permission
+handoff, use a harmless command that produces a native permission card and make the decision in the
+attached TUI; never automate the user's approval.
 
 To test cancellation, start a deliberately long job, stop it promptly, and inspect the stored state:
 
@@ -220,7 +227,7 @@ Probe these when the release touches shared lifecycle behavior:
 4. Confirm `--json --compact` output parses as JSON for status, wait, result, and stop.
 5. Verify a short wait timeout reports recovery actions without terminating the job.
 6. Verify Claude and Antigravity privacy acknowledgement records are provider-scoped.
-7. Verify permission-blocked jobs report an actionable failure instead of hanging indefinitely.
+7. Verify permission-blocked jobs settle as `needs_input` with an exact attach action instead of hanging indefinitely.
 
 Do not delete `~/.codex`, `~/.claude`, or `~/.gemini` data for an edge-case test. Use a temporary
 workspace, an isolated `CODEX_HOME`, or the test suite's mock binaries.

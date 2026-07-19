@@ -1,6 +1,6 @@
 ---
 name: agy-doctor
-description: Preflight Google Antigravity CLI, exact conversation resume, workspace, and unattended permission readiness.
+description: Preflight Google Antigravity CLI, exact conversation resume, workspace, persistent TUI, and native permission handoff.
 ---
 
 Resolve `<plugin-root>` as the parent of the `skills/` directory containing this file. Confirm

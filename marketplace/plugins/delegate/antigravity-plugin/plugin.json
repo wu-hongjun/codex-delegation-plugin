@@ -1,0 +1,5 @@
+{
+  "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+  "name": "codex-delegation-control",
+  "description": "Structured lifecycle bridge for Codex Delegation jobs running in Antigravity CLI."
+}

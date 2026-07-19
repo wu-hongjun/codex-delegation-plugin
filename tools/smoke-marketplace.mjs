@@ -92,7 +92,7 @@ function deriveExpectedVersion(marketplaceRoot) {
   return version;
 }
 
-// All thirty-six skills shipped by the codex-delegation-plugin marketplace plugin. Order
+// All shipped skills in the codex-delegation-plugin marketplace plugin. Order
 // follows the natural delegate -> verify lifecycle so the maintainer can
 // walk the list inside Codex in a sensible sequence.
 const SKILL_NAMES = [
@@ -118,6 +118,7 @@ const SKILL_NAMES = [
   'agy-doctor',
   'agy-delegate',
   'agy-status',
+  'agy-attach',
   'agy-wait',
   'agy-result',
   'agy-stop',
@@ -419,7 +420,7 @@ logStep('STEP 6: manual Codex TUI skill checklist (operator-driven)');
 process.stdout.write(
   [
     'The helper cannot drive the Codex TUI. Open Codex with this isolated',
-    `CODEX_HOME and verify each of the 36 skills below is recognized.`,
+    `CODEX_HOME and verify each of the 37 skills below is recognized.`,
     '',
     `  CODEX_HOME=${codexHome} codex`,
     '',
@@ -429,7 +430,7 @@ process.stdout.write(
     'Pass criteria:',
     '  - $claude-setup returns an "ok" or "warn" aggregate.',
     '  - $agy-setup returns ok when agy is installed, or a clear unavailable result otherwise.',
-    '  - The other 22 skills do not return "unknown skill" or',
+    '  - The other 35 skills do not return "unknown skill" or',
     '    "unrecognized skill" when invoked or shown in Codex skill',
     '    discovery. A skill that needs a job-id may stop at a usage',
     '    or error message; that still counts as recognized.',

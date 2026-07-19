@@ -93,7 +93,10 @@ describe('ClaudeBackgroundDriver.probe — healthy (real-2.1.149 defaults)', () 
     assert.equal(caps.agentsJson, true);
     assert.equal(caps.logsCommand, true);
     assert.equal(caps.transcriptPath, true);
-    assert.equal(caps.attach, false);
+    assert.equal(caps.attach, true);
+    assert.equal(caps.features.liveInput, true);
+    assert.equal(caps.features.permissionHandoff, true);
+    assert.equal(caps.features.childControl, true);
     assert.equal(caps.structuredStream, 'transcript');
     assert.equal(caps.toolEvents, 'transcript');
     assert.equal(caps.permissions, 'human-attach');

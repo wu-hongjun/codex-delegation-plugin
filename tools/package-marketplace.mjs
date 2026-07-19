@@ -48,6 +48,14 @@ import { execFileSync } from 'node:child_process';
  */
 const DERIVED_FILES = [
   '.codex-plugin/plugin.json',
+  'antigravity-plugin/plugin.json',
+  'antigravity-plugin/hooks.json',
+  'antigravity-plugin/hook.mjs',
+  'antigravity-plugin/agents/codex-delegation-workflow/agent.md',
+  'antigravity-plugin/agents/codex-delegation-goal/agent.md',
+  'antigravity-plugin/agents/codex-delegation-fork/agent.md',
+  'antigravity-plugin/agents/codex-delegation-batch/agent.md',
+  'antigravity-plugin/agents/codex-delegation-deep-research/agent.md',
   'scripts/delegate.mjs',
   'scripts/lib/ack.mjs',
   'scripts/lib/adapter.mjs',
@@ -82,6 +90,7 @@ const DERIVED_FILES = [
   'skills/agy-doctor/SKILL.md',
   'skills/agy-delegate/SKILL.md',
   'skills/agy-status/SKILL.md',
+  'skills/agy-attach/SKILL.md',
   'skills/agy-wait/SKILL.md',
   'skills/agy-result/SKILL.md',
   'skills/agy-stop/SKILL.md',
@@ -141,7 +150,7 @@ const CLAUDE_DRIVER_DEST_BASE = 'node_modules/@codex-delegation/driver-claude-co
 
 /**
  * Bundled Antigravity driver files, including the detached runner used to
- * supervise `agy --print` after the dispatcher exits.
+ * supervise persistent `agy --prompt-interactive` TUI sessions after the dispatcher exits.
  */
 const AGY_DRIVER_SRC_DIST = 'packages/driver-agy-cli/dist';
 const AGY_DRIVER_DEST_BASE = 'node_modules/@codex-delegation/driver-agy-cli';
@@ -239,6 +248,7 @@ const SYNTH_AGY_DRIVER_PKG = {
   },
   dependencies: {
     '@codex-delegation/runtime': BUNDLED_VERSION_MARKER,
+    'node-pty': '1.2.0-beta.13',
   },
   engines: { node: '>=20' },
 };

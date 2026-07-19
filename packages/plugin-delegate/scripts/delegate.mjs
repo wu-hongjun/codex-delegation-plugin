@@ -38,6 +38,7 @@ import {
 } from '@codex-delegation/driver-claude-code';
 import {
   AgyCliDriver,
+  attachAgyTerminal,
   DRIVER_VERSION as AGY_DRIVER_VERSION,
 } from '@codex-delegation/driver-agy-cli';
 
@@ -100,7 +101,6 @@ const AGY_STARTUP_FLAGS = new Set([
   'agent',
   'mode',
   'sandbox',
-  'print-timeout',
   'project',
   'new-project',
   'log-file',
@@ -435,7 +435,6 @@ function buildStartSessionOptions(flags, commandName, json, overrides = {}) {
     verbose: Boolean(flags['verbose']),
     mode,
     sandbox: Boolean(flags['sandbox']),
-    printTimeout: stringFlag(flags, 'print-timeout'),
     project: stringFlag(flags, 'project'),
     newProject: Boolean(flags['new-project']),
     logFile: stringFlag(flags, 'log-file'),
@@ -522,18 +521,22 @@ function launchPolicyFromStartSessionOptions(startSessionOptions) {
     unattendedRequested,
     ...(startSessionOptions.mode ? { mode: startSessionOptions.mode } : {}),
     ...(startSessionOptions.sandbox ? { sandbox: true } : {}),
+    ...(startSessionOptions.agent ? { agent: startSessionOptions.agent } : {}),
   };
 }
 
 async function failUnattendedBypassNeedsInput(job, driver, commandName, json) {
-  const waitingFor = job.claude?.waitingFor ?? 'interactive input';
+  const provider = providerForJob(job);
+  const providerLabel = provider === 'agy' ? 'Google Antigravity' : 'Claude Code';
+  const session = sessionForJob(job);
+  const waitingFor = session.waitingFor ?? 'interactive input';
   const now = new Date().toISOString();
   let stopError;
   try {
     await driver.stop(sessionHandleFromJob(job));
     await appendEvent(job.jobId, {
       type: 'session.stopped',
-      shortId: job.claude.shortId,
+      shortId: session.shortId,
       reason: 'unattended bypass still required interactive input',
       at: now,
     });
@@ -542,8 +545,8 @@ async function failUnattendedBypassNeedsInput(job, driver, commandName, json) {
   }
 
   const message =
-    `Unattended bypass was requested, but Claude Code immediately asked for interactive input (${waitingFor}). ` +
-    `Job ${job.jobId} was marked failed${stopError ? '; stopping the Claude session also failed' : ' after a stop attempt'}.`;
+    `Unattended bypass was requested, but ${providerLabel} immediately asked for interactive input (${waitingFor}). ` +
+    `Job ${job.jobId} was marked failed${stopError ? `; stopping the ${providerLabel} session also failed` : ' after a stop attempt'}.`;
 
   await updateJob(job.jobId, (current) => {
     const turns = Array.isArray(current.turns) ? current.turns.map((turn) => ({ ...turn })) : [];
@@ -1243,6 +1246,7 @@ const KNOWN_COMMANDS = new Set([
   'result',
   'wait',
   'stop',
+  'attach',
   'followup',
   'review',
   'adversarial-review',
@@ -1337,6 +1341,9 @@ try {
       break;
     case 'stop':
       await cmdStop(flags, positional, useJson);
+      break;
+    case 'attach':
+      await cmdAttach(flags, positional, useJson);
       break;
     case 'followup':
       await cmdFollowup(flags, positional, useJson);
@@ -1689,16 +1696,59 @@ async function cmdSetup(_flags, json) {
   }
 }
 
+function agyControlPluginPath() {
+  return join(dirname(fileURLToPath(import.meta.url)), '..', 'antigravity-plugin');
+}
+
+function installAgyControlPlugin() {
+  const source = agyControlPluginPath();
+  if (!existsSync(join(source, 'plugin.json')) || !existsSync(join(source, 'hooks.json'))) {
+    return {
+      ok: false,
+      source,
+      detail: `bundled Antigravity control plugin is incomplete at ${source}`,
+    };
+  }
+  const executable = process.env.AGY_CLI_PATH ?? 'agy';
+  const validate = spawnSync(executable, ['plugin', 'validate', source], {
+    cwd: process.cwd(),
+    env: process.env,
+    encoding: 'utf8',
+  });
+  if (validate.status !== 0) {
+    return {
+      ok: false,
+      source,
+      detail: validate.stderr.trim() || validate.stdout.trim() || 'agy plugin validate failed',
+    };
+  }
+  const install = spawnSync(executable, ['plugin', 'install', source], {
+    cwd: process.cwd(),
+    env: process.env,
+    encoding: 'utf8',
+  });
+  return {
+    ok: install.status === 0,
+    source,
+    detail:
+      install.status === 0
+        ? 'codex-delegation-control lifecycle hooks and native subagent profiles validated and installed'
+        : install.stderr.trim() || install.stdout.trim() || 'agy plugin install failed',
+  };
+}
+
 async function cmdAgySetup(_flags, json) {
+  const controlPlugin = installAgyControlPlugin();
   const driver = new AgyCliDriver({ cwd: process.cwd() });
   const capabilities = await driver.probe();
   const report = {
-    ok: capabilities.health.status !== 'fail',
+    ok: controlPlugin.ok && capabilities.health.status !== 'fail',
     provider: 'agy',
     driver: capabilities.driverName,
     version: capabilities.cliVersion,
     execution: capabilities.execution,
     features: capabilities.features,
+    controlPlugin,
     health: capabilities.health,
   };
   if (json) {
@@ -1710,7 +1760,8 @@ async function cmdAgySetup(_flags, json) {
       `  execution: ${capabilities.execution}`,
       `  delegate: ${capabilities.features.start ? 'available' : 'unavailable'}`,
       `  status/stop: ${capabilities.features.status && capabilities.features.stop ? 'available' : 'unavailable'}`,
-      `  follow-up: ${capabilities.features.followup ? 'available' : 'not exposed by agy print mode'}`,
+      `  follow-up/attach: ${capabilities.features.followup && capabilities.attach ? 'available' : 'unavailable'}`,
+      `  control plugin: ${controlPlugin.ok ? 'installed' : 'failed'} — ${controlPlugin.detail}`,
       '',
       ...capabilities.health.probes.map(
         (probe) => `  ${probe.status.padEnd(4)} ${probe.name}: ${probe.detail}`,
@@ -1742,15 +1793,17 @@ async function cmdAgyDoctor(flags, positional, json) {
       detail: probe.detail,
     })),
     {
-      name: 'headless-permissions',
+      name: 'native-permission-handoff',
       category: 'permissions',
-      status: bypass ? 'ok' : 'warn',
+      status: capabilities.features.permissionHandoff ? 'ok' : 'fail',
       detail: bypass
-        ? 'trusted unattended permission bypass requested for future Antigravity jobs'
-        : 'headless Antigravity turns auto-deny permission prompts unless permissions.allow covers the operation',
-      remediation: bypass
+        ? 'trusted unattended permission bypass requested; native TUI handoff remains available when Antigravity asks'
+        : capabilities.features.permissionHandoff
+          ? 'native Antigravity permission cards are preserved and can be answered through delegate attach'
+          : 'persistent TUI attachment is unavailable, so native permission cards cannot be answered',
+      remediation: capabilities.features.permissionHandoff
         ? undefined
-        : 'Configure narrow permissions.allow rules, or explicitly request bypass only for trusted unattended work.',
+        : 'Repair the node-pty runtime, then rerun $agy-setup and $agy-doctor.',
     },
   ];
   const status = aggregateDoctorChecks(checks);
@@ -2085,7 +2138,7 @@ async function cmdWorkflow(flags, positional, json) {
     commandName: 'workflow',
     promptTransformer: (p, provider) =>
       provider === 'agy'
-        ? `Orchestrate this as a deliberate multi-agent workflow. Decompose the work into explicit phases, use independent Antigravity subagents in parallel where safe, verify their outputs, and synthesize one final result. Task: ${p}`
+        ? `Orchestrate this in the default parent as a deliberate multi-agent workflow. Decompose the work into explicit phases, invoke independent native Antigravity subagents in parallel where safe, verify their outputs, and synthesize one final result. When the installed profile is available, use TypeName "codex-delegation-workflow" for delegated phase work. Task: ${p}`
         : `ultracode: ${p}`,
     extraOutput: (job) =>
       providerForJob(job) === 'agy'
@@ -2125,7 +2178,7 @@ async function cmdGoal(flags, positional, json) {
     commandName: 'goal',
     promptTransformer: (p, provider) =>
       provider === 'agy'
-        ? `Treat the following as a concrete completion condition. Continue autonomously within this turn until the condition is satisfied or a genuine blocker is proven. Verify the condition before reporting completion. Goal: ${p}`
+        ? `Treat the following as a concrete completion condition in the default parent. Continue autonomously within this turn until the condition is satisfied or a genuine blocker is proven. Invoke native Antigravity subagents when independent work or verification materially helps; when available, use TypeName "codex-delegation-goal" for that delegated work. Verify the condition before reporting completion. Goal: ${p}`
         : `/goal ${p}`,
     extraOutput: (job) =>
       providerForJob(job) === 'agy'
@@ -2160,7 +2213,7 @@ async function cmdFork(flags, positional, json) {
     commandName: 'fork',
     promptTransformer: (p, provider) =>
       provider === 'agy'
-        ? `Spawn a fresh independent Antigravity subagent for this directive. Keep its analysis independent, inspect and verify its returned work, then report the result and unresolved risks. Directive: ${p}`
+        ? `From the default parent, invoke exactly one fresh native Antigravity subagent for this directive. When available, use TypeName "codex-delegation-fork". Keep its framing independent, wait for its response, inspect and verify its returned work, then report the result and unresolved risks. Do not use the TUI /fork command. Directive: ${p}`
         : `/fork ${p}`,
     extraOutput: (job) =>
       providerForJob(job) === 'agy'
@@ -2195,7 +2248,7 @@ async function cmdBatch(flags, positional, json) {
     commandName: 'batch',
     promptTransformer: (p, provider) =>
       provider === 'agy'
-        ? `Run this as batch-parallel work orchestration. Identify independent items, assign them to Antigravity subagents concurrently, preserve item ordering in the report, retry isolated failures when safe, and synthesize all results. Batch instruction: ${p}`
+        ? `Run this in the default parent as native batch-parallel work orchestration. Identify independent items, invoke Antigravity subagents concurrently for those items, and use TypeName "codex-delegation-batch" when the installed profile is available. Preserve item ordering in the report, retry isolated failures only when safe, verify the returned work, and synthesize all results. Batch instruction: ${p}`
         : `/batch ${p}`,
     extraOutput: (job) =>
       providerForJob(job) === 'agy'
@@ -2233,14 +2286,14 @@ async function cmdDeepResearch(flags, positional, json) {
     commandName: 'deep-research',
     promptTransformer: (p, provider) =>
       provider === 'agy'
-        ? `Run rigorous multi-agent deep research on this question. Fan out independent searches, prefer primary sources, cross-check important claims, distinguish evidence from inference, include direct source links, and synthesize a concise cited report. Question: ${p}`
+        ? `Run rigorous multi-agent deep research from the default parent. Fan out independent lines of inquiry through native Antigravity subagents and use TypeName "codex-delegation-deep-research" when the installed profile is available. Prefer primary sources, cross-check important claims, distinguish evidence from inference, include direct source links, verify subagent evidence, and synthesize a concise cited report. Question: ${p}`
         : `/deep-research ${p}`,
     extraOutput: (job) =>
       providerForJob(job) === 'agy'
         ? [
             '',
             'This is an Antigravity deep-research request.',
-            'Headless web access follows Antigravity permissions.allow rules; denied URL permissions fail closed.',
+            'Native web permission cards remain available through $agy-attach.',
           ].join('\n')
         : [
             '',
@@ -2302,7 +2355,6 @@ async function _runDelegateCore(
   // Resolve auto before disclosure so the user sees the actual external provider.
   const runtime = await resolveStartRuntime(flags, commandName, json, workspace);
   const { provider, driver } = runtime;
-  const prompt = promptTransformer(rawPrompt, provider);
   const providerLabel = provider === 'agy' ? 'Google Antigravity' : 'Claude Code';
   validateProviderStartOptions(provider, flags, startSessionOptions, commandName, json);
 
@@ -2337,6 +2389,12 @@ async function _runDelegateCore(
     process.exit(1);
   }
 
+  // Antigravity plugin agents are native subagent templates. Selecting one as
+  // the top-level `--agent` changes the parent tool schema and can remove the
+  // collaboration tools needed to invoke children. Keep orchestration in the
+  // default parent; prompts name the installed templates for child TypeName use.
+  const prompt = promptTransformer(rawPrompt, provider);
+
   // 5. Prompt meta.
   const { summary, sha256, bytesLen } = makePromptMeta(prompt);
 
@@ -2362,7 +2420,7 @@ async function _runDelegateCore(
     ...(handle.errorPath ? { errorPath: handle.errorPath } : {}),
     logsCommand:
       provider === 'agy'
-        ? `cat ${shellQuote(handle.errorPath ?? '')}`
+        ? `cat ${shellQuote(handle.resultPath ?? '')}`
         : `claude logs ${handle.shortId}`,
     launchPolicy: launchPolicyFromStartSessionOptions(startSessionOptions),
   };
@@ -2459,6 +2517,69 @@ async function stopJobWithDriver(job, driver) {
   }));
   await appendEvent(job.jobId, { type: 'stop.completed', at: now });
   return stoppedJob;
+}
+
+// ---------- attach ----------
+
+async function cmdAttach(flags, positional, json) {
+  if (json) {
+    process.stderr.write(
+      formatError(
+        new Error('attach is an interactive terminal command and does not support --json'),
+        'attach',
+        true,
+      ) + '\n',
+    );
+    process.exit(2);
+  }
+  if (positional.length !== 1) {
+    process.stderr.write(
+      formatError(new Error('usage: delegate attach <jobId-or-prefix> [--all]'), 'attach', false) +
+        '\n',
+    );
+    process.exit(2);
+  }
+
+  const showAll = Boolean(flags['all']);
+  const listed = showAll ? await listJobs() : await listJobsForWorkspace(process.cwd());
+  const resolved = resolveJobIdPrefix(
+    listed.jobs.map((job) => job.jobId),
+    positional[0],
+  );
+  if ('error' in resolved) {
+    const message =
+      resolved.error === 'ambiguous'
+        ? formatAmbiguousJobPrefix(positional[0], resolved.candidates)
+        : showAll
+          ? `No job found matching "${positional[0]}"`
+          : `No job found matching "${positional[0]}" in this workspace. Re-run with --all to search every workspace.`;
+    process.stderr.write(formatError(new Error(message), 'attach', false) + '\n');
+    process.exit(1);
+  }
+
+  const job = await readJob(resolved.match);
+  const provider = providerForJob(job);
+  assertRequestedProviderMatchesJob(flags, provider, 'attach', false);
+  if (provider !== 'agy') {
+    const session = sessionForJob(job);
+    process.stderr.write(
+      formatError(
+        new Error(`Claude Code owns its native attach UI. Run: claude attach ${session.shortId}`),
+        'attach',
+        false,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  const { driver, adapter } = runtimeForJob(job);
+  try {
+    await reconcileJob(job.jobId, adapter);
+  } catch {
+    // The terminal proxy can still attach when artifact reconciliation is stale.
+  }
+  await attachAgyTerminal(sessionHandleFromJob(await readJob(job.jobId)));
+  await driver.dispose();
 }
 
 async function cmdRestart(flags, positional, json) {
@@ -2694,18 +2815,6 @@ async function readResultTextFromContext(resultContext) {
   if (!resultContext?.finalMessagePath) return null;
   try {
     return await readFile(resultContext.finalMessagePath, 'utf8');
-  } catch {
-    return null;
-  }
-}
-
-async function readTranscriptTail(job, maxLines = 12) {
-  const transcriptPath = sessionForJob(job)?.transcriptPath;
-  if (typeof transcriptPath !== 'string' || transcriptPath.length === 0) return null;
-  try {
-    const text = await readFile(transcriptPath, 'utf8');
-    const lines = text.split(/\r?\n/).filter((line) => line.length > 0);
-    return lines.slice(-maxLines);
   } catch {
     return null;
   }
@@ -3005,10 +3114,7 @@ async function cmdWait(flags, positional, json) {
     resultContext !== undefined && resultContext !== job.result
       ? { ...job, result: resultContext }
       : job;
-  const [resultText, transcriptTail] = await Promise.all([
-    readResultTextFromContext(resultContext),
-    readTranscriptTail(job),
-  ]);
+  const resultText = await readResultTextFromContext(resultContext);
 
   process.stdout.write(
     formatWait(displayJob, resultText, json, {
@@ -3016,7 +3122,6 @@ async function cmdWait(flags, positional, json) {
       timedOut,
       timeoutMs,
       dispatcherPath,
-      transcriptTail,
     }) + '\n',
   );
   // Setting exitCode lets Node flush large JSON payloads to a piped caller.
@@ -3197,6 +3302,12 @@ async function sendFollowupTurn({
   job,
   promptSummaryPrefix,
 }) {
+  const provider = providerForJob(job);
+  const providerLabel = provider === 'agy' ? 'Antigravity' : 'Claude';
+  const manualAttachCommand =
+    provider === 'agy'
+      ? dispatcherCommandForHints(`attach ${jobId}`)
+      : `claude attach ${sessionHandle.shortId}`;
   // 9. Build new TurnRecord and append to job.turns.
   const now = new Date().toISOString();
   const newTurnIndex = job.turns.length;
@@ -3281,7 +3392,7 @@ async function sendFollowupTurn({
     // Print the prompt block to stdout (not stderr), as specified.
     process.stdout.write(
       [
-        `Claude is asking for permission inside session ${reqShortId}.`,
+        `${providerLabel} is asking for permission inside session ${reqShortId}.`,
         'Type your answer below; we will route it back into the session.',
         '(To abort, press Ctrl+C; the session keeps running.)',
         '',
@@ -3293,7 +3404,7 @@ async function sendFollowupTurn({
     if (result.timedOut) {
       process.stderr.write(
         `[followup] WARNING: timed out waiting for permission answer for session ${reqShortId}. ` +
-          `The session is left in needs_input state. Run \`claude attach ${reqShortId}\` to respond manually.\n`,
+          `The session is left in needs_input state. Run \`${manualAttachCommand}\` to respond manually.\n`,
       );
       permissionTimedOut = true;
       return null;
@@ -3318,24 +3429,34 @@ async function sendFollowupTurn({
       typeof err === 'object' &&
       'permissionStall' in err &&
       /** @type {Record<string, unknown>} */ (err)['permissionStall'] === true;
+    const permissionBlocked =
+      permissionTimedOut ||
+      isPermissionStall ||
+      msg.includes('permission required but no response');
 
     const endedAt = new Date().toISOString();
 
-    // Mark turn failed.
+    // A native permission card is a resumable operator state, not a failed
+    // turn. Preserve it so an attached user can answer the existing prompt.
     await updateJob(jobId, (current) => {
       const turns = [...current.turns];
-      const failedTurn = turns[newTurnIndex];
-      if (failedTurn) {
-        turns[newTurnIndex] = { ...failedTurn, status: 'failed', endedAt };
+      const pendingTurn = turns[newTurnIndex];
+      if (pendingTurn) {
+        turns[newTurnIndex] = permissionBlocked
+          ? { ...pendingTurn, status: 'needs_input' }
+          : { ...pendingTurn, status: 'failed', endedAt };
       }
       return {
         ...current,
-        ...(providerForJob(current) === 'agy' ? { status: 'failed' } : {}),
+        status: permissionBlocked ? 'needs_input' : 'failed',
+        ...(permissionBlocked
+          ? { session: { ...sessionForJob(current), waitingFor: 'permission' } }
+          : {}),
         turns,
       };
     });
     await appendEvent(jobId, {
-      type: 'turn.failed',
+      type: permissionBlocked ? 'turn.needs_input' : 'turn.failed',
       at: endedAt,
       turnIndex: newTurnIndex,
       message: msg,
@@ -3353,7 +3474,7 @@ async function sendFollowupTurn({
     if (isPermissionStall) {
       writeRuntimeError(
         new Error(
-          `Claude is asking for permission. Run claude attach ${sessionHandle.shortId} to approve manually, then retry $claude-followup.`,
+          `${providerLabel} is asking for permission. Run ${manualAttachCommand} to answer the native prompt; the injected turn remains in progress, so do not send it again.`,
         ),
         'followup',
         json,
@@ -3362,7 +3483,7 @@ async function sendFollowupTurn({
       // Non-TTY null-return path: driver threw after callback returned null.
       writeRuntimeError(
         new Error(
-          `Permission required, but this dispatcher is non-interactive. Run \`claude attach ${sessionHandle.shortId}\` in your own terminal to approve manually.`,
+          `Permission required, but this dispatcher is non-interactive. Run \`${manualAttachCommand}\` in your own terminal to approve manually.`,
         ),
         'followup',
         json,
@@ -3522,6 +3643,19 @@ async function cmdFollowup(flags, positional, json) {
           provider === 'agy'
             ? `Job ${jobId} is running; wait for the current ${providerLabel} turn to finish before sending a follow-up.`
             : `Job ${jobId} is running; wait for $claude-status to show awaiting_followup before sending a follow-up.`,
+        ),
+        'followup',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  if (status === 'needs_input' && provider === 'agy') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Job ${jobId} is waiting for native Antigravity input. Run ${dispatcherCommandForHints(`attach ${jobId}`)}; after answering, use $agy-wait or $agy-result instead of duplicating the prompt.`,
         ),
         'followup',
         json,
@@ -3755,6 +3889,19 @@ async function cmdReview(flags, positional, json) {
       formatError(
         new Error(
           `Job ${jobId} is ${status}; wait for the current turn to finish before running ${reviewSkill}.`,
+        ),
+        'review',
+        json,
+      ) + '\n',
+    );
+    process.exit(1);
+  }
+
+  if (status === 'needs_input' && provider === 'agy') {
+    process.stderr.write(
+      formatError(
+        new Error(
+          `Job ${jobId} is waiting for native Antigravity input. Run ${dispatcherCommandForHints(`attach ${jobId}`)}, let the active turn finish, then retry $agy-review.`,
         ),
         'review',
         json,
@@ -4501,7 +4648,9 @@ async function cmdAgyWorkflows(flags, positional, json) {
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
       resultPreview: job.result?.finalMessagePreview ?? null,
-      nativeSubagentInspection: false,
+      nativeSubagentInspection: true,
+      childControl: 'native-tui',
+      attachCommand: dispatcherCommandForHints(`attach ${job.jobId}`),
     };
     if (json) {
       process.stdout.write(JSON.stringify({ ok: true, workflow: detail }, null, 2) + '\n');
@@ -4515,7 +4664,7 @@ async function cmdAgyWorkflows(flags, positional, json) {
           `  Turns:        ${detail.turnCount}`,
           `  Workspace:    ${detail.cwd}`,
           '',
-          'Antigravity exposes its nested subagent panel only in the interactive TUI; the plugin records the parent workflow conversation and its results.',
+          `Attach with \`${detail.attachCommand}\`, then use Antigravity's native /agents panel to inspect or control nested subagents.`,
         ].join('\n') + '\n',
       );
     }
@@ -4985,14 +5134,14 @@ function printUsage(commandName = '') {
     'agy-setup': [
       'Usage: delegate agy-setup [--json]',
       '',
-      'Checks the agy binary and non-interactive print-mode surface without invoking a model.',
+      'Validates and installs the companion plugin, then checks agy persistent-TUI, exact-resume, model-access, and PTY readiness without starting a delegated model turn.',
       '',
       'Options: --json',
     ],
     'agy-doctor': [
       'Usage: delegate agy-doctor [permission flags] [--json]',
       '',
-      'Runs a read-only Antigravity preflight for CLI availability, targeted conversation resume, workspace access, and headless permission intent.',
+      'Runs a read-only Antigravity preflight for CLI availability, exact conversation resume, workspace access, persistent TUI attachment, and native permission handoff.',
       '',
       'Options: --json --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions',
     ],
@@ -5030,7 +5179,7 @@ function printUsage(commandName = '') {
       'Usage: delegate workflow [options] -- "<prompt>"',
       '',
       'Starts a workflow through Claude Code or Google Antigravity.',
-      'Claude uses its dynamic workflow runtime. Antigravity receives a phased, multi-agent orchestration contract in a recorded conversation.',
+      'Claude uses its dynamic workflow runtime. Antigravity keeps its default parent and invokes the bundled workflow profile for native child work.',
       'For a Claude workflow approval gate, run: claude attach <shortId>.',
       'Put all dispatcher flags before --; anything after -- is the provider prompt.',
       '',
@@ -5041,7 +5190,7 @@ function printUsage(commandName = '') {
       'Usage: delegate goal [options] -- "<completion condition>"',
       '',
       'Starts a provider job centered on a concrete, verified completion condition.',
-      'Claude uses /goal. Antigravity receives an autonomous completion-and-verification contract and can be continued with followup.',
+      'Claude uses /goal. Antigravity keeps its default parent, can invoke the bundled goal child profile, and can be continued with followup.',
       '',
       'Options: --provider <claude|agy|auto> --yes --json --compact and provider startup flags',
     ],
@@ -5049,7 +5198,8 @@ function printUsage(commandName = '') {
       'Usage: delegate fork [options] -- "<directive>"',
       '',
       'Requests an independent provider subagent and records the parent job.',
-      'Antigravity nested-subagent inspection remains available only in its interactive TUI.',
+      'Antigravity default parent invokes exactly one bundled fork-profile child; /agents inspection and kill remain native in attach.',
+      'Antigravity /fork branches conversations and is intentionally distinct from this subagent operation.',
       '',
       'Options: --provider <claude|agy|auto> --yes --json --compact and provider startup flags',
     ],
@@ -5064,7 +5214,7 @@ function printUsage(commandName = '') {
       'Usage: delegate deep-research [options] -- "<question>"',
       '',
       'Starts provider-native multi-agent research with source-linking and cross-checking.',
-      'Claude uses /deep-research with WebSearch. Antigravity receives an equivalent evidence and synthesis contract.',
+      'Claude uses /deep-research with WebSearch. Antigravity default parent fans out bundled native research-profile children.',
       'Claude may show a workflow approval gate; run: claude attach <shortId>.',
       'Put all dispatcher flags before --; anything after -- is the provider prompt.',
       '',
@@ -5094,7 +5244,7 @@ function printUsage(commandName = '') {
       '',
       'Polls one delegated job until it reaches a result state, blocker, stop, failure, orphan, or timeout.',
       'Duration examples: 500ms, 30s, 2m. Bare numbers are seconds.',
-      'JSON output includes the compact job summary, any recorded result text, transcript tail when captured, and blocker details.',
+      'JSON output includes the compact job summary, normalized result text, and blocker details. Raw transcripts remain explicit diagnostic files.',
       '',
       'Options: --all --json --compact --timeout <duration> --interval <duration>',
     ],
@@ -5106,6 +5256,15 @@ function printUsage(commandName = '') {
       'Stops one delegated job, or bulk-stops matching jobs in the current workspace.',
       '',
       'Options: --all --json --compact --all-awaiting-followup --all-needs-input --all-blocked',
+    ],
+    attach: [
+      'Usage: delegate attach <jobId-or-prefix> [--all]',
+      '',
+      'Attaches this terminal to the persistent Antigravity TUI owned by a delegated job.',
+      'Native permission cards, /agents, /tasks, /fork, and all regular TUI controls remain available.',
+      'Press Ctrl+] to detach without stopping Antigravity.',
+      '',
+      'Claude jobs continue to use: claude attach <shortId>',
     ],
     followup: [
       'Usage: delegate followup <jobId-or-prefix> [options] -- "<prompt>"',
@@ -5156,7 +5315,7 @@ function printUsage(commandName = '') {
       '',
       'Commands:',
       '  setup                                     Run doctor probes and report status',
-      '  agy-setup                                 Check Antigravity CLI print-mode readiness',
+      '  agy-setup                                 Check Antigravity persistent-TUI readiness',
       '  agy-doctor                                Preflight Antigravity resume, workspace, and permission readiness',
       '  doctor [--claude-access] [--real] [--json]  Preflight auth, model access, browser, workspace, and permission mode',
       '  delegate [flags] -- <prompt>              Start a Claude or Antigravity job',
@@ -5174,6 +5333,7 @@ function printUsage(commandName = '') {
       '  stop <jobId-or-prefix> [--all] [--json]   Stop a running job',
       '  stop --all-awaiting-followup [--all]      Bulk-stop awaiting-followup jobs',
       '  stop --all-needs-input [--all]            Bulk-stop permission/input-blocked jobs',
+      '  attach <jobId-or-prefix> [--all]          Attach to the persistent Antigravity TUI',
       '  followup <jobId-or-prefix> [flags] -- <prompt>  Send a follow-up prompt to an existing job',
       '  review <jobId-or-prefix> [--all] [--json] [--yes] [--blocking|--fail-on <gate>]',
       '                                            Same-session structured review of the latest non-review turn',
@@ -5205,7 +5365,7 @@ function printUsage(commandName = '') {
       '  --model <model>              Model selection (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
       '  --effort <effort>            Effort level (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
       '  --permission-mode <mode>     Permission mode (delegate, workflow, goal, fork, batch, deep-research, adversarial-review; bypassPermissions is for explicit trusted unattended runs)',
-      '  --bypass-permissions         Preferred alias for --permission-mode bypassPermissions on fresh Claude sessions',
+      '  --bypass-permissions         Preferred alias for --permission-mode bypassPermissions on fresh provider sessions',
       '  --dangerously-skip-permissions  Explicitly bypass provider permission prompts for a trusted fresh job',
       '  --allow-dangerously-skip-permissions  Allow bypass-permissions as an option without defaulting to it',
       '  --allowedTools <tools>       Claude Code allowed tools list for fresh sessions (comma-separated or quoted)',
@@ -5225,7 +5385,7 @@ function printUsage(commandName = '') {
       '  --add-dir <dir>              Additional directory (delegate, workflow, goal, fork, batch, deep-research; repeatable)',
       '  --mode <mode>                Antigravity mode: accept-edits or plan',
       '  --sandbox                    Enable the Antigravity terminal sandbox',
-      '  --print-timeout <duration>   Antigravity non-interactive print timeout',
+      '  --print-timeout <duration>   Legacy Antigravity print-only flag; rejected by supervised interactive jobs',
       '  --project <project>          Select an Antigravity project',
       '  --new-project                Create a new Antigravity project',
       '  --log-file <path>            Antigravity diagnostic log path',

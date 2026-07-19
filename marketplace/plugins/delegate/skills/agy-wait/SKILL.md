@@ -1,6 +1,6 @@
 ---
 name: agy-wait
-description: Wait for an Antigravity agy job to finish, fail, stop, or time out.
+description: Wait for an Antigravity agy job to finish a turn, need input, fail, stop, or time out.
 ---
 
 You are the Codex skill wrapper for the delegate dispatcher.
@@ -19,6 +19,8 @@ Behavior rules:
 - Forward `--json`, `--compact`, `--timeout <duration>`, and `--interval <duration>` when requested.
 - Forward `--all` only when the user explicitly asks to resolve across every workspace.
 - A timeout does not stop the job. Surface the returned status and recovery actions.
+- A `needs_input` result is settled for this wait. Surface its exact `$agy-attach` action rather than
+  starting another polling loop.
 
 ### Next steps
 

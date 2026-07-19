@@ -70,6 +70,7 @@ const SKILL_NAMES = [
   'agy-doctor',
   'agy-delegate',
   'agy-status',
+  'agy-attach',
   'agy-wait',
   'agy-result',
   'agy-stop',
@@ -139,10 +140,10 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
   });
 
   // ========================================================================
-  // T9-3: script body contains all 36 skill names
+  // T9-3: script body contains all 37 skill names
   // ========================================================================
 
-  it('smoke script body contains all 36 skill names', () => {
+  it('smoke script body contains all 37 skill names', () => {
     const body = readFileSync(SMOKE_SCRIPT, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(
@@ -150,6 +151,12 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
         `smoke script must reference skill "${name}" in the manual checklist`,
       );
     }
+  });
+
+  it('smoke checklist counts all shipped skills', () => {
+    const body = readFileSync(SMOKE_SCRIPT, 'utf8');
+    assert.match(body, /verify each of the 37 skills below/i);
+    assert.match(body, /The other 35 skills/i);
   });
 
   // ========================================================================
@@ -292,10 +299,10 @@ describe('release-smoke procedure (Plan 0006 T9)', () => {
   });
 
   // ========================================================================
-  // T9-12: RELEASING.md enumerates all 36 skills
+  // T9-12: RELEASING.md enumerates all 37 skills
   // ========================================================================
 
-  it('RELEASING.md enumerates all 36 skill names', () => {
+  it('RELEASING.md enumerates all 37 skill names', () => {
     const content = readFileSync(RELEASING_MD, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(

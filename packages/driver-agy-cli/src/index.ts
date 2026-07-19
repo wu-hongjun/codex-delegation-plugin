@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -20,12 +20,22 @@ import type {
 import { DriverError, ensureProviderSessionsDir } from '@codex-delegation/runtime';
 
 import { probeAgyCliDriver } from './probe.js';
+import {
+  acquireAgySendLock,
+  permissionAnswerKeys,
+  sendAgyControlRequest,
+  sendAgyKeys,
+} from './control.js';
 import { readAgyState, writeAgyState } from './state.js';
+import { finalAgyAssistantMessage, readAgyTranscriptEvents } from './transcript.js';
 import { DRIVER_NAME } from './types.js';
 import type { AgyCliDriverOptions, AgyLaunchRequest, AgyRunnerState } from './types.js';
 
 export { probeAgyCliDriver } from './probe.js';
 export { readAgyState } from './state.js';
+export * from './control.js';
+export * from './attach.js';
+export * from './transcript.js';
 export { DRIVER_NAME, DRIVER_VERSION } from './types.js';
 export type { AgyCliDriverOptions, AgyRunnerState } from './types.js';
 
@@ -92,7 +102,7 @@ export function buildAgyArgs(opts: StartSessionOpts): string[] {
   const args = buildAgyResumeArgs(opts);
   if (opts.conversationId) args.push('--conversation', opts.conversationId);
   if (opts.logFile) args.push('--log-file', opts.logFile);
-  args.push('--print', opts.prompt);
+  args.push('--prompt-interactive', opts.prompt);
   return args;
 }
 
@@ -115,7 +125,6 @@ export function buildAgyResumeArgs(opts: StartSessionOpts): string[] {
   if (opts.dangerouslySkipPermissions || opts.permissionMode === 'bypassPermissions') {
     args.push('--dangerously-skip-permissions');
   }
-  if (opts.printTimeout) args.push('--print-timeout', opts.printTimeout);
   if (opts.project) args.push('--project', opts.project);
   if (opts.newProject) args.push('--new-project');
   return args;
@@ -140,6 +149,7 @@ async function waitForConversationId(
   for (;;) {
     latest = await readAgyState(path);
     if (latest?.conversationId) return latest;
+    if (latest?.status === 'needs_input') return latest;
     if (latest && TERMINAL.has(latest.status)) return latest;
     if (Date.now() >= deadline) return latest;
     await delay(20);
@@ -165,6 +175,12 @@ function stateToStatus(state: AgyRunnerState): SessionStatus {
     case 'running':
       value = 'working';
       break;
+    case 'needs_input':
+      value = 'needs_input';
+      break;
+    case 'idle':
+      value = 'idle';
+      break;
     case 'completed':
       value = 'completed';
       break;
@@ -184,6 +200,8 @@ function stateToStatus(state: AgyRunnerState): SessionStatus {
     pid: state.agyPid ?? state.runnerPid,
     startedAt: state.startedAt,
     updatedAt: state.updatedAt,
+    ...(state.transcriptPath ? { transcriptPath: state.transcriptPath } : {}),
+    ...(state.waitingFor ? { waitingFor: state.waitingFor } : {}),
     raw: state,
   };
 }
@@ -233,6 +251,8 @@ export class AgyCliDriver implements Driver {
     const statePath = `${base}.state.json`;
     const resultPath = `${base}.stdout.txt`;
     const errorPath = `${base}.stderr.txt`;
+    const terminalPath = `${base}.terminal.log`;
+    const controlDir = `${base}.control`;
     const diagnosticLogPath = opts.logFile ?? `${base}.agy.log`;
     const startedAt = new Date().toISOString();
     const state: AgyRunnerState = {
@@ -247,6 +267,8 @@ export class AgyCliDriver implements Driver {
       updatedAt: startedAt,
       resultPath,
       errorPath,
+      terminalPath,
+      controlDir,
       diagnosticLogPath,
       resumeArgs: buildAgyResumeArgs(opts),
       turnIndex: 0,
@@ -258,16 +280,22 @@ export class AgyCliDriver implements Driver {
       state,
     };
     await Promise.all([
+      mkdir(controlDir, { recursive: true, mode: 0o700 }),
       writeFile(requestPath, JSON.stringify(request), { mode: 0o600 }),
       writeFile(resultPath, '', { mode: 0o600 }),
       writeFile(errorPath, '', { mode: 0o600 }),
+      writeFile(terminalPath, '', { mode: 0o600 }),
     ]);
 
     let runner: ChildProcess;
     try {
       runner = spawn(process.execPath, [RUNNER_PATH, requestPath, statePath], {
         cwd,
-        env: this.defaults.env ?? process.env,
+        env: {
+          ...process.env,
+          ...this.defaults.env,
+          CODEX_DELEGATION_AGY_CONTROL_DIR: controlDir,
+        },
         detached: true,
         shell: false,
         stdio: 'ignore',
@@ -288,7 +316,7 @@ export class AgyCliDriver implements Driver {
 
     const observed = await waitForState(statePath, this.defaults.timeoutMs ?? 3000);
     if (observed?.status === 'failed') {
-      const stderr = await readAgyOutput(errorPath);
+      const stderr = (await readAgyOutput(errorPath)) || (await readAgyOutput(terminalPath));
       throw new DriverError(observed.error ?? 'agy failed to start', {
         driverName: DRIVER_NAME,
         operation: 'startSession',
@@ -318,7 +346,7 @@ export class AgyCliDriver implements Driver {
       startedAt,
       pid: observed.agyPid ?? runner.pid,
       statePath,
-      resultPath,
+      resultPath: terminalPath,
       errorPath,
     };
   }
@@ -336,7 +364,10 @@ export class AgyCliDriver implements Driver {
         yield { type: 'session.status', status, at: new Date().toISOString() };
         previous = status.value;
       }
-      if (['completed', 'failed', 'stopped', 'orphaned'].includes(status.value)) return;
+      if (
+        ['needs_input', 'idle', 'completed', 'failed', 'stopped', 'orphaned'].includes(status.value)
+      )
+        return;
       await delay(opts.intervalMs ?? 500);
     }
   }
@@ -410,8 +441,8 @@ export class AgyCliDriver implements Driver {
         operation: 'send',
       });
     }
-    if (!session.statePath || !session.resultPath || !session.errorPath) {
-      throw new DriverError('agy follow-up requires persisted supervisor paths', {
+    if (!session.statePath) {
+      throw new DriverError('agy follow-up requires persisted supervisor state', {
         driverName: DRIVER_NAME,
         operation: 'send',
       });
@@ -421,11 +452,20 @@ export class AgyCliDriver implements Driver {
     const conversationId = session.sessionId ?? previous?.conversationId;
     if (!conversationId) {
       throw new DriverError(
-        'agy conversation identity was not captured; start a new job with an agy CLI that supports --conversation and --log-file',
+        'agy conversation identity was not captured; resolve any workspace-trust prompt, then retry',
         { driverName: DRIVER_NAME, operation: 'send' },
       );
     }
-    if (previous && !TERMINAL.has(previous.status)) {
+    if (!previous?.controlDir || !processExists(previous.runnerPid)) {
+      throw new DriverError(
+        'agy interactive supervisor is no longer running; start a new delegated job',
+        {
+          driverName: DRIVER_NAME,
+          operation: 'send',
+        },
+      );
+    }
+    if (previous.status !== 'idle' && previous.status !== 'completed') {
       throw new DriverError(`agy job is ${previous.status}; wait for the current turn to finish`, {
         driverName: DRIVER_NAME,
         operation: 'send',
@@ -433,82 +473,36 @@ export class AgyCliDriver implements Driver {
     }
 
     const startedAt = new Date().toISOString();
-    const diagnosticLogPath =
-      previous?.diagnosticLogPath ?? `${session.statePath.slice(0, -'.state.json'.length)}.agy.log`;
-    const nextState: AgyRunnerState = {
-      schemaVersion: 1,
-      driverName: DRIVER_NAME,
-      shortId: session.shortId,
-      sessionName: session.sessionName,
-      cwd: session.cwd,
-      status: 'starting',
-      runnerPid: 0,
-      startedAt,
-      updatedAt: startedAt,
-      resultPath: session.resultPath,
-      errorPath: session.errorPath,
-      conversationId,
-      diagnosticLogPath,
-      resumeArgs: previous?.resumeArgs ?? [],
-      turnIndex: (previous?.turnIndex ?? 0) + 1,
-    };
-    const requestPath = `${session.statePath}.${process.pid}.${randomBytes(4).toString('hex')}.request.json`;
-    const request: AgyLaunchRequest = {
-      executable: this.defaults.executable ?? this.defaults.env?.['AGY_CLI_PATH'] ?? 'agy',
-      args: [
-        ...(nextState.resumeArgs ?? []),
-        '--conversation',
-        conversationId,
-        '--log-file',
-        diagnosticLogPath,
-        '--print',
-        input.text,
-      ],
-      cwd: session.cwd,
-      state: nextState,
-    };
-
-    await Promise.all([
-      writeFile(requestPath, JSON.stringify(request), { mode: 0o600 }),
-      writeFile(session.resultPath, '', { mode: 0o600 }),
-      writeFile(session.errorPath, '', { mode: 0o600 }),
-      writeFile(diagnosticLogPath, '', { mode: 0o600 }),
-      writeAgyState(session.statePath, nextState),
-    ]);
-
-    const runner = spawn(process.execPath, [RUNNER_PATH, requestPath, session.statePath], {
-      cwd: session.cwd,
-      env: this.defaults.env ?? process.env,
-      detached: true,
-      shell: false,
-      stdio: 'ignore',
-    });
-    await new Promise<void>((resolve, reject) => {
-      runner.once('spawn', resolve);
-      runner.once('error', reject);
-    });
-    runner.unref();
-
-    const running = await waitForState(session.statePath, this.defaults.timeoutMs ?? 3000);
-    if (running === null) {
-      throw new DriverError('agy follow-up supervisor did not publish state', {
-        driverName: DRIVER_NAME,
-        operation: 'send',
+    const targetTurnIndex = (previous.turnIndex ?? 0) + 1;
+    const releaseLock = await acquireAgySendLock(previous);
+    try {
+      await sendAgyControlRequest(previous, {
+        type: 'prompt',
+        text: input.text,
+        turnIndex: targetTurnIndex,
       });
-    }
 
-    const deadline = Date.now() + (opts.timeoutMs ?? 600_000);
-    for (;;) {
-      if (opts.signal?.aborted) {
-        throw new DriverError('agy follow-up wait was aborted; the supervised turn may still run', {
-          driverName: DRIVER_NAME,
-          operation: 'send',
-        });
-      }
-      const current = await readAgyState(session.statePath);
-      if (current && TERMINAL.has(current.status)) {
-        if (current.status !== 'completed') {
-          const stderr = await readAgyOutput(session.errorPath);
+      const deadline = Date.now() + (opts.timeoutMs ?? 600_000);
+      for (;;) {
+        if (opts.signal?.aborted) {
+          throw new DriverError(
+            'agy follow-up wait was aborted; the interactive session is still running',
+            {
+              driverName: DRIVER_NAME,
+              operation: 'send',
+            },
+          );
+        }
+        const current = await readAgyState(session.statePath);
+        if (!current) {
+          throw new DriverError('agy supervisor state disappeared during follow-up', {
+            driverName: DRIVER_NAME,
+            operation: 'send',
+          });
+        }
+        if (current.status === 'failed' || current.status === 'stopped') {
+          const stderr =
+            (await readAgyOutput(session.errorPath)) || (await readAgyOutput(session.resultPath));
           throw new DriverError(current.error ?? `agy follow-up ${current.status}`, {
             driverName: DRIVER_NAME,
             operation: 'send',
@@ -516,23 +510,62 @@ export class AgyCliDriver implements Driver {
             stderr,
           });
         }
-        const finalMessage = await readAgyOutput(session.resultPath);
-        return {
-          driverName: DRIVER_NAME,
-          session: { ...session, sessionId: conversationId, startedAt },
-          startedAt,
-          endedAt: current.endedAt ?? new Date().toISOString(),
-          status: 'completed',
-          ...(finalMessage.trim() ? { finalMessage } : {}),
-        };
+        if (current.status === 'needs_input') {
+          if (!opts.onPermissionRequest) {
+            const error = new DriverError(
+              `Antigravity requires ${current.waitingFor ?? 'interactive input'} but no response callback was supplied`,
+              { driverName: DRIVER_NAME, operation: 'send' },
+            );
+            Object.assign(error, { permissionStall: true });
+            throw error;
+          }
+          const answer = await opts.onPermissionRequest({
+            shortId: session.shortId,
+            message: current.waitingMessage ?? current.waitingFor,
+          });
+          if (answer === null) {
+            const error = new DriverError('permission required but no response was provided', {
+              driverName: DRIVER_NAME,
+              operation: 'send',
+            });
+            Object.assign(error, { permissionStall: true });
+            throw error;
+          }
+          await sendAgyKeys(current, permissionAnswerKeys(answer, current.waitingFor));
+          continue;
+        }
+        if (
+          (current.status === 'idle' || current.status === 'completed') &&
+          (current.completedTurnIndex ?? -1) >= targetTurnIndex
+        ) {
+          const transcript = await readAgyTranscriptEvents({
+            statePath: session.statePath,
+            conversationId,
+            env: this.defaults.env,
+          });
+          const finalMessage = finalAgyAssistantMessage(transcript.events);
+          return {
+            driverName: DRIVER_NAME,
+            session: { ...session, sessionId: conversationId },
+            startedAt,
+            endedAt: new Date().toISOString(),
+            status: 'completed',
+            ...(finalMessage ? { finalMessage } : {}),
+          };
+        }
+        if (Date.now() >= deadline) {
+          throw new DriverError(
+            'agy follow-up timed out; the interactive session may still be running',
+            {
+              driverName: DRIVER_NAME,
+              operation: 'send',
+            },
+          );
+        }
+        await delay(100);
       }
-      if (Date.now() >= deadline) {
-        throw new DriverError('agy follow-up timed out; the supervised turn may still run', {
-          driverName: DRIVER_NAME,
-          operation: 'send',
-        });
-      }
-      await delay(100);
+    } finally {
+      await releaseLock();
     }
   }
 

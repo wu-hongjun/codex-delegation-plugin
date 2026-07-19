@@ -153,15 +153,17 @@ export const codexSkills = [
     provider: 'Google Antigravity',
     syntax: '$agy-setup [--json]',
     dispatcher: 'agy-setup',
-    purpose: 'Check agy binary and print-mode availability without spending model tokens.',
-    note: 'Authentication is deferred until the first real delegation.',
+    purpose:
+      'Validate the companion plugin, agy interactive surface, exact resume, and PTY runtime.',
+    note: 'Checks model access without starting a delegated model turn.',
   },
   {
     name: 'agy-doctor',
     provider: 'Google Antigravity',
     syntax: '$agy-doctor [permission flags] [--json]',
     dispatcher: 'agy-doctor',
-    purpose: 'Preflight targeted conversation resume, workspace access, and permission intent.',
+    purpose:
+      'Preflight exact resume, workspace access, PTY attachment, and native permission handoff.',
     note: 'Read-only; it does not invoke a model task.',
   },
   {
@@ -169,8 +171,8 @@ export const codexSkills = [
     provider: 'Google Antigravity',
     syntax: '$agy-delegate [Antigravity flags] -- "task prompt"',
     dispatcher: 'delegate --provider agy',
-    purpose: 'Start one supervised agy --print process.',
-    note: 'The driver records the exact conversation UUID for targeted follow-up turns.',
+    purpose: 'Start one supervised persistent Antigravity TUI session.',
+    note: 'The driver records the exact UUID and keeps the native conversation alive for follow-up.',
   },
   {
     name: 'agy-status',
@@ -181,11 +183,19 @@ export const codexSkills = [
     note: 'Status resolves plugin-owned records rather than reading supervisor files directly.',
   },
   {
+    name: 'agy-attach',
+    provider: 'Google Antigravity',
+    syntax: '$agy-attach <jobId> [--all]',
+    dispatcher: 'attach',
+    purpose: 'Attach a user-owned terminal to the persistent native Antigravity TUI.',
+    note: 'Permission cards, /agents, /tasks, and /fork stay native; Ctrl+] detaches locally.',
+  },
+  {
     name: 'agy-wait',
     provider: 'Google Antigravity',
     syntax: '$agy-wait <jobId> [--timeout 5m] [--interval 2s] [--json] [--compact]',
     dispatcher: 'wait',
-    purpose: 'Wait for an Antigravity process to finish, fail, stop, or time out.',
+    purpose: 'Wait for a turn to finish, need input, fail, stop, or time out.',
     note: 'A timeout returns recovery actions and leaves the process running.',
   },
   {
@@ -193,8 +203,8 @@ export const codexSkills = [
     provider: 'Google Antigravity',
     syntax: '$agy-result <jobId> [--partial] [--json] [--compact]',
     dispatcher: 'result',
-    purpose: 'Read clean supervised stdout as a final or partial result.',
-    note: 'Diagnostic stderr remains available through the job’s log action hint.',
+    purpose: 'Read a normalized transcript result or an explicitly requested partial result.',
+    note: 'Raw ANSI TUI and diagnostic logs remain available through action hints.',
   },
   {
     name: 'agy-stop',
@@ -210,7 +220,7 @@ export const codexSkills = [
     syntax: '$agy-followup <jobId> [--all] [--json] -- "next instruction"',
     dispatcher: 'followup',
     purpose: 'Continue the exact Antigravity conversation recorded for a job.',
-    note: 'Uses --conversation <uuid>, never workspace-global --continue state.',
+    note: 'Uses the existing persistent PTY and never workspace-global --continue state.',
   },
   {
     name: 'agy-review',
@@ -234,7 +244,7 @@ export const codexSkills = [
     syntax: '$agy-workflow [Antigravity flags] -- "workflow task"',
     dispatcher: 'workflow --provider agy',
     purpose: 'Run phased multi-agent work with explicit verification and synthesis.',
-    note: 'The recorded parent conversation is the plugin job boundary.',
+    note: 'Keeps the native default parent and invokes bundled child profiles; the parent conversation is the job boundary.',
   },
   {
     name: 'agy-goal',
@@ -250,7 +260,7 @@ export const codexSkills = [
     syntax: '$agy-fork [Antigravity flags] -- "directive"',
     dispatcher: 'fork --provider agy',
     purpose: 'Request and verify work from an independent Antigravity subagent.',
-    note: 'The native TUI fork picker and nested subagent panel are not exposed headlessly.',
+    note: 'Uses native subagent tools; TUI /fork instead branches conversations and remains distinct.',
   },
   {
     name: 'agy-batch',
@@ -266,7 +276,7 @@ export const codexSkills = [
     syntax: '$agy-deep-research [Antigravity flags] -- "research question"',
     dispatcher: 'deep-research --provider agy',
     purpose: 'Fan out research, prefer primary sources, cross-check claims, and cite links.',
-    note: 'Headless web access remains subject to Antigravity permission rules.',
+    note: 'Native web permission cards can be reviewed through agy-attach.',
   },
   {
     name: 'agy-workflows',
@@ -274,7 +284,7 @@ export const codexSkills = [
     syntax: '$agy-workflows [<jobId>] [--all] [--json]',
     dispatcher: 'workflows --provider agy',
     purpose: 'List or inspect recorded workflow, goal, fork, batch, and research jobs.',
-    note: 'Nested subagent inspection is a native TUI-only gap.',
+    note: 'The report includes an attach command; /agents provides native child inspection and kill.',
   },
   {
     name: 'agy-skills',
@@ -296,7 +306,7 @@ export const codexSkills = [
 
 export const dispatcherCommands = [
   ['setup', 'Environment readiness report'],
-  ['agy-setup', 'Antigravity print-mode preflight'],
+  ['agy-setup', 'Antigravity persistent-TUI preflight'],
   ['agy-doctor', 'Antigravity targeted-resume and permission preflight'],
   ['doctor', 'Detailed Claude launch preflight'],
   ['delegate', 'Start a Claude or Antigravity job'],
@@ -307,6 +317,7 @@ export const dispatcherCommands = [
   ['batch', 'Start provider batch orchestration'],
   ['deep-research', 'Start multi-agent provider research'],
   ['status', 'List jobs or inspect one job'],
+  ['attach', 'Attach to a persistent Antigravity TUI'],
   ['result', 'Read final or partial output'],
   ['wait', 'Wait for a job state transition'],
   ['stop', 'Stop one job or a cleanup group'],

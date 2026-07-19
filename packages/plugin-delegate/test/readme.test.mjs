@@ -318,28 +318,19 @@ describe('README.md contains no forbidden quantitative cost-claim patterns', () 
 // (The old describe block is intentionally deleted rather than inverted — the
 // T10 assertions that follow assert positive presence of the shipped skill.)
 
-// ---------- 17. No hooks listed as currently available ----------
+// ---------- 17. Provider-specific hook surfaces are described accurately ----------
 
-describe('README.md does not present hooks as currently available', () => {
-  it('every line mentioning "hook" also mentions "not", "future", "later", or a Plan number', () => {
+describe('README.md documents the shipped Antigravity lifecycle hooks accurately', () => {
+  it('names the bundled Antigravity companion plugin and lifecycle hooks', () => {
     const body = readReadme();
-    const offending = body
-      .split('\n')
-      .filter((l) => l.toLowerCase().includes('hook'))
-      .filter((l) => {
-        const lower = l.toLowerCase();
-        return (
-          !lower.includes('not') &&
-          !lower.includes('future') &&
-          !lower.includes('later') &&
-          !lower.includes('plan 0')
-        );
-      });
-    assert.equal(
-      offending.length,
-      0,
-      `Some lines mention "hook" without a qualifying word (not/future/later/Plan):\n${offending.join('\n')}`,
-    );
+    assert.match(body, /bundled Antigravity companion plugin supplies lifecycle hooks/i);
+    assert.match(body, /installs its lifecycle hooks and five native subagent profiles/i);
+  });
+
+  it('keeps the external Claude MessageDisplay hook distinct from plugin lifecycle hooks', () => {
+    const body = readReadme();
+    assert.match(body, /Claude Code `MessageDisplay` hook installed/i);
+    assert.match(body, /hook does not affect what is written to the session JSONL/i);
   });
 });
 
@@ -1301,27 +1292,27 @@ describe('README.md adversarial-review section uses neutral usage wording (T10-o
 
 // ---------- T10-optional-B. Direct dispatcher usage mentions all commands ----------
 
-describe('README.md Direct dispatcher usage mentions thirty-six skill commands', () => {
-  it('contains "thirty-six skill commands"', () => {
+describe('README.md Direct dispatcher usage mentions thirty-seven skill commands', () => {
+  it('contains "thirty-seven skill commands"', () => {
     const body = readReadme();
     const lower = body.toLowerCase();
     assert.ok(
-      lower.includes('thirty-six skill commands'),
-      'README.md Direct dispatcher usage section must say "thirty-six skill commands"',
+      lower.includes('thirty-seven skill commands'),
+      'README.md Direct dispatcher usage section must say "thirty-seven skill commands"',
     );
   });
 });
 
 // ---------- Current v1 scope lists all provider skills ----------
 
-describe('README.md Current v1 scope lists Thirty-six skills', () => {
-  it('contains "Thirty-six skills" in the Current v1 scope section', () => {
+describe('README.md Current v1 scope lists Thirty-seven skills', () => {
+  it('contains "Thirty-seven skills" in the Current v1 scope section', () => {
     const body = readReadme();
     const section = extractSection(body, '## Current v1 scope');
     assert.ok(section !== null, 'README.md must have a ## Current v1 scope section');
     assert.ok(
-      section.includes('Thirty-six skills'),
-      'README.md ## Current v1 scope must say "Thirty-six skills"',
+      section.includes('Thirty-seven skills'),
+      'README.md ## Current v1 scope must say "Thirty-seven skills"',
     );
   });
 });

@@ -17,7 +17,7 @@ export interface DriverCapabilities {
   /** Executable version reported by the provider CLI. */
   cliVersion: string | null;
   /** How asynchronous execution is implemented by this driver. */
-  execution: 'native-background' | 'supervised-process';
+  execution: 'native-background' | 'supervised-process' | 'supervised-interactive';
   /** Whether the driver can start, inspect, stop, and continue jobs. */
   features: {
     start: boolean;
@@ -25,6 +25,14 @@ export interface DriverCapabilities {
     stop: boolean;
     followup: boolean;
     logs: boolean;
+    /** Whether the provider can accept live terminal input while a job is running. */
+    liveInput?: boolean;
+    /** Whether permission prompts can be handed back to a human without restarting. */
+    permissionHandoff?: boolean;
+    /** Whether the provider exposes native conversation forks. */
+    nativeFork?: boolean;
+    /** Whether native child-agent inspection/control is reachable. */
+    childControl?: boolean;
   };
   /** @deprecated Claude-specific compatibility alias. */
   claudeVersion?: string | null;
@@ -35,8 +43,8 @@ export interface DriverCapabilities {
   /** @deprecated Use features.logs. */
   logsCommand: boolean;
   transcriptPath: boolean;
-  /** v1 always false. Flipped only when the driver supports `claude attach`. */
-  attach: false;
+  /** Whether an interactive provider session can be reattached or equivalently proxied. */
+  attach: boolean;
   structuredStream: 'transcript' | 'output' | 'none';
   toolEvents: 'transcript' | 'none';
   permissions: 'human-attach' | 'cli-policy' | 'none';
@@ -87,8 +95,6 @@ export interface StartSessionOpts {
   mode?: 'accept-edits' | 'plan';
   /** Run Antigravity tool execution in its OS sandbox. */
   sandbox?: boolean;
-  /** Antigravity print-mode timeout, passed through as a CLI duration. */
-  printTimeout?: string;
   /** Select an Antigravity project by ID or path. */
   project?: string;
   /** Create a new Antigravity project for the invocation. */

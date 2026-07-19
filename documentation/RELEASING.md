@@ -277,7 +277,7 @@ codex exec --ephemeral '$claude-setup'
 codex exec --ephemeral '$agy-setup'
 ```
 
-Also open Codex and type `$` to verify that all thirty-six skills appear in
+Also open Codex and type `$` to verify that all thirty-seven skills appear in
 autocomplete. If the smoke helper used `--keep-home`, launch Codex with that
 preserved `CODEX_HOME`; otherwise validate in the profile where the plugin is
 installed:
@@ -304,6 +304,7 @@ installed:
 - `$agy-doctor`
 - `$agy-delegate`
 - `$agy-status`
+- `$agy-attach`
 - `$agy-wait`
 - `$agy-result`
 - `$agy-stop`
@@ -325,7 +326,7 @@ Pass criteria:
   aggregate status, not an unknown-skill error.
 - `$agy-setup` must be recognized. It should report ready when `agy` is installed and a clear
   unavailable result when it is not.
-- The other thirty-four skills must not return `unknown skill` or
+- The other thirty-five skills must not return `unknown skill` or
   `unrecognized skill` when invoked or shown in Codex skill discovery.
 - A skill that requires a job-id may stop at its expected
   usage-or-error message. That still counts as recognized for smoke

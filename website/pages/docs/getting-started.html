@@ -44,9 +44,9 @@ $claude-doctor --claude-access</code></pre>
     <pre><code>$agy-setup
 $agy-doctor</code></pre>
     <p>
-      Setup checks the binary and print-mode surface. Doctor adds targeted conversation-resume,
-      workspace, and headless-permission checks. Neither runs a model task; authentication is
-      checked during the first real delegation.
+      Setup validates and installs the companion plugin, then checks the binary, persistent TUI,
+      exact resume, model access, and PTY runtime. Doctor adds workspace and native permission
+      handoff checks. Neither starts a delegated model turn.
     </p>
   </section>
 
@@ -89,7 +89,7 @@ $agy-result &lt;jobId&gt;</code></pre>
       <li>
         <a href="{{link:docs/concepts.html}}">Understand states, IDs, and stored artifacts.</a>
       </li>
-      <li><a href="{{link:docs/skills.html}}">Browse all 36 skills.</a></li>
+      <li><a href="{{link:docs/skills.html}}">Browse all 37 skills.</a></li>
       <li><a href="{{link:docs/workflows.html}}">Use workflows, follow-ups, and reviews.</a></li>
       <li><a href="{{link:docs/safety.html}}">Choose permission and browser options safely.</a></li>
     </ul>

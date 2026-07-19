@@ -8,8 +8,9 @@ Resolve `<plugin-root>` as the parent of the `skills/` directory containing this
     node "<plugin-root>/scripts/delegate.mjs" batch --provider agy -- "<batch instruction>"
 
 Forward only explicitly requested Antigravity startup flags, `--json`, and `--yes`. Do not inject
-`--yes`. The dispatcher instructs Antigravity to isolate independent items, execute them concurrently,
-retry safe isolated failures, and synthesize the batch. Return output verbatim and surface failures.
+`--yes`. When `$agy-setup` has installed the companion plugin, the dispatcher selects its bundled
+batch agent, which uses Antigravity's native subagent tools. It falls back to the same explicit
+orchestration contract if that agent is unavailable. Return output verbatim and surface failures.
 
 ### Next steps
 

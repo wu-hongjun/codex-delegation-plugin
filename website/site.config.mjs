@@ -40,7 +40,7 @@ export const pages = [
     output: 'docs/skills.html',
     source: 'docs/skills.html',
     title: 'Codex skills reference',
-    description: 'Reference for all 36 delegate: skills shipped by Codex Delegation.',
+    description: 'Reference for all 37 delegate: skills shipped by Codex Delegation.',
     section: 'docs',
   },
   {

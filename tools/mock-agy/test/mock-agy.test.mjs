@@ -8,14 +8,15 @@ const here = fileURLToPath(import.meta.url);
 const executable = resolve(here, '..', '..', 'agy');
 
 describe('mock agy', () => {
-  it('reports a version and advertises print mode', () => {
+  it('reports a version and advertises supervised interactive mode', () => {
     const version = spawnSync(executable, ['--version'], { encoding: 'utf8' });
     assert.equal(version.status, 0);
-    assert.match(version.stdout, /1\.1\.3/);
+    assert.match(version.stdout, /1\.1\.4/);
 
     const help = spawnSync(executable, ['--help'], { encoding: 'utf8' });
     assert.equal(help.status, 0);
     assert.match(help.stdout, /--print/);
+    assert.match(help.stdout, /--prompt-interactive/);
     assert.match(help.stdout, /--conversation/);
     assert.match(help.stdout, /--log-file/);
   });

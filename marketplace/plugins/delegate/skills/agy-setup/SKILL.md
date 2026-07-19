@@ -11,8 +11,9 @@ Confirm `<plugin-root>/scripts/delegate.mjs` exists, then run:
     node "<plugin-root>/scripts/delegate.mjs" agy-setup
 
 Return the dispatcher's stdout verbatim. If the command exits non-zero, show stderr/stdout to the
-user and explain that the Antigravity preflight failed. Do not invoke `agy --print` as a setup test;
-the dispatcher deliberately checks the binary and print-mode surface without spending model tokens.
+user and explain that the Antigravity preflight failed. Do not invoke a model as a setup test. The
+dispatcher checks `--prompt-interactive`, exact-conversation flags, model access, the native-terminal runtime, and the
+companion plugin, then validates and installs the bundled lifecycle/orchestration companion.
 
 Forward `--json` when machine-readable output is requested.
 

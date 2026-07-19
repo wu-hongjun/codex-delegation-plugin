@@ -86,7 +86,7 @@ function providerUi(job) {
       sessionLabel: 'Agy conversation',
       skillPrefix: 'agy',
       supportsFollowup: typeof session.sessionId === 'string' && session.sessionId.length > 0,
-      attachCommand: null,
+      attachCommand: job.jobId ? `delegate attach ${job.jobId}` : null,
       logsCommand: session.logsCommand ?? null,
     };
   }
@@ -170,9 +170,19 @@ function classifyWaiting(waitingFor, opts = {}) {
         : typeof parsed?.action === 'string'
           ? parsed.action
           : null;
-  const attachCommand = opts.shortId ? `claude attach ${opts.shortId}` : null;
-  const note =
-    category === 'browser_selection'
+  const isAgy = opts.provider === 'agy';
+  const attachCommand = isAgy
+    ? opts.jobId
+      ? `delegate attach ${opts.jobId}`
+      : null
+    : opts.shortId
+      ? `claude attach ${opts.shortId}`
+      : null;
+  const note = isAgy
+    ? kind === 'permission'
+      ? 'Antigravity is waiting on its native permission card. Attach to approve or deny it in the provider TUI.'
+      : 'Antigravity is waiting for native TUI input. Attach to continue the exact conversation.'
+    : category === 'browser_selection'
       ? 'Claude Code requires an interactive Chrome browser selection. Choose the browser with the logged-in session in the attached TUI; the delegate wrapper cannot select it safely in the background.'
       : kind === 'permission'
         ? unattendedRequested
@@ -280,7 +290,12 @@ function summarizeJob(job, opts = {}) {
       rawLaunchPolicy.dangerouslySkipPermissions === true ||
       rawLaunchPolicy.permissionMode === 'bypassPermissions',
   };
-  const waiting = classifyWaiting(waitingFor, { shortId, launchPolicy });
+  const waiting = classifyWaiting(waitingFor, {
+    shortId,
+    launchPolicy,
+    provider: ui.provider,
+    jobId: job.jobId,
+  });
   const hasResult = job.result !== undefined;
   const latestTurnHasResult = latestTurn?.result !== undefined;
   const latestTurnResultState = latestTurnHasResult
@@ -346,7 +361,14 @@ function summarizeJob(job, opts = {}) {
                 ),
               }
             : {}),
-          ...(ui.attachCommand ? { attach: ui.attachCommand } : {}),
+          ...(ui.attachCommand
+            ? {
+                attach:
+                  ui.provider === 'agy'
+                    ? exactDispatcherCommand(opts.dispatcherPath, `attach ${job.jobId}`)
+                    : ui.attachCommand,
+              }
+            : {}),
           ...(ui.logsCommand ? { logs: ui.logsCommand } : {}),
         };
   const actionHints = {
@@ -406,7 +428,18 @@ function summarizeJob(job, opts = {}) {
           ),
         }
       : {}),
-    ...(ui.attachCommand ? { attach: ui.attachCommand } : {}),
+    ...(ui.attachCommand
+      ? {
+          attach:
+            ui.provider === 'agy'
+              ? displayDispatcherCommand(
+                  opts.dispatcherPath,
+                  `attach ${job.jobId}`,
+                  `$agy-attach ${job.jobId}`,
+                )
+              : ui.attachCommand,
+        }
+      : {}),
     ...(ui.logsCommand ? { logs: ui.logsCommand } : {}),
   };
 
@@ -484,13 +517,13 @@ function summarizeJob(job, opts = {}) {
 }
 
 function waitTimeoutRecovery(compact, resultText) {
+  const providerLabel = compact.provider === 'agy' ? 'Antigravity' : 'Claude';
   const partialResultAvailable =
     compact.resultState === 'partial_result_available' ||
     compact.resultState === 'orphaned_partial_result_available' ||
     (typeof resultText === 'string' && resultText.length > 0);
   return {
-    message:
-      'Wait timed out before the job reached a terminal or follow-up state. The Claude job may still be healthy; inspect status or read the latest recorded partial output.',
+    message: `Wait timed out before the job reached a terminal or follow-up state. The ${providerLabel} job may still be healthy; inspect status or read the latest recorded partial output.`,
     status: compact.actionHints?.status ?? null,
     partialResult: partialResultAvailable ? (compact.actionHints?.partialResult ?? null) : null,
     result: compact.actionHints?.result ?? null,
@@ -933,13 +966,12 @@ export function formatResult(job, resultText, json, opts = {}) {
  * @param {import('@codex-delegation/runtime').JobRecord} job
  * @param {string | null} resultText
  * @param {boolean} json
- * @param {{ compact?: boolean; timedOut?: boolean; timeoutMs?: number; dispatcherPath?: string; transcriptTail?: string[] | null }} [opts]
+ * @param {{ compact?: boolean; timedOut?: boolean; timeoutMs?: number; dispatcherPath?: string }} [opts]
  * @returns {string}
  */
 export function formatWait(job, resultText, json, opts = {}) {
   const compact = summarizeJob(job, { ...opts, compact: true });
   const timedOut = Boolean(opts.timedOut);
-  const transcriptTail = opts.transcriptTail ?? null;
   const timeoutRecovery = timedOut ? waitTimeoutRecovery(compact, resultText) : null;
 
   if (json) {
@@ -952,7 +984,6 @@ export function formatWait(job, resultText, json, opts = {}) {
         summary: compact,
         ...(timeoutRecovery ? { timeoutRecovery } : {}),
         resultText,
-        transcriptTail,
       },
       null,
       2,
@@ -1001,10 +1032,6 @@ export function formatWait(job, resultText, json, opts = {}) {
 
   if (resultText) {
     lines.push('', resultText);
-  }
-
-  if (transcriptTail && transcriptTail.length > 0) {
-    lines.push('', 'Transcript tail:', ...transcriptTail.map((line) => `  ${line}`));
   }
 
   return lines.join('\n');

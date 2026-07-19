@@ -8,8 +8,8 @@ Resolve `<plugin-root>` as the parent of the `skills/` directory containing this
     node "<plugin-root>/scripts/delegate.mjs" goal --provider agy -- "<completion condition>"
 
 Forward only explicitly requested Antigravity startup flags (`--yes`, `--json`, `--name`, `--model`,
-`--agent`, `--mode`, `--sandbox`, `--print-timeout`, `--project`, `--new-project`, `--log-file`, and
-permission/bypass flags). Do not inject `--yes`. The first headless turn works until it verifies the
+`--agent`, `--mode`, `--sandbox`, `--project`, `--new-project`, `--log-file`, and
+permission/bypass flags). Do not inject `--yes`. The persistent first turn works until it verifies the
 condition or proves a blocker; continue the same context with `$agy-followup` when another turn is
 needed.
 

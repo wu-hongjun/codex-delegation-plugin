@@ -1253,7 +1253,7 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.job.jobId, jobId);
     assert.equal(parsed.summary.resultState, 'final_result_available');
     assert.equal(parsed.resultText, resultContent);
-    assert.equal(parsed.transcriptTail, null);
+    assert.equal('transcriptTail' in parsed, false);
   });
 
   it('wait --json stops on needs_input and returns blocker hints plus partial text', () => {

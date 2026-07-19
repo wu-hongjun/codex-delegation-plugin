@@ -8,9 +8,9 @@ Resolve `<plugin-root>` as the parent of the `skills/` directory containing this
     node "<plugin-root>/scripts/delegate.mjs" deep-research --provider agy -- "<question>"
 
 Forward only explicitly requested Antigravity startup flags, `--json`, and `--yes`. Do not inject
-`--yes`. Antigravity web tools follow its permission policy; headless prompts cannot approve an
-`ask` decision, so the user may need narrow `permissions.allow` rules. Return output verbatim and
-surface failures.
+`--yes`. The companion research agent uses Antigravity's native subagent and web tools. If a native
+permission card appears, leave it for the user and point them to `$agy-attach`; never approve it on
+their behalf. Return output verbatim and surface failures.
 
 ### Next steps
 

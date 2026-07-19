@@ -1,0 +1,113 @@
+import { readFile } from 'node:fs/promises';
+
+import type { SessionHandle } from '@codex-delegation/runtime';
+import { DriverError } from '@codex-delegation/runtime';
+
+import { acquireAgySendLock, sendAgyKeys } from './control.js';
+import { readAgyState } from './state.js';
+import { DRIVER_NAME } from './types.js';
+
+export interface AgyAttachOptions {
+  input?: NodeJS.ReadStream;
+  output?: NodeJS.WriteStream;
+  signal?: AbortSignal;
+  pollMs?: number;
+  replayBytes?: number;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function processExists(pid: number | undefined): boolean {
+  if (!pid || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM';
+  }
+}
+
+export async function attachAgyTerminal(
+  session: SessionHandle,
+  opts: AgyAttachOptions = {},
+): Promise<void> {
+  if (!session.statePath) {
+    throw new DriverError('agy attach requires persisted supervisor state', {
+      driverName: DRIVER_NAME,
+      operation: 'attach',
+    });
+  }
+  const initial = await readAgyState(session.statePath);
+  if (!initial?.terminalPath || !initial.controlDir || !processExists(initial.runnerPid)) {
+    throw new DriverError('agy interactive session is no longer attachable', {
+      driverName: DRIVER_NAME,
+      operation: 'attach',
+    });
+  }
+
+  const input = opts.input ?? process.stdin;
+  const output = opts.output ?? process.stdout;
+  if (!input.isTTY || !output.isTTY) {
+    throw new DriverError('agy attach requires an interactive terminal', {
+      driverName: DRIVER_NAME,
+      operation: 'attach',
+    });
+  }
+
+  const releaseLock = await acquireAgySendLock(initial);
+  const wasRaw = input.isRaw;
+  const wasFlowing = input.readableFlowing;
+  let offset = 0;
+  let detached = false;
+  let inputWrites = Promise.resolve();
+
+  const onData = (chunk: Buffer | string) => {
+    const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    const detachAt = data.indexOf(0x1d); // Ctrl+]
+    const forwarded = detachAt >= 0 ? data.subarray(0, detachAt) : data;
+    if (forwarded.length > 0) {
+      inputWrites = inputWrites.then(() =>
+        sendAgyKeys(initial, forwarded.toString('utf8')).then(() => undefined),
+      );
+    }
+    if (detachAt >= 0) detached = true;
+  };
+
+  try {
+    const existing = await readFile(initial.terminalPath);
+    const replayBytes = opts.replayBytes ?? 2 * 1024 * 1024;
+    const start = Math.max(0, existing.length - replayBytes);
+    output.write(existing.subarray(start));
+    offset = existing.length;
+    output.write('\r\n[codex-delegation: attached; press Ctrl+] to detach]\r\n');
+
+    input.setRawMode?.(true);
+    input.resume();
+    input.on('data', onData);
+
+    while (!detached && !opts.signal?.aborted) {
+      const [current, terminalBytes] = await Promise.all([
+        readAgyState(session.statePath),
+        readFile(initial.terminalPath),
+      ]);
+      if (terminalBytes.length > offset) {
+        output.write(terminalBytes.subarray(offset));
+        offset = terminalBytes.length;
+      } else if (terminalBytes.length < offset) {
+        output.write(terminalBytes);
+        offset = terminalBytes.length;
+      }
+      if (!current || !processExists(current.runnerPid)) break;
+      await delay(opts.pollMs ?? 50);
+    }
+    await inputWrites;
+  } finally {
+    input.off('data', onData);
+    input.setRawMode?.(wasRaw ?? false);
+    if (wasFlowing !== true) input.pause();
+    await releaseLock();
+    output.write('\r\n[codex-delegation: detached; Antigravity keeps running]\r\n');
+  }
+}

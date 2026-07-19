@@ -38,7 +38,9 @@ const HEADLESS_PERMISSION_DENIED =
 const CONVERSATION_ID =
   /(?:Created conversation\s+|Print mode:\s+conversation=)([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i;
 
-async function captureConversationId(): Promise<void> {
+let conversationCapture: Promise<void> | null = null;
+
+async function readAndPublishConversationId(): Promise<void> {
   if (state.conversationId || !state.diagnosticLogPath) return;
   const log = await readFile(state.diagnosticLogPath, 'utf8').catch(() => '');
   const match = log.match(CONVERSATION_ID);
@@ -49,6 +51,15 @@ async function captureConversationId(): Promise<void> {
     updatedAt: new Date().toISOString(),
   };
   await writeAgyState(statePath, state);
+}
+
+function captureConversationId(): Promise<void> {
+  if (conversationCapture === null) {
+    conversationCapture = readAndPublishConversationId().finally(() => {
+      conversationCapture = null;
+    });
+  }
+  return conversationCapture;
 }
 
 async function classifyExit(code: number | null): Promise<{

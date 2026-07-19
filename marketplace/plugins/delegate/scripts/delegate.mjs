@@ -3019,7 +3019,9 @@ async function cmdWait(flags, positional, json) {
       transcriptTail,
     }) + '\n',
   );
-  if (timedOut) process.exit(1);
+  // Setting exitCode lets Node flush large JSON payloads to a piped caller.
+  // process.exit() can truncate output at the platform pipe-buffer boundary.
+  if (timedOut) process.exitCode = 1;
 }
 
 // ---------- stop ----------

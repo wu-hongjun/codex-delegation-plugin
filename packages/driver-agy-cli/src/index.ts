@@ -31,6 +31,7 @@ export type { AgyCliDriverOptions, AgyRunnerState } from './types.js';
 
 const RUNNER_PATH = fileURLToPath(new URL('./runner.js', import.meta.url));
 const TERMINAL = new Set<AgyRunnerState['status']>(['completed', 'failed', 'stopped']);
+const ORPHAN_STATE_GRACE_MS = 500;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -341,7 +342,8 @@ export class AgyCliDriver implements Driver {
   }
 
   async status(session: SessionHandle): Promise<SessionStatus> {
-    const state = await readAgyState(handleStatePath(session));
+    const statePath = handleStatePath(session);
+    let state = await readAgyState(statePath);
     if (state === null) {
       return {
         value: processExists(session.pid) ? 'starting' : 'orphaned',
@@ -353,6 +355,19 @@ export class AgyCliDriver implements Driver {
       };
     }
     if (!TERMINAL.has(state.status) && !processExists(state.runnerPid)) {
+      // A detached supervisor can exit in the narrow interval between its final
+      // child event and the atomic rename that publishes terminal state. Give
+      // that write a bounded chance to become visible before calling it orphaned.
+      const deadline = Date.now() + ORPHAN_STATE_GRACE_MS;
+      while (Date.now() < deadline) {
+        await delay(20);
+        const current = await readAgyState(statePath);
+        if (current === null) continue;
+        state = current;
+        if (TERMINAL.has(state.status) || processExists(state.runnerPid)) {
+          return stateToStatus(state);
+        }
+      }
       return { ...stateToStatus(state), value: 'orphaned' };
     }
     return stateToStatus(state);

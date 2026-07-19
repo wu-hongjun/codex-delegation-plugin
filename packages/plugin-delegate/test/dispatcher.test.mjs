@@ -1306,9 +1306,10 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
   it('wait --timeout returns latest running state and exits non-zero on timeout', () => {
     const shortId = 'waitrun1';
     const jobId = `job_waitto_${createHash('sha256').update('wait-timeout').digest('hex').slice(0, 8)}`;
+    const partialResult = `Running partial answer.\n${'x'.repeat(12_000)}`;
     writeSyntheticCompletedJob({
       jobId,
-      resultContent: 'Running partial answer.',
+      resultContent: partialResult,
       shortId,
     });
     const recordPath = join(TMP_HOME, 'jobs', `${jobId}.json`);
@@ -1324,7 +1325,7 @@ describe('status --job and --compact ergonomics (Plan 0022 friction polish)', ()
     assert.equal(parsed.ok, false);
     assert.equal(parsed.timedOut, true);
     assert.equal(parsed.summary.operatorState, 'running');
-    assert.equal(parsed.resultText, 'Running partial answer.');
+    assert.equal(parsed.resultText, partialResult);
     assert.equal(
       parsed.timeoutRecovery.status,
       dispatcherCmd(`status --job ${jobId} --json --compact`),

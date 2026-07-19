@@ -1,6 +1,6 @@
 {
   "name": "delegate",
-  "version": "0.5.0+codex.20260719035519",
+  "version": "0.5.0+codex.20260719042310",
   "description": "Delegate tasks from Codex to Claude Code or Google Antigravity.",
   "author": {
     "name": "Hongjun Wu",

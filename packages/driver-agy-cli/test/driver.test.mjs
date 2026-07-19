@@ -181,6 +181,45 @@ describe('AgyCliDriver lifecycle', () => {
     assert.match(await readAgyOutput(handle.errorPath), /auth failed/);
   });
 
+  it('allows a detached supervisor grace time to publish terminal state', async () => {
+    const statePath = join(testHome, 'settling.state.json');
+    const now = new Date().toISOString();
+    const state = {
+      schemaVersion: 1,
+      driverName: 'agy-cli',
+      shortId: 'settling',
+      sessionName: 'settling-supervisor',
+      cwd: workspace,
+      status: 'running',
+      runnerPid: 2_147_483_647,
+      startedAt: now,
+      updatedAt: now,
+      resultPath: join(testHome, 'settling.stdout.txt'),
+      errorPath: join(testHome, 'settling.stderr.txt'),
+      turnIndex: 0,
+    };
+    writeFileSync(statePath, JSON.stringify(state));
+    const terminalWrite = setTimeout(() => {
+      const endedAt = new Date().toISOString();
+      writeFileSync(
+        statePath,
+        JSON.stringify({ ...state, status: 'completed', updatedAt: endedAt, endedAt, exitCode: 0 }),
+      );
+    }, 50);
+
+    const driver = new AgyCliDriver({ executable: mockAgy, cwd: workspace });
+    const status = await driver.status({
+      driverName: 'agy-cli',
+      shortId: state.shortId,
+      sessionName: state.sessionName,
+      cwd: workspace,
+      startedAt: now,
+      statePath,
+    });
+    clearTimeout(terminalWrite);
+    assert.equal(status.value, 'completed');
+  });
+
   it('reports exit-zero headless permission auto-denials as failed', async () => {
     const configPath = join(testHome, 'config.json');
     writeFileSync(

@@ -48,11 +48,11 @@ async function startTracked(driver, opts) {
   return handle;
 }
 
-async function waitFor(driver, handle, expected, timeoutMs = 4000) {
+async function waitFor(driver, handle, expected, timeoutMs = 4000, predicate = () => true) {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const status = await driver.status(handle);
-    if (expected.includes(status.value)) return status;
+    if (expected.includes(status.value) && predicate(status)) return status;
     if (Date.now() >= deadline) {
       assert.fail(`timed out waiting for ${expected.join(', ')}; last status=${status.value}`);
     }
@@ -193,7 +193,13 @@ describe('AgyCliDriver lifecycle', () => {
     assert.ok(handle.statePath);
     assert.ok(handle.resultPath);
 
-    const status = await waitFor(driver, handle, ['idle']);
+    const status = await waitFor(
+      driver,
+      handle,
+      ['idle'],
+      4000,
+      (observed) => Boolean(observed.transcriptPath),
+    );
     assert.equal(status.value, 'idle');
     assert.ok(status.transcriptPath);
     assert.match(await readAgyOutput(handle.resultPath), /Antigravity completed: finish this task/);

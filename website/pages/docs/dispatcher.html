@@ -43,7 +43,15 @@ node packages/plugin-delegate/scripts/delegate.mjs result &lt;jobId&gt;
 node packages/plugin-delegate/scripts/delegate.mjs followup &lt;jobId&gt; -- "Continue with the tests."
 node packages/plugin-delegate/scripts/delegate.mjs stop &lt;jobId&gt;
 node packages/plugin-delegate/scripts/delegate.mjs delegate --provider agy --mode plan -- "Inspect this repository."
-node packages/plugin-delegate/scripts/delegate.mjs status --provider agy</code></pre>
+node packages/plugin-delegate/scripts/delegate.mjs status --provider agy
+node packages/plugin-delegate/scripts/delegate.mjs delegate --provider pi -- "Inspect this repository."
+node packages/plugin-delegate/scripts/delegate.mjs delegate --provider qwen -- "Inspect this repository."</code></pre>
+    <p>
+      <code>--provider auto</code> tries ready providers in the order Pi, Qwen Code, Antigravity,
+      then Claude Code. Use an explicit provider when reproducibility or account choice matters.
+      Advanced workflow, review, and discovery commands accept only the providers named in their
+      command help.
+    </p>
   </section>
 
   <section id="json">

@@ -15,6 +15,42 @@ const skillDirectories = (await readdir(skillsRoot, { withFileTypes: true }))
   .map((entry) => entry.name)
   .sort();
 const catalogSkills = codexSkills.map((skill) => skill.name).sort();
+const expectedProviderCounts = new Map([
+  ['Claude Code', 18],
+  ['Google Antigravity', 19],
+  ['Pi', 8],
+  ['Qwen Code', 8],
+]);
+
+if (new Set(catalogSkills).size !== catalogSkills.length) {
+  console.error('The site skill catalog contains duplicate skill names.');
+  process.exit(1);
+}
+
+for (const [provider, expectedCount] of expectedProviderCounts) {
+  const providerSkills = codexSkills.filter((skill) => skill.provider === provider);
+  if (providerSkills.length !== expectedCount) {
+    console.error(
+      `${provider} must expose ${expectedCount} catalog skills; found ${providerSkills.length}.`,
+    );
+    process.exit(1);
+  }
+}
+
+for (const skill of codexSkills) {
+  for (const field of ['name', 'provider', 'syntax', 'dispatcher', 'purpose', 'note']) {
+    if (typeof skill[field] !== 'string' || skill[field].trim() === '') {
+      console.error(`Skill catalog entry ${skill.name ?? '(unnamed)'} has an empty ${field}.`);
+      process.exit(1);
+    }
+  }
+}
+
+const commandNames = dispatcherCommands.map((command) => command.name);
+if (new Set(commandNames).size !== commandNames.length) {
+  console.error('The dispatcher command catalog contains duplicate command names.');
+  process.exit(1);
+}
 
 if (JSON.stringify(skillDirectories) !== JSON.stringify(catalogSkills)) {
   console.error('The site skill catalog does not match the shipped skill directories.');

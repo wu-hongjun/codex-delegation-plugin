@@ -50,6 +50,27 @@ $agy-delegate -- "Restate the task with the prior result as context."</code></pr
 $claude-stop --all-needs-input --all</code></pre>
   </section>
 
+  <section id="headless-needs-input">
+    <h2>A Pi or Qwen Code job needs interactive permission</h2>
+    <p>
+      Pi and Qwen jobs are headless and have no attach command. Stop the blocked job, review the
+      requested operation, and start a fresh job with an explicit supported permission mode only if
+      the workspace and task are trusted. Never add bypass/yolo merely to silence a prompt.
+    </p>
+    <pre><code>$pi-stop &lt;jobId&gt;
+$qwen-stop &lt;jobId&gt;</code></pre>
+  </section>
+
+  <section id="headless-followup">
+    <h2>Pi or Qwen follow-up says the session identity is missing</h2>
+    <p>
+      Exact follow-up requires the session ID captured during the original structured-output turn.
+      The existing result remains readable, but the missing identity cannot be reconstructed from a
+      global recent-session selector. Start a new provider delegation and include the prior result
+      as context.
+    </p>
+  </section>
+
   <section id="timeout">
     <h2>Wait timed out</h2>
     <p>A timeout does not stop the job and does not mean it is unhealthy.</p>

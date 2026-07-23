@@ -57,6 +57,19 @@ Fifty-three skills are available:
 - **`$pi-setup`, `$pi-doctor`, `$pi-delegate`, `$pi-status`, `$pi-wait`, `$pi-result`, `$pi-stop`, `$pi-followup`** — probe and supervise exact Pi sessions through `omp`
 - **`$qwen-setup`, `$qwen-doctor`, `$qwen-delegate`, `$qwen-status`, `$qwen-wait`, `$qwen-result`, `$qwen-stop`, `$qwen-followup`** — probe and supervise exact Qwen Code sessions through `qwen`
 
+### Provider capability summary
+
+| Provider | Transport | Exact follow-up | Interactive handoff | Shipped skill surface |
+| --- | --- | --- | --- | --- |
+| Claude Code | Native background session | Live session attach | `claude attach` | 18 skills: core lifecycle plus advanced workflows |
+| Google Antigravity | Persistent supervised TUI | Same TUI and captured UUID | `$agy-attach` | 19 skills: core lifecycle plus advanced workflows and attach |
+| Pi | Headless `omp` JSON process | Captured session ID | None | 8 core lifecycle skills |
+| Qwen Code | Headless `qwen` stream-JSON process | Captured session ID | None | 8 core lifecycle skills |
+
+The common core is setup, doctor, delegate, status, wait, result, stop, and follow-up. Review,
+orchestration, discovery, upgrade, and terminal attachment are not part of the current Pi/Qwen
+surface.
+
 Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `wait` polls one job until it produces a result, blocker, or timeout; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
 
 Antigravity lifecycle: `delegate --provider agy` starts one detached persistent TUI and private diagnostic log, captures the exact conversation UUID, and stores it with the job. `status`, `wait`, `result`, `attach`, and `stop` share the normal lifecycle. `followup` sends the next turn through the same live PTY, preserving immutable per-turn results. The plugin intentionally does not use global `agy --continue` state.

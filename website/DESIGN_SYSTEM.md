@@ -78,11 +78,13 @@ labels, tabular release evidence, hairline active states, and a single low-chrom
 - the self-dimming interaction rule for buttons, documentation navigation, and footer links
 - ink-on-paper selection inherited directly from the upstream base layer
 
-The hero record now uses the real post-release Antigravity job ID, provider, completion state, and
-exact `CODEX_DELEGATION_V050_AGY_OK` result. Invented timestamps, Claude metadata, and permission
-claims were removed. `MaterialTexture` and `ProofFrame` were intentionally not applied: this site
-has no authored physical media or production scan whose provenance would justify them, and a global
-paper effect would reproduce the synthetic look this pass is meant to remove.
+The hero record now uses the real bounded Qwen verification session, provider, completion state,
+date, and exact `QWEN_EXACT_RESUME_OK` result. The one-shot and follow-up were run without tools,
+and the follow-up resumed the captured session ID rather than global continuation state. Invented
+metadata and permission claims remain excluded. `MaterialTexture` and `ProofFrame` were
+intentionally not applied: this site has no authored physical media or production scan whose
+provenance would justify them, and a global paper effect would reproduce the synthetic look this
+pass is meant to remove.
 
 The landing page is no longer wrapped in `.vvver-prose`. Prose is intentionally scoped to
 documentation and error content; the product page uses the new section recipes. This removes the

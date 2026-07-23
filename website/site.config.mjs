@@ -41,21 +41,24 @@ export const pages = [
     output: 'docs/skills.html',
     source: 'docs/skills.html',
     title: 'Codex skills reference',
-    description: 'Reference for all 53 delegate: skills shipped by Codex Delegation.',
-    section: 'docs',
-  },
-  {
-    output: 'docs/dispatcher.html',
-    source: 'docs/dispatcher.html',
-    title: 'Dispatcher CLI reference',
-    description: 'Direct command-line reference for the delegate dispatcher.',
+    description:
+      'Reference for all 53 Codex Delegation skills across Claude Code, Google Antigravity, Pi, and Qwen Code.',
     section: 'docs',
   },
   {
     output: 'docs/workflows.html',
     source: 'docs/workflows.html',
     title: 'Workflows and reviews',
-    description: 'Continue, orchestrate, and review delegated Claude Code work.',
+    description:
+      'Continue exact provider sessions and use the workflow and review capabilities available for Claude Code and Google Antigravity.',
+    section: 'docs',
+  },
+  {
+    output: 'docs/dispatcher.html',
+    source: 'docs/dispatcher.html',
+    title: 'Dispatcher CLI reference',
+    description:
+      'Direct command-line reference for supervising Claude Code, Google Antigravity, Pi, and Qwen Code jobs.',
     section: 'docs',
   },
   {

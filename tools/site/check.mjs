@@ -61,6 +61,22 @@ for (const file of htmlFiles) {
   if (headingCount !== 1) fail(file, `expected one h1, found ${headingCount}`);
   const mainCount = (html.match(/<main(?:\s|>)/g) ?? []).length;
   if (mainCount !== 1) fail(file, `expected one main landmark, found ${mainCount}`);
+  const description = html.match(/<meta name="description" content="([^"]+)">/)?.[1];
+  if (!description || description.length < 40 || description.length > 180) {
+    fail(file, 'meta description must contain 40–180 characters');
+  }
+  for (const metadata of [
+    ['Open Graph type', /<meta property="og:type" content="website">/],
+    ['Open Graph site name', /<meta property="og:site_name" content="[^"]+">/],
+    ['Open Graph title', /<meta property="og:title" content="[^"]+">/],
+    ['Open Graph description', /<meta property="og:description" content="[^"]+">/],
+    ['Open Graph URL', /<meta property="og:url" content="[^"]+">/],
+    ['Twitter card', /<meta name="twitter:card" content="summary">/],
+    ['Twitter title', /<meta name="twitter:title" content="[^"]+">/],
+    ['Twitter description', /<meta name="twitter:description" content="[^"]+">/],
+  ]) {
+    if (!metadata[1].test(html)) fail(file, `missing ${metadata[0]} metadata`);
+  }
   const headings = [...html.matchAll(/<h([1-6])(?:\s|>)/g)].map((match) => Number(match[1]));
   if (headings[0] !== 1) fail(file, 'h1 must be the first heading in document order');
   for (let index = 1; index < headings.length; index += 1) {
@@ -131,10 +147,10 @@ for (const page of pages) {
       }
     }
     for (const evidence of [
-      'CODEX_DELEGATION_V050_AGY_OK',
-      'job_mrp1r0j5_2409f03a',
-      'Google Antigravity',
-      '<time datetime="2026-07-18">',
+      'QWEN_EXACT_RESUME_OK',
+      '0f5da981…bd92',
+      'Source / bounded live verification',
+      '<time datetime="2026-07-23">',
     ]) {
       if (!html.includes(evidence)) {
         fail(expected, `missing factual release evidence: ${evidence}`);
@@ -151,6 +167,16 @@ for (const page of pages) {
   }
   if (page.section === 'docs' && !/href="[^"]*\/docs\/" aria-current="page"/.test(html)) {
     fail(expected, 'documentation primary navigation must expose its active state');
+  }
+  if (
+    page.section === 'docs' &&
+    !/<nav class="site-breadcrumb" aria-label="Breadcrumb">[\s\S]*?aria-current="page"/.test(html)
+  ) {
+    fail(expected, 'documentation breadcrumb must be a navigation landmark with current page');
+  }
+  const openGraphUrl = html.match(/<meta property="og:url" content="([^"]+)">/)?.[1];
+  if (openGraphUrl !== canonicalFor(page.output)) {
+    fail(expected, `Open Graph URL does not match canonical URL: ${openGraphUrl ?? 'missing'}`);
   }
 }
 

@@ -315,8 +315,8 @@ describe('consolidated release checklist (Plan 0006 T11)', () => {
     );
     assert.match(content, /git push origin v0\.[xX]\.[yY]/);
     assert.ok(
-      content.includes('v0.6.0'),
-      'Tagging section must include the current example tag `v0.6.0`',
+      content.includes('v0.6.1'),
+      'Tagging section must include the current example tag `v0.6.1`',
     );
     assert.match(
       content,

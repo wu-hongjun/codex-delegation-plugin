@@ -49,6 +49,66 @@ $agy-doctor</code></pre>
       exact resume, model access, and PTY runtime. Doctor adds workspace and native permission
       handoff checks. Neither starts a delegated model turn.
     </p>
+
+    <h3>Pi</h3>
+    <pre><code>$pi-setup
+$pi-doctor</code></pre>
+    <p>
+      Pi is the plugin name for the oh-my-pi <code>omp</code> executable. These commands check the
+      binary, structured JSON output, exact session resume, workspace, and headless permission
+      policy without starting a delegated model turn.
+    </p>
+
+    <h3>Qwen Code</h3>
+    <pre><code>$qwen-setup
+$qwen-doctor</code></pre>
+    <p>
+      These commands check the <code>qwen</code> executable, stream-JSON output, exact session
+      resume, workspace, and headless permission policy without starting a delegated model turn.
+    </p>
+  </section>
+
+  <section id="choose-provider">
+    <h2>Choose a provider surface</h2>
+    <table>
+      <caption>
+        Shipped Codex skill surfaces
+      </caption>
+      <thead>
+        <tr>
+          <th scope="col">Provider</th>
+          <th scope="col">Core lifecycle</th>
+          <th scope="col">Interactive attachment</th>
+          <th scope="col">Advanced skills</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th scope="row">Claude Code</th>
+          <td>Setup, doctor, delegate, status, wait, result, stop, follow-up</td>
+          <td><code>claude attach</code></td>
+          <td>Review, workflow, goal, fork, batch, research, discovery, upgrade</td>
+        </tr>
+        <tr>
+          <th scope="row">Google Antigravity</th>
+          <td>Setup, doctor, delegate, status, wait, result, stop, follow-up</td>
+          <td><code>$agy-attach</code></td>
+          <td>Review, workflow, goal, fork, batch, research, discovery, upgrade</td>
+        </tr>
+        <tr>
+          <th scope="row">Pi</th>
+          <td>Setup, doctor, delegate, status, wait, result, stop, follow-up</td>
+          <td>Not available; jobs are headless</td>
+          <td>Not shipped in the current Pi surface</td>
+        </tr>
+        <tr>
+          <th scope="row">Qwen Code</th>
+          <td>Setup, doctor, delegate, status, wait, result, stop, follow-up</td>
+          <td>Not available; jobs are headless</td>
+          <td>Not shipped in the current Qwen surface</td>
+        </tr>
+      </tbody>
+    </table>
   </section>
 
   <section id="first-claude-job">
@@ -81,6 +141,24 @@ $agy-result &lt;jobId&gt;</code></pre>
     <p>
       The driver records this job's conversation UUID and the follow-up resumes that exact UUID. It
       does not use workspace-global <code>agy --continue</code>, so concurrent jobs remain isolated.
+    </p>
+  </section>
+
+  <section id="first-headless-job">
+    <h2>Run a first Pi or Qwen Code job</h2>
+    <pre><code>$pi-delegate "Read the repository README and summarize the architecture. Do not edit files."
+$pi-wait &lt;jobId&gt; --json --compact --timeout 5m
+$pi-result &lt;jobId&gt;
+$pi-followup &lt;jobId&gt; -- "List the three most important files for a new contributor."
+
+$qwen-delegate "Read the repository README and summarize the architecture. Do not edit files."
+$qwen-wait &lt;jobId&gt; --json --compact --timeout 5m
+$qwen-result &lt;jobId&gt;
+$qwen-followup &lt;jobId&gt; -- "List the three most important files for a new contributor."</code></pre>
+    <p>
+      Each driver records the exact session ID and resumes only that session. Pi and Qwen jobs are
+      headless, so they cannot pause for an attached permission prompt. Run the provider doctor
+      first and choose an explicit supported permission policy before trusted unattended work.
     </p>
   </section>
 

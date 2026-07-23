@@ -27,6 +27,22 @@ $agy-result &lt;jobId&gt;</code></pre>
       Antigravity follow-up uses the job's existing persistent TUI and exact UUID. It is
       deterministic across concurrent jobs and never uses global <code>agy --continue</code> state.
     </p>
+    <pre><code>$pi-followup &lt;jobId&gt; -- "Now trace the highest-risk path to its tests."
+$qwen-followup &lt;jobId&gt; -- "Now trace the highest-risk path to its tests."</code></pre>
+    <p>
+      Pi and Qwen Code start another supervised headless turn with the exact session ID stored on
+      the job. They cannot accept a live permission decision through attachment.
+    </p>
+  </section>
+
+  <section id="advanced-provider-scope">
+    <h2>Advanced provider scope</h2>
+    <p>
+      Workflow, goal, fork, batch, deep-research, review, workflow discovery, skill discovery, and
+      upgrade wrappers are currently Claude Code and Antigravity surfaces. Pi and Qwen Code expose
+      the core eight-skill lifecycle only; use a fresh core delegation when a task does not need an
+      advanced wrapper.
+    </p>
   </section>
 
   <section id="workflow">

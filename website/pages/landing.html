@@ -13,25 +13,29 @@
         >
         <a class="landing-button" href="{{link:docs/index.html}}">Read the operating guide</a>
       </div>
-      <p class="landing-hero-note">Open source · macOS and Linux · Node 20+</p>
+      <ul class="landing-hero-facts" aria-label="Plugin scope">
+        <li><strong>4</strong><span>provider transports</span></li>
+        <li><strong>53</strong><span>Codex skills</span></li>
+        <li><strong>1</strong><span>exact job-scoped resume key</span></li>
+      </ul>
     </div>
 
-    <div class="landing-product" aria-label="Recorded v0.6.0 release verification job">
+    <div class="landing-product" aria-label="Recorded Qwen exact-resume verification">
       <div class="landing-product-bar">
-        <span>Release verification / v0.6.0</span>
+        <span>Exact-resume verification / v{{version}}</span>
         <span class="landing-status"><i aria-hidden="true"></i> Completed</span>
       </div>
       <div class="landing-product-body">
         <p class="landing-product-label">Recorded result</p>
-        <p class="landing-product-prompt"><code>CODEX_DELEGATION_V050_AGY_OK</code></p>
+        <p class="landing-product-prompt"><code>QWEN_EXACT_RESUME_OK</code></p>
         <dl class="landing-product-meta">
           <div>
-            <dt>Job</dt>
-            <dd><code>job_mrp1r0j5_2409f03a</code></dd>
+            <dt>Session</dt>
+            <dd><code>0f5da981…bd92</code></dd>
           </div>
           <div>
             <dt>Provider</dt>
-            <dd>Google Antigravity</dd>
+            <dd>Qwen Code</dd>
           </div>
           <div>
             <dt>State</dt>
@@ -39,14 +43,14 @@
           </div>
         </dl>
         <ol class="landing-product-events">
-          <li><span>[01]</span><strong>Released plugin reinstalled from GitHub</strong></li>
-          <li><span>[02]</span><strong>Antigravity delegation completed</strong></li>
-          <li><span>[03]</span><strong>Exact success token recorded</strong></li>
+          <li><span>[01]</span><strong>Bounded one-shot completed without tools</strong></li>
+          <li><span>[02]</span><strong>Captured session resumed by exact ID</strong></li>
+          <li><span>[03]</span><strong>Same session and success result recorded</strong></li>
         </ol>
       </div>
       <div class="landing-product-footer typewriter-register">
-        <span>Source / post-release verification</span>
-        <time datetime="2026-07-18">18 Jul 2026</time>
+        <span>Source / bounded live verification</span>
+        <time datetime="2026-07-23">23 Jul 2026</time>
       </div>
     </div>
   </header>
@@ -75,7 +79,7 @@
         <span>Adapter</span>
         <h3>Provider behavior stays honest</h3>
         <p>
-          Claude sessions and Antigravity conversations expose only the actions they truly support.
+          Each transport exposes only the lifecycle and advanced actions it can actually perform.
         </p>
       </article>
     </div>
@@ -155,25 +159,76 @@ $claude-stop &lt;jobId&gt;</code></pre>
       </article>
       <article data-tint="sage">
         <div class="landing-provider-title">
-          <h3>Pi and Qwen Code</h3>
-          <span>Headless / exact resume</span>
+          <h3>Pi</h3>
+          <span>Core lifecycle / exact resume</span>
         </div>
-        <p>Best for supervised structured-output work using a compact core lifecycle.</p>
+        <p>Best for lightweight supervised work through local <code>omp</code> configuration.</p>
         <dl>
           <div>
             <dt>Transport</dt>
-            <dd>Detached <code>omp</code> or <code>qwen</code> process</dd>
+            <dd>Detached <code>omp --mode json</code> process</dd>
           </div>
           <div>
             <dt>Follow-up</dt>
             <dd>Captured-session exact resume</dd>
           </div>
           <div>
-            <dt>Limit</dt>
-            <dd>No live permission attachment</dd>
+            <dt>Skills</dt>
+            <dd>Eight core lifecycle skills</dd>
           </div>
         </dl>
       </article>
+      <article data-tint="slate">
+        <div class="landing-provider-title">
+          <h3>Qwen Code</h3>
+          <span>Core lifecycle / exact resume</span>
+        </div>
+        <p>Best for structured one-shot work with a supervised Qwen Code process.</p>
+        <dl>
+          <div>
+            <dt>Transport</dt>
+            <dd>Detached <code>qwen</code> process</dd>
+          </div>
+          <div>
+            <dt>Follow-up</dt>
+            <dd>Captured-session exact resume</dd>
+          </div>
+          <div>
+            <dt>Skills</dt>
+            <dd>Eight core lifecycle skills</dd>
+          </div>
+        </dl>
+      </article>
+    </div>
+    <div class="landing-provider-safety">
+      <p>Exact means job-scoped.</p>
+      <p>
+        Follow-up uses the session ID captured for that job—never a provider-wide
+        <code>--continue</code>. Pi and Qwen run headlessly, so they intentionally do not advertise
+        live attachment or interactive permission handoff.
+      </p>
+    </div>
+    <div class="landing-capability-comparison" aria-labelledby="capability-heading">
+      <div>
+        <p class="landing-eyebrow">Capability boundary</p>
+        <h3 id="capability-heading">Core everywhere. Advanced where native.</h3>
+      </div>
+      <div class="landing-capability-table" role="table" aria-label="Provider capability tiers">
+        <div role="row">
+          <strong role="columnheader">All four providers</strong>
+          <span role="cell"
+            >Setup · doctor · delegate · status · wait · result · stop · follow-up</span
+          >
+        </div>
+        <div role="row">
+          <strong role="columnheader">Claude + Antigravity</strong>
+          <span role="cell">Reviews · goals · forks · batches · workflows · orchestration</span>
+        </div>
+        <div role="row">
+          <strong role="columnheader">Pi + Qwen Code</strong>
+          <span role="cell">Compact eight-skill lifecycle · supervised headless execution</span>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -189,10 +244,11 @@ $claude-stop &lt;jobId&gt;</code></pre>
     <pre><code>Codex
   └─ delegate: skill
       └─ provider-neutral dispatcher
-          ├─ ClaudeBackgroundDriver ── live Claude session
-          └─ AgyCliDriver ─────────── supervised agy process
-                 │
-                 └─ job record · events · logs · results · next actions</code></pre>
+          ├─ ClaudeBackgroundDriver ── native background session
+          ├─ AgyCliDriver ─────────── persistent supervised TUI
+          ├─ PiCliDriver ──────────── supervised omp JSON process
+          ├─ QwenCodeDriver ───────── supervised qwen one-shot process
+          └─ each transport ───────── job record · events · results · exact next actions</code></pre>
   </section>
 
   <section class="landing-section" aria-labelledby="proof-heading">
@@ -207,7 +263,7 @@ $claude-stop &lt;jobId&gt;</code></pre>
     <dl class="landing-proof-ledger">
       <div>
         <dt>Repository tests</dt>
-        <dd><strong>1,393</strong><span>passed</span></dd>
+        <dd><strong>2,401</strong><span>passed</span></dd>
       </div>
       <div>
         <dt>PTY attachment tests</dt>
@@ -222,7 +278,9 @@ $claude-stop &lt;jobId&gt;</code></pre>
         <dd><strong>0</strong><span>vulnerabilities</span></dd>
       </div>
     </dl>
-    <p class="landing-proof-note">Ubuntu + macOS · Node 20 + 22 · GitHub marketplace install</p>
+    <p class="landing-proof-note">
+      71 mock + 189 runtime + 231 driver + 1,910 plugin · Ubuntu + macOS · Node 20 + 22
+    </p>
   </section>
 
   <section class="landing-section" aria-labelledby="docs-heading">

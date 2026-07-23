@@ -86,10 +86,10 @@ status:
 - `warn` — usable with caveats (e.g., daemon status unavailable)
 - `fail` — something blocks delegation; follow the setup output
 
-If `$claude-setup` reports `ok` or `warn`, the install is complete. Before
-long-running, browser-backed, unattended, or high-stakes delegated jobs, run
-`$claude-doctor`; it preflights Claude Code CLI auth, model access, real Chrome
-readiness, workspace path, and permission-mode intent.
+The install is complete when the setup command for the provider you intend to use reports ready
+(`ok` or an explained non-blocking `warn`). Before long-running, browser-backed, unattended, or
+high-stakes Claude jobs, run `$claude-doctor`; it preflights Claude Code CLI auth, model access,
+real Chrome readiness, workspace path, and permission-mode intent.
 
 `$agy-setup` validates and installs the bundled Antigravity companion plugin, then checks the agy
 version, persistent-interactive surface, exact resume flags, and terminal runtime without making a
@@ -99,6 +99,18 @@ Antigravity will handle delegated jobs.
 `$pi-setup`/`$pi-doctor` and `$qwen-setup`/`$qwen-doctor` probe the corresponding binary,
 structured-output support, exact resume capability, and headless permission constraints without
 starting a delegated model turn.
+
+## Choose a provider
+
+- **Claude Code** — full lifecycle plus reviews, workflows, goals, forks, batches, research,
+  discovery, and upgrade. Use native `claude attach` for interactive handoff.
+- **Google Antigravity** — full lifecycle plus the same advanced plugin workflows and a persistent
+  native TUI exposed by `$agy-attach`.
+- **Pi** — the eight-skill core lifecycle through the oh-my-pi `omp` executable. Jobs are headless.
+- **Qwen Code** — the eight-skill core lifecycle through `qwen`. Jobs are headless.
+
+Pi and Qwen exact follow-up is deterministic, but neither provider currently exposes review,
+orchestration, discovery, upgrade, or terminal-attachment skills.
 
 ## Skills
 
@@ -602,4 +614,4 @@ codex plugin list
 ```
 
 You should see `delegate@codex-delegation-plugin-local` with version
-`0.6.0` (the current plugin version), reported as `installed, enabled`.
+`0.6.1` (the current plugin version), reported as `installed, enabled`.

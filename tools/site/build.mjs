@@ -104,7 +104,7 @@ function renderDocsContext(page) {
       ? `<a href="${publicHref(item.output)}"><span>${direction}</span><strong>${escapeHtml(item.title)}</strong></a>`
       : '<span aria-hidden="true"></span>';
   return {
-    before: `<div class="site-breadcrumb" aria-label="Breadcrumb"><a href="${publicHref('docs/index.html')}">Docs</a><span aria-hidden="true">/</span><span>${escapeHtml(page.title)}</span><span class="site-breadcrumb-position" aria-label="Page ${index + 1} of ${docsNavigation.length}">${String(index + 1).padStart(2, '0')} / ${String(docsNavigation.length).padStart(2, '0')}</span></div>`,
+    before: `<nav class="site-breadcrumb" aria-label="Breadcrumb"><a href="${publicHref('docs/index.html')}">Docs</a><span aria-hidden="true">/</span><span aria-current="page">${escapeHtml(page.title)}</span><span class="site-breadcrumb-position" aria-label="Page ${index + 1} of ${docsNavigation.length}">${String(index + 1).padStart(2, '0')} / ${String(docsNavigation.length).padStart(2, '0')}</span></nav>`,
     after: `<nav class="site-prev-next" aria-label="Documentation pages">${link(previous, 'Previous')}${link(next, 'Next')}</nav>`,
   };
 }
@@ -186,6 +186,14 @@ function renderPage(page, fragment, version) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="description" content="${escapeHtml(page.description)}">
 ${robots}    <meta name="theme-color" content="#fdfcfb">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="${escapeHtml(site.name)}">
+    <meta property="og:title" content="${escapeHtml(page.title)}">
+    <meta property="og:description" content="${escapeHtml(page.description)}">
+    <meta property="og:url" content="${canonicalUrl(page.output)}">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="${escapeHtml(page.title)}">
+    <meta name="twitter:description" content="${escapeHtml(page.description)}">
     <link rel="canonical" href="${canonicalUrl(page.output)}">
     <link rel="stylesheet" href="${publicHref('assets/site.css')}">
     <title>${escapeHtml(page.title)} | ${escapeHtml(site.name)}</title>

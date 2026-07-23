@@ -128,5 +128,10 @@
       permission, task, conversation-fork, and subagent controls. <code>Ctrl+]</code> detaches
       without stopping it.
     </p>
+    <p>
+      Pi and Qwen Code finish each headless process turn, retain the captured session ID in the job
+      record, and start the next supervised process with that exact ID. They do not use a
+      workspace-global recent session, and they do not provide terminal attachment.
+    </p>
   </section>
 </article>

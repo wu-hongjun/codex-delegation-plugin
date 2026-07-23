@@ -101,7 +101,7 @@ $agy-skills
 ```
 
 The plugin ships 53 skills: 18 `$claude-*`, 19 `$agy-*`, 8 `$pi-*`, and 8 `$qwen-*` skills.
-Pi and Qwen Code initially expose setup, doctor, delegation, and the shared lifecycle surface.
+Pi and Qwen Code expose setup, doctor, delegation, and the shared eight-skill lifecycle surface.
 Antigravity has one extra
 wrapper because its native TUI attachment needs a plugin-owned proxy; the provider workflows are
 otherwise matched across setup, doctor, delegation, lifecycle, exact follow-up, reviews,
@@ -306,7 +306,10 @@ This project takes a different approach: drive Claude Code through its first-par
 
 ### 1. Driver abstraction (`Driver` interface)
 
-A single interface covers both `ClaudeBackgroundDriver` and `AgyCliDriver`. Provider-neutral job session records let status, wait, result, and stop dispatch to the correct implementation. Claude-only follow-up and restart guidance stays outside the shared provider contract.
+A single interface covers `ClaudeBackgroundDriver`, `AgyCliDriver`, `PiCliDriver`, and
+`QwenCodeDriver`. Provider-neutral job records let status, wait, result, follow-up, and stop dispatch
+to the implementation stored on the job. Provider-specific capabilities—such as Antigravity TUI
+attachment or Pi/Qwen headless resume—remain explicit rather than being modeled as false parity.
 
 ```
 Driver
@@ -319,7 +322,9 @@ Driver
 └── dispose()                            → void
 ```
 
-Follow-up prompt injection is implemented via PTY attach. Future-stage methods such as `interrupt` and deeper resume/attach controls are still explicit interface seams rather than broad refactors.
+Claude follow-up uses PTY attach, Antigravity writes into its persistent supervised TUI, and Pi/Qwen
+start another headless process with the exact captured session ID. Future-stage methods such as
+`interrupt` remain explicit interface seams rather than broad refactors.
 
 ### 2. Background sessions, not `claude -p`
 
@@ -348,7 +353,13 @@ The intent is one descriptor schema that could describe the same plugin for any 
 
 ### 5. Capability negotiation by feature probe
 
-At startup, `ClaudeBackgroundDriver.probe()` checks the installed Claude Code binary, authentication, background-session behavior, agents JSON, logs, daemon status, and transcript availability. `AgyCliDriver.probe()` checks the `agy` binary, persistent interactive flags, exact conversation targeting, model access, companion plugin, and PTY runtime without making a model call. The setup and doctor commands report the exact failing capability instead of relying only on a version check.
+At startup, `ClaudeBackgroundDriver.probe()` checks the installed Claude Code binary,
+authentication, background-session behavior, agents JSON, logs, daemon status, and transcript
+availability. `AgyCliDriver.probe()` checks the `agy` binary, persistent interactive flags, exact
+conversation targeting, model access, companion plugin, and PTY runtime. The Pi and Qwen probes
+check their executable, structured-output mode, exact resume capability, and headless permission
+constraints. Setup and doctor report the exact failing capability instead of relying only on a
+version check, and do not start a delegated model turn.
 
 ### 6. Persistent job store
 

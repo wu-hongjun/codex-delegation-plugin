@@ -1,0 +1,41 @@
+import { spawn } from 'node:child_process';
+import type { DoctorProbeResult, DriverCapabilities } from '@codex-delegation/runtime';
+import { DRIVER_NAME, DRIVER_VERSION } from './types.js';
+import type { PiCliDriverOptions } from './types.js';
+
+function run(args: string[], opts: PiCliDriverOptions): Promise<{ code: number | null; text: string; error?: NodeJS.ErrnoException }> {
+  return new Promise((resolve) => {
+    const child = spawn(opts.executable ?? opts.env?.['PI_CLI_PATH'] ?? opts.env?.['OMP_CLI_PATH'] ?? 'omp', args,
+      { cwd: opts.cwd, env: opts.env ?? process.env, shell: false });
+    let text = ''; let error: NodeJS.ErrnoException | undefined;
+    child.stdout.on('data', (v: Buffer) => text += v);
+    child.stderr.on('data', (v: Buffer) => text += v);
+    child.on('error', (v) => error = v);
+    const timer = setTimeout(() => child.kill('SIGKILL'), opts.timeoutMs ?? 5000);
+    child.on('close', (code) => { clearTimeout(timer); resolve({ code, text: text.trim(), ...(error ? { error } : {}) }); });
+  });
+}
+
+export async function probePiCliDriver(opts: PiCliDriverOptions = {}): Promise<DriverCapabilities> {
+  const version = await run(['--version'], opts);
+  const help = version.code === 0 ? await run(['--help'], opts) : { code: null, text: '' };
+  const binary = version.code === 0 && !version.error;
+  const json = help.text.includes('--mode') && help.text.includes('json');
+  const resume = help.text.includes('--resume');
+  const probes: DoctorProbeResult[] = [
+    binary ? { name: 'pi-binary', status: 'ok', detail: version.text || 'omp is executable' }
+      : { name: 'pi-binary', status: 'fail', detail: `Cannot run omp: ${version.error?.code ?? version.text}` },
+    json ? { name: 'pi-json-mode', status: 'ok', detail: 'omp JSON mode is available' }
+      : { name: 'pi-json-mode', status: 'fail', detail: 'omp --help does not advertise JSON mode' },
+    resume ? { name: 'pi-exact-resume', status: 'ok', detail: 'omp supports exact --resume follow-ups' }
+      : { name: 'pi-exact-resume', status: 'warn', detail: 'omp --help does not advertise --resume' },
+  ];
+  return {
+    driverName: DRIVER_NAME, driverVersion: DRIVER_VERSION, cliVersion: binary ? version.text : null,
+    execution: 'supervised-process',
+    features: { start: binary && json, status: true, stop: true, followup: binary && json && resume, logs: true },
+    backgroundSessions: binary && json, agentsJson: false, logsCommand: true, transcriptPath: true,
+    attach: false, structuredStream: 'output', toolEvents: 'transcript', permissions: 'cli-policy',
+    health: { status: probes.some((p) => p.status === 'fail') ? 'fail' : probes.some((p) => p.status === 'warn') ? 'warn' : 'ok', probes },
+  };
+}

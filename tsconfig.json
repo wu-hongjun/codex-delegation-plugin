@@ -4,6 +4,7 @@
     { "path": "./packages/runtime" },
     { "path": "./packages/driver-claude-code" },
     { "path": "./packages/driver-agy-cli" },
+    { "path": "./packages/driver-pi-cli" },
     { "path": "./packages/plugin-delegate" }
   ]
 }

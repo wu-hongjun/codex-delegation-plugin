@@ -19,7 +19,7 @@
     "test:mock": "node --test tools/mock-claude/test/*.test.mjs tools/mock-codex/test/*.test.mjs tools/mock-agy/test/*.test.mjs",
     "test:runtime": "npm run build && node --test packages/runtime/test/*.test.mjs",
     "test:doctor": "npm run build && node --test packages/runtime/test/doctor.test.mjs",
-    "test:driver": "npm run build && node --test --test-concurrency=4 packages/driver-claude-code/test/*.test.mjs packages/driver-agy-cli/test/*.test.mjs",
+    "test:driver": "npm run build && node --test --test-concurrency=4 packages/driver-claude-code/test/*.test.mjs packages/driver-agy-cli/test/*.test.mjs packages/driver-pi-cli/test/*.test.mjs",
     "test:plugin": "npm run build && node --test packages/plugin-delegate/test/*.test.mjs",
     "test:attach": "npm run build && node --test packages/driver-claude-code/test/send.test.mjs",
     "test:bench": "node --test tools/bench/test/*.test.mjs tools/bench/test/runners/*.test.mjs",

@@ -6,10 +6,5 @@
     "tsBuildInfoFile": "dist/.tsbuildinfo"
   },
   "include": ["src/**/*"],
-  "references": [
-    { "path": "../runtime" },
-    { "path": "../driver-claude-code" },
-    { "path": "../driver-agy-cli" },
-    { "path": "../driver-pi-cli" }
-  ]
+  "references": [{ "path": "../runtime" }]
 }

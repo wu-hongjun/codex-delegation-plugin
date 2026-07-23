@@ -73,7 +73,15 @@ function jobSession(job) {
 }
 
 function jobProvider(job) {
-  return jobSession(job).provider === 'agy' || job.driver?.name === 'agy-cli' ? 'agy' : 'claude';
+  const explicit = jobSession(job).provider;
+  if (typeof explicit === 'string' && explicit.length > 0) return explicit;
+  const providersByDriver = {
+    'claude-background': 'claude',
+    'agy-cli': 'agy',
+    'pi-cli': 'pi',
+    'qwen-code': 'qwen',
+  };
+  return providersByDriver[job.driver?.name] ?? 'unknown';
 }
 
 function providerUi(job) {
@@ -87,6 +95,29 @@ function providerUi(job) {
       skillPrefix: 'agy',
       supportsFollowup: typeof session.sessionId === 'string' && session.sessionId.length > 0,
       attachCommand: job.jobId ? `delegate attach ${job.jobId}` : null,
+      logsCommand: session.logsCommand ?? null,
+    };
+  }
+  if (provider === 'pi' || provider === 'qwen') {
+    const name = provider === 'pi' ? 'Pi' : 'Qwen Code';
+    return {
+      provider,
+      name,
+      sessionLabel: `${name} session`,
+      skillPrefix: provider,
+      supportsFollowup: typeof session.sessionId === 'string' && session.sessionId.length > 0,
+      attachCommand: null,
+      logsCommand: session.logsCommand ?? null,
+    };
+  }
+  if (provider !== 'claude') {
+    return {
+      provider,
+      name: provider,
+      sessionLabel: `${provider} session`,
+      skillPrefix: provider,
+      supportsFollowup: false,
+      attachCommand: null,
       logsCommand: session.logsCommand ?? null,
     };
   }

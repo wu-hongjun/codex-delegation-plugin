@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Codex delegation runtime for Claude Code and Google Antigravity. See README.md.",
+  "description": "Codex delegation runtime for Claude Code, Google Antigravity, Pi, and Qwen Code. See README.md.",
   "workspaces": [
     "packages/*"
   ],

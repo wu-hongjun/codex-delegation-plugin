@@ -110,7 +110,7 @@ function renderDocsContext(page) {
 }
 
 function renderSkillReference() {
-  return ['Claude Code', 'Google Antigravity']
+  return ['Claude Code', 'Google Antigravity', 'Pi', 'Qwen Code']
     .map((provider) => {
       const items = codexSkills
         .filter((skill) => skill.provider === provider)
@@ -124,7 +124,13 @@ function renderSkillReference() {
 </section>`,
         )
         .join('\n');
-      return `<section id="${provider === 'Claude Code' ? 'claude-code' : 'antigravity'}">
+      const providerId = {
+        'Claude Code': 'claude-code',
+        'Google Antigravity': 'antigravity',
+        Pi: 'pi',
+        'Qwen Code': 'qwen-code',
+      }[provider];
+      return `<section id="${providerId}">
   <h2>${escapeHtml(provider)}</h2>
   ${items}
 </section>`;

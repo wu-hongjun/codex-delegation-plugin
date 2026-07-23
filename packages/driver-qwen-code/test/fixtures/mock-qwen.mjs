@@ -22,7 +22,8 @@ const value = (name) => {
   return index < 0 ? undefined : args[index + 1];
 };
 const resumed = value('--resume');
-const sessionId = resumed ?? process.env.MOCK_QWEN_SESSION_ID ?? '123e4567-e89b-12d3-a456-426614174000';
+const sessionId =
+  resumed ?? process.env.MOCK_QWEN_SESSION_ID ?? '123e4567-e89b-12d3-a456-426614174000';
 const prompt = value('--prompt') ?? args.at(-1) ?? '';
 const sleep = Number(process.env.MOCK_QWEN_DELAY_MS ?? 0);
 if (sleep) await new Promise((resolve) => setTimeout(resolve, sleep));

@@ -4,8 +4,8 @@
       <p class="landing-eyebrow">A control plane for provider-native work · v{{version}}</p>
       <h1>Give long-running work a durable job ID.</h1>
       <p class="landing-lede">
-        Codex starts Claude Code or Google Antigravity, records what happens, and stays available
-        when the work needs your judgment again.
+        Codex starts Claude Code, Google Antigravity, Pi, or Qwen Code, records what happens, and
+        stays available when the work needs your judgment again.
       </p>
       <div class="landing-actions">
         <a class="landing-button landing-button--solid" href="{{link:docs/getting-started.html}}"
@@ -16,9 +16,9 @@
       <p class="landing-hero-note">Open source · macOS and Linux · Node 20+</p>
     </div>
 
-    <div class="landing-product" aria-label="Recorded v0.5.0 release verification job">
+    <div class="landing-product" aria-label="Recorded v0.6.0 release verification job">
       <div class="landing-product-bar">
-        <span>Release verification / v0.5.0</span>
+        <span>Release verification / v0.6.0</span>
         <span class="landing-status"><i aria-hidden="true"></i> Completed</span>
       </div>
       <div class="landing-product-body">
@@ -89,7 +89,7 @@
         Start with a bounded instruction. Later Codex turns can wait, inspect partial or final
         output, continue an exact provider conversation, or stop work that no longer matters.
       </p>
-      <a class="underlined-link" href="{{link:docs/skills.html}}">Explore all 37 skills</a>
+      <a class="underlined-link" href="{{link:docs/skills.html}}">Explore all 53 skills</a>
     </div>
     <div class="landing-command-surface">
       <p><span aria-hidden="true">$</span> delegate / claude</p>
@@ -105,7 +105,7 @@ $claude-stop &lt;jobId&gt;</code></pre>
   <section class="landing-section" aria-labelledby="providers-heading">
     <div class="landing-section-heading">
       <p>03 / Providers</p>
-      <h2 id="providers-heading">One lifecycle; two different working models.</h2>
+      <h2 id="providers-heading">One lifecycle; four provider transports.</h2>
       <p>The controls stay familiar while each provider keeps its native strengths and limits.</p>
     </div>
     <div class="landing-provider-grid">
@@ -150,6 +150,27 @@ $claude-stop &lt;jobId&gt;</code></pre>
           <div>
             <dt>Advanced work</dt>
             <dd>Goals, forks, batches, workflows, reviews</dd>
+          </div>
+        </dl>
+      </article>
+      <article data-tint="sage">
+        <div class="landing-provider-title">
+          <h3>Pi and Qwen Code</h3>
+          <span>Headless / exact resume</span>
+        </div>
+        <p>Best for supervised structured-output work using a compact core lifecycle.</p>
+        <dl>
+          <div>
+            <dt>Transport</dt>
+            <dd>Detached <code>omp</code> or <code>qwen</code> process</dd>
+          </div>
+          <div>
+            <dt>Follow-up</dt>
+            <dd>Captured-session exact resume</dd>
+          </div>
+          <div>
+            <dt>Limit</dt>
+            <dd>No live permission attachment</dd>
           </div>
         </dl>
       </article>
@@ -225,7 +246,7 @@ $claude-stop &lt;jobId&gt;</code></pre>
       </li>
       <li>
         <a href="{{link:docs/skills.html}}"
-          ><span>03</span><strong>All 37 skills</strong><i aria-hidden="true">→</i></a
+          ><span>03</span><strong>All 53 skills</strong><i aria-hidden="true">→</i></a
         >
       </li>
       <li>

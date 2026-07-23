@@ -1,0 +1,32 @@
+#!/usr/bin/env node
+
+const args = process.argv.slice(2);
+
+if (args.includes('--version')) {
+  process.stdout.write('0.53.0\n');
+  process.exit(0);
+}
+
+if (args.includes('--help')) {
+  process.stdout.write(
+    'Usage: omp --print --mode json --session-dir <dir> [--resume <id>] <prompt>\n',
+  );
+  process.exit(0);
+}
+
+const delayMs = Number(process.env.CODEX_DELEGATION_MOCK_PROCESS_DELAY_MS ?? 0);
+if (delayMs > 0) {
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+const prompt = args.at(-1) ?? '';
+process.stdout.write(`${JSON.stringify({ type: 'session', id: 'mock-pi-session' })}\n`);
+process.stdout.write(
+  `${JSON.stringify({
+    type: 'message_end',
+    message: {
+      role: 'assistant',
+      content: [{ type: 'text', text: `Pi completed: ${prompt}` }],
+    },
+  })}\n`,
+);

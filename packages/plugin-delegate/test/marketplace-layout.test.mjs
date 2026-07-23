@@ -96,6 +96,22 @@ const EXPECTED_SKILL_NAMES = [
   'claude-wait',
   'claude-workflow',
   'claude-workflows',
+  'pi-delegate',
+  'pi-doctor',
+  'pi-followup',
+  'pi-result',
+  'pi-setup',
+  'pi-status',
+  'pi-stop',
+  'pi-wait',
+  'qwen-delegate',
+  'qwen-doctor',
+  'qwen-followup',
+  'qwen-result',
+  'qwen-setup',
+  'qwen-status',
+  'qwen-stop',
+  'qwen-wait',
 ];
 
 // ---------- helpers ----------
@@ -493,6 +509,8 @@ const DERIVED_FILES_ALLOWLIST = [
   'scripts/lib/ack.mjs',
   'scripts/lib/adapter.mjs',
   'scripts/lib/agy-adapter.mjs',
+  'scripts/lib/pi-adapter.mjs',
+  'scripts/lib/qwen-adapter.mjs',
   'scripts/lib/args.mjs',
   'scripts/lib/claude-version.mjs',
   'scripts/lib/format.mjs',
@@ -538,6 +556,22 @@ const DERIVED_FILES_ALLOWLIST = [
   'skills/agy-workflows/SKILL.md',
   'skills/agy-skills/SKILL.md',
   'skills/agy-upgrade/SKILL.md',
+  'skills/pi-setup/SKILL.md',
+  'skills/pi-doctor/SKILL.md',
+  'skills/pi-delegate/SKILL.md',
+  'skills/pi-status/SKILL.md',
+  'skills/pi-wait/SKILL.md',
+  'skills/pi-result/SKILL.md',
+  'skills/pi-stop/SKILL.md',
+  'skills/pi-followup/SKILL.md',
+  'skills/qwen-setup/SKILL.md',
+  'skills/qwen-doctor/SKILL.md',
+  'skills/qwen-delegate/SKILL.md',
+  'skills/qwen-status/SKILL.md',
+  'skills/qwen-wait/SKILL.md',
+  'skills/qwen-result/SKILL.md',
+  'skills/qwen-stop/SKILL.md',
+  'skills/qwen-followup/SKILL.md',
 ];
 
 // Marketplace-owned files (present in plugin root but NOT derived from source).
@@ -1186,11 +1220,15 @@ const BUNDLED_ROOT = resolve(MARKETPLACE_PLUGIN_ROOT, 'node_modules');
 const BUNDLED_RUNTIME = resolve(BUNDLED_ROOT, '@codex-delegation', 'runtime');
 const BUNDLED_DRIVER = resolve(BUNDLED_ROOT, '@codex-delegation', 'driver-claude-code');
 const BUNDLED_AGY_DRIVER = resolve(BUNDLED_ROOT, '@codex-delegation', 'driver-agy-cli');
+const BUNDLED_PI_DRIVER = resolve(BUNDLED_ROOT, '@codex-delegation', 'driver-pi-cli');
+const BUNDLED_QWEN_DRIVER = resolve(BUNDLED_ROOT, '@codex-delegation', 'driver-qwen-code');
 const BUNDLED_NODEPTY = resolve(BUNDLED_ROOT, 'node-pty');
 
 const SOURCE_RUNTIME_DIST = resolve(REPO_ROOT, 'packages', 'runtime', 'dist');
 const SOURCE_DRIVER_DIST = resolve(REPO_ROOT, 'packages', 'driver-claude-code', 'dist');
 const SOURCE_AGY_DRIVER_DIST = resolve(REPO_ROOT, 'packages', 'driver-agy-cli', 'dist');
+const SOURCE_PI_DRIVER_DIST = resolve(REPO_ROOT, 'packages', 'driver-pi-cli', 'dist');
+const SOURCE_QWEN_DRIVER_DIST = resolve(REPO_ROOT, 'packages', 'driver-qwen-code', 'dist');
 const SOURCE_NODEPTY_LIB = resolve(REPO_ROOT, 'node_modules', 'node-pty', 'lib');
 
 /**
@@ -1386,6 +1424,58 @@ describe('marketplace bundled-dependency tree (Plan 0006 T9.5)', () => {
       assert.ok(src.equals(dst), `byte mismatch for bundled agy driver dist/${file}`);
     }
   });
+
+  for (const driver of [
+    {
+      label: 'Pi',
+      packageName: '@codex-delegation/driver-pi-cli',
+      bundledRoot: BUNDLED_PI_DRIVER,
+      sourceDist: SOURCE_PI_DRIVER_DIST,
+    },
+    {
+      label: 'Qwen Code',
+      packageName: '@codex-delegation/driver-qwen-code',
+      bundledRoot: BUNDLED_QWEN_DRIVER,
+      sourceDist: SOURCE_QWEN_DRIVER_DIST,
+    },
+  ]) {
+    it(`bundles the complete ${driver.label} driver with pinned runtime metadata`, () => {
+      const pkgPath = resolve(driver.bundledRoot, 'package.json');
+      assert.ok(existsSync(pkgPath), `${driver.label} driver package.json not found at ${pkgPath}`);
+      const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+      assert.equal(pkg.name, driver.packageName);
+      assert.equal(pkg.version, BUNDLED_VERSION_MARKER);
+      assert.equal(pkg.type, 'module');
+      assert.equal(pkg.main, './dist/index.js');
+      assert.equal(pkg?.engines?.node, '>=20');
+      assert.equal(
+        pkg?.dependencies?.['@codex-delegation/runtime'],
+        BUNDLED_VERSION_MARKER,
+        `${driver.label} driver must pin the bundled runtime version`,
+      );
+
+      const bundledDist = resolve(driver.bundledRoot, 'dist');
+      const sourceFiles = readdirSync(driver.sourceDist)
+        .filter((file) => file.endsWith('.js') || file.endsWith('.d.ts'))
+        .sort();
+      const bundledFiles = readdirSync(bundledDist)
+        .filter((file) => file.endsWith('.js') || file.endsWith('.d.ts'))
+        .sort();
+      assert.deepEqual(
+        bundledFiles,
+        sourceFiles,
+        `${driver.label} bundled driver files must match source`,
+      );
+      for (const file of sourceFiles) {
+        assert.ok(
+          readFileSync(resolve(driver.sourceDist, file)).equals(
+            readFileSync(resolve(bundledDist, file)),
+          ),
+          `byte mismatch for bundled ${driver.packageName}/dist/${file}`,
+        );
+      }
+    });
+  }
 
   // ========================================================================
   // T9.5-7: node-pty package.json shape + stripped install scripts

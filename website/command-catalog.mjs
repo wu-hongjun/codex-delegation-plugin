@@ -1,3 +1,70 @@
+const coreLifecycleSkills = (prefix, provider, executable) => [
+  {
+    name: `${prefix}-setup`,
+    provider,
+    syntax: `$${prefix}-setup [--json]`,
+    dispatcher: `setup --provider ${prefix}`,
+    purpose: `Probe the ${executable} executable and structured-output session support.`,
+    note: 'Read-only; it does not start a delegated model turn.',
+  },
+  {
+    name: `${prefix}-doctor`,
+    provider,
+    syntax: `$${prefix}-doctor [permission flags] [--json]`,
+    dispatcher: `doctor --provider ${prefix}`,
+    purpose: 'Preflight exact resume, workspace access, and headless permission policy.',
+    note: 'Headless jobs cannot hand an interactive permission prompt to a live terminal.',
+  },
+  {
+    name: `${prefix}-delegate`,
+    provider,
+    syntax: `$${prefix}-delegate [provider flags] -- "task prompt"`,
+    dispatcher: `delegate --provider ${prefix}`,
+    purpose: `Start one supervised ${provider} structured-output job.`,
+    note: `The driver invokes ${executable} and records the exact session ID.`,
+  },
+  {
+    name: `${prefix}-status`,
+    provider,
+    syntax: `$${prefix}-status [--job <id>] [--all] [--json] [--compact]`,
+    dispatcher: `status --provider ${prefix}`,
+    purpose: `List ${provider} jobs or inspect one supervised process.`,
+    note: 'Status reads plugin-owned records and reconciles the supervisor process.',
+  },
+  {
+    name: `${prefix}-wait`,
+    provider,
+    syntax: `$${prefix}-wait <jobId> [--timeout 5m] [--interval 2s] [--json] [--compact]`,
+    dispatcher: 'wait',
+    purpose: 'Wait for the supervised turn to finish, fail, stop, or time out.',
+    note: 'A timeout leaves the provider process supervised.',
+  },
+  {
+    name: `${prefix}-result`,
+    provider,
+    syntax: `$${prefix}-result <jobId> [--partial] [--json] [--compact]`,
+    dispatcher: 'result',
+    purpose: 'Read normalized final output or an explicitly requested partial result.',
+    note: 'The latest completed turn is returned after exact-session follow-up.',
+  },
+  {
+    name: `${prefix}-stop`,
+    provider,
+    syntax: `$${prefix}-stop <jobId> [--all] [--json] [--compact]`,
+    dispatcher: 'stop',
+    purpose: `Terminate a supervised ${provider} job and persist the stopped state.`,
+    note: 'Stopped jobs remain inspectable.',
+  },
+  {
+    name: `${prefix}-followup`,
+    provider,
+    syntax: `$${prefix}-followup <jobId> [--all] [--json] -- "next instruction"`,
+    dispatcher: 'followup',
+    purpose: `Resume the exact ${provider} session captured for a job.`,
+    note: 'Never uses a workspace-global recent-session selector.',
+  },
+];
+
 export const codexSkills = [
   {
     name: 'claude-setup',
@@ -302,6 +369,8 @@ export const codexSkills = [
     purpose: 'Plan or perform a marketplace refresh and plugin reinstall.',
     note: 'Upgrades the Codex plugin, not the agy executable.',
   },
+  ...coreLifecycleSkills('pi', 'Pi', 'omp'),
+  ...coreLifecycleSkills('qwen', 'Qwen Code', 'qwen'),
 ];
 
 export const dispatcherCommands = [
@@ -309,7 +378,7 @@ export const dispatcherCommands = [
   ['agy-setup', 'Antigravity persistent-TUI preflight'],
   ['agy-doctor', 'Antigravity targeted-resume and permission preflight'],
   ['doctor', 'Detailed Claude launch preflight'],
-  ['delegate', 'Start a Claude or Antigravity job'],
+  ['delegate', 'Start a Claude, Antigravity, Pi, or Qwen Code job'],
   ['restart', 'Stop a job and start a fresh replacement'],
   ['workflow', 'Start a provider workflow'],
   ['goal', 'Pursue a provider completion condition'],

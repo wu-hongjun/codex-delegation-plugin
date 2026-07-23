@@ -3872,7 +3872,7 @@ describe('followup permission handoff (plan 0002 T10)', () => {
       );
 
       // Wait for the permission prompt block to appear in PTY stdout.
-      // The dispatcher prints "Claude is asking for permission inside session <shortId>."
+      // The dispatcher prints provider-generic permission guidance with the session short ID.
       await waitForCondition(
         () => /permission/i.test(getOut()),
         12000,

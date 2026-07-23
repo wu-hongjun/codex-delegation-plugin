@@ -6,13 +6,15 @@
 
 ## Plugin-tree files (sourced from `packages/plugin-delegate/`)
 
-The following 58 files are copied byte-for-byte from `packages/plugin-delegate/` into `marketplace/plugins/delegate/`:
+The following 76 files are copied byte-for-byte from `packages/plugin-delegate/` into `marketplace/plugins/delegate/`:
 
 - `.codex-plugin/plugin.json`
 - `scripts/delegate.mjs`
 - `scripts/lib/ack.mjs`
 - `scripts/lib/adapter.mjs`
 - `scripts/lib/agy-adapter.mjs`
+- `scripts/lib/pi-adapter.mjs`
+- `scripts/lib/qwen-adapter.mjs`
 - `scripts/lib/args.mjs`
 - `scripts/lib/claude-version.mjs`
 - `scripts/lib/format.mjs`
@@ -66,6 +68,22 @@ The following 58 files are copied byte-for-byte from `packages/plugin-delegate/`
 - `skills/agy-workflows/SKILL.md`
 - `skills/agy-skills/SKILL.md`
 - `skills/agy-upgrade/SKILL.md`
+- `skills/pi-setup/SKILL.md`
+- `skills/pi-doctor/SKILL.md`
+- `skills/pi-delegate/SKILL.md`
+- `skills/pi-status/SKILL.md`
+- `skills/pi-wait/SKILL.md`
+- `skills/pi-result/SKILL.md`
+- `skills/pi-stop/SKILL.md`
+- `skills/pi-followup/SKILL.md`
+- `skills/qwen-setup/SKILL.md`
+- `skills/qwen-doctor/SKILL.md`
+- `skills/qwen-delegate/SKILL.md`
+- `skills/qwen-status/SKILL.md`
+- `skills/qwen-wait/SKILL.md`
+- `skills/qwen-result/SKILL.md`
+- `skills/qwen-stop/SKILL.md`
+- `skills/qwen-followup/SKILL.md`
 
 Note: `scripts/delegate.mjs` is copied from source and the packaging script sets the user-executable bit (chmod 0755) on the marketplace copy unconditionally, since the source file has mode 644 but the marketplace copy must be executable.
 
@@ -97,6 +115,18 @@ All paths are relative to `marketplace/plugins/delegate/`.
 - `dist/*.js` and `dist/*.d.ts` — copied byte-for-byte from
   `packages/driver-agy-cli/dist/` after `npm run build`, including the detached
   persistent-interactive supervisor, attach bridge, control protocol, and transcript normalizer.
+
+### `node_modules/@codex-delegation/driver-pi-cli/`
+- `package.json` — synthesized minimal shape with the bundled runtime dependency.
+- `dist/*.js` and `dist/*.d.ts` — copied byte-for-byte from
+  `packages/driver-pi-cli/dist/` after `npm run build`, including the detached structured-output
+  supervisor, exact-session resume state, and transcript normalizer.
+
+### `node_modules/@codex-delegation/driver-qwen-code/`
+- `package.json` — synthesized minimal shape with the bundled runtime dependency.
+- `dist/*.js` and `dist/*.d.ts` — copied byte-for-byte from
+  `packages/driver-qwen-code/dist/` after `npm run build`, including the detached stream-JSON
+  supervisor, exact-session resume state, and transcript normalizer.
 
 ### `node_modules/node-pty/`
 Bundled from the workspace's npm-installed `node-pty@1.2.0-beta.13`:

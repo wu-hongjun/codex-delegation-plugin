@@ -9,13 +9,13 @@
     <h2>Workspace and provider disclosure</h2>
     <p>
       A delegated task may send repository contents, prompts, command output, and file metadata to
-      Anthropic or Google through the selected local provider account. The first delegation to each
+      the selected provider through its local account or configuration. The first delegation to each
       provider in each workspace requires acknowledgement.
     </p>
     <p>
       Acknowledgements live in <code>~/.codex/codex-delegation-plugin/acks/</code>. Approval for
-      Claude Code does not approve Antigravity, and approval in one repository does not approve
-      another. Use <code>--yes</code> only for intentional non-interactive acknowledgement.
+      Approving one provider does not approve another, and approval in one repository does not
+      approve another. Use <code>--yes</code> only for intentional non-interactive acknowledgement.
     </p>
   </section>
 

@@ -1,9 +1,12 @@
-# Codex Delegation - Delegate Tasks to Claude Code or Antigravity
+# Codex Delegation - Delegate Tasks to Claude, Antigravity, Pi, or Qwen Code
 
 A Codex plugin that lets Codex delegate tasks to Claude Code background sessions or exact Google
-Antigravity conversations. Claude uses its background-session APIs; Antigravity uses a detached,
+Antigravity conversations, Pi sessions, and Qwen Code sessions. Claude uses its background-session
+APIs; Antigravity uses a detached,
 persistent `agy --prompt-interactive` TUI with native permission cards, live attachment, structured
 lifecycle hooks, default-parent orchestration, and bundled native subagent profiles.
+Pi and Qwen use supervised headless structured-output processes with exact captured-session resume.
+The Pi provider is installed and invoked as `omp`; `pi` is this plugin's provider and skill name.
 
 This is the codex-delegation-plugin marketplace distribution copy. The development
 source of truth lives at `packages/plugin-delegate/` in the codex-delegation-plugin
@@ -12,8 +15,8 @@ repository.
 ## Requirements
 
 - Codex CLI with plugin marketplace support (0.136.0 or later; release smoke tested on 0.144.5).
-- At least one provider CLI installed and authenticated locally: Claude Code (`claude`) or Google
-  Antigravity (`agy`).
+- At least one provider CLI installed and authenticated locally: Claude Code (`claude`), Google
+  Antigravity (`agy`), oh-my-pi (`omp`, exposed as Pi), or Qwen Code (`qwen`).
 - Node.js available on `PATH` (Node 20 or later).
 
 ## Install
@@ -69,6 +72,10 @@ $claude-setup
 $claude-doctor
 $agy-setup
 $agy-doctor
+$pi-setup
+$pi-doctor
+$qwen-setup
+$qwen-doctor
 ```
 
 `$claude-setup` checks Claude Code authentication, Codex version,
@@ -89,9 +96,13 @@ version, persistent-interactive surface, exact resume flags, and terminal runtim
 model call. `$agy-doctor` also checks workspace access and native permission handoff. Use them when
 Antigravity will handle delegated jobs.
 
+`$pi-setup`/`$pi-doctor` and `$qwen-setup`/`$qwen-doctor` probe the corresponding binary,
+structured-output support, exact resume capability, and headless permission constraints without
+starting a delegated model turn.
+
 ## Skills
 
-After install, the plugin makes 37 skills available inside the Codex
+After install, the plugin makes 53 skills available inside the Codex
 TUI. Type the `$<name>` form at the Codex chat prompt.
 
 - `$claude-setup` — probes the local environment (Claude Code auth,
@@ -155,9 +166,28 @@ TUI. Type the `$<name>` form at the Codex chat prompt.
 - `$agy-workflows` — lists or inspects workflow-like parent jobs.
 - `$agy-skills` — catalogs project, user, and plugin Antigravity skills.
 - `$agy-upgrade` — refreshes or repairs the installed plugin.
+- `$pi-setup` — probes oh-my-pi readiness through the `omp` executable.
+- `$pi-doctor` — preflights exact resume, workspace, and headless permissions.
+- `$pi-delegate` — starts a supervised Pi structured-output job.
+- `$pi-status` — lists or inspects stored Pi jobs.
+- `$pi-wait` — waits for a Pi job to settle or time out.
+- `$pi-result` — prints normalized Pi output.
+- `$pi-stop` — terminates a supervised Pi process.
+- `$pi-followup` — resumes the exact stored Pi session ID.
+- `$qwen-setup` — probes Qwen Code readiness through the `qwen` executable.
+- `$qwen-doctor` — preflights exact resume, workspace, and headless permissions.
+- `$qwen-delegate` — starts a supervised Qwen Code stream-JSON job.
+- `$qwen-status` — lists or inspects stored Qwen Code jobs.
+- `$qwen-wait` — waits for a Qwen Code job to settle or time out.
+- `$qwen-result` — prints normalized Qwen Code output.
+- `$qwen-stop` — terminates a supervised Qwen Code process.
+- `$qwen-followup` — resumes the exact stored Qwen Code session ID.
+
+Pi and Qwen currently provide this eight-skill core lifecycle only; review, orchestration,
+discovery, upgrade, and terminal attachment remain Claude/Antigravity surfaces.
 
 On macOS, do not run a bare `delegate` shell command for this plugin; `/usr/bin/delegate`
-is Apple clang. Use the `$claude-*` or `$agy-*` skills, or use the exact dispatcher path
+is Apple clang. Use the `$claude-*`, `$agy-*`, `$pi-*`, or `$qwen-*` skills, or use the exact dispatcher path
 from JSON `meta.dispatcherPath` / `exactActionHints`.
 
 ## Antigravity Jobs
@@ -171,10 +201,23 @@ one another's recent conversation.
 Supported launch options include `--model`, `--agent`, repeatable `--add-dir`, `--mode
 accept-edits|plan`, `--sandbox`, `--project`, `--new-project`, and `--log-file`. The obsolete
 print-only `--print-timeout` flag is rejected instead of being silently ignored.
-Use `--provider auto` with the dispatcher to prefer an available agy installation and fall back to
-Claude Code.
+Use `--provider auto` with the dispatcher to try Pi, Qwen Code, and Antigravity before falling back
+to Claude Code.
 
-The driver always adds the current Codex workspace with `--add-dir`. Native workspace-trust and
+## Pi And Qwen Jobs
+
+`$pi-delegate` runs oh-my-pi's `omp` executable in JSON mode with a private session directory.
+`$qwen-delegate` runs Qwen Code with stream-JSON output. Each supervisor records an exact provider
+session ID, and `$pi-followup` or `$qwen-followup` resumes only that session rather than using
+global recent-session state.
+
+Both providers are headless in this plugin. Their jobs cannot surface a live permission prompt for
+interactive attachment. Choose a supported permission policy before launching unattended work:
+Pi maps `acceptEdits` to approval mode `write`; Qwen maps it to `auto-edit` and also supports
+`plan`. Explicit bypass maps to `yolo` for both providers and can approve destructive operations,
+so the plugin never adds it unless the operator asks.
+
+The Antigravity driver always adds the current Codex workspace with `--add-dir`. Native workspace-trust and
 permission cards become durable `needs_input` job states. Run `$agy-attach <jobId>` to inspect and
 answer them in the provider TUI; `Ctrl+]` detaches without stopping Antigravity. Narrow
 `permissions.allow` rules and explicit `--dangerously-skip-permissions` remain available for
@@ -193,7 +236,7 @@ and [permission rules](https://antigravity.google/docs/cli/permissions).
 
 Delegation may send repository contents, prompts, command output, and file metadata to the selected
 provider through the user's local account. The first delegation requires acknowledgment for that
-workspace and provider. Claude Code and Antigravity acknowledgments are separate; use `--yes` only
+workspace and provider. Provider acknowledgments are separate; use `--yes` only
 for intentional non-interactive approval.
 
 ## Real Chrome And Permissions
@@ -429,7 +472,7 @@ reinstall.
 
 Before release, run the smoke checklist in
 [`documentation/RELEASING.md`](../../../documentation/RELEASING.md).
-It verifies the local marketplace install and all 37 skill names
+It verifies the local marketplace install and all 53 skill names
 (`$claude-setup`, `$claude-doctor`, `$claude-delegate`, `$claude-status`, `$claude-wait`, `$claude-result`,
 `$claude-stop`, `$claude-followup`, `$claude-review`,
 `$claude-adversarial-review`, `$claude-workflow`, `$claude-goal`,
@@ -554,4 +597,4 @@ codex plugin list
 ```
 
 You should see `delegate@codex-delegation-plugin-local` with version
-`0.5.0` (the current plugin version), reported as `installed, enabled`.
+`0.6.0` (the current plugin version), reported as `installed, enabled`.

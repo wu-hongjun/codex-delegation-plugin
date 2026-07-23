@@ -9,10 +9,18 @@ const requestPath = process.argv[2] ?? '';
 const statePath = process.argv[3] ?? '';
 if (!requestPath || !statePath) process.exit(2);
 let request: PiLaunchRequest;
-try { request = JSON.parse(await readFile(requestPath, 'utf8')) as PiLaunchRequest; }
-finally { await unlink(requestPath).catch(() => undefined); }
+try {
+  request = JSON.parse(await readFile(requestPath, 'utf8')) as PiLaunchRequest;
+} finally {
+  await unlink(requestPath).catch(() => undefined);
+}
 
-let state: PiRunnerState = { ...request.state, runnerPid: process.pid, status: 'starting', updatedAt: new Date().toISOString() };
+let state: PiRunnerState = {
+  ...request.state,
+  runnerPid: process.pid,
+  status: 'starting',
+  updatedAt: new Date().toISOString(),
+};
 let writes = Promise.resolve();
 function publish(patch: Partial<PiRunnerState>): Promise<void> {
   state = { ...state, ...patch, updatedAt: new Date().toISOString() };
@@ -24,9 +32,25 @@ await publish({});
 const output = createWriteStream(state.transcriptPath, { flags: 'a', mode: 0o600 });
 const errors = createWriteStream(state.errorPath, { flags: 'a', mode: 0o600 });
 const child = spawn(request.executable, request.args, {
-  cwd: request.cwd, env: request.env, shell: false, stdio: ['ignore', 'pipe', 'pipe'],
+  cwd: request.cwd,
+  env: request.env,
+  shell: false,
+  stdio: ['ignore', 'pipe', 'pipe'],
 });
 await publish({ piPid: child.pid, status: 'running' });
+let stopping = false;
+const stop = (signal: NodeJS.Signals) => {
+  stopping = true;
+  if (child.pid) {
+    try {
+      process.kill(child.pid, signal);
+    } catch {
+      /* child already exited */
+    }
+  }
+};
+process.once('SIGTERM', () => stop('SIGTERM'));
+process.once('SIGINT', () => stop('SIGINT'));
 let tail = '';
 child.stdout.on('data', (chunk: Buffer) => {
   output.write(chunk);
@@ -39,7 +63,9 @@ child.stdout.on('data', (chunk: Buffer) => {
       if (row['type'] === 'session' && typeof row['id'] === 'string' && !state.sessionId) {
         void publish({ sessionId: row['id'] });
       }
-    } catch { /* transcript parser reports malformed rows */ }
+    } catch {
+      /* transcript parser reports malformed rows */
+    }
   }
 });
 child.stderr.on('data', (chunk: Buffer) => errors.write(chunk));
@@ -53,10 +79,11 @@ child.once('close', async (code, signal) => {
   ]);
   const parsed = await readPiTranscript(state.transcriptPath);
   await writeFile(state.resultPath, parsed.finalMessage ?? '', { mode: 0o600 });
-  const stopped = signal === 'SIGTERM' || signal === 'SIGKILL';
+  const stopped = stopping || signal === 'SIGTERM' || signal === 'SIGKILL';
   await publish({
     status: stopped ? 'stopped' : code === 0 ? 'completed' : 'failed',
-    exitCode: code, signal: signal as NodeJS.Signals | null,
+    exitCode: code,
+    signal: signal as NodeJS.Signals | null,
     ...(code && !state.error ? { error: `omp exited with code ${code}` } : {}),
     endedAt: new Date().toISOString(),
   });

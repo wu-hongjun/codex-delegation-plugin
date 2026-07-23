@@ -1,6 +1,6 @@
 # codex-delegation-plugin
 
-> **Delegate coding work from OpenAI Codex to Claude Code or Google Antigravity.**
+> **Delegate coding work from OpenAI Codex to Claude Code, Google Antigravity, Pi, or Qwen Code.**
 
 ## Install
 
@@ -24,11 +24,13 @@ $claude-setup
 $claude-doctor
 $claude-skills
 $agy-setup
+$pi-setup
+$qwen-setup
 ```
 
 `$claude-setup` should return aggregate status `ok` or `warn`. `fail` means an environment dependency is missing; follow the probe output. Before long, browser-backed, or unattended jobs, run `$claude-doctor` to preflight Claude Code CLI auth, model access, real-browser readiness, workspace path, and permission mode.
 
-Use the `$claude-*` or `$agy-*` Codex skills, or the exact dispatcher path reported in JSON
+Use the `$claude-*`, `$agy-*`, `$pi-*`, or `$qwen-*` Codex skills, or the exact dispatcher path reported in JSON
 `meta.dispatcherPath` / `exactActionHints`. After an upgrade, an already-running Codex session may
 still list stale versioned skill paths; either restart Codex or use the stable dispatcher path:
 `~/.codex/plugins/cache/codex-delegation-plugin/delegate/current/scripts/delegate.mjs`.
@@ -37,7 +39,7 @@ still list stale versioned skill paths; either restart Codex or use the stable d
 
 ## Quick start
 
-- **Install and use:** use `$claude-*` for Claude Code or `$agy-*` for Google Antigravity.
+- **Install and use:** use `$claude-*`, `$agy-*`, `$pi-*`, or `$qwen-*` for the corresponding provider.
 - **End-user manual:** [`marketplace/plugins/delegate/README.md`](marketplace/plugins/delegate/README.md) covers verify, update, uninstall, troubleshooting, and the full skill list.
 - **Developer manual:** [`packages/plugin-delegate/README.md`](packages/plugin-delegate/README.md) covers dispatcher commands, runtime behavior, architecture, and contributor workflows.
 - **Marketplace payload:** [`marketplace/`](marketplace/) contains the committed plugin tree that Codex installs.
@@ -49,7 +51,8 @@ still list stale versioned skill paths; either restart Codex or use the stable d
 ## Requirements
 
 - Codex CLI with plugin marketplace support (`codex --version`).
-- At least one provider CLI installed and authenticated locally: Claude Code (`claude`) or Google Antigravity (`agy`).
+- At least one provider CLI installed and authenticated locally: Claude Code (`claude`), Google
+  Antigravity (`agy`), oh-my-pi (`omp`, exposed here as Pi), or Qwen Code (`qwen`).
 - Node.js 20 or later on `PATH`.
 
 No `npm install` or manual clone is needed for normal users.
@@ -74,6 +77,16 @@ $agy-attach <jobId>
 $agy-result <jobId>
 $agy-followup <jobId> -- "Now verify the same area."
 $agy-review <jobId>
+
+$pi-delegate "Inspect this repo and summarize the main risks."
+$pi-wait <jobId> --json --compact --timeout 5m
+$pi-result <jobId>
+$pi-followup <jobId> -- "Now verify the same area."
+
+$qwen-delegate "Inspect this repo and summarize the main risks."
+$qwen-wait <jobId> --json --compact --timeout 5m
+$qwen-result <jobId>
+$qwen-followup <jobId> -- "Now verify the same area."
 ```
 
 Useful discovery and maintenance commands:
@@ -87,7 +100,9 @@ $agy-doctor
 $agy-skills
 ```
 
-The plugin ships 37 skills: 18 `$claude-*` skills and 19 `$agy-*` skills. Antigravity has one extra
+The plugin ships 53 skills: 18 `$claude-*`, 19 `$agy-*`, 8 `$pi-*`, and 8 `$qwen-*` skills.
+Pi and Qwen Code initially expose setup, doctor, delegation, and the shared lifecycle surface.
+Antigravity has one extra
 wrapper because its native TUI attachment needs a plugin-owned proxy; the provider workflows are
 otherwise matched across setup, doctor, delegation, lifecycle, exact follow-up, reviews,
 orchestration, discovery, and upgrade.
@@ -168,11 +183,14 @@ This removes the Codex plugin registration and marketplace pointer. It does not 
 
 ## What This Is
 
-This repository is a **Codex-native plugin and runtime** that lets the OpenAI Codex CLI orchestrate Claude Code and Google Antigravity as delegated coding agents.
+This repository is a **Codex-native plugin and runtime** that lets the OpenAI Codex CLI orchestrate
+Claude Code, Google Antigravity, Pi, and Qwen Code as delegated coding agents.
 
 This plugin delegates work to Claude Code through background sessions (`claude --bg`) rather than `claude -p`. It is designed to preserve the architecture needed for session/cache reuse, but savings have not yet been benchmarked.
 
-The runtime has two driver implementations: `ClaudeBackgroundDriver` for Claude Code's native background sessions and `AgyCliDriver` for supervised persistent Antigravity TUI sessions.
+The runtime has four driver implementations: `ClaudeBackgroundDriver` for native Claude
+background sessions, `AgyCliDriver` for persistent Antigravity TUI sessions, and supervised
+structured-output drivers for Pi and Qwen Code.
 
 ---
 
@@ -261,11 +279,14 @@ node tools/package-marketplace.mjs --write
 ## Current scope (what actually ships)
 
 - **One direction**: Codex to delegated provider.
-- **Two transports**: native Claude Code background sessions and supervised persistent Antigravity PTY sessions.
+- **Four transports**: native Claude Code background sessions, supervised persistent Antigravity
+  PTY sessions, and supervised structured-output Pi and Qwen Code processes.
 - **One host plugin**: Codex skills + manifest under `packages/plugin-delegate/`.
 - **Job-scoped conversations with follow-ups**: every delegation creates a fresh job. Continue with the provider-specific follow-up skill; do not reuse `--name` as a session key.
 - **Deterministic Antigravity resume**: `$agy-delegate` captures a conversation UUID and `$agy-followup` targets it without global recent-state selection.
-- **Thirty-seven skills**: 18 Claude skills plus the matched Antigravity surface and its explicit attach proxy.
+- **Deterministic Pi/Qwen resume**: each driver captures an exact session ID and follow-up targets
+  it without global recent-state selection.
+- **Fifty-three skills**: 18 Claude, 19 Antigravity, eight Pi, and eight Qwen Code skills.
 
 The full v1 plan, including every deliberately-deferred feature, lives at [`documentation/plan/0001-20260530-initial-plan/1-plan.md`](documentation/plan/0001-20260530-initial-plan/1-plan.md). It supersedes any conflicting framing in this README.
 
@@ -387,8 +408,8 @@ Update with `git submodule update --remote --merge`.
 
 ## Status
 
-The plugin currently ships 37 Codex skills, Claude Code background-session delegation, and
-supervised persistent Antigravity TUI delegation. The shipped version is defined in
+The plugin currently ships 53 Codex skills across Claude Code background sessions, supervised
+persistent Antigravity TUIs, and supervised structured-output Pi and Qwen Code jobs. The shipped version is defined in
 [`packages/plugin-delegate/.codex-plugin/plugin.json`](packages/plugin-delegate/.codex-plugin/plugin.json),
 and release validation follows [`documentation/RELEASING.md`](documentation/RELEASING.md).
 Historical implementation status, including deferred benchmark and review-gate work, remains in

@@ -1,7 +1,7 @@
 {
   "name": "delegate",
-  "version": "0.5.0+codex.20260719170324",
-  "description": "Delegate tasks from Codex to Claude Code or Google Antigravity.",
+  "version": "0.6.0+codex.20260722210000",
+  "description": "Delegate tasks from Codex to Claude Code, Google Antigravity, Pi, or Qwen Code.",
   "author": {
     "name": "Hongjun Wu",
     "url": "https://github.com/wu-hongjun"
@@ -9,8 +9,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "Codex Delegation",
-    "shortDescription": "Delegate Codex tasks to Claude Code or Google Antigravity.",
-    "longDescription": "Run and supervise delegated coding jobs through Claude Code background sessions or exact Google Antigravity conversations, with follow-up, reviews, orchestration, discovery, and shared lifecycle controls.",
+    "shortDescription": "Delegate Codex tasks to Claude, Antigravity, Pi, or Qwen Code.",
+    "longDescription": "Run and supervise delegated coding jobs through Claude Code, Google Antigravity, oh-my-pi, or Qwen Code, with exact-session follow-up and shared lifecycle controls.",
     "developerName": "Hongjun Wu",
     "category": "Coding",
     "capabilities": ["Interactive"],
@@ -51,7 +51,23 @@
       "Run multi-agent deep research with Antigravity.",
       "List my Antigravity workflow-like jobs.",
       "List installed Antigravity skills.",
-      "Refresh Codex Delegation's Antigravity skills."
+      "Refresh Codex Delegation's Antigravity skills.",
+      "Check oh-my-pi readiness.",
+      "Preflight Pi exact resume, workspace, and headless permission policy.",
+      "Delegate a task to Pi.",
+      "Check my Pi jobs.",
+      "Wait for a Pi job to finish.",
+      "Show the result of a Pi job.",
+      "Stop a Pi job.",
+      "Continue an exact Pi session.",
+      "Check Qwen Code readiness.",
+      "Preflight Qwen Code exact resume, workspace, and headless permission policy.",
+      "Delegate a task to Qwen Code.",
+      "Check my Qwen Code jobs.",
+      "Wait for a Qwen Code job to finish.",
+      "Show the result of a Qwen Code job.",
+      "Stop a Qwen Code job.",
+      "Continue an exact Qwen Code session."
     ],
     "brandColor": "#D97706"
   }

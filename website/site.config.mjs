@@ -1,7 +1,8 @@
 export const site = {
   name: 'Codex Delegation',
   repositoryName: 'codex-delegation-plugin',
-  description: 'Delegate coding work from OpenAI Codex to Claude Code or Google Antigravity.',
+  description:
+    'Delegate coding work from OpenAI Codex to Claude Code, Google Antigravity, Pi, or Qwen Code.',
   canonicalOrigin: 'https://wu-hongjun.github.io/codex-delegation-plugin/',
   repositoryUrl: 'https://github.com/wu-hongjun/codex-delegation-plugin',
 };
@@ -12,7 +13,7 @@ export const pages = [
     source: 'landing.html',
     title: 'Codex Delegation',
     description:
-      'A Codex-native plugin for supervised Claude Code and Google Antigravity delegation.',
+      'A Codex-native plugin for supervised Claude Code, Google Antigravity, Pi, and Qwen Code delegation.',
     section: 'landing',
   },
   {
@@ -40,7 +41,7 @@ export const pages = [
     output: 'docs/skills.html',
     source: 'docs/skills.html',
     title: 'Codex skills reference',
-    description: 'Reference for all 37 delegate: skills shipped by Codex Delegation.',
+    description: 'Reference for all 53 delegate: skills shipped by Codex Delegation.',
     section: 'docs',
   },
   {

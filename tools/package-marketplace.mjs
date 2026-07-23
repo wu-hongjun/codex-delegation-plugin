@@ -60,6 +60,8 @@ const DERIVED_FILES = [
   'scripts/lib/ack.mjs',
   'scripts/lib/adapter.mjs',
   'scripts/lib/agy-adapter.mjs',
+  'scripts/lib/pi-adapter.mjs',
+  'scripts/lib/qwen-adapter.mjs',
   'scripts/lib/args.mjs',
   'scripts/lib/claude-version.mjs',
   'scripts/lib/format.mjs',
@@ -105,6 +107,22 @@ const DERIVED_FILES = [
   'skills/agy-workflows/SKILL.md',
   'skills/agy-skills/SKILL.md',
   'skills/agy-upgrade/SKILL.md',
+  'skills/pi-setup/SKILL.md',
+  'skills/pi-doctor/SKILL.md',
+  'skills/pi-delegate/SKILL.md',
+  'skills/pi-status/SKILL.md',
+  'skills/pi-wait/SKILL.md',
+  'skills/pi-result/SKILL.md',
+  'skills/pi-stop/SKILL.md',
+  'skills/pi-followup/SKILL.md',
+  'skills/qwen-setup/SKILL.md',
+  'skills/qwen-doctor/SKILL.md',
+  'skills/qwen-delegate/SKILL.md',
+  'skills/qwen-status/SKILL.md',
+  'skills/qwen-wait/SKILL.md',
+  'skills/qwen-result/SKILL.md',
+  'skills/qwen-stop/SKILL.md',
+  'skills/qwen-followup/SKILL.md',
 ];
 
 /**
@@ -154,6 +172,10 @@ const CLAUDE_DRIVER_DEST_BASE = 'node_modules/@codex-delegation/driver-claude-co
  */
 const AGY_DRIVER_SRC_DIST = 'packages/driver-agy-cli/dist';
 const AGY_DRIVER_DEST_BASE = 'node_modules/@codex-delegation/driver-agy-cli';
+const PI_DRIVER_SRC_DIST = 'packages/driver-pi-cli/dist';
+const PI_DRIVER_DEST_BASE = 'node_modules/@codex-delegation/driver-pi-cli';
+const QWEN_DRIVER_SRC_DIST = 'packages/driver-qwen-code/dist';
+const QWEN_DRIVER_DEST_BASE = 'node_modules/@codex-delegation/driver-qwen-code';
 
 /**
  * Bundled node-pty layout. Sourced from the workspace's npm-installed
@@ -253,6 +275,29 @@ const SYNTH_AGY_DRIVER_PKG = {
   engines: { node: '>=20' },
 };
 
+function synthHeadlessDriverPackage(name) {
+  return {
+    name,
+    version: BUNDLED_VERSION_MARKER,
+    type: 'module',
+    main: './dist/index.js',
+    types: './dist/index.d.ts',
+    exports: {
+      '.': {
+        types: './dist/index.d.ts',
+        import: './dist/index.js',
+      },
+    },
+    dependencies: {
+      '@codex-delegation/runtime': BUNDLED_VERSION_MARKER,
+    },
+    engines: { node: '>=20' },
+  };
+}
+
+const SYNTH_PI_DRIVER_PKG = synthHeadlessDriverPackage('@codex-delegation/driver-pi-cli');
+const SYNTH_QWEN_DRIVER_PKG = synthHeadlessDriverPackage('@codex-delegation/driver-qwen-code');
+
 /**
  * Fields kept from the upstream node-pty package.json. The install +
  * postinstall + prepare + prepublishOnly scripts are stripped so that no
@@ -290,6 +335,8 @@ function computeBundledFiles() {
   const runtimeAbsDist = join(REPO_ROOT, RUNTIME_SRC_DIST);
   const claudeDriverAbsDist = join(REPO_ROOT, CLAUDE_DRIVER_SRC_DIST);
   const agyDriverAbsDist = join(REPO_ROOT, AGY_DRIVER_SRC_DIST);
+  const piDriverAbsDist = join(REPO_ROOT, PI_DRIVER_SRC_DIST);
+  const qwenDriverAbsDist = join(REPO_ROOT, QWEN_DRIVER_SRC_DIST);
   const nodeptyAbsBase = join(REPO_ROOT, NODEPTY_SRC_BASE);
 
   const runtimeDistRel = readdirSync(runtimeAbsDist, { withFileTypes: true })
@@ -306,7 +353,20 @@ function computeBundledFiles() {
     .filter((e) => e.isFile() && (e.name.endsWith('.js') || e.name.endsWith('.d.ts')))
     .map((e) => `${AGY_DRIVER_DEST_BASE}/dist/${e.name}`)
     .sort();
-  const driverDistRel = [...claudeDriverDistRel, ...agyDriverDistRel];
+  const piDriverDistRel = readdirSync(piDriverAbsDist, { withFileTypes: true })
+    .filter((e) => e.isFile() && (e.name.endsWith('.js') || e.name.endsWith('.d.ts')))
+    .map((e) => `${PI_DRIVER_DEST_BASE}/dist/${e.name}`)
+    .sort();
+  const qwenDriverDistRel = readdirSync(qwenDriverAbsDist, { withFileTypes: true })
+    .filter((e) => e.isFile() && (e.name.endsWith('.js') || e.name.endsWith('.d.ts')))
+    .map((e) => `${QWEN_DRIVER_DEST_BASE}/dist/${e.name}`)
+    .sort();
+  const driverDistRel = [
+    ...claudeDriverDistRel,
+    ...agyDriverDistRel,
+    ...piDriverDistRel,
+    ...qwenDriverDistRel,
+  ];
 
   const nodeptyRel = [];
   for (const dir of NODEPTY_INCLUDE_DIRS) {
@@ -323,6 +383,8 @@ function computeBundledFiles() {
     `${RUNTIME_DEST_BASE}/package.json`,
     `${CLAUDE_DRIVER_DEST_BASE}/package.json`,
     `${AGY_DRIVER_DEST_BASE}/package.json`,
+    `${PI_DRIVER_DEST_BASE}/package.json`,
+    `${QWEN_DRIVER_DEST_BASE}/package.json`,
     `${NODEPTY_DEST_BASE}/package.json`,
   ];
 
@@ -620,6 +682,14 @@ function bundledSourceFor(rel) {
     const basename = norm.slice(`${AGY_DRIVER_DEST_BASE}/dist/`.length);
     return join(REPO_ROOT, AGY_DRIVER_SRC_DIST, basename);
   }
+  if (norm.startsWith(`${PI_DRIVER_DEST_BASE}/dist/`)) {
+    const basename = norm.slice(`${PI_DRIVER_DEST_BASE}/dist/`.length);
+    return join(REPO_ROOT, PI_DRIVER_SRC_DIST, basename);
+  }
+  if (norm.startsWith(`${QWEN_DRIVER_DEST_BASE}/dist/`)) {
+    const basename = norm.slice(`${QWEN_DRIVER_DEST_BASE}/dist/`.length);
+    return join(REPO_ROOT, QWEN_DRIVER_SRC_DIST, basename);
+  }
   if (norm.startsWith(`${NODEPTY_DEST_BASE}/`)) {
     const subpath = norm.slice(`${NODEPTY_DEST_BASE}/`.length);
     // package.json is synthesised, not byte-copied; caller handles separately.
@@ -643,6 +713,12 @@ function synthesizedPackageJsonBytes(rel) {
   }
   if (rel === `${AGY_DRIVER_DEST_BASE}/package.json`) {
     return Buffer.from(JSON.stringify(SYNTH_AGY_DRIVER_PKG, null, 2) + '\n', 'utf8');
+  }
+  if (rel === `${PI_DRIVER_DEST_BASE}/package.json`) {
+    return Buffer.from(JSON.stringify(SYNTH_PI_DRIVER_PKG, null, 2) + '\n', 'utf8');
+  }
+  if (rel === `${QWEN_DRIVER_DEST_BASE}/package.json`) {
+    return Buffer.from(JSON.stringify(SYNTH_QWEN_DRIVER_PKG, null, 2) + '\n', 'utf8');
   }
   if (rel === `${NODEPTY_DEST_BASE}/package.json`) {
     const srcAbs = join(REPO_ROOT, NODEPTY_SRC_BASE, 'package.json');

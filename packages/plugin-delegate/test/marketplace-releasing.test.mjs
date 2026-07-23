@@ -71,6 +71,22 @@ const SKILL_NAMES = [
   'agy-workflows',
   'agy-skills',
   'agy-upgrade',
+  'pi-setup',
+  'pi-doctor',
+  'pi-delegate',
+  'pi-status',
+  'pi-wait',
+  'pi-result',
+  'pi-stop',
+  'pi-followup',
+  'qwen-setup',
+  'qwen-doctor',
+  'qwen-delegate',
+  'qwen-status',
+  'qwen-wait',
+  'qwen-result',
+  'qwen-stop',
+  'qwen-followup',
 ];
 
 // ---------- forbidden tokens (shared with T6/T7/T8/T9/T10) ----------
@@ -232,10 +248,10 @@ describe('consolidated release checklist (Plan 0006 T11)', () => {
   });
 
   // ========================================================================
-  // T11-6: Smoke Test section enumerates all 37 skills + gate criterion
+  // T11-6: Smoke Test section enumerates all 53 skills + gate criterion
   // ========================================================================
 
-  it('Smoke Test section enumerates all 37 skills with $claude-setup as gate (ok/warn)', () => {
+  it('Smoke Test section enumerates all 53 skills with $claude-setup as gate (ok/warn)', () => {
     const content = readFileSync(RELEASING_MD, 'utf8');
     for (const name of SKILL_NAMES) {
       assert.ok(content.includes(`$${name}`), `Smoke Test section must enumerate skill $${name}`);
@@ -299,8 +315,8 @@ describe('consolidated release checklist (Plan 0006 T11)', () => {
     );
     assert.match(content, /git push origin v0\.[xX]\.[yY]/);
     assert.ok(
-      content.includes('v0.5.0'),
-      'Tagging section must include the current example tag `v0.5.0`',
+      content.includes('v0.6.0'),
+      'Tagging section must include the current example tag `v0.6.0`',
     );
     assert.match(
       content,

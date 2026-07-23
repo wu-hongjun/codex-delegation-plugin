@@ -8,8 +8,9 @@
   <section id="direction">
     <h2>One direction</h2>
     <p>
-      This plugin lets Codex delegate to Claude Code or Google Antigravity. It does not let those
-      tools drive Codex, and it is not a compatibility alias for the former <code>cc</code> plugin.
+      This plugin lets Codex delegate to Claude Code, Google Antigravity, Pi, or Qwen Code. It does
+      not let those tools drive Codex, and it is not a compatibility alias for the former
+      <code>cc</code> plugin.
     </p>
   </section>
 
@@ -63,6 +64,13 @@
       transcript metadata; the driver normalizes those records while retaining a raw ANSI log for
       native attachment. The exact UUID is job-scoped and global <code>agy --continue</code> state
       is never used.
+    </p>
+    <h3>Pi and Qwen Code</h3>
+    <p>
+      <code>PiCliDriver</code> supervises the oh-my-pi <code>omp</code> executable in JSON mode,
+      while <code>QwenCodeDriver</code> supervises <code>qwen</code> in stream-JSON mode. Both
+      capture a job-scoped session ID for exact <code>--resume</code> follow-up. These transports
+      are headless, so permission prompts cannot be answered through terminal attachment.
     </p>
   </section>
 

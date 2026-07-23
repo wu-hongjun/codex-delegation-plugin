@@ -55,10 +55,7 @@ export function parseQwenTranscriptJsonl(text: string): {
         if (!block) continue;
         if (block['type'] === 'text' && typeof block['text'] === 'string') {
           textParts.push(block['text']);
-        } else if (
-          block['type'] === 'tool_use' &&
-          typeof block['name'] === 'string'
-        ) {
+        } else if (block['type'] === 'tool_use' && typeof block['name'] === 'string') {
           events.push({
             type: 'tool.started',
             tool: block['name'],

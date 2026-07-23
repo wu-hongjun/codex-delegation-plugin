@@ -73,7 +73,7 @@ The codex-delegation-plugin plugin follows semver `0.x.y`. Versioning rules:
   metadata, not the shipped plugin version. Do not bump them as part
   of a plugin release.
 - **Bundled `node_modules/@codex-delegation/*` use the `<plugin-version>-bundled`
-  marker** (e.g., `0.5.0-bundled` while the shipped plugin is `0.5.0`).
+  marker** (e.g., `0.6.0-bundled` while the shipped plugin is `0.6.0`).
   `tools/package-marketplace.mjs --write` synthesizes this marker from
   the source plugin version. Do not edit those synthesized
   `package.json` files by hand.
@@ -81,7 +81,7 @@ The codex-delegation-plugin plugin follows semver `0.x.y`. Versioning rules:
 ### Procedure to bump the shipped plugin version
 
 Replace `0.x.y` below with the new semver string. The current shipped
-version is `0.5.0` (bumped for the v0.5.0 release).
+version is `0.6.0` (bumped for the v0.6.0 release).
 
 1. Edit `packages/plugin-delegate/.codex-plugin/plugin.json` and bump the
    `version` field to `0.x.y`. This is the only manual edit.
@@ -275,9 +275,11 @@ invoked from fresh, ephemeral Codex processes after the plugin is installed:
 ```bash
 codex exec --ephemeral '$claude-setup'
 codex exec --ephemeral '$agy-setup'
+codex exec --ephemeral '$pi-setup'
+codex exec --ephemeral '$qwen-setup'
 ```
 
-Also open Codex and type `$` to verify that all thirty-seven skills appear in
+Also open Codex and type `$` to verify that all 53 skills appear in
 autocomplete. If the smoke helper used `--keep-home`, launch Codex with that
 preserved `CODEX_HOME`; otherwise validate in the profile where the plugin is
 installed:
@@ -319,6 +321,22 @@ installed:
 - `$agy-workflows`
 - `$agy-skills`
 - `$agy-upgrade`
+- `$pi-setup`
+- `$pi-doctor`
+- `$pi-delegate`
+- `$pi-status`
+- `$pi-wait`
+- `$pi-result`
+- `$pi-stop`
+- `$pi-followup`
+- `$qwen-setup`
+- `$qwen-doctor`
+- `$qwen-delegate`
+- `$qwen-status`
+- `$qwen-wait`
+- `$qwen-result`
+- `$qwen-stop`
+- `$qwen-followup`
 
 Pass criteria:
 
@@ -326,7 +344,9 @@ Pass criteria:
   aggregate status, not an unknown-skill error.
 - `$agy-setup` must be recognized. It should report ready when `agy` is installed and a clear
   unavailable result when it is not.
-- The other thirty-five skills must not return `unknown skill` or
+- `$pi-setup` and `$qwen-setup` must be recognized. Each should report ready when its executable
+  (`omp` or `qwen`) is installed and a clear unavailable result when it is not.
+- The other 49 skills must not return `unknown skill` or
   `unrecognized skill` when invoked or shown in Codex skill discovery.
 - A skill that requires a job-id may stop at its expected
   usage-or-error message. That still counts as recognized for smoke
@@ -387,7 +407,7 @@ hard-coded version literals) without invoking it.
 ## Tagging
 
 Tag the release using semver `v0.x.y`. Example for the current shipped
-version: `v0.5.0`.
+version: `v0.6.0`.
 
 ```bash
 git tag -a v0.x.y -m "codex-delegation-plugin v0.x.y"
@@ -400,7 +420,7 @@ Rules:
 - Tag only **after** the smoke test passes **and** all four CI matrix
   legs are green. Both gates are mandatory.
 - Tag format: lowercase `v` prefix + semver. The example tag for the
-  current shipped version is `v0.5.0`.
+  current shipped version is `v0.6.0`.
 - Legacy verification tags from earlier plans use distinct schemes
   and must not be retagged as part of a plugin release.
 - Do not move or delete a published tag. If a regression is
@@ -514,7 +534,7 @@ codex plugin list
 ```
 
 After the Git flow, `codex plugin list` should report
-`delegate@codex-delegation-plugin` with the current version (`0.5.0`),
+`delegate@codex-delegation-plugin` with the current version (`0.6.0`),
 `installed, enabled`. After either local flow, it should report
 `delegate@codex-delegation-plugin-local` with the same version. See
 [`marketplace/plugins/delegate/README.md`](../marketplace/plugins/delegate/README.md)

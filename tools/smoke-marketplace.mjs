@@ -38,7 +38,7 @@
  *   7. Asserts the plugin appears as installed,enabled at the version
  *      declared in marketplace/plugins/delegate/.codex-plugin/plugin.json
  *      (single source of truth; not hard-coded in this script — see T10).
- *   8. Prints the thirty-six-skill manual TUI checklist.
+ *   8. Prints the 53-skill manual TUI checklist.
  *   9. Cleanup: codex plugin remove + codex plugin marketplace remove.
  *  10. rm -rf CODEX_HOME unless --keep-home.
  *
@@ -49,7 +49,7 @@
  * Not for CI: this script requires the real codex CLI on PATH. The CI
  * matrix never invokes this file. The static test
  * packages/plugin-delegate/test/marketplace-smoke.test.mjs verifies the
- * script's shape (--help text, 36 skill names, isolation invariants,
+ * script's shape (--help text, 53 skill names, isolation invariants,
  * cleanup commands) without spawning codex.
  */
 
@@ -133,6 +133,22 @@ const SKILL_NAMES = [
   'agy-workflows',
   'agy-skills',
   'agy-upgrade',
+  'pi-setup',
+  'pi-doctor',
+  'pi-delegate',
+  'pi-status',
+  'pi-wait',
+  'pi-result',
+  'pi-stop',
+  'pi-followup',
+  'qwen-setup',
+  'qwen-doctor',
+  'qwen-delegate',
+  'qwen-status',
+  'qwen-wait',
+  'qwen-result',
+  'qwen-stop',
+  'qwen-followup',
 ];
 
 // ---------------------------------------------------------------------------
@@ -420,7 +436,7 @@ logStep('STEP 6: manual Codex TUI skill checklist (operator-driven)');
 process.stdout.write(
   [
     'The helper cannot drive the Codex TUI. Open Codex with this isolated',
-    `CODEX_HOME and verify each of the 37 skills below is recognized.`,
+    `CODEX_HOME and verify each of the 53 skills below is recognized.`,
     '',
     `  CODEX_HOME=${codexHome} codex`,
     '',
@@ -430,7 +446,8 @@ process.stdout.write(
     'Pass criteria:',
     '  - $claude-setup returns an "ok" or "warn" aggregate.',
     '  - $agy-setup returns ok when agy is installed, or a clear unavailable result otherwise.',
-    '  - The other 35 skills do not return "unknown skill" or',
+    '  - $pi-setup and $qwen-setup return ok when their CLIs are installed, or a clear unavailable result otherwise.',
+    '  - The other 49 skills do not return "unknown skill" or',
     '    "unrecognized skill" when invoked or shown in Codex skill',
     '    discovery. A skill that needs a job-id may stop at a usage',
     '    or error message; that still counts as recognized.',

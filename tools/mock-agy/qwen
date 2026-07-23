@@ -1,0 +1,31 @@
+#!/usr/bin/env node
+
+const args = process.argv.slice(2);
+
+if (args.includes('--version')) {
+  process.stdout.write('0.9.0\n');
+  process.exit(0);
+}
+
+if (args.includes('--help')) {
+  process.stdout.write(
+    'Usage: qwen --output-format stream-json [--resume <session-id>] <prompt>\n',
+  );
+  process.exit(0);
+}
+
+const delayMs = Number(process.env.CODEX_DELEGATION_MOCK_PROCESS_DELAY_MS ?? 0);
+if (delayMs > 0) {
+  await new Promise((resolve) => setTimeout(resolve, delayMs));
+}
+
+const prompt = args.at(-1) ?? '';
+process.stdout.write(
+  `${JSON.stringify({
+    type: 'assistant',
+    session_id: 'mock-qwen-session',
+    message: {
+      content: [{ type: 'text', text: `Qwen completed: ${prompt}` }],
+    },
+  })}\n`,
+);

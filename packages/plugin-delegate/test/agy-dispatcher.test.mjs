@@ -561,11 +561,11 @@ describe('agy dispatcher integration', () => {
     assert.equal(stored.turns.at(-1).status, 'failed');
   });
 
-  it('auto selects agy when its supervised interactive mode is available', () => {
+  it('auto selects Pi before Antigravity when both supervised modes are available', () => {
     const delegated = json(
       run(['delegate', '--provider', 'auto', '--yes', '--json', '--compact', '--', 'auto task']),
     );
-    assert.equal(delegated.job.provider, 'agy');
+    assert.equal(delegated.job.provider, 'pi');
     json(run(['stop', delegated.job.jobId, '--json', '--compact']));
   });
 

@@ -55,6 +55,22 @@ const SKILL_NAMES = [
   'agy-workflows',
   'agy-skills',
   'agy-upgrade',
+  'pi-setup',
+  'pi-doctor',
+  'pi-delegate',
+  'pi-status',
+  'pi-wait',
+  'pi-result',
+  'pi-stop',
+  'pi-followup',
+  'qwen-setup',
+  'qwen-doctor',
+  'qwen-delegate',
+  'qwen-status',
+  'qwen-wait',
+  'qwen-result',
+  'qwen-stop',
+  'qwen-followup',
 ];
 
 /** Subcommand each skill must reference in its body. */
@@ -96,6 +112,22 @@ const SKILL_SUBCOMMANDS = {
   'agy-workflows': 'workflows',
   'agy-skills': 'skills',
   'agy-upgrade': 'upgrade',
+  'pi-setup': 'pi-setup',
+  'pi-doctor': 'pi-doctor',
+  'pi-delegate': 'delegate',
+  'pi-status': 'status',
+  'pi-wait': 'wait',
+  'pi-result': 'result',
+  'pi-stop': 'stop',
+  'pi-followup': 'followup',
+  'qwen-setup': 'qwen-setup',
+  'qwen-doctor': 'qwen-doctor',
+  'qwen-delegate': 'delegate',
+  'qwen-status': 'status',
+  'qwen-wait': 'wait',
+  'qwen-result': 'result',
+  'qwen-stop': 'stop',
+  'qwen-followup': 'followup',
 };
 
 function skillPath(name) {
@@ -111,7 +143,7 @@ function readManifest() {
 }
 
 describe('provider skill-surface parity', () => {
-  it('matches every Claude skill suffix and keeps only the Antigravity attach bridge as an extra', () => {
+  it('keeps full Claude/Antigravity parity and the eight shared lifecycle skills for Pi/Qwen', () => {
     const claude = SKILL_NAMES.filter((name) => name.startsWith('claude-'))
       .map((name) => name.slice('claude-'.length))
       .sort();
@@ -123,6 +155,22 @@ describe('provider skill-surface parity', () => {
       claude,
     );
     assert.equal(agy.includes('attach'), true);
+    const lifecycle = [
+      'delegate',
+      'doctor',
+      'followup',
+      'result',
+      'setup',
+      'status',
+      'stop',
+      'wait',
+    ];
+    for (const provider of ['pi', 'qwen']) {
+      const suffixes = SKILL_NAMES.filter((name) => name.startsWith(`${provider}-`))
+        .map((name) => name.slice(provider.length + 1))
+        .sort();
+      assert.deepEqual(suffixes, lifecycle);
+    }
   });
 });
 
@@ -198,12 +246,12 @@ describe('plugin.json.version', () => {
     assert.ok(manifest.version.length > 0, 'version must be non-empty');
   });
 
-  it('keeps the 0.5.0 release base with optional local cachebuster metadata', () => {
+  it('keeps the 0.6.0 release base with optional local cachebuster metadata', () => {
     const manifest = readManifest();
     assert.match(
       manifest.version,
-      /^0\.5\.0(?:\+codex\.(?:[0-9]+|local-[0-9]{14}))?$/,
-      `expected 0.5.0 release base, got "${manifest.version}"`,
+      /^0\.6\.0(?:\+codex\.(?:[0-9]+|local-[0-9]{14}))?$/,
+      `expected 0.6.0 release base, got "${manifest.version}"`,
     );
   });
 });
@@ -790,14 +838,14 @@ describe('plugin.json interface.defaultPrompt contains verbatim T8 entries', () 
 });
 
 describe('plugin.json.interface.defaultPrompt length includes all provider skills', () => {
-  it('array length equals 37', () => {
+  it('contains the 37 established prompts plus one entry for each new provider', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      37,
-      `interface.defaultPrompt must have exactly 37 entries; got ${dp.length}`,
+      53,
+      `interface.defaultPrompt must have exactly 53 entries; got ${dp.length}`,
     );
   });
 });
@@ -904,14 +952,14 @@ describe('no unexpected review-adjacent skill directories exist', () => {
 // ---------- T6: OQ-C defaultPrompt rewrites (entries #6-#9) ----------
 
 describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)', () => {
-  it('array length is exactly 37', () => {
+  it('array length is exactly 53', () => {
     const manifest = readManifest();
     const dp = manifest.interface?.defaultPrompt;
     assert.ok(Array.isArray(dp), 'interface.defaultPrompt must be an array');
     assert.equal(
       dp.length,
-      37,
-      `interface.defaultPrompt must have exactly 37 entries; got ${dp.length}`,
+      53,
+      `interface.defaultPrompt must have exactly 53 entries; got ${dp.length}`,
     );
   });
 
@@ -996,10 +1044,12 @@ describe('plugin.json interface.defaultPrompt: T6 OQ-C rewrites (entries #6-#9)'
   });
 });
 
-// ---------- T1 (Plan 0009): cross-skill chaining hints — all skills ----------
+// ---------- T1 (Plan 0009): cross-skill chaining hints — established skills ----------
 
 describe('each SKILL.md ends with a "Next steps" subsection (T1 Plan 0009)', () => {
-  for (const name of SKILL_NAMES) {
+  for (const name of SKILL_NAMES.filter(
+    (skill) => skill.startsWith('claude-') || skill.startsWith('agy-'),
+  )) {
     it(`${name}: body contains "### Next steps"`, () => {
       const body = readFileSync(skillPath(name), 'utf8');
       assert.ok(
@@ -1011,13 +1061,16 @@ describe('each SKILL.md ends with a "Next steps" subsection (T1 Plan 0009)', () 
 });
 
 describe('each SKILL.md Next steps subsection references a skill from the same provider', () => {
-  for (const name of SKILL_NAMES) {
+  for (const name of SKILL_NAMES.filter(
+    (skill) => skill.startsWith('claude-') || skill.startsWith('agy-'),
+  )) {
     it(`${name}: "### Next steps" section mentions a provider-local skill`, () => {
       const body = readFileSync(skillPath(name), 'utf8');
       const nextStepsIdx = body.indexOf('### Next steps');
       assert.ok(nextStepsIdx !== -1, `${name}/SKILL.md missing "### Next steps" subsection`);
       const afterNextSteps = body.slice(nextStepsIdx);
-      const providerPrefix = name.startsWith('agy-') ? '$agy-' : '$claude-';
+      const provider = name.slice(0, name.indexOf('-'));
+      const providerPrefix = `$${provider}-`;
       assert.ok(
         afterNextSteps.includes(providerPrefix),
         `${name}/SKILL.md "### Next steps" section does not reference any ${providerPrefix}* skill`,

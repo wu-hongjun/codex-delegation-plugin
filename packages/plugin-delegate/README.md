@@ -2,13 +2,20 @@
 
 ## What this is
 
-A Codex plugin that delegates tasks to Claude Code background sessions or exact Google Antigravity conversations through the `agy` CLI. It tracks both providers under `~/.codex/codex-delegation-plugin` and routes lifecycle, follow-up, review, orchestration, discovery, and restart operations through the stored job's driver.
+A Codex plugin that delegates tasks to Claude Code background sessions, exact Google Antigravity
+conversations, oh-my-pi sessions, or Qwen Code sessions. It tracks all four providers under
+`~/.codex/codex-delegation-plugin` and routes each operation through the stored job's driver.
 
-Claude uses its native background-session APIs. Antigravity uses a plugin-owned detached PTY supervisor around a persistent `agy --prompt-interactive` TUI. A bundled Antigravity companion plugin supplies lifecycle hooks, transcript discovery, and five native subagent profiles; orchestration stays in the default parent so its collaboration tools remain available, and the TUI remains available for native input and child control.
+Claude uses its native background-session APIs. Antigravity uses a plugin-owned detached PTY
+supervisor around a persistent `agy --prompt-interactive` TUI. Pi and Qwen Code use detached
+supervisors around their structured-output modes. Pi's installed executable is `omp`; `pi` is the
+provider and skill name used by this plugin.
+A bundled Antigravity companion plugin supplies lifecycle hooks, transcript discovery, and native
+subagent profiles; its persistent TUI remains available for permission input and child control.
 
 ## Current v1 scope
 
-Thirty-seven skills are available:
+Fifty-three skills are available:
 
 - **`$claude-setup`** — probe dependencies and report status (ok/warn/fail)
 - **`$claude-doctor`** — preflight Claude Code auth, model access, browser readiness, workspace, and permission mode before long jobs
@@ -47,10 +54,23 @@ Thirty-seven skills are available:
 - **`$agy-workflows`** — list and inspect recorded workflow-like parent jobs
 - **`$agy-skills`** — discover project, user, and plugin Antigravity skills
 - **`$agy-upgrade`** — refresh or repair the installed Codex Delegation plugin
+- **`$pi-setup`, `$pi-doctor`, `$pi-delegate`, `$pi-status`, `$pi-wait`, `$pi-result`, `$pi-stop`, `$pi-followup`** — probe and supervise exact Pi sessions through `omp`
+- **`$qwen-setup`, `$qwen-doctor`, `$qwen-delegate`, `$qwen-status`, `$qwen-wait`, `$qwen-result`, `$qwen-stop`, `$qwen-followup`** — probe and supervise exact Qwen Code sessions through `qwen`
 
 Lifecycle: `delegate` creates one fresh background session; `status` reconciles live state from `claude agents --json` and per-job sidecar; `wait` polls one job until it produces a result, blocker, or timeout; `result` prints the final assistant message of the most recent completed turn; `followup` injects the next instruction into an existing background session via internal PTY attach; `stop` is optional cleanup. After a completed turn, jobs may enter `awaiting_followup` for up to 30 minutes; while in that state, `$claude-followup` is the next-turn entry point. After the TTL elapses, status displays as `completed`, but an explicit follow-up may still attempt to attach if the session is still live.
 
 Antigravity lifecycle: `delegate --provider agy` starts one detached persistent TUI and private diagnostic log, captures the exact conversation UUID, and stores it with the job. `status`, `wait`, `result`, `attach`, and `stop` share the normal lifecycle. `followup` sends the next turn through the same live PTY, preserving immutable per-turn results. The plugin intentionally does not use global `agy --continue` state.
+
+Pi and Qwen lifecycle: `delegate --provider pi|qwen` starts a detached structured-output process and
+stores its exact captured session ID. `status`, `wait`, `result`, and `stop` use the shared job
+lifecycle; `followup` starts the next supervised turn with that exact ID. The drivers never use a
+workspace-global “most recent session” selector. This initial core-lifecycle surface does not
+include review, orchestration, discovery, upgrade, or terminal attachment skills.
+
+Pi and Qwen jobs are headless. If either CLI asks for permission interactively, the plugin cannot
+attach a live terminal to answer it. Choose an explicit, provider-supported permission mode before
+launching unattended work; bypass/yolo modes are dangerous and are never added unless the operator
+explicitly requests them.
 
 The driver adds the current Codex workspace to every agy session with `--add-dir`. Native workspace
 trust and permission cards become a durable `needs_input` job state. `$agy-attach` replays the live
@@ -63,9 +83,11 @@ detaches without stopping the provider. The plugin never approves on the user's 
 - **npm** (comes with Node)
 - **Codex CLI** with plugin marketplace support (0.136.0 or later; release smoke tested on 0.144.5)
 - **At least one provider CLI**, authenticated locally: Claude Code (release smoke tested on
-  2.1.211) or Antigravity `agy` (tested on 1.1.4)
+  2.1.211), Antigravity `agy` (tested on 1.1.4), oh-my-pi `omp`, or Qwen Code `qwen`
 - **Provider setup probe:** `$claude-setup` feature-probes Claude background-session support;
-  `$agy-setup` checks the Antigravity binary, interactive surface, exact resume, PTY runtime, and companion plugin without making a model call
+  `$agy-setup` checks the Antigravity binary, interactive surface, exact resume, PTY runtime, and
+  companion plugin; `$pi-setup` and `$qwen-setup` probe their binaries and structured-output
+  capabilities without starting a delegated model turn
 
 ## Install locally
 
@@ -665,9 +687,45 @@ restricts command execution but does not grant permission. See the official
 [permission reference](https://antigravity.google/docs/cli-permissions), and
 [`/agents` reference](https://antigravity.google/docs/cli/commands/agents).
 
+## Pi and Qwen Code commands
+
+Pi and Qwen Code each expose the same eight-skill core lifecycle:
+
+```text
+$pi-setup
+$pi-doctor
+$pi-delegate -- "Inspect this repository and report risks."
+$pi-status --job <jobId> --json --compact
+$pi-wait <jobId> --timeout 5m
+$pi-result <jobId>
+$pi-followup <jobId> -- "Verify the same area."
+$pi-stop <jobId>
+
+$qwen-setup
+$qwen-doctor
+$qwen-delegate -- "Inspect this repository and report risks."
+$qwen-status --job <jobId> --json --compact
+$qwen-wait <jobId> --timeout 5m
+$qwen-result <jobId>
+$qwen-followup <jobId> -- "Verify the same area."
+$qwen-stop <jobId>
+```
+
+The public Pi name maps to the oh-my-pi `omp` executable. Pi runs in JSON mode with a private
+session directory; Qwen Code runs with `--output-format stream-json`. Both drivers capture the
+provider's exact session ID and pass it to `--resume` for follow-up, so concurrent jobs do not
+compete for a global recent session.
+
+These providers intentionally ship only setup, doctor, delegate, status, wait, result, follow-up,
+and stop in this MVP. Their supervisors are headless and there is no Pi/Qwen equivalent of
+`$agy-attach`. Default permission prompts therefore cannot be handed to an operator after launch.
+For trusted unattended work, explicitly select a supported permission policy: Pi maps
+`acceptEdits` to `--approval-mode write` and bypass to `yolo`; Qwen maps `acceptEdits` to
+`auto-edit`, `plan` to `plan`, and bypass to `yolo`. Treat bypass/yolo as dangerous.
+
 ## Direct dispatcher usage
 
-All thirty-seven skill commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
+All 53 skill commands are also available via the dispatcher script. Useful for scripting and non-interactive workflows:
 
 ```bash
 node packages/plugin-delegate/scripts/delegate.mjs setup
@@ -702,6 +760,14 @@ node packages/plugin-delegate/scripts/delegate.mjs workflow --provider agy -- "P
 node packages/plugin-delegate/scripts/delegate.mjs workflows --provider agy
 node packages/plugin-delegate/scripts/delegate.mjs skills --provider agy
 node packages/plugin-delegate/scripts/delegate.mjs stop <agy-jobId>
+node packages/plugin-delegate/scripts/delegate.mjs setup --provider pi --json
+node packages/plugin-delegate/scripts/delegate.mjs doctor --provider pi --json
+node packages/plugin-delegate/scripts/delegate.mjs delegate --provider pi --yes -- "Inspect this repo."
+node packages/plugin-delegate/scripts/delegate.mjs followup <pi-jobId> -- "Verify the same area."
+node packages/plugin-delegate/scripts/delegate.mjs setup --provider qwen --json
+node packages/plugin-delegate/scripts/delegate.mjs doctor --provider qwen --json
+node packages/plugin-delegate/scripts/delegate.mjs delegate --provider qwen --yes -- "Inspect this repo."
+node packages/plugin-delegate/scripts/delegate.mjs followup <qwen-jobId> -- "Verify the same area."
 ```
 
 All commands support `--json` for machine-readable output. The `--yes` flag on `delegate` and `followup` skips the interactive privacy acknowledgement; `--allow-edit` is a policy/framing flag and does NOT bypass that acknowledgement.
@@ -715,11 +781,12 @@ node packages/plugin-delegate/scripts/delegate.mjs stop --all-awaiting-followup 
 
 ## Privacy and workspace disclosure
 
-Delegating a task may send repository contents, prompts, command output, and file metadata to the selected provider through the user's local Claude Code or Google Antigravity account.
+Delegating a task may send repository contents, prompts, command output, and file metadata through
+the selected local Claude Code, Google Antigravity, oh-my-pi, or Qwen Code account/configuration.
 
 On first delegation to each provider in a workspace, you will be prompted to acknowledge this
 policy. Acknowledgement is stored in `~/.codex/codex-delegation-plugin/acks/` and is scoped to both the
-workspace and provider, so approving Claude Code does not also approve Antigravity.
+workspace and provider, so approving one provider does not approve another.
 
 The `--yes` flag skips this prompt for intentional non-interactive use only.
 

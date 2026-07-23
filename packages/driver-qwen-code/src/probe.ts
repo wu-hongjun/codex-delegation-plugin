@@ -57,8 +57,7 @@ export async function probeQwenCodeDriver(
 ): Promise<DriverCapabilities> {
   const versionResult = await run(['--version'], options);
   const version = versionResult.stdout.trim() || versionResult.stderr.trim();
-  const binaryOk =
-    !versionResult.error && !versionResult.timedOut && versionResult.code === 0;
+  const binaryOk = !versionResult.error && !versionResult.timedOut && versionResult.code === 0;
   const binary: DoctorProbeResult = binaryOk
     ? { name: 'qwen-binary', status: 'ok', detail: version || 'qwen is executable' }
     : {

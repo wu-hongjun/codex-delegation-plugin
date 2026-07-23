@@ -23,11 +23,7 @@ import { probeQwenCodeDriver } from './probe.js';
 import { acquireQwenSendLock, readQwenState, writeQwenState } from './state.js';
 import { finalQwenAssistantMessage, readQwenTranscriptEvents } from './transcript.js';
 import { DRIVER_NAME } from './types.js';
-import type {
-  QwenCodeDriverOptions,
-  QwenLaunchRequest,
-  QwenRunnerState,
-} from './types.js';
+import type { QwenCodeDriverOptions, QwenLaunchRequest, QwenRunnerState } from './types.js';
 
 export { probeQwenCodeDriver } from './probe.js';
 export { readQwenState, writeQwenState } from './state.js';
@@ -150,8 +146,7 @@ export class QwenCodeDriver implements Driver {
   ): Promise<ChildProcess> {
     const requestPath = `${statePath}.request.${turnIndex}.json`;
     const request: QwenLaunchRequest = {
-      executable:
-        this.defaults.executable ?? this.defaults.env?.['QWEN_CLI_PATH'] ?? 'qwen',
+      executable: this.defaults.executable ?? this.defaults.env?.['QWEN_CLI_PATH'] ?? 'qwen',
       args,
       cwd: state.cwd,
       env: { ...process.env, ...this.defaults.env },
@@ -331,12 +326,7 @@ export class QwenCodeDriver implements Driver {
         });
       }
       const target = previous.turnIndex + 1;
-      const args = [
-        ...previous.resumeArgs,
-        '--resume',
-        previous.sessionId,
-        input.text,
-      ];
+      const args = [...previous.resumeArgs, '--resume', previous.sessionId, input.text];
       await this.launch(session.statePath, { ...previous, endedAt: undefined }, args, target);
       const deadline = Date.now() + (opts.timeoutMs ?? 600_000);
       for (;;) {

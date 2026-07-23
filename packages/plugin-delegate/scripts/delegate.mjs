@@ -41,6 +41,11 @@ import {
   attachAgyTerminal,
   DRIVER_VERSION as AGY_DRIVER_VERSION,
 } from '@codex-delegation/driver-agy-cli';
+import { PiCliDriver, DRIVER_VERSION as PI_DRIVER_VERSION } from '@codex-delegation/driver-pi-cli';
+import {
+  QwenCodeDriver,
+  DRIVER_VERSION as QWEN_DRIVER_VERSION,
+} from '@codex-delegation/driver-qwen-code';
 
 import { parseArgs, resolveJobIdPrefix } from './lib/args.mjs';
 import { listWorkflows, inspectWorkflow } from './lib/workflows-inspector.mjs';
@@ -60,6 +65,8 @@ import {
 } from './lib/format.mjs';
 import { makeClaudeAdapter } from './lib/adapter.mjs';
 import { makeAgyAdapter } from './lib/agy-adapter.mjs';
+import { makePiAdapter } from './lib/pi-adapter.mjs';
+import { makeQwenAdapter } from './lib/qwen-adapter.mjs';
 import { recordAck, resolveWorkspaceAck } from './lib/ack.mjs';
 import { makePromptMeta } from './lib/prompt-meta.mjs';
 import { SAME_SESSION_REVIEW_PROMPT, ADVERSARIAL_REVIEW_PROMPT } from './lib/review-prompts.mjs';
@@ -88,7 +95,7 @@ const FLOOR_OPUS_4_8 = '2.1.154';
 const FLOOR_WORKFLOWS = '2.1.153';
 const FLOOR_BG_EXEC = '2.1.154';
 const MODEL_ACCESS_MARKER = 'CODEX_DELEGATION_SETUP_MODEL_ACCESS_OK';
-const PROVIDERS = new Set(['claude', 'agy', 'auto']);
+const PROVIDERS = new Set(['claude', 'agy', 'pi', 'qwen', 'auto']);
 const AGY_MODES = new Set(['accept-edits', 'plan']);
 const AGY_STARTUP_FLAGS = new Set([
   'provider',
@@ -104,6 +111,41 @@ const AGY_STARTUP_FLAGS = new Set([
   'project',
   'new-project',
   'log-file',
+]);
+const PI_STARTUP_FLAGS = new Set([
+  'provider',
+  'model',
+  'effort',
+  'permission-mode',
+  'bypass-permissions',
+  'dangerously-skip-permissions',
+  'allow-dangerously-skip-permissions',
+  'name',
+  'allowedTools',
+  'allowed-tools',
+  'tools',
+  'append-system-prompt',
+  'system-prompt',
+  'bare',
+]);
+const QWEN_STARTUP_FLAGS = new Set([
+  'provider',
+  'model',
+  'permission-mode',
+  'bypass-permissions',
+  'dangerously-skip-permissions',
+  'allow-dangerously-skip-permissions',
+  'allow-edit',
+  'add-dir',
+  'name',
+  'allowedTools',
+  'allowed-tools',
+  'disallowedTools',
+  'disallowed-tools',
+  'append-system-prompt',
+  'system-prompt',
+  'safe-mode',
+  'sandbox',
 ]);
 
 const UPGRADE_TARGETS = Object.freeze({
@@ -292,7 +334,7 @@ function requestedProvider(flags, commandName, json, fallback = 'claude') {
   if (!PROVIDERS.has(value)) {
     process.stderr.write(
       formatError(
-        new Error(`--provider must be one of: claude, agy, auto (got "${value}")`),
+        new Error(`--provider must be one of: claude, agy, pi, qwen, auto (got "${value}")`),
         commandName,
         json,
       ) + '\n',
@@ -303,7 +345,33 @@ function requestedProvider(flags, commandName, json, fallback = 'claude') {
 }
 
 function providerForJob(job) {
-  return job.session?.provider === 'agy' || job.driver?.name === 'agy-cli' ? 'agy' : 'claude';
+  if (typeof job.session?.provider === 'string' && job.session.provider.length > 0) {
+    return job.session.provider;
+  }
+  const providersByDriver = {
+    'claude-background': 'claude',
+    'agy-cli': 'agy',
+    'pi-cli': 'pi',
+    'qwen-code': 'qwen',
+  };
+  const provider = providersByDriver[job.driver?.name];
+  if (!provider) throw new Error(`Unsupported delegation driver: ${job.driver?.name ?? 'unknown'}`);
+  return provider;
+}
+
+function providerLabel(provider) {
+  return (
+    {
+      claude: 'Claude Code',
+      agy: 'Google Antigravity',
+      pi: 'Pi',
+      qwen: 'Qwen Code',
+    }[provider] ?? provider
+  );
+}
+
+function providerSkill(provider, command) {
+  return `$${provider}-${command}`;
 }
 
 function assertRequestedProviderMatchesJob(flags, provider, commandName, json) {
@@ -331,6 +399,20 @@ function runtimeForProvider(provider, cwd) {
     const driver = new AgyCliDriver({ cwd });
     return { provider, driver, adapter: makeAgyAdapter(driver), driverVersion: AGY_DRIVER_VERSION };
   }
+  if (provider === 'pi') {
+    const driver = new PiCliDriver({ cwd });
+    return { provider, driver, adapter: makePiAdapter(driver), driverVersion: PI_DRIVER_VERSION };
+  }
+  if (provider === 'qwen') {
+    const driver = new QwenCodeDriver({ cwd });
+    return {
+      provider,
+      driver,
+      adapter: makeQwenAdapter(driver),
+      driverVersion: QWEN_DRIVER_VERSION,
+    };
+  }
+  if (provider !== 'claude') throw new Error(`Unsupported delegation provider: ${provider}`);
   const driver = new ClaudeBackgroundDriver({ cwd });
   return {
     provider: 'claude',
@@ -347,10 +429,12 @@ function runtimeForJob(job) {
 async function resolveStartRuntime(flags, commandName, json, cwd) {
   const requested = requestedProvider(flags, commandName, json);
   if (requested !== 'auto') return runtimeForProvider(requested, cwd);
-  const agy = runtimeForProvider('agy', cwd);
-  const agyCaps = await agy.driver.probe();
-  if (agyCaps.health.status !== 'fail' && agyCaps.features.start) {
-    return { ...agy, caps: agyCaps };
+  for (const candidate of ['pi', 'qwen', 'agy']) {
+    const runtime = runtimeForProvider(candidate, cwd);
+    const caps = await runtime.driver.probe();
+    if (caps.health.status !== 'fail' && caps.features.start) {
+      return { ...runtime, caps };
+    }
   }
   return runtimeForProvider('claude', cwd);
 }
@@ -443,15 +527,23 @@ function buildStartSessionOptions(flags, commandName, json, overrides = {}) {
 }
 
 function validateProviderStartOptions(provider, flags, startSessionOptions, commandName, json) {
-  if (provider !== 'agy') return;
+  const providerFlags =
+    provider === 'agy'
+      ? AGY_STARTUP_FLAGS
+      : provider === 'pi'
+        ? PI_STARTUP_FLAGS
+        : provider === 'qwen'
+          ? QWEN_STARTUP_FLAGS
+          : null;
+  if (providerFlags === null) return;
   const unsupported = STARTUP_ONLY_FLAGS.filter(
-    (flag) => flags[flag] !== undefined && !AGY_STARTUP_FLAGS.has(flag),
+    (flag) => flags[flag] !== undefined && !providerFlags.has(flag),
   );
   if (unsupported.length > 0) {
     process.stderr.write(
       formatError(
         new Error(
-          `Antigravity does not support these startup flags: ${unsupported.map((flag) => `--${flag}`).join(', ')}`,
+          `${providerLabel(provider)} does not support these startup flags: ${unsupported.map((flag) => `--${flag}`).join(', ')}`,
         ),
         commandName,
         json,
@@ -459,6 +551,8 @@ function validateProviderStartOptions(provider, flags, startSessionOptions, comm
     );
     process.exit(2);
   }
+
+  if (provider !== 'agy') return;
 
   const permissionMode = startSessionOptions.permissionMode;
   if (
@@ -527,7 +621,7 @@ function launchPolicyFromStartSessionOptions(startSessionOptions) {
 
 async function failUnattendedBypassNeedsInput(job, driver, commandName, json) {
   const provider = providerForJob(job);
-  const providerLabel = provider === 'agy' ? 'Google Antigravity' : 'Claude Code';
+  const label = providerLabel(provider);
   const session = sessionForJob(job);
   const waitingFor = session.waitingFor ?? 'interactive input';
   const now = new Date().toISOString();
@@ -545,8 +639,8 @@ async function failUnattendedBypassNeedsInput(job, driver, commandName, json) {
   }
 
   const message =
-    `Unattended bypass was requested, but ${providerLabel} immediately asked for interactive input (${waitingFor}). ` +
-    `Job ${job.jobId} was marked failed${stopError ? `; stopping the ${providerLabel} session also failed` : ' after a stop attempt'}.`;
+    `Unattended bypass was requested, but ${label} immediately asked for interactive input (${waitingFor}). ` +
+    `Job ${job.jobId} was marked failed${stopError ? `; stopping the ${label} session also failed` : ' after a stop attempt'}.`;
 
   await updateJob(job.jobId, (current) => {
     const turns = Array.isArray(current.turns) ? current.turns.map((turn) => ({ ...turn })) : [];
@@ -1688,7 +1782,36 @@ async function runSetupDoctorReport() {
   );
 }
 
-async function cmdSetup(_flags, json) {
+async function cmdSetup(flags, json) {
+  const provider = requestedProvider(flags, 'setup', json);
+  if (provider === 'pi' || provider === 'qwen') {
+    const { driver } = runtimeForProvider(provider, process.cwd());
+    const capabilities = await driver.probe();
+    const report = {
+      ok: capabilities.health.status !== 'fail',
+      status: capabilities.health.status,
+      provider,
+      providerLabel: providerLabel(provider),
+      version: PLUGIN_VERSION,
+      capabilities,
+    };
+    process.stdout.write(
+      json
+        ? JSON.stringify(report, null, 2) + '\n'
+        : [
+            `${providerLabel(provider)} delegation setup — ${report.status.toUpperCase()}`,
+            ...capabilities.health.probes.map(
+              (probe) => `  ${probe.status.padEnd(4)}  ${probe.name.padEnd(22)} ${probe.detail}`,
+            ),
+          ].join('\n') + '\n',
+    );
+    if (!report.ok) process.exit(1);
+    return;
+  }
+  if (provider === 'agy') {
+    await cmdAgySetup(flags, json);
+    return;
+  }
   const report = await runSetupDoctorReport();
   process.stdout.write(formatSetup(report, json) + '\n');
   if (report.status === 'fail') {
@@ -2100,6 +2223,42 @@ async function cmdDoctor(flags, positional, json) {
     );
     process.exit(2);
   }
+  const provider = requestedProvider(flags, 'doctor', json);
+  if (provider === 'pi' || provider === 'qwen') {
+    const { driver } = runtimeForProvider(provider, process.cwd());
+    const capabilities = await driver.probe();
+    const permissionMode = normalizePermissionMode(flags, 'doctor', json) ?? 'default';
+    const report = {
+      ok: capabilities.health.status !== 'fail',
+      status: capabilities.health.status,
+      provider,
+      providerLabel: providerLabel(provider),
+      generatedAt: new Date().toISOString(),
+      version: PLUGIN_VERSION,
+      cwd: process.cwd(),
+      permissionMode,
+      capabilities,
+      warning:
+        permissionMode === 'default'
+          ? 'Headless jobs cannot hand permission prompts to a live terminal; choose an explicit provider policy when unattended execution is required.'
+          : null,
+    };
+    process.stdout.write(
+      json
+        ? JSON.stringify(report, null, 2) + '\n'
+        : [
+            `${providerLabel(provider)} doctor — ${report.status.toUpperCase()}`,
+            `  cwd: ${report.cwd}`,
+            `  permission mode: ${permissionMode}`,
+            ...capabilities.health.probes.map(
+              (probe) => `  ${probe.status.padEnd(4)}  ${probe.name.padEnd(22)} ${probe.detail}`,
+            ),
+            ...(report.warning ? [`  warning: ${report.warning}`] : []),
+          ].join('\n') + '\n',
+    );
+    if (!report.ok) process.exit(1);
+    return;
+  }
   const report = await runSetupDoctorReport();
   const preflight = buildDoctorPreflight(report, flags, json);
   process.stdout.write(formatDoctor(preflight, json) + '\n');
@@ -2320,7 +2479,7 @@ async function cmdDeepResearch(flags, positional, json) {
  * @param {boolean} json
  * @param {{
  *   commandName: string;
- *   promptTransformer: (raw: string, provider: 'claude' | 'agy') => string;
+ *   promptTransformer: (raw: string, provider: 'claude' | 'agy' | 'pi' | 'qwen') => string;
  *   extraOutput: string | ((job: object) => string) | null;
  *   workspaceRoot?: string;
  * }} opts
@@ -2355,7 +2514,7 @@ async function _runDelegateCore(
   // Resolve auto before disclosure so the user sees the actual external provider.
   const runtime = await resolveStartRuntime(flags, commandName, json, workspace);
   const { provider, driver } = runtime;
-  const providerLabel = provider === 'agy' ? 'Google Antigravity' : 'Claude Code';
+  const label = providerLabel(provider);
   validateProviderStartOptions(provider, flags, startSessionOptions, commandName, json);
 
   // 2. Privacy ack.
@@ -2366,8 +2525,8 @@ async function _runDelegateCore(
     useYes,
     provider,
     actionLines: [
-      `This command will send your prompt to ${providerLabel} as an asynchronous job.`,
-      `${providerLabel} will have access to files allowed by its CLI permission settings.`,
+      `This command will send your prompt to ${label} as an asynchronous job.`,
+      `${label} will have access to files allowed by its CLI permission settings.`,
     ],
   });
 
@@ -2379,11 +2538,11 @@ async function _runDelegateCore(
       .map((p) => `  - ${p.name}: ${p.detail}`)
       .join('\n');
     const detail = [
-      `${providerLabel} is not ready for delegated jobs.`,
+      `${label} is not ready for delegated jobs.`,
       ...(failedProbes ? ['\nFailed probes:', failedProbes] : []),
       ...(!caps.features.start ? ['\n  - start: not supported'] : []),
       ...(!caps.features.status ? ['\n  - status: not supported'] : []),
-      `\nRun: ${provider === 'agy' ? '$agy-setup' : '$claude-setup'}`,
+      `\nRun: ${providerSkill(provider, 'setup')}`,
     ].join('');
     process.stderr.write(formatError(new Error(detail), commandName, json) + '\n');
     process.exit(1);
@@ -2421,7 +2580,9 @@ async function _runDelegateCore(
     logsCommand:
       provider === 'agy'
         ? `cat ${shellQuote(handle.resultPath ?? '')}`
-        : `claude logs ${handle.shortId}`,
+        : provider === 'claude'
+          ? `claude logs ${handle.shortId}`
+          : `cat ${shellQuote(handle.resultPath ?? handle.errorPath ?? '')}`,
     launchPolicy: launchPolicyFromStartSessionOptions(startSessionOptions),
   };
   const job = await createJob({
@@ -2444,10 +2605,7 @@ async function _runDelegateCore(
   });
 
   // 8. Build adapter.
-  const adapter =
-    provider === 'agy'
-      ? makeAgyAdapter(driver)
-      : makeClaudeAdapter(driver, { startedAt: handle.startedAt });
+  const adapter = runtime.adapter;
 
   // 9. Reconcile once.
   let finalJob = job;
@@ -2564,7 +2722,11 @@ async function cmdAttach(flags, positional, json) {
     const session = sessionForJob(job);
     process.stderr.write(
       formatError(
-        new Error(`Claude Code owns its native attach UI. Run: claude attach ${session.shortId}`),
+        new Error(
+          provider === 'claude'
+            ? `Claude Code owns its native attach UI. Run: claude attach ${session.shortId}`
+            : `${providerLabel(provider)} jobs are supervised headlessly and do not support terminal attachment.`,
+        ),
         'attach',
         false,
       ) + '\n',
@@ -3622,7 +3784,7 @@ async function cmdFollowup(flags, positional, json) {
   const storedJob = await readJob(jobId);
   const provider = providerForJob(storedJob);
   assertRequestedProviderMatchesJob(flags, provider, 'followup', json);
-  const providerLabel = provider === 'agy' ? 'Google Antigravity' : 'Claude Code';
+  const label = providerLabel(provider);
   const { driver, adapter } = runtimeForJob(storedJob);
 
   let job;
@@ -3640,9 +3802,7 @@ async function cmdFollowup(flags, positional, json) {
     process.stderr.write(
       formatError(
         new Error(
-          provider === 'agy'
-            ? `Job ${jobId} is running; wait for the current ${providerLabel} turn to finish before sending a follow-up.`
-            : `Job ${jobId} is running; wait for $claude-status to show awaiting_followup before sending a follow-up.`,
+          `Job ${jobId} is running; wait for the current ${label} turn to finish before sending a follow-up.`,
         ),
         'followup',
         json,
@@ -3674,7 +3834,7 @@ async function cmdFollowup(flags, positional, json) {
     process.stderr.write(
       formatError(
         new Error(
-          `Job ${jobId} is ${status}; start a new ${provider === 'agy' ? '$agy-delegate' : '$claude-delegate'} job instead.`,
+          `Job ${jobId} is ${status}; start a new ${providerSkill(provider, 'delegate')} job instead.`,
         ),
         'followup',
         json,
@@ -3719,7 +3879,7 @@ async function cmdFollowup(flags, positional, json) {
     header: 'Privacy acknowledgement required for target workspace.',
     actionLines: [
       `This command will inject a follow-up prompt into job ${jobId}.`,
-      `${providerLabel}'s existing conversation has access to files in:`,
+      `${label}'s existing conversation has access to files in:`,
     ],
     workspaceLabel: 'Target workspace',
   });
@@ -3840,7 +4000,7 @@ async function cmdReview(flags, positional, json) {
   const storedJob = await readJob(jobId);
   const provider = providerForJob(storedJob);
   assertRequestedProviderMatchesJob(flags, provider, 'review', json);
-  const providerLabel = provider === 'agy' ? 'Google Antigravity' : 'Claude Code';
+  const label = providerLabel(provider);
   const { driver, adapter } = runtimeForJob(storedJob);
 
   let job;
@@ -3855,7 +4015,7 @@ async function cmdReview(flags, positional, json) {
   const { status } = job;
 
   if (status === 'needs_input') {
-    const reviewSkill = provider === 'agy' ? '$agy-review' : '$claude-review';
+    const reviewSkill = providerSkill(provider, 'review');
     process.stderr.write(
       formatError(
         new Error(
@@ -3872,9 +4032,7 @@ async function cmdReview(flags, positional, json) {
     process.stderr.write(
       formatError(
         new Error(
-          provider === 'agy'
-            ? `Job ${jobId} is running; wait for the current ${providerLabel} turn to finish before reviewing it.`
-            : `Job ${jobId} is running; wait for $claude-status to show awaiting_followup before running $claude-review.`,
+          `Job ${jobId} is running; wait for the current ${label} turn to finish before running ${providerSkill(provider, 'review')}.`,
         ),
         'review',
         json,
@@ -3884,7 +4042,7 @@ async function cmdReview(flags, positional, json) {
   }
 
   if (status === 'queued' || status === 'starting') {
-    const reviewSkill = provider === 'agy' ? '$agy-review' : '$claude-review';
+    const reviewSkill = providerSkill(provider, 'review');
     process.stderr.write(
       formatError(
         new Error(
@@ -3911,9 +4069,8 @@ async function cmdReview(flags, positional, json) {
   }
 
   if (status === 'failed' || status === 'stopped' || status === 'orphaned') {
-    const reviewSkill = provider === 'agy' ? '$agy-review' : '$claude-review';
-    const adversarialSkill =
-      provider === 'agy' ? '$agy-adversarial-review' : '$claude-adversarial-review';
+    const reviewSkill = providerSkill(provider, 'review');
+    const adversarialSkill = providerSkill(provider, 'adversarial-review');
     process.stderr.write(
       formatError(
         new Error(
@@ -3988,7 +4145,7 @@ async function cmdReview(flags, positional, json) {
     header: 'Privacy acknowledgement required for target workspace.',
     actionLines: [
       `This command will inject a review prompt into job ${jobId}.`,
-      `${providerLabel}'s existing conversation has access to files in:`,
+      `${label}'s existing conversation has access to files in:`,
     ],
     workspaceLabel: 'Target workspace',
   });
@@ -4424,7 +4581,9 @@ async function cmdAdversarialReview(flags, positional, json) {
     logsCommand:
       reviewProvider === 'agy'
         ? `cat ${shellQuote(reviewHandle.errorPath ?? '')}`
-        : `claude logs ${reviewHandle.shortId}`,
+        : reviewProvider === 'claude'
+          ? `claude logs ${reviewHandle.shortId}`
+          : `cat ${shellQuote(reviewHandle.resultPath ?? reviewHandle.errorPath ?? '')}`,
     launchPolicy: launchPolicyFromStartSessionOptions(reviewStartSessionOptions),
   };
 
@@ -4485,10 +4644,7 @@ async function cmdAdversarialReview(flags, positional, json) {
       ? parsedPollEnv
       : ADVERSARIAL_REVIEW_POLL_DEFAULT_MS;
 
-  const reviewAdapter =
-    reviewProvider === 'agy'
-      ? makeAgyAdapter(driver)
-      : makeClaudeAdapter(driver, { startedAt: reviewHandle.startedAt });
+  const reviewAdapter = reviewRuntime.adapter;
 
   const startTime = Date.now();
   let currentReviewJob = reviewJob;
@@ -5131,6 +5287,14 @@ async function cmdUpgrade(flags, positional, json) {
 
 function printUsage(commandName = '') {
   const commandHelp = {
+    setup: [
+      'Usage: delegate setup [--provider <claude|agy|pi|qwen>] [--json]',
+      '',
+      'Checks the selected provider runtime and local dependencies without starting a delegated model turn.',
+      'Pi is invoked through the omp executable; Qwen Code is invoked through qwen.',
+      '',
+      'Options: --provider <claude|agy|pi|qwen> --json',
+    ],
     'agy-setup': [
       'Usage: delegate agy-setup [--json]',
       '',
@@ -5146,25 +5310,25 @@ function printUsage(commandName = '') {
       'Options: --json --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions',
     ],
     doctor: [
-      'Usage: delegate doctor [--claude-access] [--real|--chrome|--no-chrome] [permission flags] [--json]',
+      'Usage: delegate doctor [--provider <claude|agy|pi|qwen>] [--claude-access] [--real|--chrome|--no-chrome] [permission flags] [--json]',
       '',
-      'Runs a focused read-only preflight before long or browser-backed Claude jobs.',
-      'Checks workspace path, Claude Code CLI auth, Claude model access, real Chrome launch readiness, and permission-mode intent.',
+      'Runs a focused read-only provider preflight. Pi and Qwen checks include exact resume and headless permission constraints.',
+      'Claude checks include workspace path, CLI auth, model access, real Chrome launch readiness, and permission-mode intent.',
       'Use --real as a doctor-only alias for the Claude Code --chrome launch path.',
       '',
-      'Options: --json --claude-access --real --chrome --no-chrome --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions',
+      'Options: --provider <claude|agy|pi|qwen> --json --claude-access --real --chrome --no-chrome --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions',
     ],
     delegate: [
       'Usage: delegate delegate [options] -- "<prompt>"',
       '',
       'Starts a delegated provider job and records it in the delegate job store.',
-      'Use --provider claude (default), --provider agy, or --provider auto.',
+      'Use --provider claude (default), agy, pi, qwen, or auto.',
       'Use --yes to acknowledge plugin privacy non-interactively.',
       'Use --bypass-permissions (or --permission-mode bypassPermissions) for explicit trusted unattended runs.',
       'Use --chrome for Claude Code real-browser access; if Claude asks which browser to use, attach and choose interactively.',
       'Put all dispatcher flags before --; anything after -- is the provider prompt.',
       '',
-      'Options: --yes --json --compact --name <name> --model <model> --effort <effort> --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions --add-dir <dir> --mcp-config <path> --chrome --no-chrome --allow-edit',
+      'Options: --provider <claude|agy|pi|qwen|auto> --yes --json --compact --name <name> --model <model> --effort <effort> --permission-mode <mode> --bypass-permissions --dangerously-skip-permissions --add-dir <dir> --mcp-config <path> --chrome --no-chrome --allow-edit',
     ],
     restart: [
       'Usage: delegate restart <jobId-or-prefix> [fresh-session-flags] -- "<prompt>"',
@@ -5229,7 +5393,7 @@ function printUsage(commandName = '') {
       'Use --job for one focused lookup; use --limit to keep broad lists small.',
       'The --job form already returns the compact public job shape.',
       '',
-      'Options: --all --json --compact --job <jobId-or-prefix> --limit <n> --stored-status <state> --provider <claude|agy>',
+      'Options: --all --json --compact --job <jobId-or-prefix> --limit <n> --stored-status <state> --provider <claude|agy|pi|qwen>',
     ],
     result: [
       'Usage: delegate result <jobId-or-prefix> [--all] [--json] [--compact] [--partial]',
@@ -5269,8 +5433,8 @@ function printUsage(commandName = '') {
     followup: [
       'Usage: delegate followup <jobId-or-prefix> [options] -- "<prompt>"',
       '',
-      'Sends a follow-up prompt to the exact recorded Claude or Antigravity conversation.',
-      'The target job selects the provider; Antigravity resumes by captured conversation UUID.',
+      'Sends a follow-up prompt to the exact recorded provider session or conversation.',
+      'The target job selects the provider; Antigravity, Pi, and Qwen use captured exact identities.',
       'If JSON output reports resultPending:true, run the provider result skill after status settles.',
       '',
       'Options: --all --yes --json --allow-edit',
@@ -5314,11 +5478,11 @@ function printUsage(commandName = '') {
       'Usage: delegate <command> [options]',
       '',
       'Commands:',
-      '  setup                                     Run doctor probes and report status',
+      '  setup [--provider <provider>]             Run provider readiness probes and report status',
       '  agy-setup                                 Check Antigravity persistent-TUI readiness',
       '  agy-doctor                                Preflight Antigravity resume, workspace, and permission readiness',
       '  doctor [--claude-access] [--real] [--json]  Preflight auth, model access, browser, workspace, and permission mode',
-      '  delegate [flags] -- <prompt>              Start a Claude or Antigravity job',
+      '  delegate [flags] -- <prompt>              Start a Claude, Antigravity, Pi, or Qwen job',
       '  restart <jobId-or-prefix> [flags] -- <prompt>  Stop a job and start a fresh one in the same workspace',
       '  workflow [flags] -- <prompt>              Start a provider workflow',
       '  goal [flags] -- <condition>               Pursue a verified provider completion condition',
@@ -5360,7 +5524,7 @@ function printUsage(commandName = '') {
       '  --real                       Doctor preflight alias for future --chrome real-browser launch checks',
       '  --public                     Force public Git marketplace target for upgrade',
       '  --local                      Force local marketplace target for upgrade',
-      '  --provider <provider>        Delegation provider: claude, agy, or auto; also filters status',
+      '  --provider <provider>        Core provider: claude, agy, pi, qwen, or auto; also filters status',
       '  --name <name>                Session name (delegate, workflow, goal, fork, batch, deep-research)',
       '  --model <model>              Model selection (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',
       '  --effort <effort>            Effort level (delegate, workflow, goal, fork, batch, deep-research, adversarial-review)',

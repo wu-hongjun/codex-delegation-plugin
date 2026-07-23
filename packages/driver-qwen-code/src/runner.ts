@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { readFile, unlink } from 'node:fs/promises';
+import { finished } from 'node:stream/promises';
 
 import { readQwenState, writeQwenState } from './state.js';
 import type { QwenLaunchRequest, QwenRunnerState } from './types.js';
@@ -82,10 +83,8 @@ const outcome = await new Promise<{
   child.once('error', (error) => resolve({ code: null, signal: null, error }));
   child.once('close', (code, signal) => resolve({ code, signal }));
 });
-await Promise.all([
-  new Promise<void>((resolve) => stdout.end(resolve)),
-  new Promise<void>((resolve) => stderr.end(resolve)),
-]);
+stdout.end();
+await Promise.all([finished(stdout), finished(stderr)]);
 
 const latest = (await readQwenState(statePath)) ?? state;
 const endedAt = now();

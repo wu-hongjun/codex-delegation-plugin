@@ -320,9 +320,6 @@ const logTimer = setInterval(() => {
 async function finish(status: AgyRunnerState['status'], exitCode: number): Promise<void> {
   if (finished) return;
   finished = true;
-  clearInterval(requestTimer);
-  clearInterval(hookTimer);
-  clearInterval(logTimer);
   await captureConversationId().catch(() => undefined);
   const now = new Date().toISOString();
   await publish({
@@ -334,6 +331,9 @@ async function finish(status: AgyRunnerState['status'], exitCode: number): Promi
       ? { error: `agy interactive session exited ${exitCode}` }
       : {}),
   }).catch(() => undefined);
+  clearInterval(requestTimer);
+  clearInterval(hookTimer);
+  clearInterval(logTimer);
   terminalStream.end();
 }
 

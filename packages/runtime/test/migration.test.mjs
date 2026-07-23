@@ -237,6 +237,43 @@ describe('readJob — lazy v1→v2 migration', () => {
   });
 });
 
+describe('provider inference is fail-closed for non-Claude drivers', () => {
+  it('infers Pi and Qwen providers from their driver names', async () => {
+    for (const [driverName, provider] of [
+      ['pi-cli', 'pi'],
+      ['qwen-code', 'qwen'],
+    ]) {
+      const jobId = generateJobId();
+      writeV2Record(TMP_HOME, jobId, {
+        driver: { name: driverName, version: '0.0.0', capabilitiesSnapshot: {} },
+        session: {
+          version: 'test',
+          shortId: 'abcd1234',
+          sessionName: `${provider}-abcd1234`,
+          cwd: '/tmp/x',
+        },
+      });
+      const job = await readJob(jobId);
+      assert.equal(job.session.provider, provider);
+    }
+  });
+
+  it('preserves an unknown driver name instead of silently relabeling it Claude', async () => {
+    const jobId = generateJobId();
+    writeV2Record(TMP_HOME, jobId, {
+      driver: { name: 'future-driver', version: '0.0.0', capabilitiesSnapshot: {} },
+      session: {
+        version: 'test',
+        shortId: 'abcd1234',
+        sessionName: 'future-abcd1234',
+        cwd: '/tmp/x',
+      },
+    });
+    const job = await readJob(jobId);
+    assert.equal(job.session.provider, 'future-driver');
+  });
+});
+
 // ---------------------------------------------------------------------------
 // 5: readJob returns migrated in-memory record when lock is busy (no throw)
 // ---------------------------------------------------------------------------

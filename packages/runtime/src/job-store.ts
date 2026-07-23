@@ -159,7 +159,18 @@ function normalizeClaudeSession(value: unknown): ClaudeSessionContext {
 }
 
 function providerFromDriverName(name: unknown): string {
-  return name === 'agy-cli' ? 'agy' : 'claude';
+  switch (name) {
+    case 'claude-background':
+      return 'claude';
+    case 'agy-cli':
+      return 'agy';
+    case 'pi-cli':
+      return 'pi';
+    case 'qwen-code':
+      return 'qwen';
+    default:
+      return typeof name === 'string' && name.length > 0 ? name : 'unknown';
+  }
 }
 
 function normalizeSession(value: unknown, driverName: unknown): AgentSessionContext {

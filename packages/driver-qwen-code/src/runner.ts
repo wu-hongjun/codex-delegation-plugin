@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
-import { readFile } from 'node:fs/promises';
+import { readFile, unlink } from 'node:fs/promises';
 
 import { readQwenState, writeQwenState } from './state.js';
 import type { QwenLaunchRequest, QwenRunnerState } from './types.js';
@@ -22,7 +22,12 @@ function processExists(pid: number | undefined): boolean {
   }
 }
 
-const request = JSON.parse(await readFile(requestPath, 'utf8')) as QwenLaunchRequest;
+let request: QwenLaunchRequest;
+try {
+  request = JSON.parse(await readFile(requestPath, 'utf8')) as QwenLaunchRequest;
+} finally {
+  await unlink(requestPath).catch(() => undefined);
+}
 let state: QwenRunnerState = {
   ...request.state,
   runnerPid: process.pid,
@@ -35,7 +40,7 @@ const stdout = createWriteStream(state.transcriptPath, { flags: 'a', mode: 0o600
 const stderr = createWriteStream(state.errorPath, { flags: 'a', mode: 0o600 });
 const child = spawn(request.executable, request.args, {
   cwd: request.cwd,
-  env: request.env ?? process.env,
+  env: process.env,
   shell: false,
   stdio: ['ignore', 'pipe', 'pipe'],
 });

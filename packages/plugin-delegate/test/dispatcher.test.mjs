@@ -5116,7 +5116,7 @@ describe('review rejects running status (T4)', () => {
 
     assert.equal(result.status, 1, `expected exit 1 for running; got ${result.status}`);
     const combined = result.stdout + result.stderr;
-    const expectedMsg = `Job ${jobId} is running; wait for $claude-status to show awaiting_followup before running $claude-review.`;
+    const expectedMsg = `Job ${jobId} is running; wait for the current Claude Code turn to finish before running $claude-review.`;
     assert.ok(
       combined.includes(expectedMsg),
       `expected exact message "${expectedMsg}"; got:\n${combined}`,

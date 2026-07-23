@@ -39,7 +39,6 @@ export interface QwenLaunchRequest {
   executable: string;
   args: string[];
   cwd: string;
-  env?: NodeJS.ProcessEnv;
   state: QwenRunnerState;
   turnIndex: number;
 }

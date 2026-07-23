@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -173,6 +173,11 @@ describe('Qwen lifecycle', () => {
       ['--resume', '123e4567-e89b-12d3-a456-426614174000'],
     );
     assert.equal(followup.includes('--continue'), false);
+    const sessionFiles = readdirSync(join(delegationHome, 'sessions', 'qwen'));
+    assert.equal(
+      sessionFiles.some((name) => name.includes('.request.')),
+      false,
+    );
   });
 
   it('rejects concurrent follow-ups with a per-job lock', async () => {

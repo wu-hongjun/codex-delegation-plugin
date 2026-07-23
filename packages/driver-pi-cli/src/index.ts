@@ -125,12 +125,13 @@ async function spawnRunner(
   requestPath: string,
   statePath: string,
   request: PiLaunchRequest,
+  env: NodeJS.ProcessEnv,
 ): Promise<ChildProcess> {
   await writeFile(requestPath, JSON.stringify(request), { mode: 0o600 });
   try {
     const runner = spawn(process.execPath, [RUNNER_PATH, requestPath, statePath], {
       cwd: request.cwd,
-      env: request.env,
+      env,
       detached: true,
       shell: false,
       stdio: 'ignore',
@@ -202,13 +203,17 @@ export class PiCliDriver implements Driver {
     ]);
     let runner: ChildProcess;
     try {
-      runner = await spawnRunner(requestPath, statePath, {
-        executable: executable(this.defaults),
-        args: [...resumeArgs, opts.prompt],
-        cwd,
-        env: { ...process.env, ...this.defaults.env },
-        state,
-      });
+      runner = await spawnRunner(
+        requestPath,
+        statePath,
+        {
+          executable: executable(this.defaults),
+          args: [...resumeArgs, opts.prompt],
+          cwd,
+          state,
+        },
+        { ...process.env, ...this.defaults.env },
+      );
     } catch (error) {
       throw new DriverError('Failed to start the pi supervisor', {
         driverName: DRIVER_NAME,
@@ -365,13 +370,17 @@ export class PiCliDriver implements Driver {
         error: undefined,
       };
       const requestPath = `${session.statePath}.request.${turnIndex}.json`;
-      await spawnRunner(requestPath, session.statePath, {
-        executable: executable(this.defaults),
-        args: [...previous.resumeArgs, '--resume', sessionId, input.text],
-        cwd: previous.cwd,
-        env: { ...process.env, ...this.defaults.env },
-        state: next,
-      });
+      await spawnRunner(
+        requestPath,
+        session.statePath,
+        {
+          executable: executable(this.defaults),
+          args: [...previous.resumeArgs, '--resume', sessionId, input.text],
+          cwd: previous.cwd,
+          state: next,
+        },
+        { ...process.env, ...this.defaults.env },
+      );
       const deadline = Date.now() + (opts.timeoutMs ?? 600_000);
       for (;;) {
         if (opts.signal?.aborted)

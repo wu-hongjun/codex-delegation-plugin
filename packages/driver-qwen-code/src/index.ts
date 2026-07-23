@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -149,22 +149,26 @@ export class QwenCodeDriver implements Driver {
       executable: this.defaults.executable ?? this.defaults.env?.['QWEN_CLI_PATH'] ?? 'qwen',
       args,
       cwd: state.cwd,
-      env: { ...process.env, ...this.defaults.env },
       state: { ...state, status: 'starting', turnIndex, updatedAt: new Date().toISOString() },
       turnIndex,
     };
     await writeFile(requestPath, JSON.stringify(request), { mode: 0o600 });
     const runner = spawn(process.execPath, [RUNNER_PATH, requestPath, statePath], {
       cwd: state.cwd,
-      env: process.env,
+      env: { ...process.env, ...this.defaults.env },
       detached: true,
       shell: false,
       stdio: 'ignore',
     });
-    await new Promise<void>((resolve, reject) => {
-      runner.once('spawn', resolve);
-      runner.once('error', reject);
-    });
+    try {
+      await new Promise<void>((resolve, reject) => {
+        runner.once('spawn', resolve);
+        runner.once('error', reject);
+      });
+    } catch (error) {
+      await unlink(requestPath).catch(() => undefined);
+      throw error;
+    }
     runner.unref();
     return runner;
   }

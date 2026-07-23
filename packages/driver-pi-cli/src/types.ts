@@ -38,6 +38,5 @@ export interface PiLaunchRequest {
   executable: string;
   args: string[];
   cwd: string;
-  env: NodeJS.ProcessEnv;
   state: PiRunnerState;
 }

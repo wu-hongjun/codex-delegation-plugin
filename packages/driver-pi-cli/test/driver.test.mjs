@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { chmod, mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
@@ -136,6 +136,7 @@ test('start captures session identity and send launches one exact --resume turn'
   const fx = await fixture(`
 const fs = require('node:fs');
 const args = process.argv.slice(2);
+if (process.env.PI_DRIVER_TEST_OVERRIDE !== 'present') process.exit(7);
 if (!args.includes('--print')) process.exit(8);
 const resume = args.indexOf('--resume');
 const id = resume >= 0 ? args[resume + 1] : 'session-123';
@@ -146,7 +147,10 @@ console.log(JSON.stringify({type:'tool_execution_end',toolName:'read',result:'ok
 console.log(JSON.stringify({type:'message_end',message:{role:'assistant',content:[{type:'text',text:resume >= 0 ? 'followed' : 'started'}]}}));
 `);
   process.env.CODEX_DELEGATION_HOME = join(fx.dir, 'state');
-  const driver = new PiCliDriver({ executable: fx.executable, env: fx.env });
+  const driver = new PiCliDriver({
+    executable: fx.executable,
+    env: { ...fx.env, PI_DRIVER_TEST_OVERRIDE: 'present' },
+  });
   const handle = await driver.startSession({ cwd: fx.dir, prompt: 'start' });
   const first = await terminal(handle);
   assert.equal(first.sessionId, 'session-123');
@@ -159,6 +163,11 @@ console.log(JSON.stringify({type:'message_end',message:{role:'assistant',content
   const second = await terminal(handle);
   assert.equal(second.turnIndex, 1);
   assert.match(await readFile(second.transcriptPath, 'utf8'), /followed/);
+  const sessionFiles = await readdir(join(fx.env.CODEX_DELEGATION_HOME, 'sessions', 'pi'));
+  assert.equal(
+    sessionFiles.some((name) => name.includes('.request.')),
+    false,
+  );
 });
 
 test('send lock rejects concurrent follow-ups without corrupting state', async () => {

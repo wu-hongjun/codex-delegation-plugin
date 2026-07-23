@@ -38,7 +38,10 @@ export function makePiAdapter(driver) {
         readFile(transcriptPath ?? '', 'utf8').catch(() => ''),
         readFile(errorPath ?? '', 'utf8').catch(() => ''),
       ]);
-      return { text: stdout || stderr, stdout, stderr };
+      // Reconciliation may promote `text` into result.md. Keep raw JSONL
+      // available as diagnostic stdout, but never use it as a result fallback:
+      // provider transcripts can contain private reasoning blocks.
+      return { text: stderr, stdout, stderr };
     },
 
     async readSidecar(ref) {

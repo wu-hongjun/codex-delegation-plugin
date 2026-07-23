@@ -217,6 +217,11 @@ Pi maps `acceptEdits` to approval mode `write`; Qwen maps it to `auto-edit` and 
 `plan`. Explicit bypass maps to `yolo` for both providers and can approve destructive operations,
 so the plugin never adds it unless the operator asks.
 
+Pi and Qwen launch requests use temporary owner-only (`0600`) files that the supervisor removes
+immediately after reading, including after a parse failure. Normalized results include assistant
+answer text but exclude thinking/reasoning blocks. Raw structured transcripts remain separate
+diagnostic artifacts and may contain other provider-emitted events.
+
 The Antigravity driver always adds the current Codex workspace with `--add-dir`. Native workspace-trust and
 permission cards become durable `needs_input` job states. Run `$agy-attach <jobId>` to inspect and
 answer them in the provider TUI; `Ctrl+]` detaches without stopping Antigravity. Narrow

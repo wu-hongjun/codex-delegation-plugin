@@ -13,9 +13,23 @@
       provider in each workspace requires acknowledgement.
     </p>
     <p>
-      Acknowledgements live in <code>~/.codex/codex-delegation-plugin/acks/</code>. Approval for
-      Approving one provider does not approve another, and approval in one repository does not
-      approve another. Use <code>--yes</code> only for intentional non-interactive acknowledgement.
+      Acknowledgements live in <code>~/.codex/codex-delegation-plugin/acks/</code>. Approving one
+      provider does not approve another, and approval in one repository does not approve another.
+      Use <code>--yes</code> only for intentional non-interactive acknowledgement.
+    </p>
+  </section>
+
+  <section id="headless-artifacts">
+    <h2>Pi and Qwen headless artifacts</h2>
+    <p>
+      The Pi and Qwen supervisors pass launch details through a temporary request file created with
+      owner-only <code>0600</code> permissions. The runner removes that request file immediately
+      after reading it, including when parsing fails.
+    </p>
+    <p>
+      Normalized results contain assistant answer text and intentionally exclude provider
+      thinking/reasoning blocks. Raw structured transcript files are separate diagnostic artifacts
+      and may retain provider-emitted events; protect the delegation state directory accordingly.
     </p>
   </section>
 

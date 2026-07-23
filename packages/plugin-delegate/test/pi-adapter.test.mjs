@@ -22,7 +22,7 @@ test('Pi adapter resolves the current turn transcript from runner state', async 
         currentTranscript,
         `${JSON.stringify({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: 'new answer' }] } })}\n`,
       ),
-      writeFile(errorPath, ''),
+      writeFile(errorPath, 'safe diagnostic'),
       writeFile(
         statePath,
         JSON.stringify({
@@ -61,8 +61,11 @@ test('Pi adapter resolves the current turn transcript from runner state', async 
       transcript.events.find((event) => event.type === 'message.completed')?.content,
       'new answer',
     );
-    assert.match((await adapter.readLogs(ref)).stdout, /new answer/);
-    assert.doesNotMatch((await adapter.readLogs(ref)).stdout, /old answer/);
+    const logs = await adapter.readLogs(ref);
+    assert.match(logs.stdout, /new answer/);
+    assert.doesNotMatch(logs.stdout, /old answer/);
+    assert.equal(logs.text, 'safe diagnostic');
+    assert.doesNotMatch(logs.text, /new answer|old answer/);
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

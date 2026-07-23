@@ -33,7 +33,7 @@ const output = createWriteStream(state.transcriptPath, { flags: 'a', mode: 0o600
 const errors = createWriteStream(state.errorPath, { flags: 'a', mode: 0o600 });
 const child = spawn(request.executable, request.args, {
   cwd: request.cwd,
-  env: request.env,
+  env: process.env,
   shell: false,
   stdio: ['ignore', 'pipe', 'pipe'],
 });

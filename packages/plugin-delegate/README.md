@@ -72,6 +72,11 @@ attach a live terminal to answer it. Choose an explicit, provider-supported perm
 launching unattended work; bypass/yolo modes are dangerous and are never added unless the operator
 explicitly requests them.
 
+Both headless supervisors write launch requests with owner-only (`0600`) permissions and unlink
+them immediately after the runner reads them, including on parse failure. Normalized results select
+assistant answer text and exclude thinking/reasoning blocks. Raw structured transcripts are
+separate diagnostic artifacts and may retain other provider-emitted events.
+
 The driver adds the current Codex workspace to every agy session with `--add-dir`. Native workspace
 trust and permission cards become a durable `needs_input` job state. `$agy-attach` replays the live
 TUI and proxies user keystrokes, including `/agents`, `/tasks`, and permission decisions; `Ctrl+]`

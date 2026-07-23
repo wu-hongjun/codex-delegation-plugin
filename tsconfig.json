@@ -5,6 +5,7 @@
     { "path": "./packages/driver-claude-code" },
     { "path": "./packages/driver-agy-cli" },
     { "path": "./packages/driver-pi-cli" },
+    { "path": "./packages/driver-qwen-code" },
     { "path": "./packages/plugin-delegate" }
   ]
 }

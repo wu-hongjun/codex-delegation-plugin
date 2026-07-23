@@ -1,6 +1,13 @@
 import { afterEach, beforeEach, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -278,10 +285,12 @@ describe('AgyCliDriver lifecycle', () => {
     writeFileSync(statePath, JSON.stringify(state));
     const terminalWrite = setTimeout(() => {
       const endedAt = new Date().toISOString();
+      const temporary = `${statePath}.terminal`;
       writeFileSync(
-        statePath,
+        temporary,
         JSON.stringify({ ...state, status: 'completed', updatedAt: endedAt, endedAt, exitCode: 0 }),
       );
+      renameSync(temporary, statePath);
     }, 50);
 
     const driver = new AgyCliDriver({ executable: mockAgy, cwd: workspace });
